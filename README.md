@@ -56,9 +56,11 @@ Open <http://localhost:8080>, sign in, start a run. The agent is read-only in th
 The runner removes `ANTHROPIC_API_KEY` from the CLI's environment on purpose, so runs are
 always billed to the subscription login.
 
-Note: without your own isolated `CLAUDE_CONFIG_DIR` the CLI loads your global skills,
-plugins and MCP servers, which costs roughly 25k input tokens even for a trivial prompt
-(see [`docs/research/spike-claude-billing.md`](docs/research/spike-claude-billing.md)).
+**Warning:** the runner does not isolate the CLI's configuration yet. The agent loads your global
+Claude setup: skills, plugins, hooks and **MCP servers** (for example Home Assistant), and a trivial
+prompt costs about 23k input tokens. Until this is fixed (see
+[`docs/research/spike-claude-billing.md`](docs/research/spike-claude-billing.md)), run the runner only
+with a `CLAUDE_CONFIG_DIR` that has its own login and no MCP servers, and only with prompts you trust.
 
 ### Container
 

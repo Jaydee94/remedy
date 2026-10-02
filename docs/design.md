@@ -21,6 +21,12 @@ running as a service for other people's homelabs.
   (Antigravity CLI). Every run gets an isolated workspace.
 - There is **one provider adapter per CLI**, a default provider per agent role, and a
   fallback on limit or error.
+- The runner must **isolate the CLI's configuration** (dedicated `CLAUDE_CONFIG_DIR`,
+  `--strict-mcp-config`, `--setting-sources`, `--disable-slash-commands`). A real run showed the CLI
+  loading the maintainer's global MCP servers (including Home Assistant), plugins and hooks, which also
+  costs about 23k tokens per run. See
+  [`research/spike-claude-billing.md`](research/spike-claude-billing.md). This is a prerequisite for
+  phase 1, not an optimisation.
 - Remedy **never touches login credentials**. It only starts the unmodified binary.
 - The Claude Agent SDK is out (subscription auth is not intended for it).
 - The Gemini adapter targets `agy`, not the Gemini CLI (its subscription login was shut
@@ -47,7 +53,9 @@ running as a service for other people's homelabs.
 - One **signal layer** with an adapter per source and a normalised event schema.
 - Signals are correlated into **incidents** (fingerprint, affected service, time window).
   At most one active run per incident; follow-up signals attach to it. Plus cooldown,
-  retry limit and a **budget per time window** (protects the subscription limit).
+  retry limit and a **budget per time window** (protects the subscription limit). The Claude CLI
+  reports the subscription's five-hour and seven-day utilization in a `rate_limit_event`, which is the
+  input for this budget and for the quota-based provider fallback.
 
 ### 2.4 GitOps integration (branch 4)
 
@@ -149,7 +157,8 @@ Phase plans live in [`plans/`](plans/).
 See [`research/subscription-cli-usage.md`](research/subscription-cli-usage.md), the "Open"
 sections:
 
-1. Verify billing of `claude -p` with subscription OAuth (spike, phase 0).
+1. Cross-check billing of `claude -p` in the dashboards. The CLI itself reports subscription use without
+   overage (spike, phase 0).
 2. Login lifetime and refresh inside a pod (spike, phase 0).
 3. Behaviour of long-blocking MCP tools used for approvals (spike, phase 0/2).
 4. `agy`: primary ToS source, keyring in a container, quota signalling (before phase 4).
