@@ -12,6 +12,10 @@ export interface Run {
   createdAt: string
   startedAt?: string
   finishedAt?: string
+  role: 'adhoc' | 'responder'
+  incidentId?: number
+  /** Set when the run was stopped for taking too long. */
+  failureReason?: 'timeout'
 }
 
 export interface RunEvent {
@@ -39,6 +43,39 @@ export interface Repo {
   lastPolledAt?: string
   lastError: string
   createdAt: string
+}
+
+export type IncidentState = 'open' | 'diagnosing' | 'diagnosed' | 'resolved' | 'ignored'
+
+export interface Incident {
+  id: number
+  repoId: number
+  repo: string
+  /** "pr:<number>" or "branch:<name>". */
+  ref: string
+  refUrl?: string
+  checkName: string
+  state: IncidentState
+  conclusion: string
+  headSha: string
+  checkUrl?: string
+  occurrences: number
+  firstSeen: string
+  lastSeen: string
+  resolvedAt?: string
+  resolvedReason?: string
+}
+
+export interface ActivityEntry {
+  id: number
+  at: string
+  kind: string
+  summary: string
+}
+
+export interface IncidentDetail {
+  incident: Incident
+  activity: ActivityEntry[]
 }
 
 export class ApiError extends Error {
@@ -81,6 +118,15 @@ export const api = {
   addRepo: (fullName: string) => request<Repo>('POST', '/api/repos', { fullName }),
   setRepoEnabled: (id: number, enabled: boolean) => request<void>('PATCH', `/api/repos/${id}`, { enabled }),
   deleteRepo: (id: number) => request<void>('DELETE', `/api/repos/${id}`),
+
+  /** state is "active", "all" or one incident state. */
+  listIncidents: (state: string, repoId?: number) => {
+    const query = new URLSearchParams({ state })
+    if (repoId !== undefined) query.set('repo', String(repoId))
+    return request<Incident[]>('GET', `/api/incidents?${query.toString()}`)
+  },
+  getIncident: (id: number) => request<IncidentDetail>('GET', `/api/incidents/${id}`),
+  ignoreIncident: (id: number) => request<Incident>('POST', `/api/incidents/${id}/ignore`),
 }
 
 /** Opens the live stream of a run. The browser reconnects with Last-Event-ID on its own. */

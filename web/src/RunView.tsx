@@ -47,8 +47,15 @@ export default function RunView({ id }: { id: string }) {
               {status}
             </Badge>
             {run.exitCode !== undefined && <span className="text-sm text-muted-foreground">exit {run.exitCode}</span>}
+            {run.failureReason === 'timeout' && <Badge variant="destructive">timed out</Badge>}
+            {run.incidentId !== undefined && (
+              <Link to={`/incidents/${run.incidentId}`} className="text-sm text-muted-foreground hover:text-foreground">
+                Incident #{run.incidentId}
+              </Link>
+            )}
           </div>
           <p className="whitespace-pre-wrap rounded-lg bg-card p-3">{run.prompt}</p>
+          {run.failureReason && run.result && <p className="text-sm text-destructive">{run.result}</p>}
         </header>
       )}
 
