@@ -1,6 +1,6 @@
 # Phase 1 (part 1): detect and diagnose
 
-Status: approved in the planning session of 2026-10-02, pending written-spec review.
+Status: accepted by the maintainer on 2026-10-02. Implementation plans: [`phase-1a`](../plans/phase-1a-github-foundation.md) (steps 0 to 4, implemented); the plans for the remaining steps follow.
 Parent documents: [`../design.md`](../design.md) (sections 2.2 to 2.4, 2.9 and the roadmap) and
 [`../research/spike-claude-billing.md`](../research/spike-claude-billing.md) (CLI isolation, real event shapes).
 
