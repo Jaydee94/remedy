@@ -1,22 +1,20 @@
 import { useEffect, useState } from 'react'
+import { Navigate, Route, Routes, useParams } from 'react-router'
 import { api } from './api.ts'
+import AppLayout from './components/AppLayout.tsx'
 import Login from './Login.tsx'
+import NotFound from './NotFound.tsx'
 import RunsPage from './RunsPage.tsx'
 import RunView from './RunView.tsx'
 
-function useHash(): string {
-  const [hash, setHash] = useState(location.hash)
-  useEffect(() => {
-    const onChange = () => setHash(location.hash)
-    window.addEventListener('hashchange', onChange)
-    return () => window.removeEventListener('hashchange', onChange)
-  }, [])
-  return hash
+/** Mounts RunView with key={id} so that switching runs resets its state. */
+function RunRoute() {
+  const { id } = useParams()
+  return id ? <RunView key={id} id={id} /> : <Navigate to="/runs" replace />
 }
 
 export default function App() {
   const [auth, setAuth] = useState<'loading' | 'in' | 'out'>('loading')
-  const hash = useHash()
 
   useEffect(() => {
     api.me().then(() => setAuth('in')).catch(() => setAuth('out'))
@@ -25,24 +23,19 @@ export default function App() {
   if (auth === 'loading') return null
   if (auth === 'out') return <Login onLoggedIn={() => setAuth('in')} />
 
-  const runId = /^#\/runs\/([\w-]+)$/.exec(hash)?.[1]
-
-  async function logout() {
+  async function signOut() {
     await api.logout()
     setAuth('out')
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-10">
-      <div className="flex items-center justify-between">
-        <a href="#/" className="text-2xl font-semibold tracking-tight">
-          Remedy
-        </a>
-        <button onClick={logout} className="text-sm text-slate-400 hover:text-slate-200">
-          Sign out
-        </button>
-      </div>
-      {runId ? <RunView key={runId} id={runId} /> : <RunsPage />}
-    </main>
+    <Routes>
+      <Route element={<AppLayout onSignOut={signOut} />}>
+        <Route index element={<Navigate to="/runs" replace />} />
+        <Route path="runs" element={<RunsPage />} />
+        <Route path="runs/:id" element={<RunRoute />} />
+        <Route path="*" element={<NotFound />} />
+      </Route>
+    </Routes>
   )
 }

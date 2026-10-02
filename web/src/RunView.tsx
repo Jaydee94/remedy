@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import { api, streamRun } from './api.ts'
 import type { Run, RunEvent } from './api.ts'
 import { statusColor } from './status.ts'
+import { Badge } from '@/components/ui/badge'
 
 function summarize(e: RunEvent): string {
   if (e.kind === 'result' && typeof e.payload === 'object' && e.payload !== null) {
@@ -33,26 +35,30 @@ export default function RunView({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <a href="#/" className="text-sm text-slate-400 hover:text-slate-200">
+      <Link to="/runs" className="text-sm text-muted-foreground hover:text-foreground">
         ← All runs
-      </a>
+      </Link>
 
       {run && status && (
         <header className="flex flex-col gap-2">
           <div className="flex items-center gap-3">
-            <span className={`h-2.5 w-2.5 rounded-full ${statusColor[status]}`} />
-            <span className="font-medium">{status}</span>
-            {run.exitCode !== undefined && <span className="text-sm text-slate-400">exit {run.exitCode}</span>}
+            <Badge variant="outline" className="gap-2">
+              <span className={`h-2 w-2 rounded-full ${statusColor[status]}`} />
+              {status}
+            </Badge>
+            {run.exitCode !== undefined && <span className="text-sm text-muted-foreground">exit {run.exitCode}</span>}
           </div>
-          <p className="whitespace-pre-wrap rounded-lg bg-slate-900 p-3">{run.prompt}</p>
+          <p className="whitespace-pre-wrap rounded-lg bg-card p-3">{run.prompt}</p>
         </header>
       )}
 
       <ol className="flex flex-col gap-2 font-mono text-sm">
         {events.map((e) => (
-          <li key={e.seq} className="rounded-lg border border-slate-800 bg-slate-900/50 p-2">
-            <span className="mr-2 rounded bg-slate-700 px-1.5 py-0.5 text-xs">{e.kind}</span>
-            <span className="whitespace-pre-wrap break-words text-slate-300">{summarize(e)}</span>
+          <li key={e.seq} className="rounded-lg border border-border bg-card/50 p-2">
+            <Badge variant="secondary" className="mr-2">
+              {e.kind}
+            </Badge>
+            <span className="whitespace-pre-wrap break-words text-muted-foreground">{summarize(e)}</span>
           </li>
         ))}
       </ol>
