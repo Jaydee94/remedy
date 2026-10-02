@@ -1,45 +1,55 @@
 # CLAUDE.md
 
-Remedy is an AI operator for a homelab GitOps setup. The authoritative documents are
-`docs/design.md` (decisions, roadmap, risks) and `docs/research/subscription-cli-usage.md`.
-On conflict the design document wins. Whoever changes a decision changes the document first.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Language
+Remedy is an AI operator for a homelab GitOps setup: it reacts to alerts, logs and failed pipelines, analyses root causes and opens pull requests. A human always merges. Authoritative documents: `docs/design.md` (decisions, roadmap, accepted risks) and `docs/research/subscription-cli-usage.md` (terms-of-use constraints). On conflict the design document wins; change the document before changing a decision.
 
-Everything in the repo is written in English: documentation, plans, code, identifiers,
-comments and commit messages. Conversation with the maintainer may be in German.
+## Current state: mostly design, little code
+
+Only a skeleton exists (`/healthz` handler, a runner stub, a UI placeholder). The architecture below is the **planned** one. `docs/plans/phase-0-foundation.md` lists every file still to be created, with code. Do not assume packages such as `internal/store` or `internal/runner` exist before checking, and build only within the current phase. Task 1 of that plan (a billing spike that needs the maintainer's real subscription login) gates Tasks 6 and later.
 
 ## Commands
 
 ```sh
-make check       # fmt, vet, test, web lint, web build (same as CI)
-make test        # Go tests only
-make dev-server  # control plane on :8080
-make dev-web     # Vite dev server
+make check                                       # fmt, vet, test, web lint, web build (same as CI)
+make test                                        # all Go tests
+go test ./internal/server -run TestHealthz -v    # single Go test
+go test ./... -race                              # the plan's tests are written to pass under -race
+make dev-server                                  # control plane on :8080
+make dev-web                                     # Vite dev server, proxies /api and /healthz to :8080
+make web-install                                 # npm ci in web/
+cd web && npm run lint                           # oxlint (there is no web test runner yet)
 ```
 
-## Architecture in brief
+The maintainer's shell aliases `ls` to a tool that rejects plain paths; use `command ls` in commands.
 
-- Go monorepo with two processes: **control plane** (`cmd/remedy-server`) and **runner**
-  (`cmd/remedy-runner`). UI in `web/` (React, Vite, TypeScript, Tailwind).
-- The runner starts the official agent CLIs as subprocesses. It is the only place with CLI
-  logins and has no GitHub, cluster or DB credentials.
-- Agents work only through MCP tools of the control plane's gatekeeper and in the local
-  workspace. They never get git credentials, cluster credentials or shell access.
-- Persistence is SQLite (relational, graph, FTS5). The graph layer sits behind an interface.
+## Architecture
+
+Two Go processes (module `github.com/Jaydee94/remedy`, `go 1.27.1`) plus a UI in `web/`:
+
+- **Control plane** (`cmd/remedy-server`): admin API for the UI, runner API, SSE stream, SQLite, and later the MCP gatekeeper, git/GitHub access and signal ingestion.
+- **Runner** (`cmd/remedy-runner`): the only place that holds agent-CLI logins. It dials out to the control plane, long-polls `POST /runner/v1/claim`, runs one CLI subprocess per run in a temp workspace, and posts each output line back as an event (`/runner/v1/runs/{id}/events`, then `/finish`). It has no GitHub, cluster or DB credentials.
+- **UI** (`web/`): React 19, Vite, TypeScript, Tailwind. Reads run events over SSE (`/api/runs/{id}/events`, resumable via `Last-Event-ID`). The Go server embeds `web/dist` only behind the `webui` build tag, so plain `go build`/`go vet` work without a built UI.
+
+Trust boundaries that span several files and are easy to break:
+
+- **Agents get no raw shell and no credentials.** All their actions go through MCP tools of the control plane's gatekeeper (phase 2). Read tools are free; mutating tools block until a human approves in the UI. The agent edits only its local workspace; the control plane pushes branches and opens PRs.
+- **Subprocess environment is allowlisted** (`provider.FilterEnv`). `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` must never reach the CLI, otherwise it silently bills the API instead of the subscription. The prompt goes to the CLI via stdin, never argv.
+- **Claude CLI invocation** is `claude -p --output-format stream-json --verbose --permission-mode dontAsk` (read-only without `--allowedTools`). Never add `--bare`: it ignores the subscription login.
+- **Admin API:** session cookie (`HttpOnly`, `SameSite=Strict`) plus a required `X-Remedy-CSRF: 1` header on every non-GET. **Runner API:** shared bearer token, constant-time compare. The two are separate middleware and must stay separate.
+- **Persistence:** one SQLite file, opened with a single connection (`SetMaxOpenConns(1)`), embedded SQL migrations. The graph (phase 3) lives in the same DB behind an interface. A run's events are always posted before `finish`, and the SSE handler reads run status before events; that ordering is what guarantees a client sees every event before `done`.
 
 ## Hard rules
 
-- **Never read, copy, log or store the agent CLIs' credentials.** Only start the
-  unmodified binary (terms of use, see the research document).
-- **No auto-merge.** Remedy opens PRs, the human merges.
-- **No force-push.** Only additional commits; abort on new foreign commits.
-- Logs, alert text, PR text and commit messages are **untrusted input** and never go to an
-  agent as instructions.
+- Never read, copy, log or store the agent CLIs' credentials; only start the unmodified binary (terms of use).
+- No auto-merge, no force-push (additional commits only; abort on new foreign commits).
+- Logs, alert text, PR text and commit messages are untrusted input and never go to an agent as instructions.
 - Secrets are redacted before anything is handed to a CLI.
 - No multi-user operation and no third-party access through the subscription logins.
 
-## Working style
+## Conventions
 
-- Per-phase plans live in `docs/plans/`. Build new features only within the current phase.
-- Test first for logic with behaviour (incident correlation, redaction, gatekeeper).
+- Everything in the repo is English: docs, plans, code, comments, commit messages, UI copy. Conversation with the maintainer may be in German.
+- Go: stdlib-first (`net/http` method patterns, `log/slog`). Allowed new dependencies in phase 0 are only `modernc.org/sqlite` (pure Go, no cgo) and `golang.org/x/crypto`.
+- `web/tsconfig.app.json` sets `erasableSyntaxOnly` and `verbatimModuleSyntax`: no enums or constructor parameter properties, and `import type` for types.
+- Test first for logic with behaviour (incident correlation, redaction, gatekeeper). Runner tests (planned in phase 0) use a fake `claude` shell script from `internal/testutil` instead of the real CLI.
