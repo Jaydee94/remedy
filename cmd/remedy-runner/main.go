@@ -36,6 +36,7 @@ func main() {
 		WorkspaceRoot: cfg.WorkspaceRoot,
 		Env:           os.Environ(),
 		Log:           log,
+		RunTimeout:    cfg.RunTimeout,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

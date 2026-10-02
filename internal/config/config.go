@@ -20,6 +20,9 @@ const (
 
 	defaultPollInterval = time.Minute
 	minPollInterval     = 10 * time.Second
+
+	defaultRunTimeout = 10 * time.Minute
+	minRunTimeout     = 10 * time.Second
 )
 
 type Server struct {
@@ -71,11 +74,12 @@ func ServerFromEnv(get func(string) string) (Server, error) {
 }
 
 type Runner struct {
-	ServerURL     string // REMEDY_SERVER_URL, default "http://localhost:8080"
-	Token         string // REMEDY_RUNNER_TOKEN, required, min 24 chars
-	WorkspaceRoot string // REMEDY_WORKSPACES, default $TMPDIR/remedy-workspaces
-	ClaudeBin     string // REMEDY_CLAUDE_BIN, default "claude"
-	ClaudeModel   string // REMEDY_CLAUDE_MODEL, empty means the adapter's default
+	ServerURL     string        // REMEDY_SERVER_URL, default "http://localhost:8080"
+	Token         string        // REMEDY_RUNNER_TOKEN, required, min 24 chars
+	WorkspaceRoot string        // REMEDY_WORKSPACES, default $TMPDIR/remedy-workspaces
+	ClaudeBin     string        // REMEDY_CLAUDE_BIN, default "claude"
+	ClaudeModel   string        // REMEDY_CLAUDE_MODEL, empty means the adapter's default
+	RunTimeout    time.Duration // REMEDY_RUN_TIMEOUT, a Go duration, default 10m, at least 10s
 }
 
 func RunnerFromEnv(get func(string) string) (Runner, error) {
@@ -88,6 +92,15 @@ func RunnerFromEnv(get func(string) string) (Runner, error) {
 	}
 	if len(c.Token) < minTokenLen {
 		return Runner{}, errors.New("REMEDY_RUNNER_TOKEN must be set and at least 24 characters")
+	}
+
+	c.RunTimeout = defaultRunTimeout
+	if v := get("REMEDY_RUN_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < minRunTimeout {
+			return Runner{}, errors.New("REMEDY_RUN_TIMEOUT must be a duration of at least 10s, for example 10m")
+		}
+		c.RunTimeout = d
 	}
 	return c, nil
 }

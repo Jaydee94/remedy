@@ -24,7 +24,8 @@ var ErrNotFound = errors.New("not found")
 // tsLayout is fixed-width so that string order equals time order.
 const tsLayout = "2006-01-02T15:04:05.000000000Z"
 
-const runCols = `id, provider, prompt, status, exit_code, result, session_id, cost_usd, created_at, started_at, finished_at`
+const runCols = `id, provider, prompt, status, exit_code, result, session_id, cost_usd, created_at, started_at, finished_at,
+	role, incident_id, output, failure_reason`
 
 type Store struct{ db *sql.DB }
 
@@ -98,14 +99,23 @@ func scanRun(sc scanner) (run.Run, error) {
 	var (
 		r                 run.Run
 		status, created   string
-		exit              sql.NullInt64
+		role              string
+		exit, incident    sql.NullInt64
 		started, finished sql.NullString
+		output            sql.NullString
 	)
 	if err := sc.Scan(&r.ID, &r.Provider, &r.Prompt, &status, &exit, &r.Result, &r.SessionID,
-		&r.CostUSD, &created, &started, &finished); err != nil {
+		&r.CostUSD, &created, &started, &finished, &role, &incident, &output, &r.FailureReason); err != nil {
 		return run.Run{}, err
 	}
 	r.Status = run.Status(status)
+	r.Role = run.Role(role)
+	if incident.Valid {
+		r.IncidentID = &incident.Int64
+	}
+	if output.Valid {
+		r.Output = json.RawMessage(output.String)
+	}
 	if exit.Valid {
 		code := int(exit.Int64)
 		r.ExitCode = &code
@@ -236,10 +246,15 @@ func (s *Store) FinishRun(ctx context.Context, id string, o run.Outcome) error {
 	if o.ExitCode != 0 {
 		status = run.Failed
 	}
+	var output any // NULL unless the run produced structured output
+	if len(o.Output) > 0 && string(o.Output) != "null" {
+		output = string(o.Output)
+	}
 	res, err := s.db.ExecContext(ctx, `
-		UPDATE runs SET status = ?, exit_code = ?, result = ?, session_id = ?, cost_usd = ?, finished_at = ?
+		UPDATE runs SET status = ?, exit_code = ?, result = ?, session_id = ?, cost_usd = ?, output = ?,
+			failure_reason = ?, finished_at = ?
 		WHERE id = ? AND status = 'running'`,
-		string(status), o.ExitCode, o.Result, o.SessionID, o.CostUSD, formatTS(time.Now()), id)
+		string(status), o.ExitCode, o.Result, o.SessionID, o.CostUSD, output, o.FailureReason, formatTS(time.Now()), id)
 	if err != nil {
 		return err
 	}

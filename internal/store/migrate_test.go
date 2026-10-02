@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/store"
 )
 
@@ -42,7 +43,7 @@ func TestOpenMigratesAnExistingDatabaseAndKeepsItsData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open on a 001-only database: %v", err)
 	}
-	if got, err := s.GetRun(ctx, "old-run"); err != nil || got.Prompt != "from before" {
+	if got, err := s.GetRun(ctx, "old-run"); err != nil || got.Prompt != "from before" || got.Role != run.RoleAdhoc || got.IncidentID != nil {
 		t.Fatalf("existing run = %+v, %v", got, err)
 	}
 	if err := s.SaveConnection(ctx, connection("octo")); err != nil {
