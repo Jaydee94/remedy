@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/Jaydee94/remedy/internal/auth"
+	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/store"
 )
@@ -23,6 +24,10 @@ type Deps struct {
 	// routes are not registered.
 	Key       secret.Key
 	NewGitHub func(token secret.Value) GitHub
+
+	// Incidents changes incidents on behalf of the UI. When it is nil the incident routes are not
+	// registered.
+	Incidents *incident.Engine
 }
 
 type srv struct {
@@ -59,6 +64,12 @@ func New(d Deps) http.Handler {
 		mux.HandleFunc("POST /api/repos", s.session(s.addRepo))
 		mux.HandleFunc("PATCH /api/repos/{id}", s.session(s.patchRepo))
 		mux.HandleFunc("DELETE /api/repos/{id}", s.session(s.deleteRepo))
+	}
+
+	if d.Incidents != nil {
+		mux.HandleFunc("GET /api/incidents", s.session(s.listIncidents))
+		mux.HandleFunc("GET /api/incidents/{id}", s.session(s.getIncident))
+		mux.HandleFunc("POST /api/incidents/{id}/ignore", s.session(s.ignoreIncident))
 	}
 
 	if d.Web != nil {

@@ -112,6 +112,7 @@ func (s *srv) putConnection(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not store the connection")
 		return
 	}
+	s.logActivity(r.Context(), store.KindConnectionChanged, 0, "GitHub connection saved for "+user.Login)
 	writeJSON(w, http.StatusOK, viewOf(conn))
 }
 
@@ -162,6 +163,7 @@ func (s *srv) deleteConnection(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not remove the connection")
 		return
 	}
+	s.logActivity(r.Context(), store.KindConnectionChanged, 0, "GitHub connection removed")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -249,6 +251,7 @@ func (s *srv) addRepo(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not add the repository")
 		return
 	}
+	s.logActivity(r.Context(), store.KindRepoAdded, added.ID, "Added repository "+added.FullName)
 	writeJSON(w, http.StatusCreated, repoViewOf(added))
 }
 
@@ -289,7 +292,10 @@ func (s *srv) deleteRepo(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "repository not found")
 		return
 	}
-	err := s.d.Store.DeleteRepo(r.Context(), id)
+	repo, err := s.d.Store.GetRepo(r.Context(), id)
+	if err == nil {
+		err = s.d.Store.DeleteRepo(r.Context(), id)
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "repository not found")
 		return
@@ -298,5 +304,7 @@ func (s *srv) deleteRepo(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not remove the repository")
 		return
 	}
+	// No repo link: the row is gone, and the summary names it.
+	s.logActivity(r.Context(), store.KindRepoRemoved, 0, "Removed repository "+repo.FullName)
 	w.WriteHeader(http.StatusNoContent)
 }

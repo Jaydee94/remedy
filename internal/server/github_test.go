@@ -17,6 +17,7 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/github"
+	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/store"
@@ -100,6 +101,7 @@ func newGHEnv(t *testing.T, st *store.Store, key secret.Key) *ghEnv {
 	}
 	ts := httptest.NewServer(server.New(server.Deps{
 		Store: st, Auth: auth.New(password), RunnerToken: runnerToken, Key: key, NewGitHub: gh.factory,
+		Incidents: &incident.Engine{Store: st},
 	}))
 	t.Cleanup(ts.Close)
 
