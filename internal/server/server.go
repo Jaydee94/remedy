@@ -1,19 +1,70 @@
-// Package server hosts the Remedy control plane HTTP surface.
+// Package server hosts the Remedy control plane HTTP surface: the admin API used by the UI
+// and the runner API used by remedy-runner.
 package server
 
 import (
 	"encoding/json"
+	"io/fs"
+	"net"
 	"net/http"
+
+	"github.com/Jaydee94/remedy/internal/auth"
+	"github.com/Jaydee94/remedy/internal/store"
 )
 
-// New returns the control plane HTTP handler.
-func New() http.Handler {
+type Deps struct {
+	Store       *store.Store
+	Auth        *auth.Auth
+	RunnerToken string
+	Web         fs.FS // optional: the built UI, served for every non-API path
+}
+
+type srv struct {
+	d   Deps
+	hub *hub
+}
+
+func New(d Deps) http.Handler {
+	s := &srv{d: d, hub: newHub()}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", healthz)
+
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+
+	mux.HandleFunc("POST /api/login", s.login)
+	mux.HandleFunc("POST /api/logout", s.session(s.logout))
+	mux.HandleFunc("GET /api/me", s.session(s.me))
+	mux.HandleFunc("POST /api/runs", s.session(s.createRun))
+	mux.HandleFunc("GET /api/runs", s.session(s.listRuns))
+	mux.HandleFunc("GET /api/runs/{id}", s.session(s.getRun))
+	mux.HandleFunc("GET /api/runs/{id}/events", s.session(s.streamEvents))
+
+	mux.HandleFunc("POST /runner/v1/claim", s.runner(s.claim))
+	mux.HandleFunc("POST /runner/v1/runs/{id}/events", s.runner(s.postEvent))
+	mux.HandleFunc("POST /runner/v1/runs/{id}/finish", s.runner(s.finish))
+
+	if d.Web != nil {
+		mux.Handle("/", spa(d.Web))
+	}
 	return mux
 }
 
-func healthz(w http.ResponseWriter, _ *http.Request) {
+func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeErr(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// clientIP is the TCP peer address. Proxy headers are deliberately not trusted.
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
