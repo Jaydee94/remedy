@@ -14,6 +14,7 @@ func TestFilterEnvDropsAPIKeysAndKeepsAllowlist(t *testing.T) {
 	in := []string{
 		"PATH=/usr/bin",
 		"HOME=/home/r",
+		"USER=remedy", // the macOS keychain lookup of the CLI login needs it
 		"CLAUDE_CONFIG_DIR=/data/claude",
 		"CLAUDE_CODE_OAUTH_TOKEN=tok",
 		"ANTHROPIC_API_KEY=sk-secret",
@@ -24,7 +25,7 @@ func TestFilterEnvDropsAPIKeysAndKeepsAllowlist(t *testing.T) {
 	}
 	got := provider.FilterEnv(in)
 
-	want := []string{"PATH=/usr/bin", "HOME=/home/r", "CLAUDE_CONFIG_DIR=/data/claude", "CLAUDE_CODE_OAUTH_TOKEN=tok"}
+	want := []string{"PATH=/usr/bin", "HOME=/home/r", "USER=remedy", "CLAUDE_CONFIG_DIR=/data/claude", "CLAUDE_CODE_OAUTH_TOKEN=tok"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("FilterEnv = %v, want %v", got, want)
 	}

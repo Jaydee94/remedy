@@ -41,8 +41,10 @@ type Provider interface {
 // envAllowlist names the only variables a CLI subprocess may inherit.
 // ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are deliberately absent: with them set the CLI
 // would bill the API instead of the subscription login.
+// USER is required on macOS: the CLI looks up its login in the keychain by user name, and
+// without it reports "Not logged in" even though the login exists.
 var envAllowlist = map[string]bool{
-	"PATH": true, "HOME": true, "LANG": true, "LC_ALL": true, "TMPDIR": true,
+	"PATH": true, "HOME": true, "USER": true, "LANG": true, "LC_ALL": true, "TMPDIR": true,
 	"XDG_CONFIG_HOME": true, "HTTPS_PROXY": true, "HTTP_PROXY": true, "NO_PROXY": true,
 	"CLAUDE_CONFIG_DIR": true, "CLAUDE_CODE_OAUTH_TOKEN": true,
 }
