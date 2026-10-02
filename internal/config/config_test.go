@@ -54,3 +54,25 @@ func TestRunnerFromEnv(t *testing.T) {
 		t.Fatal("expected an error without a runner token")
 	}
 }
+
+func TestRunnerFromEnvClaudeModel(t *testing.T) {
+	token := "a-runner-token-of-24-chars-or-more"
+
+	unset, err := config.RunnerFromEnv(env(map[string]string{"REMEDY_RUNNER_TOKEN": token}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unset.ClaudeModel != "" {
+		t.Fatalf("ClaudeModel = %q, want empty so that the adapter's default applies", unset.ClaudeModel)
+	}
+
+	set, err := config.RunnerFromEnv(env(map[string]string{
+		"REMEDY_RUNNER_TOKEN": token, "REMEDY_CLAUDE_MODEL": "opus",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.ClaudeModel != "opus" {
+		t.Fatalf("ClaudeModel = %q, want opus", set.ClaudeModel)
+	}
+}

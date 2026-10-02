@@ -10,9 +10,17 @@ import (
 	"github.com/Jaydee94/remedy/internal/run"
 )
 
+// DefaultModel is used when Claude.Model is empty.
+const DefaultModel = "sonnet"
+
+// readOnlyTools is everything an agent may use for now. Roles that need more (the fixer) will name
+// their own list in a later phase.
+const readOnlyTools = "Read,Grep,Glob"
+
 // Claude runs the unmodified `claude` binary in headless mode on the subscription login.
 type Claude struct {
 	Binary string // defaults to "claude" on PATH
+	Model  string // defaults to DefaultModel
 }
 
 func (Claude) Name() string { return "claude" }
@@ -22,10 +30,22 @@ func (c Claude) Command(ctx context.Context, spec Spec, parentEnv []string) *exe
 	if bin == "" {
 		bin = "claude"
 	}
-	// dontAsk denies everything that would prompt, so without --allowedTools the agent is read-only.
-	// --bare is intentionally not used: it ignores the subscription login.
+	model := c.Model
+	if model == "" {
+		model = DefaultModel
+	}
+	// Isolation (measured against the real CLI, see docs/research/spike-claude-billing.md):
+	//   --safe-mode        disables the user's CLAUDE.md, plugins, hooks, MCP servers and skills
+	//   --restricted       ignores user/project/local settings, removes command-running tools,
+	//                      confines file tools to the working directory
+	//   --strict-mcp-config ignores every MCP server not passed explicitly (none yet)
+	//   --tools            an explicit allowlist, so no tool is exposed by accident
+	//   --model            must be pinned: --restricted drops the user's default model
+	// dontAsk denies whatever would still prompt. --bare is intentionally not used: it ignores
+	// the subscription login.
 	cmd := exec.CommandContext(ctx, bin,
-		"-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk")
+		"-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
+		"--safe-mode", "--restricted", "--strict-mcp-config", "--tools", readOnlyTools, "--model", model)
 	cmd.Dir = spec.Workdir
 	cmd.Stdin = strings.NewReader(spec.Prompt)
 	cmd.Env = FilterEnv(parentEnv)
