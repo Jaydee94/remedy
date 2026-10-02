@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/store"
 )
@@ -44,7 +45,7 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if claimed != nil {
-			writeJSON(w, http.StatusOK, claimed)
+			writeJSON(w, http.StatusOK, claimFor(*claimed))
 			return
 		}
 		select {
@@ -94,6 +95,15 @@ func (s *srv) finish(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "unknown failure reason")
 		return
 	}
+	// What an agent answers is never trusted: a responder run must carry a valid diagnosis, or it counts
+	// as failed.
+	responderRun := false
+	if s.d.Responder != nil {
+		if rn, err := s.d.Store.GetRun(r.Context(), id); err == nil && rn.Role == run.RoleResponder {
+			responderRun = true
+			out = responder.CheckOutcome(out)
+		}
+	}
 	err := s.d.Store.FinishRun(r.Context(), id, out)
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "run not found or not running")
@@ -102,6 +112,9 @@ func (s *srv) finish(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not finish run")
 		return
+	}
+	if responderRun {
+		s.d.Responder.Complete(r.Context(), id)
 	}
 	s.hub.notify(id)
 	w.WriteHeader(http.StatusNoContent)

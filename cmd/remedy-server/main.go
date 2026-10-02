@@ -18,6 +18,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/poller"
 	"github.com/Jaydee94/remedy/internal/reaper"
+	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/store"
@@ -55,6 +56,17 @@ func main() {
 	}
 
 	engine := &incident.Engine{Store: st}
+	diagnoser := &responder.Responder{
+		Store: st,
+		Key:   cfg.MasterKey,
+		NewSource: func(token secret.Value) responder.Source {
+			return github.New(cfg.GitHubAPIURL, token, nil)
+		},
+		Limits: store.DiagnosisLimits{
+			Cooldown: cfg.DiagnoseCooldown, MaxPerIncident: cfg.DiagnoseMaxPerIncident, MaxPerDay: cfg.DiagnoseMaxPerDay,
+		},
+		Log: log,
+	}
 	background((&poller.Poller{
 		Store:  st,
 		Engine: engine,
@@ -79,7 +91,9 @@ func main() {
 			NewGitHub: func(token secret.Value) server.GitHub {
 				return github.New(cfg.GitHubAPIURL, token, nil)
 			},
-			Incidents: engine,
+			Incidents:    engine,
+			Responder:    diagnoser,
+			PollInterval: cfg.PollInterval,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

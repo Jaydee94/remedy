@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,16 +24,22 @@ const (
 
 	defaultRunTimeout = 10 * time.Minute
 	minRunTimeout     = 10 * time.Second
+
+	defaultDiagnoseCooldown = 15 * time.Minute
+	minDiagnoseCooldown     = time.Minute
 )
 
 type Server struct {
-	Addr          string        // REMEDY_ADDR, default ":8080"
-	DBPath        string        // REMEDY_DB, default "remedy.db"
-	AdminPassword string        // REMEDY_ADMIN_PASSWORD, required, min 12 chars
-	RunnerToken   string        // REMEDY_RUNNER_TOKEN, required, min 24 chars
-	MasterKey     secret.Key    // REMEDY_MASTER_KEY, required, 32 random bytes in Base64
-	GitHubAPIURL  string        // REMEDY_GITHUB_API_URL, default "https://api.github.com"
-	PollInterval  time.Duration // REMEDY_POLL_INTERVAL, a Go duration, default 60s, at least 10s
+	Addr                   string        // REMEDY_ADDR, default ":8080"
+	DBPath                 string        // REMEDY_DB, default "remedy.db"
+	AdminPassword          string        // REMEDY_ADMIN_PASSWORD, required, min 12 chars
+	RunnerToken            string        // REMEDY_RUNNER_TOKEN, required, min 24 chars
+	MasterKey              secret.Key    // REMEDY_MASTER_KEY, required, 32 random bytes in Base64
+	GitHubAPIURL           string        // REMEDY_GITHUB_API_URL, default "https://api.github.com"
+	PollInterval           time.Duration // REMEDY_POLL_INTERVAL, a Go duration, default 60s, at least 10s
+	DiagnoseCooldown       time.Duration // REMEDY_DIAGNOSE_COOLDOWN, per incident, default 15m, at least 1m
+	DiagnoseMaxPerIncident int           // REMEDY_DIAGNOSE_MAX_PER_INCIDENT, automatic diagnoses, default 3, 0 to 20
+	DiagnoseMaxPerDay      int           // REMEDY_DIAGNOSE_MAX_PER_DAY, automatic runs in 24 hours, default 20, 0 to 200; 0 turns it off
 }
 
 func ServerFromEnv(get func(string) string) (Server, error) {
@@ -70,7 +77,35 @@ func ServerFromEnv(get func(string) string) (Server, error) {
 		}
 		c.PollInterval = d
 	}
+
+	c.DiagnoseCooldown = defaultDiagnoseCooldown
+	if v := get("REMEDY_DIAGNOSE_COOLDOWN"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < minDiagnoseCooldown {
+			return Server{}, errors.New("REMEDY_DIAGNOSE_COOLDOWN must be a duration of at least 1m, for example 15m")
+		}
+		c.DiagnoseCooldown = d
+	}
+	if c.DiagnoseMaxPerIncident, err = wholeNumber(get, "REMEDY_DIAGNOSE_MAX_PER_INCIDENT", 3, 20); err != nil {
+		return Server{}, err
+	}
+	if c.DiagnoseMaxPerDay, err = wholeNumber(get, "REMEDY_DIAGNOSE_MAX_PER_DAY", 20, 200); err != nil {
+		return Server{}, err
+	}
 	return c, nil
+}
+
+// wholeNumber reads a whole number from 0 to max, or returns def when the variable is empty.
+func wholeNumber(get func(string) string, name string, def, max int) (int, error) {
+	v := get(name)
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 || n > max {
+		return 0, fmt.Errorf("%s must be a whole number from 0 to %d", name, max)
+	}
+	return n, nil
 }
 
 type Runner struct {
