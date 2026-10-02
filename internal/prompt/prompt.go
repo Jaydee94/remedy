@@ -84,7 +84,11 @@ func Build(in Input, delimiter string) string {
 	fmt.Fprintf(&b, "Conclusion: %s\n", fact(in.Conclusion, 30))
 	fmt.Fprintf(&b, "Where: %s\n", where(in.Ref))
 	if in.LogNote != "" {
-		fmt.Fprintf(&b, "Job log: not included (%s)\n", fact(in.LogNote, 200))
+		if in.JobLog == "" {
+			fmt.Fprintf(&b, "Job log: not included (%s)\n", fact(in.LogNote, 200))
+		} else {
+			fmt.Fprintf(&b, "Job log: included, but %s\n", fact(in.LogNote, 200))
+		}
 	}
 
 	data := func(name, content string) {

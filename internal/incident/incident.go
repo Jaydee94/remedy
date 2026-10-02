@@ -175,6 +175,9 @@ func (e *Engine) Ignore(ctx context.Context, id int64) (store.Incident, error) {
 	return e.Store.GetIncident(ctx, id)
 }
 
+// RefLabel is how a ref reads in a sentence: "PR #7" or "branch main".
+func RefLabel(ref string) string { return refLabel(ref) }
+
 func refLabel(ref string) string {
 	if n, ok := strings.CutPrefix(ref, "pr:"); ok {
 		return "PR #" + n
