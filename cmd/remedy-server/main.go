@@ -8,12 +8,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/config"
 	"github.com/Jaydee94/remedy/internal/github"
+	"github.com/Jaydee94/remedy/internal/incident"
+	"github.com/Jaydee94/remedy/internal/poller"
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/store"
@@ -36,6 +39,32 @@ func main() {
 	}
 	defer st.Close()
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Background workers stop with ctx. They are waited for before the database closes.
+	var workers sync.WaitGroup
+	defer workers.Wait()
+	background := func(run func(context.Context)) {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			run(ctx)
+		}()
+	}
+
+	engine := &incident.Engine{Store: st}
+	background((&poller.Poller{
+		Store:  st,
+		Engine: engine,
+		Key:    cfg.MasterKey,
+		NewSource: func(token secret.Value) poller.Source {
+			return github.New(cfg.GitHubAPIURL, token, nil)
+		},
+		Interval: cfg.PollInterval,
+		Log:      log,
+	}).Run)
+
 	srv := &http.Server{
 		Addr: cfg.Addr,
 		Handler: server.New(server.Deps{
@@ -51,8 +80,6 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -60,7 +87,7 @@ func main() {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	log.Info("control plane listening", "addr", cfg.Addr, "db", cfg.DBPath)
+	log.Info("control plane listening", "addr", cfg.Addr, "db", cfg.DBPath, "pollInterval", cfg.PollInterval)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("server failed", "err", err)
 		os.Exit(1)

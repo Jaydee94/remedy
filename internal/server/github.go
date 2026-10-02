@@ -23,12 +23,7 @@ type GitHub interface {
 const (
 	minTokenLen = 20
 	maxTokenLen = 512
-
-	undecryptableDetail = "The stored token cannot be decrypted. Check REMEDY_MASTER_KEY or enter the token again."
 )
-
-// connectionAAD binds the sealed token to its row, so a ciphertext cannot be moved to another one.
-func connectionAAD() string { return "github_connection:" + strconv.FormatInt(store.ConnectionID, 10) }
 
 type connectionView struct {
 	Connected    bool       `json:"connected"`
@@ -53,7 +48,7 @@ func viewOf(c store.Connection) connectionView {
 }
 
 func (s *srv) openToken(c store.Connection) (secret.Value, error) {
-	raw, err := s.d.Key.Open(c.TokenCiphertext, connectionAAD())
+	raw, err := s.d.Key.Open(c.TokenCiphertext, store.ConnectionAAD())
 	if err != nil {
 		return secret.Value{}, err
 	}
@@ -61,7 +56,7 @@ func (s *srv) openToken(c store.Connection) (secret.Value, error) {
 }
 
 func (s *srv) markUndecryptable(ctx context.Context) {
-	_ = s.d.Store.UpdateConnectionStatus(ctx, store.ConnUndecryptable, undecryptableDetail, time.Now())
+	_ = s.d.Store.UpdateConnectionStatus(ctx, store.ConnUndecryptable, store.UndecryptableDetail, time.Now())
 }
 
 func (s *srv) getConnection(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +96,7 @@ func (s *srv) putConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sealed, err := s.d.Key.Seal([]byte(token), connectionAAD())
+	sealed, err := s.d.Key.Seal([]byte(token), store.ConnectionAAD())
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not store the token")
 		return
@@ -221,7 +216,7 @@ func (s *srv) addRepo(w http.ResponseWriter, r *http.Request) {
 	token, err := s.openToken(conn)
 	if errors.Is(err, secret.ErrOpen) {
 		s.markUndecryptable(r.Context())
-		writeErr(w, http.StatusConflict, undecryptableDetail)
+		writeErr(w, http.StatusConflict, store.UndecryptableDetail)
 		return
 	}
 	if err != nil {
