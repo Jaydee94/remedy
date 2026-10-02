@@ -1,9 +1,10 @@
-import { LogOut, Play, Settings } from 'lucide-react'
+import { LogOut, Play, Settings, TriangleAlert } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 const nav = [
+  { to: '/incidents', label: 'Incidents', icon: TriangleAlert },
   { to: '/runs', label: 'Runs', icon: Play },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
@@ -37,7 +38,7 @@ export default function AppLayout({ onSignOut }: { onSignOut: () => void }) {
         </Button>
       </aside>
       <main className="min-w-0 flex-1 p-8">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-5xl">
           <Outlet />
         </div>
       </main>
