@@ -3,20 +3,28 @@ package config
 
 import (
 	"errors"
+	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/Jaydee94/remedy/internal/secret"
 )
 
 const (
 	minPasswordLen = 12
 	minTokenLen    = 24
+	defaultGitHub  = "https://api.github.com"
 )
 
 type Server struct {
-	Addr          string // REMEDY_ADDR, default ":8080"
-	DBPath        string // REMEDY_DB, default "remedy.db"
-	AdminPassword string // REMEDY_ADMIN_PASSWORD, required, min 12 chars
-	RunnerToken   string // REMEDY_RUNNER_TOKEN, required, min 24 chars
+	Addr          string     // REMEDY_ADDR, default ":8080"
+	DBPath        string     // REMEDY_DB, default "remedy.db"
+	AdminPassword string     // REMEDY_ADMIN_PASSWORD, required, min 12 chars
+	RunnerToken   string     // REMEDY_RUNNER_TOKEN, required, min 24 chars
+	MasterKey     secret.Key // REMEDY_MASTER_KEY, required, 32 random bytes in Base64
+	GitHubAPIURL  string     // REMEDY_GITHUB_API_URL, default "https://api.github.com"
 }
 
 func ServerFromEnv(get func(string) string) (Server, error) {
@@ -25,6 +33,7 @@ func ServerFromEnv(get func(string) string) (Server, error) {
 		DBPath:        orDefault(get("REMEDY_DB"), "remedy.db"),
 		AdminPassword: get("REMEDY_ADMIN_PASSWORD"),
 		RunnerToken:   get("REMEDY_RUNNER_TOKEN"),
+		GitHubAPIURL:  orDefault(get("REMEDY_GITHUB_API_URL"), defaultGitHub),
 	}
 	if len(c.AdminPassword) < minPasswordLen {
 		return Server{}, errors.New("REMEDY_ADMIN_PASSWORD must be set and at least 12 characters")
@@ -32,6 +41,18 @@ func ServerFromEnv(get func(string) string) (Server, error) {
 	if len(c.RunnerToken) < minTokenLen {
 		return Server{}, errors.New("REMEDY_RUNNER_TOKEN must be set and at least 24 characters")
 	}
+
+	key, err := secret.ParseKey(get("REMEDY_MASTER_KEY"))
+	if err != nil {
+		return Server{}, fmt.Errorf("REMEDY_MASTER_KEY: %w (generate one with: openssl rand -base64 32)", err)
+	}
+	c.MasterKey = key
+
+	u, err := url.Parse(c.GitHubAPIURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return Server{}, errors.New("REMEDY_GITHUB_API_URL must be an http or https URL")
+	}
+	c.GitHubAPIURL = strings.TrimRight(c.GitHubAPIURL, "/")
 	return c, nil
 }
 
