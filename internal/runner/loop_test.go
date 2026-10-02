@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,11 +77,23 @@ func TestLoopRunsQueuedRunEndToEnd(t *testing.T) {
 	}
 
 	events, _ := st.Events(context.Background(), queued.ID, 0)
-	if len(events) < 4 {
-		t.Fatalf("expected the CLI's lines as events, got %d", len(events))
+
+	// stdout and stderr are read concurrently and pipes have no cross-stream ordering, so a
+	// stderr event may land anywhere. Only the order within stdout is guaranteed.
+	var stdoutKinds []string
+	var stderrCount int
+	for _, e := range events {
+		if e.Kind == "stderr" {
+			stderrCount++
+			continue
+		}
+		stdoutKinds = append(stdoutKinds, e.Kind)
 	}
-	if events[0].Kind != "system" {
-		t.Fatalf("first event kind = %q", events[0].Kind)
+	if want := "system,probe,raw,result"; strings.Join(stdoutKinds, ",") != want {
+		t.Fatalf("stdout event kinds = %v, want %s", stdoutKinds, want)
+	}
+	if stderrCount != 1 {
+		t.Fatalf("stderr events = %d, want 1", stderrCount)
 	}
 }
 
