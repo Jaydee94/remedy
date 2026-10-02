@@ -1,0 +1,25 @@
+{
+  "total_count": 2,
+  "check_runs": [
+    {
+      "id": 110957236793,
+      "name": "web",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "2feb68e76ef56d9721d71a29c955c6c29fd8b5ef",
+      "html_url": "https://github.com/Jaydee94/remedy/actions/runs/37042940411/job/110957236793",
+      "started_at": "2026-10-02T17:46:05Z",
+      "completed_at": "2026-10-02T17:46:24Z"
+    },
+    {
+      "id": 110957236546,
+      "name": "go",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "2feb68e76ef56d9721d71a29c955c6c29fd8b5ef",
+      "html_url": "https://github.com/Jaydee94/remedy/actions/runs/37042940411/job/110957236546",
+      "started_at": "2026-10-02T17:46:06Z",
+      "completed_at": "2026-10-02T17:46:28Z"
+    }
+  ]
+}

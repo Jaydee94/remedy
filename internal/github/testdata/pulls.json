@@ -1,0 +1,38 @@
+[
+  {
+    "number": 32,
+    "state": "closed",
+    "draft": false,
+    "title": "docs: document the master key, the GitHub token handling and the settings page",
+    "html_url": "https://github.com/Jaydee94/remedy/pull/32",
+    "head": {
+      "ref": "worktree-docs-phase1a",
+      "sha": "8f828550083a5a0f38501215805c4d9b899aa6f1"
+    },
+    "base": {
+      "ref": "main"
+    },
+    "user": {
+      "login": "Jaydee94",
+      "type": "User"
+    }
+  },
+  {
+    "number": 31,
+    "state": "closed",
+    "draft": false,
+    "title": "feat(web): add the settings page for the GitHub connection and repos",
+    "html_url": "https://github.com/Jaydee94/remedy/pull/31",
+    "head": {
+      "ref": "worktree-feat-settings-page",
+      "sha": "bf3a1b9349abaa571e96e1f5ecec290798965c5d"
+    },
+    "base": {
+      "ref": "main"
+    },
+    "user": {
+      "login": "Jaydee94",
+      "type": "User"
+    }
+  }
+]
