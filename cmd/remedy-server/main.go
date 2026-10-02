@@ -13,6 +13,8 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/config"
+	"github.com/Jaydee94/remedy/internal/github"
+	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/store"
 	"github.com/Jaydee94/remedy/web"
@@ -41,6 +43,10 @@ func main() {
 			Auth:        auth.New(cfg.AdminPassword),
 			RunnerToken: cfg.RunnerToken,
 			Web:         web.FS(),
+			Key:         cfg.MasterKey,
+			NewGitHub: func(token secret.Value) server.GitHub {
+				return github.New(cfg.GitHubAPIURL, token, nil)
+			},
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
