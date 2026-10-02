@@ -99,6 +99,7 @@ func Execute(ctx context.Context, p provider.Provider, spec provider.Spec, env [
 	out := run.Outcome{ExitCode: exit}
 	if final != nil {
 		out.Result, out.SessionID, out.CostUSD = final.Result, final.SessionID, final.CostUSD
+		out.Output = final.Output
 	}
 	return out, sinkErr
 }
