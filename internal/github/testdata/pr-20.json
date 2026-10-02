@@ -1,0 +1,19 @@
+{
+  "number": 20,
+  "state": "open",
+  "draft": false,
+  "title": "chore(deps): update dependency typescript to v7",
+  "body": "This PR contains the following updates:\n\n| Package | Change | [Age](https://docs.renovatebot.com/merge-confidence/) | [Confidence](https://docs.renovatebot.com/merge-confidence/) |\n|---|---|---|---|\n| [typescript](https://www.typescriptlang.org/) ([source](https://redirect.github.com/microsoft/TypeScript)) | [`~6.0.2` → `~7.0.0`](https://renovatebot.com/diffs/npm/typescript/6.0.3/7.0.2) | ![age](https://developer.mend.io/api/mc/badges/age/npm/typescript/7.0.2?slim=true) | ![confidence](https://developer.mend.io/api/mc/badges/confidence/npm/typescript/6.0.3/7.0.2?slim=true) |\n\n---\n\n### Release Notes\n\n<details>\n<summary>microsoft/TypeScript (typescript)</summary>\n\n### [`v7.0.2`](https://redire",
+  "html_url": "https://github.com/Jaydee94/remedy/pull/20",
+  "head": {
+    "ref": "renovate/typescript-7.x",
+    "sha": "913da1edbf28ced7b324b5b99ab3c6c61241acee"
+  },
+  "base": {
+    "ref": "main"
+  },
+  "user": {
+    "login": "renovate[bot]",
+    "type": "Bot"
+  }
+}

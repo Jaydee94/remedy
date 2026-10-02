@@ -110,6 +110,7 @@ type Repo struct {
 type PullRequest struct {
 	Number  int    `json:"number"`
 	Title   string `json:"title"`
+	Body    string `json:"body"`
 	Draft   bool   `json:"draft"`
 	HTMLURL string `json:"html_url"`
 	Head    struct {
@@ -130,6 +131,13 @@ type CheckRun struct {
 	Conclusion string `json:"conclusion"`
 	HeadSHA    string `json:"head_sha"`
 	HTMLURL    string `json:"html_url"`
+
+	// Output is what the check itself reports. An Actions job has none; other apps fill it.
+	Output struct {
+		Title   string `json:"title"`
+		Summary string `json:"summary"`
+		Text    string `json:"text"`
+	} `json:"output"`
 }
 
 type cacheEntry struct {
@@ -144,6 +152,7 @@ type Client struct {
 	baseURL string
 	token   secret.Value
 	http    *http.Client
+	stream  *http.Client // for downloads: no overall timeout, the caller's context limits them
 
 	mu    sync.Mutex
 	cache map[string]cacheEntry // by request path and query
@@ -152,13 +161,16 @@ type Client struct {
 // New returns a client for baseURL (for example https://api.github.com). A nil httpClient gets a
 // 20 second timeout.
 func New(baseURL string, token secret.Value, httpClient *http.Client) *Client {
+	stream := httpClient
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 20 * time.Second}
+		stream = &http.Client{} // a download can take longer than 20 seconds; the caller's context limits it
 	}
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
 		http:    httpClient,
+		stream:  stream,
 		cache:   map[string]cacheEntry{},
 	}
 }
@@ -219,17 +231,8 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 			return errors.New("github: unexpected 304 without a cached response")
 		}
 		body = cached.body
-	case http.StatusUnauthorized:
-		return ErrUnauthorized
-	case http.StatusNotFound:
-		return ErrNotFound
-	case http.StatusForbidden, http.StatusTooManyRequests:
-		if wait, ok := rateLimitWait(resp.StatusCode, resp.Header); ok {
-			return &RateLimitError{RetryAfter: wait}
-		}
-		return c.apiError(resp.StatusCode, body)
 	default:
-		return c.apiError(resp.StatusCode, body)
+		return c.statusError(resp.StatusCode, resp.Header, body)
 	}
 
 	if err := json.Unmarshal(body, out); err != nil {
