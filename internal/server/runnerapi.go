@@ -90,6 +90,10 @@ func (s *srv) finish(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if out.FailureReason != "" && out.FailureReason != run.ReasonTimeout {
+		writeErr(w, http.StatusBadRequest, "unknown failure reason")
+		return
+	}
 	err := s.d.Store.FinishRun(r.Context(), id, out)
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "run not found or not running")

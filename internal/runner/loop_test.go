@@ -24,6 +24,12 @@ const token = "runner-token-with-at-least-24-chars"
 
 func startLoop(t *testing.T, providers map[string]provider.Provider) (*store.Store, *httptest.Server) {
 	t.Helper()
+	return startLoopWithTimeout(t, providers, 0)
+}
+
+// startLoopWithTimeout is startLoop with a run timeout; zero means the default.
+func startLoopWithTimeout(t *testing.T, providers map[string]provider.Provider, timeout time.Duration) (*store.Store, *httptest.Server) {
+	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -40,6 +46,7 @@ func startLoop(t *testing.T, providers map[string]provider.Provider) (*store.Sto
 		Env:           os.Environ(),
 		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Backoff:       50 * time.Millisecond,
+		RunTimeout:    timeout,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

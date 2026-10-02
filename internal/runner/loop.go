@@ -3,6 +3,8 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -11,9 +13,11 @@ import (
 	"github.com/Jaydee94/remedy/internal/run"
 )
 
-// Loop claims runs one at a time, executes them and reports the outcome.
-// Known limitation (phase 0): if the runner dies mid-run the run stays "running";
-// a reaper for stale runs arrives with phase 1.
+// DefaultRunTimeout is how long a run may take before the runner stops it.
+const DefaultRunTimeout = 10 * time.Minute
+
+// Loop claims runs one at a time, executes them and reports the outcome. A runner that dies
+// mid-run leaves its run "running"; the control plane's reaper fails it after a while.
 type Loop struct {
 	Client        *Client
 	Providers     map[string]provider.Provider
@@ -21,6 +25,7 @@ type Loop struct {
 	Env           []string
 	Log           *slog.Logger
 	Backoff       time.Duration // wait after a failed claim, default 3s
+	RunTimeout    time.Duration // longest a run may take, default DefaultRunTimeout
 }
 
 func (l *Loop) Run(ctx context.Context) {
@@ -62,10 +67,25 @@ func (l *Loop) handle(ctx context.Context, r run.Run) {
 	}
 	defer os.RemoveAll(dir)
 
-	out, err := Execute(ctx, p, provider.Spec{Prompt: r.Prompt, Workdir: dir}, l.Env,
+	timeout := l.RunTimeout
+	if timeout <= 0 {
+		timeout = DefaultRunTimeout
+	}
+	execCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	out, err := Execute(execCtx, p, provider.Spec{Prompt: r.Prompt, Workdir: dir}, l.Env,
 		clientSink{client: l.Client, runID: r.ID})
 	if err != nil {
 		log.Error("execution problem", "err", err)
+	}
+	// The deadline kills the subprocess. A run that ended by itself is not a timeout, even if the
+	// deadline passed a moment later; neither is a run that was cut short by the runner shutting down.
+	if ctx.Err() == nil && errors.Is(execCtx.Err(), context.DeadlineExceeded) && out.ExitCode != 0 {
+		out.FailureReason = run.ReasonTimeout
+		if out.Result == "" {
+			out.Result = fmt.Sprintf("The run was stopped after %s.", timeout)
+		}
+		log.Warn("run timed out", "after", timeout)
 	}
 	l.finish(log, r.ID, out)
 }
