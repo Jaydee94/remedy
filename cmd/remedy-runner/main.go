@@ -32,7 +32,7 @@ func main() {
 
 	loop := &runner.Loop{
 		Client:        &runner.Client{BaseURL: cfg.ServerURL, Token: cfg.Token, HTTP: &http.Client{}},
-		Providers:     map[string]provider.Provider{"claude": provider.Claude{Binary: cfg.ClaudeBin}},
+		Providers:     map[string]provider.Provider{"claude": provider.Claude{Binary: cfg.ClaudeBin, Model: cfg.ClaudeModel}},
 		WorkspaceRoot: cfg.WorkspaceRoot,
 		Env:           os.Environ(),
 		Log:           log,

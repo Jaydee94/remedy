@@ -40,6 +40,7 @@ type Runner struct {
 	Token         string // REMEDY_RUNNER_TOKEN, required, min 24 chars
 	WorkspaceRoot string // REMEDY_WORKSPACES, default $TMPDIR/remedy-workspaces
 	ClaudeBin     string // REMEDY_CLAUDE_BIN, default "claude"
+	ClaudeModel   string // REMEDY_CLAUDE_MODEL, empty means the adapter's default
 }
 
 func RunnerFromEnv(get func(string) string) (Runner, error) {
@@ -48,6 +49,7 @@ func RunnerFromEnv(get func(string) string) (Runner, error) {
 		Token:         get("REMEDY_RUNNER_TOKEN"),
 		WorkspaceRoot: orDefault(get("REMEDY_WORKSPACES"), filepath.Join(os.TempDir(), "remedy-workspaces")),
 		ClaudeBin:     orDefault(get("REMEDY_CLAUDE_BIN"), "claude"),
+		ClaudeModel:   get("REMEDY_CLAUDE_MODEL"),
 	}
 	if len(c.Token) < minTokenLen {
 		return Runner{}, errors.New("REMEDY_RUNNER_TOKEN must be set and at least 24 characters")
