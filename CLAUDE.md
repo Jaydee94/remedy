@@ -6,7 +6,7 @@ Remedy is an AI operator for a homelab GitOps setup: it reacts to alerts, logs a
 
 ## Current state
 
-Phase 0 is done: control plane (SQLite, admin and runner APIs, SSE), runner, UI, Docker image. Phase 1 (GitHub, incidents, responder) is in progress and is built in small plans: the spec is `docs/specs/2026-10-02-phase-1-detect-and-diagnose-design.md`, the plans are in `docs/plans/`. Check `git log` and the plan before assuming a package from a later task exists, and build only within the current plan.
+Phase 0 is done: control plane (SQLite, admin and runner APIs, SSE), runner, UI, Docker image. Phase 1 is built in small plans: the spec is `docs/specs/2026-10-02-phase-1-detect-and-diagnose-design.md`, the plans are in `docs/plans/`. Plans 1a (GitHub connection and repos) and 1b (poller, incidents, activity log, run extension, reaper) are implemented; the responder (1c) and the timeline with the real run against GitHub (1d) are next. Check `git log` and the plan before assuming a package from a later task exists, and build only within the current plan.
 
 Docs: `docs/design.md` (decisions), `docs/specs/` (what and why), `docs/plans/` (how), `docs/research/` (spikes and measurements).
 
@@ -27,7 +27,7 @@ make web-install                                 # npm ci in web/
 cd web && npm run lint                           # oxlint (there is no web test runner yet)
 ```
 
-The server needs `REMEDY_ADMIN_PASSWORD` (12+ chars), `REMEDY_RUNNER_TOKEN` (24+ chars) and `REMEDY_MASTER_KEY` (`openssl rand -base64 32`). The runner needs the same runner token. See the README quick start.
+The server needs `REMEDY_ADMIN_PASSWORD` (12+ chars), `REMEDY_RUNNER_TOKEN` (24+ chars) and `REMEDY_MASTER_KEY` (`openssl rand -base64 32`). The runner needs the same runner token. Optional: `REMEDY_POLL_INTERVAL` (server, default 60s, at least 10s) and `REMEDY_RUN_TIMEOUT` (runner, default 10m). See the README quick start.
 
 A fresh git worktree has no `web/node_modules`: run `make web-install` first, otherwise `make check` fails with `oxlint: command not found`, which looks like a code error.
 
@@ -39,7 +39,7 @@ The maintainer's shell aliases `ls` to a tool that rejects plain paths; use `com
 
 Two Go processes (module `github.com/Jaydee94/remedy`, `go 1.27.1`) plus a UI in `web/`:
 
-- **Control plane** (`cmd/remedy-server`): admin API for the UI, runner API, SSE stream, SQLite, and later the MCP gatekeeper, git/GitHub access and signal ingestion.
+- **Control plane** (`cmd/remedy-server`): admin API for the UI, runner API, SSE stream, SQLite, a GitHub poller that feeds the incident engine (`internal/poller`, `internal/incident`), a reaper for runs that stay `running` (`internal/reaper`), and later the MCP gatekeeper.
 - **Runner** (`cmd/remedy-runner`): the only place that holds agent-CLI logins. It dials out to the control plane, long-polls `POST /runner/v1/claim`, runs one CLI subprocess per run in a temp workspace, and posts each output line back as an event (`/runner/v1/runs/{id}/events`, then `/finish`). It has no GitHub, cluster or DB credentials.
 - **UI** (`web/`): React 19, Vite, TypeScript, Tailwind, React Router and shadcn/ui (components live in `src/components/ui`, imports use the `@/` alias, no `baseUrl`). Reads run events over SSE (`/api/runs/{id}/events`, resumable via `Last-Event-ID`). The Go server embeds `web/dist` only behind the `webui` build tag, so plain `go build`/`go vet` work without a built UI.
 
@@ -51,6 +51,7 @@ Trust boundaries that span several files and are easy to break:
 - **The GitHub token is write-only.** It is sealed with AES-256-GCM (`internal/secret`, key from `REMEDY_MASTER_KEY`, the row ID bound in as additional data), shown only as `…` plus its last four characters, and has a `***` text form (`secret.Value`) so it cannot reach logs or errors. The `github` client is read-only: every exported method is a `Get*` or `List*`, enforced by a test. Do not add a write method without a decision recorded in the spec.
 - **Admin API:** session cookie (`HttpOnly`, `SameSite=Strict`) plus a required `X-Remedy-CSRF: 1` header on every non-GET. **Runner API:** shared bearer token, constant-time compare. The two are separate middleware and must stay separate.
 - **Persistence:** one SQLite file, opened with a single connection (`SetMaxOpenConns(1)`), embedded SQL migrations. The graph (phase 3) lives in the same DB behind an interface. A run's events are always posted before `finish`, and the SSE handler reads run status before events; that ordering is what guarantees a client sees every event before `done`.
+- **Incidents** are keyed by `(repo, ref, check name)`, and every state change writes its `activity` entry in the same transaction. The poller must stay idempotent (a second cycle on the same GitHub state changes nothing) and must not resolve PR incidents from a full page of 100 PRs, which may be truncated. Inside `Store.inTx` use only the `tx`: the store has one connection, so a call on `s.db` there deadlocks.
 
 ## Hard rules
 
