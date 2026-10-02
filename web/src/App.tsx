@@ -6,6 +6,7 @@ import Login from './Login.tsx'
 import NotFound from './NotFound.tsx'
 import RunsPage from './RunsPage.tsx'
 import RunView from './RunView.tsx'
+import SettingsPage from './SettingsPage.tsx'
 
 /** Mounts RunView with key={id} so that switching runs resets its state. */
 function RunRoute() {
@@ -34,6 +35,7 @@ export default function App() {
         <Route index element={<Navigate to="/runs" replace />} />
         <Route path="runs" element={<RunsPage />} />
         <Route path="runs/:id" element={<RunRoute />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
