@@ -37,10 +37,10 @@ Without `--bare` (which cannot be used with a subscription login) `claude -p` lo
 global setup: skills, plugins, MCP servers and `CLAUDE.md`. A two-word prompt therefore consumed roughly
 25k input tokens of subscription quota.
 
-The runner will need to isolate the CLI's configuration. Candidates, all present in `claude --help`:
-a dedicated `CLAUDE_CONFIG_DIR` for the runner, `--strict-mcp-config` with Remedy's own `--mcp-config`,
-`--setting-sources` and `--disable-slash-commands`. Whether they bring the overhead down is **not yet
-measured**; measuring it is a follow-up below.
+The runner therefore isolates the CLI's configuration. The candidates considered at this point (a dedicated
+`CLAUDE_CONFIG_DIR`, `--strict-mcp-config`, `--setting-sources`, `--disable-slash-commands`) turned out to be
+unnecessary: `--safe-mode` and `--restricted` do it without a second login. The measurements are in
+"Config isolation" below.
 
 ## Real run through Remedy (2026-10-02)
 
@@ -113,10 +113,41 @@ The runner's CLI loaded the maintainer's global configuration. Besides the token
   only denies what is not already allowed, so this must be checked, not assumed.
 
 This contradicts the design's central rule that agents get no tools except those of the gatekeeper
-(design 2.2). **The runner must isolate the CLI's configuration before any agent runs unattended or gets
-write access**: a dedicated `CLAUDE_CONFIG_DIR` with its own login, `--strict-mcp-config` with Remedy's own
-`--mcp-config`, `--setting-sources`, and `--disable-slash-commands`. This is no longer only a token
-optimisation.
+(design 2.2), so the runner had to isolate the CLI's configuration. See the next section for the fix.
+
+## Config isolation: measured and implemented (2026-10-02)
+
+`claude --help` of 2.1.287 offers `--safe-mode` (disables the user's CLAUDE.md, plugins, hooks, MCP servers,
+skills and commands, while auth, model and built-in tools work normally) and `--restricted` (ignores user,
+project and local settings files, removes the command-running tools, confines file tools to the working
+directory). Neither needs a separate `CLAUDE_CONFIG_DIR` or a second login. Each configuration ran the same
+prompt in an empty workspace on the maintainer's login:
+
+| Configuration | Tools | MCP servers | Hooks run | New cached tokens | Model | Cost estimate |
+|---|---|---|---|---|---|---|
+| none (before) | 138 | 5 | 1 | 14,960 | sonnet-5-5 | 0.062 |
+| `--safe-mode` | 24 | 0 | 0 | 4,724 | sonnet-5-5 | 0.021 |
+| plus `--restricted --strict-mcp-config` | 21 | 0 | 0 | 4,344 | **opus-5-5** | 0.037 |
+| plus `--tools Read,Grep,Glob --model sonnet` | **3** | 0 | 0 | **1,429** | sonnet-5-5 | **0.006** |
+
+Findings:
+
+- **`--restricted` changes the model**, because it ignores the user's settings (which pin Sonnet). Without
+  `--model` the CLI fell back to Opus. The adapter therefore always passes `--model`
+  (`REMEDY_CLAUDE_MODEL`, default `sonnet`).
+- Even the restricted mode leaves tools an agent does not need (`PushNotification`, `SendMessage`,
+  `WebSearch`, `Write`, `Task`, ...). An explicit `--tools` allowlist is the only way to expose exactly the
+  intended set. The adapter grants `Read,Grep,Glob`.
+- The 17 remaining skills and 53 slash commands are the CLI's built-ins, not the user's.
+- **Confinement works.** In the minimal configuration the agent read a file inside its workspace and was
+  denied `/etc/hosts` (recorded in `permission_denials`).
+- The same run through Remedy (server, runner, real CLI) showed in its `init` event: tools
+  `Glob, Grep, Read`, no MCP servers, zero hooks, and about 4.5k tokens in total (517 new cached plus 3,937
+  read) with a cost estimate of 0.0029, against about 23k tokens and 0.063 before.
+
+Caveats: `--safe-mode` and `--restricted` exist in this CLI version (2.1.287); an older CLI rejects them and
+the run fails visibly. The flags are not validated against managed (admin) settings. Roles that need more
+tools (the fixer) will pass their own `--tools` list in phase 1.
 
 ## Decision
 
@@ -125,7 +156,7 @@ CLI's own reporting shows subscription usage without overage. A dashboard cross-
 add confidence but cannot change the architecture. If the cross-check or the `setup-token` test shows API or
 Console billing, the result flips to **stop** (design section 2.1 and risks change).
 
-The isolation work (follow-up 3) is now a **prerequisite for phase 1**, not an optimisation.
+The configuration isolation that phase 1 depended on is done.
 
 ## Follow-ups
 
@@ -133,10 +164,7 @@ The isolation work (follow-up 3) is now a **prerequisite for phase 1**, not an o
    0,00 EUR, no new line items), plus the Console if an account exists.
 2. Repeat one run with `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, and record the login expiry
    (`/status`) with a re-check after 7 days.
-3. **Isolate the CLI's configuration** (dedicated `CLAUDE_CONFIG_DIR` with its own login, `--strict-mcp-config`,
-   `--setting-sources`, `--disable-slash-commands`), verify with `system/init` that no global MCP servers,
-   plugins or hooks load, and measure the token overhead again. Fold the result into the Claude adapter and
-   design 2.1.
+3. ~~Isolate the CLI's configuration~~ Done, see "Config isolation".
 4. Check the Linux behaviour of the login (file under `HOME` / `CLAUDE_CONFIG_DIR`) before the runner goes
    into a pod.
 

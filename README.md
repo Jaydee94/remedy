@@ -56,11 +56,11 @@ Open <http://localhost:8080>, sign in, start a run. The agent is read-only in th
 The runner removes `ANTHROPIC_API_KEY` from the CLI's environment on purpose, so runs are
 always billed to the subscription login.
 
-**Warning:** the runner does not isolate the CLI's configuration yet. The agent loads your global
-Claude setup: skills, plugins, hooks and **MCP servers** (for example Home Assistant), and a trivial
-prompt costs about 23k input tokens. Until this is fixed (see
-[`docs/research/spike-claude-billing.md`](docs/research/spike-claude-billing.md)), run the runner only
-with a `CLAUDE_CONFIG_DIR` that has its own login and no MCP servers, and only with prompts you trust.
+The runner starts the CLI in an isolated configuration (`--safe-mode --restricted`): your global
+skills, plugins, hooks and MCP servers are **not** loaded, the agent only gets the read-only tools
+`Read`, `Grep` and `Glob`, and file access is confined to a temporary workspace. This needs a recent
+`claude` CLI (the flags exist in 2.1.287). The model is `sonnet` unless you set `REMEDY_CLAUDE_MODEL`
+(see [`docs/research/spike-claude-billing.md`](docs/research/spike-claude-billing.md)).
 
 ### Container
 

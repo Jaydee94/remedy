@@ -21,12 +21,12 @@ running as a service for other people's homelabs.
   (Antigravity CLI). Every run gets an isolated workspace.
 - There is **one provider adapter per CLI**, a default provider per agent role, and a
   fallback on limit or error.
-- The runner must **isolate the CLI's configuration** (dedicated `CLAUDE_CONFIG_DIR`,
-  `--strict-mcp-config`, `--setting-sources`, `--disable-slash-commands`). A real run showed the CLI
-  loading the maintainer's global MCP servers (including Home Assistant), plugins and hooks, which also
-  costs about 23k tokens per run. See
-  [`research/spike-claude-billing.md`](research/spike-claude-billing.md). This is a prerequisite for
-  phase 1, not an optimisation.
+- The runner **isolates the CLI's configuration**: `--safe-mode --restricted --strict-mcp-config`, an
+  explicit `--tools` allowlist (read-only for now) and a pinned `--model`. Without it a real run loaded
+  the maintainer's global MCP servers (including Home Assistant), plugins and hooks. With it the agent
+  has exactly the allowed tools, no MCP servers and no hooks, file access is confined to the workspace,
+  and a trivial run costs about 4.5k instead of 23k tokens. No second login is needed. Measurements:
+  [`research/spike-claude-billing.md`](research/spike-claude-billing.md).
 - Remedy **never touches login credentials**. It only starts the unmodified binary.
 - The Claude Agent SDK is out (subscription auth is not intended for it).
 - The Gemini adapter targets `agy`, not the Gemini CLI (its subscription login was shut
