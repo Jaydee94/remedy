@@ -1,6 +1,6 @@
 # Phase 1 (part 1): detect and diagnose
 
-Status: accepted by the maintainer on 2026-10-02. Implementation plans: [`phase-1a`](../plans/phase-1a-github-foundation.md) (steps 0 to 4, implemented); the plans for the remaining steps follow.
+Status: accepted by the maintainer on 2026-10-02. Implementation plans: [`phase-1a`](../plans/phase-1a-github-foundation.md) (steps 0 to 4) and [`phase-1b`](../plans/phase-1b-signals-and-incidents.md) (steps 5 and 6), both implemented; the plans for the remaining steps follow.
 Parent documents: [`../design.md`](../design.md) (sections 2.2 to 2.4, 2.9 and the roadmap) and
 [`../research/spike-claude-billing.md`](../research/spike-claude-billing.md) (CLI isolation, real event shapes).
 
@@ -62,12 +62,12 @@ New packages under `internal/`:
 Existing packages that change: `store` (migration and queries), `server` (new API, runner API additions),
 `runner` (snapshot download and unpacking, run timeout), `provider` (structured output), `config`.
 
-## 4. Data model (migration 002)
+## 4. Data model (migrations 002 to 004)
 
 - `github_connections`: `id`, `token_ciphertext`, `token_hint` (last four characters), `login`, `status`
   (`ok`, `error`, `undecryptable`), `status_detail`, `checked_at`. One row for now.
 - `repos`: `id`, `connection_id`, `full_name`, `default_branch`, `enabled`, `last_polled_at`, `last_error`.
-- `incidents`: `id`, `repo_id`, `ref`, `check_name`, `state` (`open`, `diagnosing`, `diagnosed`, `resolved`,
+- `incidents`: `id`, `repo_id`, `ref`, `ref_url`, `check_name`, `state` (`open`, `diagnosing`, `diagnosed`, `resolved`,
   `ignored`), `conclusion`, `head_sha`, `check_url`, `occurrences`, `diagnoses` (count of automatic diagnoses), `first_seen`,
   `last_seen`, `last_diagnosis_at`, `resolved_at`, `resolved_reason`, `diagnosis` (JSON), `run_id`. A unique
   index on `(repo_id, ref, check_name)` for rows whose state is not `resolved`.
@@ -96,7 +96,9 @@ One cycle per enabled repo, default every 60 seconds:
 | `success`, `neutral`, `skipped` | resolve an open incident, reason `green` |
 | PR closed or merged | resolve, reason `pr_closed` |
 
-Bad results are `failure`, `timed_out`, `startup_failure`, `cancelled`, `action_required`.
+Bad results are `failure`, `timed_out`, `startup_failure`, `cancelled`, `action_required`. A finished check with any other conclusion (for example `stale`) counts like an unfinished one. `last_seen` moves on every poll that still sees the failure.
+
+An ignored incident keeps its key: new failures change nothing, and a green check resolves it. Several check runs with the same name on one ref count as one observation, the worst result wins, so a green twin never resolves a red one. A full page of 100 open pull requests may be truncated, so then no incident is resolved as `pr_closed`.
 
 **Automatic diagnosis** starts only for `failure`, `timed_out` and `startup_failure`, and only if all limits hold:
 
@@ -196,7 +198,7 @@ Sidebar: Timeline (home), Incidents, Runs (the existing manual runs), Settings.
 | View | Content |
 |---|---|
 | Timeline | Reverse-chronological feed from `activity`, grouped by day, with repo and links, paginated and live. |
-| Incidents | Table with a state filter (default: open) and a repo filter. Columns: check, repo, ref (link to the PR), state, conclusion, occurrences, last seen. |
+| Incidents | Table with a state filter (default: active, that is open, diagnosing and diagnosed) and a repo filter. Columns: check, repo, ref (link to the PR), state, conclusion, occurrences, last seen. |
 | Incident detail | Header with links to the PR and the check run. A diagnosis card (summary, cause, confidence badge, category, affected files, fix proposal, "automatable"). The live responder run while it runs. This incident's history. Actions: start or repeat the diagnosis, ignore. |
 | Settings | GitHub connection card (write-only token field, status, check connection). Repo table (add by `owner/name`, enable or disable, last poll, last error, remove). The limits are shown read-only. |
 

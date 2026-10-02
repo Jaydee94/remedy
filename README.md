@@ -6,10 +6,11 @@ and GitOps status, analyses root causes and delivers fixes as pull requests.
 CLIs (Claude Code, Antigravity CLI), without API tokens.
 
 > Status: phase 1 is in progress. You can start a read-only agent run from the web UI and watch
-> its output stream in live, and you can connect GitHub (read-only token, stored encrypted) and add
-> repositories under **Settings**. Watching them for failed checks, incidents and the automatic
-> diagnosis, the approval gatekeeper and the learning graph come next (see
-> [`docs/design.md`](docs/design.md), [`docs/specs/`](docs/specs/) and [`docs/plans/`](docs/plans/)).
+> its output stream in live, connect GitHub (read-only token, stored encrypted), add repositories
+> under **Settings**, and see failed checks of their pull requests and default branches as
+> **incidents**. The automatic diagnosis, the timeline, the approval gatekeeper and the learning
+> graph come next (see [`docs/design.md`](docs/design.md), [`docs/specs/`](docs/specs/) and
+> [`docs/plans/`](docs/plans/)).
 
 ## Documentation
 
@@ -60,6 +61,12 @@ export REMEDY_MASTER_KEY="$(openssl rand -base64 32)"   # seals the GitHub token
 backups; whoever has both can read the stored GitHub token. If you lose or change the key, enter the token
 again under **Settings**. Under **Settings** you also connect GitHub (a fine-grained, read-only personal access
 token) and add repositories. `REMEDY_GITHUB_API_URL` (default `https://api.github.com`) exists for tests.
+
+Remedy polls the enabled repositories with that token every 60 seconds (`REMEDY_POLL_INTERVAL`, a Go
+duration of at least `10s`) and never writes to GitHub. A failed check becomes an incident under
+**Incidents**, and it resolves when the check is green again or the pull request is closed. The runner stops a
+run that takes longer than 10 minutes (`REMEDY_RUN_TIMEOUT`, set on the runner); the server fails runs that
+stay `running` for more than 15 minutes, for example because the runner died.
 
 Open <http://localhost:8080>, sign in, start a run. The agent is read-only in this phase.
 The runner removes `ANTHROPIC_API_KEY` from the CLI's environment on purpose, so runs are
