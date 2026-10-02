@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: make fmt vet test build
+      - run: make fmt vet test build-go
 
   web:
     runs-on: ubuntu-latest

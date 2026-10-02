@@ -1,12 +1,16 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build test vet fmt web-install web-build web-lint dev-server dev-web check
+.PHONY: help build build-go test vet fmt web-install web-build web-lint dev-server dev-web check
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
 
-build: ## Build both Go binaries into ./bin
+build-go: ## Build both Go binaries into ./bin (no UI embedded)
 	go build -o bin/remedy-server ./cmd/remedy-server
+	go build -o bin/remedy-runner ./cmd/remedy-runner
+
+build: web-build ## Build the UI, then both Go binaries with the UI embedded
+	go build -tags webui -o bin/remedy-server ./cmd/remedy-server
 	go build -o bin/remedy-runner ./cmd/remedy-runner
 
 test: ## Run Go tests
