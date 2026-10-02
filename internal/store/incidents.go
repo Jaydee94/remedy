@@ -20,6 +20,9 @@ const (
 	KindConnectionChanged = "connection_changed"
 	KindRepoAdded         = "repo_added"
 	KindRepoRemoved       = "repo_removed"
+	KindDiagnosisStarted  = "diagnosis_started"
+	KindDiagnosisFinished = "diagnosis_finished"
+	KindDiagnosisFailed   = "diagnosis_failed"
 )
 
 type IncidentState string
@@ -48,6 +51,16 @@ type Incident struct {
 	LastSeen       time.Time
 	ResolvedAt     *time.Time
 	ResolvedReason string
+
+	// Diagnoses counts the automatic diagnoses that were started.
+	Diagnoses       int
+	LastDiagnosisAt *time.Time
+	// Diagnosis is the validated diagnosis as JSON, nil until there is one.
+	Diagnosis json.RawMessage
+	// DiagnosedSHA is the commit the diagnosis is about.
+	DiagnosedSHA string
+	// RunID is the latest responder run of the incident.
+	RunID string
 }
 
 type NewIncident struct {
@@ -65,7 +78,8 @@ type IncidentFilter struct {
 
 const (
 	incidentCols = `i.id, i.repo_id, r.full_name, i.ref, i.ref_url, i.check_name, i.state, i.conclusion,
-		i.head_sha, i.check_url, i.occurrences, i.first_seen, i.last_seen, i.resolved_at, i.resolved_reason`
+		i.head_sha, i.check_url, i.occurrences, i.first_seen, i.last_seen, i.resolved_at, i.resolved_reason,
+		i.diagnoses, i.last_diagnosis_at, i.diagnosis, i.diagnosed_sha, i.run_id`
 	incidentFrom = ` FROM incidents i JOIN repos r ON r.id = i.repo_id`
 )
 
@@ -75,9 +89,13 @@ func scanIncident(sc scanner) (Incident, error) {
 		state       string
 		first, last string
 		resolved    sql.NullString
+		lastDiag    sql.NullString
+		diagnosis   sql.NullString
+		runID       sql.NullString
 	)
 	if err := sc.Scan(&in.ID, &in.RepoID, &in.RepoName, &in.Ref, &in.RefURL, &in.CheckName, &state, &in.Conclusion,
-		&in.HeadSHA, &in.CheckURL, &in.Occurrences, &first, &last, &resolved, &in.ResolvedReason); err != nil {
+		&in.HeadSHA, &in.CheckURL, &in.Occurrences, &first, &last, &resolved, &in.ResolvedReason,
+		&in.Diagnoses, &lastDiag, &diagnosis, &in.DiagnosedSHA, &runID); err != nil {
 		return Incident{}, err
 	}
 	in.State = IncidentState(state)
@@ -95,6 +113,17 @@ func scanIncident(sc scanner) (Incident, error) {
 		}
 		in.ResolvedAt = &t
 	}
+	if lastDiag.Valid {
+		t, err := parseTS(lastDiag.String)
+		if err != nil {
+			return Incident{}, err
+		}
+		in.LastDiagnosisAt = &t
+	}
+	if diagnosis.Valid {
+		in.Diagnosis = json.RawMessage(diagnosis.String)
+	}
+	in.RunID = runID.String
 	return in, nil
 }
 

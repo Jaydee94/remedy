@@ -30,9 +30,15 @@ const (
 	RoleResponder Role = "responder"
 )
 
-// ReasonTimeout is the failure reason of a run that was stopped for taking too long, by the runner
-// or by the control plane's reaper.
-const ReasonTimeout = "timeout"
+// Failure reasons. A runner can only report ReasonTimeout; ReasonInvalidOutput is set by the control
+// plane when a responder's answer does not match the diagnosis schema.
+const (
+	// ReasonTimeout is the failure reason of a run that was stopped for taking too long, by the runner
+	// or by the control plane's reaper.
+	ReasonTimeout = "timeout"
+	// ReasonInvalidOutput means the agent finished but its structured answer was missing or invalid.
+	ReasonInvalidOutput = "invalid_output"
+)
 
 type Run struct {
 	ID            string          `json:"id"`
@@ -50,6 +56,8 @@ type Run struct {
 	IncidentID    *int64          `json:"incidentId,omitempty"`
 	Output        json.RawMessage `json:"output,omitempty"`
 	FailureReason string          `json:"failureReason,omitempty"`
+	HeadSHA       string          `json:"headSha,omitempty"`
+	Automatic     bool            `json:"automatic,omitempty"`
 }
 
 type Event struct {

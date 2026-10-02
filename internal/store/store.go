@@ -25,7 +25,7 @@ var ErrNotFound = errors.New("not found")
 const tsLayout = "2006-01-02T15:04:05.000000000Z"
 
 const runCols = `id, provider, prompt, status, exit_code, result, session_id, cost_usd, created_at, started_at, finished_at,
-	role, incident_id, output, failure_reason`
+	role, incident_id, output, failure_reason, head_sha, automatic`
 
 type Store struct{ db *sql.DB }
 
@@ -103,12 +103,15 @@ func scanRun(sc scanner) (run.Run, error) {
 		exit, incident    sql.NullInt64
 		started, finished sql.NullString
 		output            sql.NullString
+		automatic         int
 	)
 	if err := sc.Scan(&r.ID, &r.Provider, &r.Prompt, &status, &exit, &r.Result, &r.SessionID,
-		&r.CostUSD, &created, &started, &finished, &role, &incident, &output, &r.FailureReason); err != nil {
+		&r.CostUSD, &created, &started, &finished, &role, &incident, &output, &r.FailureReason,
+		&r.HeadSHA, &automatic); err != nil {
 		return run.Run{}, err
 	}
 	r.Status = run.Status(status)
+	r.Automatic = automatic != 0
 	r.Role = run.Role(role)
 	if incident.Valid {
 		r.IncidentID = &incident.Int64
@@ -162,7 +165,7 @@ func (s *Store) GetRun(ctx context.Context, id string) (run.Run, error) {
 
 func (s *Store) ListRuns(ctx context.Context, limit int) ([]run.Run, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+runCols+` FROM runs ORDER BY created_at DESC, id DESC LIMIT ?`, limit)
+		`SELECT `+runColsList+` FROM runs ORDER BY created_at DESC, id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +246,7 @@ func (s *Store) Events(ctx context.Context, runID string, afterSeq int) ([]run.E
 // FinishRun records the outcome of a running run. It returns ErrNotFound if the run is not running.
 func (s *Store) FinishRun(ctx context.Context, id string, o run.Outcome) error {
 	status := run.Succeeded
-	if o.ExitCode != 0 {
+	if o.ExitCode != 0 || o.FailureReason != "" {
 		status = run.Failed
 	}
 	var output any // NULL unless the run produced structured output
