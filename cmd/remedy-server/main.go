@@ -17,6 +17,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/github"
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/poller"
+	"github.com/Jaydee94/remedy/internal/reaper"
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/store"
@@ -64,6 +65,8 @@ func main() {
 		Interval: cfg.PollInterval,
 		Log:      log,
 	}).Run)
+
+	background((&reaper.Reaper{Store: st, Log: log}).Run)
 
 	srv := &http.Server{
 		Addr: cfg.Addr,
