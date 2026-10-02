@@ -76,6 +76,7 @@ func main() {
 			NewGitHub: func(token secret.Value) server.GitHub {
 				return github.New(cfg.GitHubAPIURL, token, nil)
 			},
+			Incidents: engine,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
