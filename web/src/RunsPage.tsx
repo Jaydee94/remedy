@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { Link, useNavigate } from 'react-router'
 import { api, ApiError } from './api.ts'
 import type { Run } from './api.ts'
 import { statusColor } from './status.ts'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Textarea } from '@/components/ui/textarea'
 
 export default function RunsPage() {
+  const navigate = useNavigate()
   const [runs, setRuns] = useState<Run[]>([])
   const [prompt, setPrompt] = useState('')
   const [error, setError] = useState('')
@@ -25,7 +31,7 @@ export default function RunsPage() {
     try {
       const created = await api.createRun(prompt)
       setPrompt('')
-      location.hash = `#/runs/${created.id}`
+      navigate(`/runs/${created.id}`)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not start the run')
     }
@@ -33,36 +39,46 @@ export default function RunsPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <form onSubmit={submit} className="flex flex-col gap-3">
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          rows={4}
-          placeholder="What should the agent do? (read-only in phase 0)"
-          className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 outline-none focus:border-indigo-400"
-        />
-        <button
-          disabled={prompt.trim() === ''}
-          className="self-start rounded-lg bg-indigo-500 px-4 py-2 font-medium disabled:opacity-50"
-        >
-          Start run
-        </button>
-        {error && <p className="text-sm text-rose-400">{error}</p>}
-      </form>
+      <h1 className="text-2xl font-semibold tracking-tight">Runs</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Start a run</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={submit} className="flex flex-col gap-3">
+            <Textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={4}
+              placeholder="What should the agent do? (read-only)"
+              aria-label="Prompt"
+            />
+            <Button type="submit" className="self-start" disabled={prompt.trim() === ''}>
+              Start run
+            </Button>
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+          </form>
+        </CardContent>
+      </Card>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm uppercase tracking-wide text-slate-400">Recent runs</h2>
-        {runs.length === 0 && <p className="text-slate-500">No runs yet.</p>}
+        <h2 className="text-sm uppercase tracking-wide text-muted-foreground">Recent runs</h2>
+        {runs.length === 0 && <p className="text-muted-foreground">No runs yet.</p>}
         {runs.map((r) => (
-          <a
+          <Link
             key={r.id}
-            href={`#/runs/${r.id}`}
-            className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2 hover:border-slate-600"
+            to={`/runs/${r.id}`}
+            className="flex items-center gap-3 rounded-lg border border-border bg-card/50 px-3 py-2 transition-colors hover:border-ring"
           >
             <span className={`h-2.5 w-2.5 rounded-full ${statusColor[r.status]}`} />
             <span className="flex-1 truncate">{r.prompt}</span>
-            <span className="text-xs text-slate-500">{new Date(r.createdAt).toLocaleString()}</span>
-          </a>
+            <span className="text-xs text-muted-foreground">{new Date(r.createdAt).toLocaleString()}</span>
+          </Link>
         ))}
       </section>
     </div>

@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from './api.ts'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 
 export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [password, setPassword] = useState('')
@@ -22,25 +26,33 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 px-6">
-      <h1 className="text-3xl font-semibold tracking-tight">Remedy</h1>
-      <form onSubmit={submit} className="flex flex-col gap-3">
-        <input
-          type="password"
-          autoFocus
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Admin password"
-          className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 outline-none focus:border-indigo-400"
-        />
-        <button
-          disabled={busy || password === ''}
-          className="rounded-lg bg-indigo-500 px-3 py-2 font-medium disabled:opacity-50"
-        >
-          Sign in
-        </button>
-        {error && <p className="text-sm text-rose-400">{error}</p>}
-      </form>
+    <main className="flex min-h-screen items-center justify-center p-6">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-2xl">Remedy</CardTitle>
+          <CardDescription>Sign in with the admin password.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={submit} className="flex flex-col gap-3">
+            <Input
+              type="password"
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Admin password"
+              aria-label="Admin password"
+            />
+            <Button type="submit" disabled={busy || password === ''}>
+              Sign in
+            </Button>
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+          </form>
+        </CardContent>
+      </Card>
     </main>
   )
 }
