@@ -69,6 +69,16 @@ type Outcome struct {
 	FailureReason string          `json:"failureReason,omitempty"`
 }
 
+// Claim is what the control plane answers to a runner that claims a run: the run itself and what a
+// responder run needs besides it.
+type Claim struct {
+	Run
+	// Schema is the JSON schema the agent must answer with. It is empty for a run with a free-text answer.
+	Schema json.RawMessage `json:"schema,omitempty"`
+	// Snapshot is true when the runner must download the repository snapshot of the run before it starts.
+	Snapshot bool `json:"snapshot,omitempty"`
+}
+
 // NewID returns a random 128-bit identifier as 32 hex characters.
 func NewID() string {
 	b := make([]byte, 16)

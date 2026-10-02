@@ -13,6 +13,7 @@ import (
 type Spec struct {
 	Prompt  string
 	Workdir string
+	Schema  string // JSON schema of the answer; empty means free text
 }
 
 // Final carries the end-of-run summary some CLIs emit as their last line.
@@ -20,6 +21,7 @@ type Final struct {
 	Result    string
 	SessionID string
 	CostUSD   float64
+	Output    json.RawMessage // the structured answer, when the run had a schema and the CLI delivered one
 }
 
 // Line is one parsed line of CLI output.

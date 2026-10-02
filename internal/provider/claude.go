@@ -43,9 +43,16 @@ func (c Claude) Command(ctx context.Context, spec Spec, parentEnv []string) *exe
 	//   --model            must be pinned: --restricted drops the user's default model
 	// dontAsk denies whatever would still prompt. --bare is intentionally not used: it ignores
 	// the subscription login.
-	cmd := exec.CommandContext(ctx, bin,
+	args := []string{
 		"-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
-		"--safe-mode", "--restricted", "--strict-mcp-config", "--tools", readOnlyTools, "--model", model)
+		"--safe-mode", "--restricted", "--strict-mcp-config", "--tools", readOnlyTools, "--model", model,
+	}
+	// With a schema the CLI answers through structured output, and its result event carries the answer in
+	// structured_output (docs/research/spike-structured-output.md). The control plane validates it again.
+	if spec.Schema != "" {
+		args = append(args, "--json-schema", spec.Schema)
+	}
+	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = spec.Workdir
 	cmd.Stdin = strings.NewReader(spec.Prompt)
 	cmd.Env = FilterEnv(parentEnv)
@@ -55,10 +62,11 @@ func (c Claude) Command(ctx context.Context, spec Spec, parentEnv []string) *exe
 
 func (Claude) ParseLine(line []byte) Line {
 	var head struct {
-		Type      string  `json:"type"`
-		Result    string  `json:"result"`
-		SessionID string  `json:"session_id"`
-		CostUSD   float64 `json:"total_cost_usd"`
+		Type             string          `json:"type"`
+		Result           string          `json:"result"`
+		SessionID        string          `json:"session_id"`
+		CostUSD          float64         `json:"total_cost_usd"`
+		StructuredOutput json.RawMessage `json:"structured_output"`
 	}
 	if err := json.Unmarshal(line, &head); err != nil || head.Type == "" {
 		return Line{Kind: "raw", Payload: run.JSONString(string(line))}
@@ -66,6 +74,9 @@ func (Claude) ParseLine(line []byte) Line {
 	l := Line{Kind: head.Type, Payload: append(json.RawMessage(nil), line...)}
 	if head.Type == "result" {
 		l.Final = &Final{Result: head.Result, SessionID: head.SessionID, CostUSD: head.CostUSD}
+		if len(head.StructuredOutput) > 0 && string(head.StructuredOutput) != "null" {
+			l.Final.Output = append(json.RawMessage(nil), head.StructuredOutput...)
+		}
 	}
 	return l
 }

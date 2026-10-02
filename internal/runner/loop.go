@@ -11,10 +11,16 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/provider"
 	"github.com/Jaydee94/remedy/internal/run"
+	"github.com/Jaydee94/remedy/internal/snapshot"
 )
 
-// DefaultRunTimeout is how long a run may take before the runner stops it.
-const DefaultRunTimeout = 10 * time.Minute
+const (
+	// DefaultRunTimeout is how long a run may take before the runner stops it.
+	DefaultRunTimeout = 10 * time.Minute
+
+	// snapshotTimeout bounds downloading and unpacking the repository snapshot of a responder run.
+	snapshotTimeout = 2 * time.Minute
+)
 
 // Loop claims runs one at a time, executes them and reports the outcome. A runner that dies
 // mid-run leaves its run "running"; the control plane's reaper fails it after a while.
@@ -50,7 +56,8 @@ func (l *Loop) Run(ctx context.Context) {
 	}
 }
 
-func (l *Loop) handle(ctx context.Context, r run.Run) {
+func (l *Loop) handle(ctx context.Context, c run.Claim) {
+	r := c.Run
 	log := l.Log.With("run", r.ID, "provider", r.Provider)
 	log.Info("run claimed")
 
@@ -67,13 +74,21 @@ func (l *Loop) handle(ctx context.Context, r run.Run) {
 	}
 	defer os.RemoveAll(dir)
 
+	if c.Snapshot {
+		if err := l.fetchSnapshot(ctx, log, r.ID, dir); err != nil {
+			log.Error("snapshot failed", "err", err)
+			l.finish(log, r.ID, run.Outcome{ExitCode: 1, Result: "The repository snapshot could not be prepared: " + err.Error()})
+			return
+		}
+	}
+
 	timeout := l.RunTimeout
 	if timeout <= 0 {
 		timeout = DefaultRunTimeout
 	}
 	execCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	out, err := Execute(execCtx, p, provider.Spec{Prompt: r.Prompt, Workdir: dir}, l.Env,
+	out, err := Execute(execCtx, p, provider.Spec{Prompt: r.Prompt, Workdir: dir, Schema: string(c.Schema)}, l.Env,
 		clientSink{client: l.Client, runID: r.ID})
 	if err != nil {
 		log.Error("execution problem", "err", err)
@@ -88,6 +103,24 @@ func (l *Loop) handle(ctx context.Context, r run.Run) {
 		log.Warn("run timed out", "after", timeout)
 	}
 	l.finish(log, r.ID, out)
+}
+
+// fetchSnapshot downloads the repository snapshot of a responder run into dir. snapshot.Unpack trusts
+// nothing: it refuses path traversal, extracts only harmless symlinks and enforces the size limits.
+func (l *Loop) fetchSnapshot(ctx context.Context, log *slog.Logger, runID, dir string) error {
+	ctx, cancel := context.WithTimeout(ctx, snapshotTimeout)
+	defer cancel()
+	rc, err := l.Client.Snapshot(ctx, runID)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	res, err := snapshot.Unpack(dir, rc, snapshot.Limits{})
+	if err != nil {
+		return err
+	}
+	log.Info("snapshot unpacked", "files", res.Files, "bytes", res.Bytes, "skipped", len(res.Skipped))
+	return nil
 }
 
 // finish reports the outcome even when the runner is shutting down.

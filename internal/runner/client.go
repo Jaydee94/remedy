@@ -68,7 +68,7 @@ func expect(resp *http.Response, want int) error {
 }
 
 // Claim blocks until a run is available or the server's long-poll times out (nil, nil).
-func (c *Client) Claim(ctx context.Context) (*run.Run, error) {
+func (c *Client) Claim(ctx context.Context) (*run.Claim, error) {
 	resp, err := c.do(ctx, claimTimeout, "/runner/v1/claim", nil)
 	if err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ func (c *Client) Claim(ctx context.Context) (*run.Run, error) {
 	if err := expect(resp, http.StatusOK); err != nil {
 		return nil, err
 	}
-	var r run.Run
+	var r run.Claim
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return nil, err
 	}
@@ -95,6 +95,25 @@ func (c *Client) Event(ctx context.Context, runID, kind string, payload json.Raw
 	}
 	defer resp.Body.Close()
 	return expect(resp, http.StatusNoContent)
+}
+
+// Snapshot streams the repository snapshot of a responder run (a gzipped tar). The caller closes it and
+// sets the time limit through ctx; there is no overall timeout, because the archive can be large.
+func (c *Client) Snapshot(ctx context.Context, runID string) (io.ReadCloser, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/runner/v1/runs/"+runID+"/snapshot", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if err := expect(resp, http.StatusOK); err != nil {
+		_ = resp.Body.Close()
+		return nil, err
+	}
+	return resp.Body, nil
 }
 
 func (c *Client) Finish(ctx context.Context, runID string, o run.Outcome) error {
