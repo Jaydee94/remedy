@@ -21,6 +21,26 @@ export interface RunEvent {
   createdAt: string
 }
 
+export interface GitHubConnection {
+  connected: boolean
+  login?: string
+  /** Only the last four characters of the token, never the token itself. */
+  tokenHint?: string
+  status?: 'ok' | 'error' | 'undecryptable'
+  statusDetail?: string
+  checkedAt?: string
+}
+
+export interface Repo {
+  id: number
+  fullName: string
+  defaultBranch: string
+  enabled: boolean
+  lastPolledAt?: string
+  lastError: string
+  createdAt: string
+}
+
 export class ApiError extends Error {
   status: number
 
@@ -52,6 +72,15 @@ export const api = {
   listRuns: () => request<Run[]>('GET', '/api/runs'),
   createRun: (prompt: string) => request<Run>('POST', '/api/runs', { prompt }),
   getRun: (id: string) => request<Run>('GET', `/api/runs/${id}`),
+
+  getConnection: () => request<GitHubConnection>('GET', '/api/github/connection'),
+  putConnection: (token: string) => request<GitHubConnection>('PUT', '/api/github/connection', { token }),
+  checkConnection: () => request<GitHubConnection>('POST', '/api/github/connection/check'),
+  deleteConnection: () => request<void>('DELETE', '/api/github/connection'),
+  listRepos: () => request<Repo[]>('GET', '/api/repos'),
+  addRepo: (fullName: string) => request<Repo>('POST', '/api/repos', { fullName }),
+  setRepoEnabled: (id: number, enabled: boolean) => request<void>('PATCH', `/api/repos/${id}`, { enabled }),
+  deleteRepo: (id: number) => request<void>('DELETE', `/api/repos/${id}`),
 }
 
 /** Opens the live stream of a run. The browser reconnects with Last-Event-ID on its own. */
