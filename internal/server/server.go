@@ -7,9 +7,11 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/incident"
+	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/store"
 )
@@ -28,6 +30,10 @@ type Deps struct {
 	// Incidents changes incidents on behalf of the UI. When it is nil the incident routes are not
 	// registered.
 	Incidents *incident.Engine
+
+	// Responder diagnoses incidents. When it is nil there are no diagnose, snapshot and limits routes.
+	Responder    *responder.Responder
+	PollInterval time.Duration // only shown by the limits endpoint
 }
 
 type srv struct {
@@ -70,6 +76,12 @@ func New(d Deps) http.Handler {
 		mux.HandleFunc("GET /api/incidents", s.session(s.listIncidents))
 		mux.HandleFunc("GET /api/incidents/{id}", s.session(s.getIncident))
 		mux.HandleFunc("POST /api/incidents/{id}/ignore", s.session(s.ignoreIncident))
+	}
+
+	if d.Responder != nil {
+		mux.HandleFunc("POST /api/incidents/{id}/diagnose", s.session(s.diagnoseIncident))
+		mux.HandleFunc("GET /api/limits", s.session(s.getLimits))
+		mux.HandleFunc("GET /runner/v1/runs/{id}/snapshot", s.runner(s.snapshot))
 	}
 
 	if d.Web != nil {

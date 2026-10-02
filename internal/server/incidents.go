@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -26,6 +27,12 @@ type incidentView struct {
 	LastSeen       time.Time  `json:"lastSeen"`
 	ResolvedAt     *time.Time `json:"resolvedAt,omitempty"`
 	ResolvedReason string     `json:"resolvedReason,omitempty"`
+
+	Diagnoses       int             `json:"diagnoses"`
+	LastDiagnosisAt *time.Time      `json:"lastDiagnosisAt,omitempty"`
+	Diagnosis       json.RawMessage `json:"diagnosis,omitempty"`
+	DiagnosedSHA    string          `json:"diagnosedSha,omitempty"`
+	RunID           string          `json:"runId,omitempty"`
 }
 
 func incidentViewOf(in store.Incident) incidentView {
@@ -34,6 +41,8 @@ func incidentViewOf(in store.Incident) incidentView {
 		State: string(in.State), Conclusion: in.Conclusion, HeadSHA: in.HeadSHA, CheckURL: in.CheckURL,
 		Occurrences: in.Occurrences, FirstSeen: in.FirstSeen, LastSeen: in.LastSeen,
 		ResolvedAt: in.ResolvedAt, ResolvedReason: in.ResolvedReason,
+		Diagnoses: in.Diagnoses, LastDiagnosisAt: in.LastDiagnosisAt, Diagnosis: in.Diagnosis,
+		DiagnosedSHA: in.DiagnosedSHA, RunID: in.RunID,
 	}
 }
 
