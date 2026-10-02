@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/Jaydee94/remedy/internal/auth"
+	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/store"
 )
 
@@ -17,6 +18,11 @@ type Deps struct {
 	Auth        *auth.Auth
 	RunnerToken string
 	Web         fs.FS // optional: the built UI, served for every non-API path
+
+	// Key seals the GitHub token. NewGitHub builds a client for a token; when it is nil the GitHub
+	// routes are not registered.
+	Key       secret.Key
+	NewGitHub func(token secret.Value) GitHub
 }
 
 type srv struct {
@@ -43,6 +49,17 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /runner/v1/claim", s.runner(s.claim))
 	mux.HandleFunc("POST /runner/v1/runs/{id}/events", s.runner(s.postEvent))
 	mux.HandleFunc("POST /runner/v1/runs/{id}/finish", s.runner(s.finish))
+
+	if d.NewGitHub != nil {
+		mux.HandleFunc("GET /api/github/connection", s.session(s.getConnection))
+		mux.HandleFunc("PUT /api/github/connection", s.session(s.putConnection))
+		mux.HandleFunc("POST /api/github/connection/check", s.session(s.checkConnection))
+		mux.HandleFunc("DELETE /api/github/connection", s.session(s.deleteConnection))
+		mux.HandleFunc("GET /api/repos", s.session(s.listRepos))
+		mux.HandleFunc("POST /api/repos", s.session(s.addRepo))
+		mux.HandleFunc("PATCH /api/repos/{id}", s.session(s.patchRepo))
+		mux.HandleFunc("DELETE /api/repos/{id}", s.session(s.deleteRepo))
+	}
 
 	if d.Web != nil {
 		mux.Handle("/", spa(d.Web))
