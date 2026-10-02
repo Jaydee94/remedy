@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/secret"
 )
@@ -16,15 +17,19 @@ const (
 	minPasswordLen = 12
 	minTokenLen    = 24
 	defaultGitHub  = "https://api.github.com"
+
+	defaultPollInterval = time.Minute
+	minPollInterval     = 10 * time.Second
 )
 
 type Server struct {
-	Addr          string     // REMEDY_ADDR, default ":8080"
-	DBPath        string     // REMEDY_DB, default "remedy.db"
-	AdminPassword string     // REMEDY_ADMIN_PASSWORD, required, min 12 chars
-	RunnerToken   string     // REMEDY_RUNNER_TOKEN, required, min 24 chars
-	MasterKey     secret.Key // REMEDY_MASTER_KEY, required, 32 random bytes in Base64
-	GitHubAPIURL  string     // REMEDY_GITHUB_API_URL, default "https://api.github.com"
+	Addr          string        // REMEDY_ADDR, default ":8080"
+	DBPath        string        // REMEDY_DB, default "remedy.db"
+	AdminPassword string        // REMEDY_ADMIN_PASSWORD, required, min 12 chars
+	RunnerToken   string        // REMEDY_RUNNER_TOKEN, required, min 24 chars
+	MasterKey     secret.Key    // REMEDY_MASTER_KEY, required, 32 random bytes in Base64
+	GitHubAPIURL  string        // REMEDY_GITHUB_API_URL, default "https://api.github.com"
+	PollInterval  time.Duration // REMEDY_POLL_INTERVAL, a Go duration, default 60s, at least 10s
 }
 
 func ServerFromEnv(get func(string) string) (Server, error) {
@@ -53,6 +58,15 @@ func ServerFromEnv(get func(string) string) (Server, error) {
 		return Server{}, errors.New("REMEDY_GITHUB_API_URL must be an http or https URL")
 	}
 	c.GitHubAPIURL = strings.TrimRight(c.GitHubAPIURL, "/")
+
+	c.PollInterval = defaultPollInterval
+	if v := get("REMEDY_POLL_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < minPollInterval {
+			return Server{}, errors.New("REMEDY_POLL_INTERVAL must be a duration of at least 10s, for example 60s or 2m")
+		}
+		c.PollInterval = d
+	}
 	return c, nil
 }
 
