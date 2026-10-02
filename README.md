@@ -13,6 +13,7 @@ CLIs (Claude Code, Antigravity CLI), without API tokens.
 ## Documentation
 
 - [`docs/design.md`](docs/design.md): decisions, architecture, roadmap, risks
+- [`docs/specs/`](docs/specs/): design specs per phase part (what and why), next to the plans (how)
 - [`docs/research/subscription-cli-usage.md`](docs/research/subscription-cli-usage.md): research on using the CLIs with a subscription
 - [`docs/plans/`](docs/plans/): implementation plans per phase
 
