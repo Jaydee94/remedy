@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { api, ApiError } from './api.ts'
 import type { IncidentDetail } from './api.ts'
+import DiagnosisCard from './DiagnosisCard.tsx'
 import { conclusionText, externalLinkClass, reasonText, safeUrl } from './incidents.ts'
 import RefLink from './RefLink.tsx'
 import StateBadge from './StateBadge.tsx'
@@ -41,6 +42,14 @@ export default function IncidentView({ id }: { id: number }) {
       clearInterval(timer)
     }
   }, [id])
+
+  async function reload() {
+    try {
+      setDetail(await api.getIncident(id))
+    } catch {
+      // The next poll tries again.
+    }
+  }
 
   async function ignore() {
     setBusy(true)
@@ -105,6 +114,8 @@ export default function IncidentView({ id }: { id: number }) {
               )}
             </p>
           </header>
+
+          <DiagnosisCard incident={incident} onChanged={reload} />
 
           <Card>
             <CardHeader>

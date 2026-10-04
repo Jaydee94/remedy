@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, ApiError } from './api.ts'
 import type { GitHubConnection } from './api.ts'
 import GitHubConnectionCard from './GitHubConnectionCard.tsx'
+import LimitsCard from './LimitsCard.tsx'
 import ReposCard from './ReposCard.tsx'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -29,6 +30,7 @@ export default function SettingsPage() {
         <>
           <GitHubConnectionCard connection={connection} onChange={setConnection} />
           <ReposCard connected={connection.connected} />
+          <LimitsCard />
         </>
       ) : (
         !error && <Skeleton className="h-48 w-full" />

@@ -47,14 +47,25 @@ export default function RunView({ id }: { id: string }) {
               {status}
             </Badge>
             {run.exitCode !== undefined && <span className="text-sm text-muted-foreground">exit {run.exitCode}</span>}
+            {run.role === 'responder' && <Badge variant="secondary">responder</Badge>}
             {run.failureReason === 'timeout' && <Badge variant="destructive">timed out</Badge>}
+            {run.failureReason === 'invalid_output' && <Badge variant="destructive">invalid answer</Badge>}
             {run.incidentId !== undefined && (
               <Link to={`/incidents/${run.incidentId}`} className="text-sm text-muted-foreground hover:text-foreground">
                 Incident #{run.incidentId}
               </Link>
             )}
           </div>
-          <p className="whitespace-pre-wrap rounded-lg bg-card p-3">{run.prompt}</p>
+          {run.role === 'responder' ? (
+            <details className="rounded-lg bg-card p-3">
+              <summary className="cursor-pointer text-sm text-muted-foreground">
+                Prompt ({run.prompt.length.toLocaleString()} characters, it contains data from GitHub)
+              </summary>
+              <p className="mt-2 font-mono text-xs break-words whitespace-pre-wrap">{run.prompt}</p>
+            </details>
+          ) : (
+            <p className="whitespace-pre-wrap rounded-lg bg-card p-3">{run.prompt}</p>
+          )}
           {run.failureReason && run.result && <p className="text-sm text-destructive">{run.result}</p>}
         </header>
       )}
