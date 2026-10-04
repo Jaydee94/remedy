@@ -935,8 +935,8 @@ done
   echo "cwd=$(pwd -P)"
   echo "cfg=$cfg"
   if [ -n "$cfg" ]; then
-    echo "mode=$(stat -f %%Lp "$cfg" 2>/dev/null || stat -c %%a "$cfg")"
-    echo "dirmode=$(stat -f %%Lp "$(dirname "$cfg")" 2>/dev/null || stat -c %%a "$(dirname "$cfg")")"
+    echo "mode=$(stat -c %%a "$cfg" 2>/dev/null || stat -f %%Lp "$cfg")"
+    echo "dirmode=$(stat -c %%a "$(dirname "$cfg")" 2>/dev/null || stat -f %%Lp "$(dirname "$cfg")")"
     echo "body=$(cat "$cfg")"
   fi
 } > %q
