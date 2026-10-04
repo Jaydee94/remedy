@@ -25,7 +25,7 @@ var ErrNotFound = errors.New("not found")
 const tsLayout = "2006-01-02T15:04:05.000000000Z"
 
 const runCols = `id, provider, prompt, status, exit_code, result, session_id, cost_usd, created_at, started_at, finished_at,
-	role, incident_id, output, failure_reason, head_sha, automatic`
+	role, incident_id, output, failure_reason, head_sha, automatic, mcp, cancel_requested`
 
 type Store struct{ db *sql.DB }
 
@@ -105,13 +105,15 @@ func scanRun(sc scanner) (run.Run, error) {
 		output            sql.NullString
 		automatic         int
 	)
+	var mcp, cancelRequested int
 	if err := sc.Scan(&r.ID, &r.Provider, &r.Prompt, &status, &exit, &r.Result, &r.SessionID,
 		&r.CostUSD, &created, &started, &finished, &role, &incident, &output, &r.FailureReason,
-		&r.HeadSHA, &automatic); err != nil {
+		&r.HeadSHA, &automatic, &mcp, &cancelRequested); err != nil {
 		return run.Run{}, err
 	}
 	r.Status = run.Status(status)
 	r.Automatic = automatic != 0
+	r.MCP, r.CancelRequested = mcp != 0, cancelRequested != 0
 	r.Role = run.Role(role)
 	if incident.Valid {
 		r.IncidentID = &incident.Int64
@@ -253,16 +255,19 @@ func (s *Store) FinishRun(ctx context.Context, id string, o run.Outcome) error {
 	if len(o.Output) > 0 && string(o.Output) != "null" {
 		output = string(o.Output)
 	}
-	res, err := s.db.ExecContext(ctx, `
-		UPDATE runs SET status = ?, exit_code = ?, result = ?, session_id = ?, cost_usd = ?, output = ?,
-			failure_reason = ?, finished_at = ?
-		WHERE id = ? AND status = 'running'`,
-		string(status), o.ExitCode, o.Result, o.SessionID, o.CostUSD, output, o.FailureReason, formatTS(time.Now()), id)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return fmt.Errorf("run %s is not running: %w", id, ErrNotFound)
-	}
-	return nil
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		now := time.Now()
+		res, err := tx.ExecContext(ctx, `
+			UPDATE runs SET status = ?, exit_code = ?, result = ?, session_id = ?, cost_usd = ?, output = ?,
+				failure_reason = ?, finished_at = ?
+			WHERE id = ? AND status = 'running'`,
+			string(status), o.ExitCode, o.Result, o.SessionID, o.CostUSD, output, o.FailureReason, formatTS(now), id)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			return fmt.Errorf("run %s is not running: %w", id, ErrNotFound)
+		}
+		return closeRunTx(ctx, tx, id, now)
+	})
 }
