@@ -11,6 +11,7 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/config"
+	"github.com/Jaydee94/remedy/internal/gatekeeper"
 	"github.com/Jaydee94/remedy/internal/github"
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/poller"
@@ -22,10 +23,11 @@ import (
 )
 
 type App struct {
-	Handler   http.Handler
-	Poller    *poller.Poller
-	Reaper    *reaper.Reaper
-	Responder *responder.Responder
+	Handler    http.Handler
+	Poller     *poller.Poller
+	Reaper     *reaper.Reaper
+	Responder  *responder.Responder
+	Gatekeeper *gatekeeper.Gatekeeper
 }
 
 // New wires everything for a configuration. web is the built UI, or nil.
@@ -44,8 +46,21 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		},
 		Log: log,
 	}
+	gate := gatekeeper.New(gatekeeper.Config{
+		Store: st,
+		Tools: append(append(gatekeeper.IncidentTools(st), gatekeeper.JobLogTool(diagnoser)), gatekeeper.NoteTool(st)),
+		Log:   log,
+	})
+	// The requests that waited for an approval died with the previous process; nobody can receive their results.
+	if n, err := st.AbandonAllWaiting(context.Background()); err != nil {
+		log.Error("could not abandon the approvals a restart left behind", "err", err)
+	} else if n > 0 {
+		log.Warn("abandoned the approvals a restart left behind", "count", n)
+	}
+
 	return &App{
-		Responder: diagnoser,
+		Responder:  diagnoser,
+		Gatekeeper: gate,
 		Poller: &poller.Poller{
 			Store:      st,
 			Engine:     engine,
@@ -74,6 +89,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 			Incidents:    engine,
 			Responder:    diagnoser,
 			PollInterval: cfg.PollInterval,
+			Gatekeeper:   gate,
 		}),
 	}
 }
