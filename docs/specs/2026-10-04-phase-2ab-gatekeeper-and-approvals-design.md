@@ -1,6 +1,6 @@
 # Phase 2 (parts A and B): the gatekeeper and approvals
 
-Status: draft for the maintainer's review, 2026-10-04.
+Status: accepted by the maintainer on 2026-10-04. Implementation plans: [`phase-2a`](../plans/phase-2a-gatekeeper-server.md) (steps 1 to 3, the server side), implemented; plan 2b (steps 4 to 6: runner, heartbeat, reaper, UI, the real run) follows.
 Parent documents: [`../design.md`](../design.md) (sections 2.2, 2.6, 2.8 and the roadmap),
 [`../research/spike-mcp-blocking.md`](../research/spike-mcp-blocking.md) (how the CLI behaves with a blocking MCP tool) and
 [`2026-10-02-phase-1-detect-and-diagnose-design.md`](2026-10-02-phase-1-detect-and-diagnose-design.md) (the incidents, the activity log and the
@@ -61,10 +61,11 @@ reuse this mechanism:
 ## 4. Data model (migration 006)
 
 - `runs`: `mcp INTEGER NOT NULL DEFAULT 0` (the run has gatekeeper access), `cancel_requested INTEGER NOT NULL DEFAULT 0`, `last_heartbeat_at TEXT`.
-- `run_tokens`: `run_id` (primary key, references `runs`), `token_hash BLOB NOT NULL UNIQUE`, `created_at`, `revoked_at`. The token is 32 random bytes
+- `run_tokens`: `run_id` (primary key, references `runs`), `token_hash BLOB NOT NULL UNIQUE`, `created_at`, `revoked_at`. The token is minted when the run is claimed (the claim carries it; it cannot be handed out later) and is 32 random bytes
   (Base64url on the wire); only its SHA-256 is stored, and the lookup is by hash.
 - `tool_calls` is both the **audit log** and the **approval**:
-  - `id`, `run_id`, `tool_use_id` (unique per run), `tool`, `kind` (`read` or `mutating`), `arguments` (JSON, redacted, as validated),
+  - `id`, `run_id`, `tool_use_id` (unique per run), `tool`, `kind` (`read` or `mutating`), `arguments` (JSON, as validated and **not** redacted: they are what the maintainer sees and what runs),
+`incident_id` (the incident the call is about, when the tool names one),
     `status` (`running`, `waiting`, `succeeded`, `failed`, `denied`, `abandoned`), `result` (text, redacted, at most 32 KB), `error`,
     `created_at`, `finished_at`;
   - `decision` (empty for read tools; `pending`, `approved`, `denied`, `abandoned`), `decided_at`, `decision_reason`.
@@ -143,7 +144,7 @@ Admin API (session cookie; the non-GET routes need `X-Remedy-CSRF: 1`):
 - `POST /api/approvals/{id}/approve` and `/deny`, body `{"reason": "..."}` (optional, at most 500 characters). 409 when the approval is not
   pending (decided, abandoned, its run has ended, or the agent is no longer waiting), 404 for an unknown id.
 - `GET /api/runs/{id}/tool-calls`: the audit rows of a run (tool, kind, arguments, status, result, decision, times).
-- `POST /api/runs/{id}/cancel`: 204; 409 when the run has ended. `POST /api/runs` gets an optional `tools: true` (default false) that creates an
+- `POST /api/runs/{id}/cancel`: 204; 409 when the run has ended, belongs to a diagnosis, or is running without gatekeeper access (it has no heartbeat to hear a cancel). `POST /api/runs` gets an optional `tools: true` (default false) that creates an
   ad-hoc run with gatekeeper access.
 - `GET /api/runs/{id}` additionally says whether the run is waiting for approval and which approval.
 
