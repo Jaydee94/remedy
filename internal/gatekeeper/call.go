@@ -65,11 +65,13 @@ type callParams struct {
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`
 	Meta      struct {
-		ToolUseID string `json:"claudecode/toolUseId"`
+		ToolUseID     string          `json:"claudecode/toolUseId"`
+		ProgressToken json.RawMessage `json:"progressToken"`
 	} `json:"_meta"`
 }
 
-// callTool handles tools/call: it audits the call, validates the arguments and runs a read tool.
+// callTool handles tools/call: it audits the call, validates the arguments, runs a read tool at once and lets a
+// mutating tool wait for the maintainer's approval.
 func (g *Gatekeeper) callTool(w http.ResponseWriter, r *http.Request, rn run.Run, req request) {
 	var p callParams
 	if err := json.Unmarshal(req.Params, &p); err != nil || p.Name == "" {
@@ -82,19 +84,24 @@ func (g *Gatekeeper) callTool(w http.ResponseWriter, r *http.Request, rn run.Run
 		return
 	}
 
-	// Every call is audited, also one that is refused. A refused call is recorded as a read call: it never asks for
-	// an approval.
+	// Every call is audited, also one that is refused. A refused call is recorded as a read call, whatever the tool:
+	// it never asks for an approval.
 	tool, known := g.byName[p.Name]
 	args := p.Arguments
 	var refused error
 	if known {
 		args, refused = tool.Decode(p.Arguments)
+		if refused == nil && tool.Mutating && tool.Check != nil {
+			refused = tool.Check(r.Context(), args)
+		}
 	} else {
 		refused = ArgumentError("unknown tool " + p.Name)
 	}
-	n := store.NewToolCall{
-		RunID: rn.ID, ToolUseID: p.Meta.ToolUseID, Tool: p.Name, Kind: store.CallKindRead, Arguments: storable(args),
+	kind := store.CallKindRead
+	if refused == nil && tool.Mutating {
+		kind = store.CallKindMutating
 	}
+	n := store.NewToolCall{RunID: rn.ID, ToolUseID: p.Meta.ToolUseID, Tool: p.Name, Kind: kind, Arguments: storable(args)}
 	if refused == nil && known && tool.Incident != nil {
 		n.IncidentID = tool.Incident(args)
 	}
@@ -115,6 +122,10 @@ func (g *Gatekeeper) callTool(w http.ResponseWriter, r *http.Request, rn run.Run
 	// The context of the store writes that end a call: the client going away must not leave the row running.
 	done := context.WithoutCancel(r.Context())
 	if existed {
+		if call.Kind == store.CallKindMutating && call.Status == store.CallWaiting {
+			g.awaitDecision(w, r, req, g.byName[call.Tool], call, p.Meta.ProgressToken)
+			return
+		}
 		g.answerKnown(r.Context(), reply, call)
 		return
 	}
@@ -122,6 +133,10 @@ func (g *Gatekeeper) callTool(w http.ResponseWriter, r *http.Request, rn run.Run
 		msg := toolErrorMessage(refused)
 		_ = g.store.FinishToolCall(done, call.ID, store.CallFailed, "", msg)
 		reply(errorResult(msg))
+		return
+	}
+	if tool.Mutating {
+		g.awaitDecision(w, r, req, tool, call, p.Meta.ProgressToken)
 		return
 	}
 

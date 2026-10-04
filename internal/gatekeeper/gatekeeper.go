@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Jaydee94/remedy/internal/run"
@@ -39,6 +40,9 @@ type Gatekeeper struct {
 	progress time.Duration
 	grace    time.Duration
 	log      *slog.Logger
+
+	mu      sync.Mutex
+	waiters map[int64]*waiterSet // by tool call ID
 }
 
 // New builds a gatekeeper. It panics for a registry that cannot work (a duplicate or malformed tool): that is a
@@ -47,6 +51,7 @@ func New(c Config) *Gatekeeper {
 	g := &Gatekeeper{
 		store: c.Store, tools: c.Tools, byName: map[string]Tool{},
 		progress: c.ProgressInterval, grace: c.Grace, log: c.Log,
+		waiters: map[int64]*waiterSet{},
 	}
 	if g.progress <= 0 {
 		g.progress = 15 * time.Second
@@ -63,9 +68,6 @@ func New(c Config) *Gatekeeper {
 		}
 		if _, dup := g.byName[t.Name]; dup {
 			panic("gatekeeper: tool " + t.Name + " is registered twice")
-		}
-		if t.Mutating {
-			panic("gatekeeper: tool " + t.Name + " is mutating, which needs approvals")
 		}
 		g.byName[t.Name] = t
 	}
