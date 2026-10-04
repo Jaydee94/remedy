@@ -40,6 +40,9 @@ const (
 	ReasonInvalidOutput = "invalid_output"
 	// ReasonCancelled means the maintainer cancelled the run. A runner reports it after stopping the agent.
 	ReasonCancelled = "cancelled"
+	// ReasonRunnerLost means the control plane failed a run with gatekeeper access because its runner stopped
+	// sending heartbeats.
+	ReasonRunnerLost = "runner_lost"
 )
 
 type Run struct {

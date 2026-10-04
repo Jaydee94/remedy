@@ -79,6 +79,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /runner/v1/claim", s.runner(s.claim))
 	mux.HandleFunc("POST /runner/v1/runs/{id}/events", s.runner(s.postEvent))
 	mux.HandleFunc("POST /runner/v1/runs/{id}/finish", s.runner(s.finish))
+	mux.HandleFunc("POST /runner/v1/runs/{id}/heartbeat", s.runner(s.heartbeat))
 
 	if d.NewGitHub != nil {
 		mux.HandleFunc("GET /api/github/connection", s.session(s.getConnection))
