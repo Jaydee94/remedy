@@ -1,12 +1,13 @@
-import { LogOut, Play, Settings, TriangleAlert } from 'lucide-react'
+import { History, LogOut, Play, Settings, TriangleAlert } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 const nav = [
-  { to: '/incidents', label: 'Incidents', icon: TriangleAlert },
-  { to: '/runs', label: 'Runs', icon: Play },
-  { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/', label: 'Timeline', icon: History, end: true },
+  { to: '/incidents', label: 'Incidents', icon: TriangleAlert, end: false },
+  { to: '/runs', label: 'Runs', icon: Play, end: false },
+  { to: '/settings', label: 'Settings', icon: Settings, end: false },
 ]
 
 export default function AppLayout({ onSignOut }: { onSignOut: () => void }) {
@@ -17,10 +18,11 @@ export default function AppLayout({ onSignOut }: { onSignOut: () => void }) {
           Remedy
         </NavLink>
         <nav className="flex flex-1 flex-col gap-1">
-          {nav.map(({ to, label, icon: Icon }) => (
+          {nav.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
+              end={end}
               className={({ isActive }) =>
                 cn(
                   'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
