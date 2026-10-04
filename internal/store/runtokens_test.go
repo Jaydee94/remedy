@@ -122,7 +122,7 @@ func TestTheTokenIsRevokedWhenTheRunEnds(t *testing.T) {
 	for name, end := range map[string]func(s *store.Store, r run.Run) error{
 		"finished": func(s *store.Store, r run.Run) error { return s.FinishRun(ctx, r.ID, run.Outcome{Result: "ok"}) },
 		"reaped": func(s *store.Store, r run.Run) error {
-			ids, err := s.FailStaleRuns(ctx, time.Now().Add(time.Hour), "stuck")
+			ids, err := s.FailLostRuns(ctx, time.Now().Add(time.Hour), "stuck")
 			if err == nil && len(ids) != 1 {
 				t.Errorf("reaped %v, want the run", ids)
 			}
