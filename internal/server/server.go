@@ -34,6 +34,9 @@ type Deps struct {
 	// Responder diagnoses incidents. When it is nil there are no diagnose, snapshot and limits routes.
 	Responder    *responder.Responder
 	PollInterval time.Duration // only shown by the limits endpoint
+
+	// ActivityInterval is how often the activity stream looks for new entries. Zero means one second.
+	ActivityInterval time.Duration
 }
 
 type srv struct {
@@ -56,6 +59,8 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/runs", s.session(s.listRuns))
 	mux.HandleFunc("GET /api/runs/{id}", s.session(s.getRun))
 	mux.HandleFunc("GET /api/runs/{id}/events", s.session(s.streamEvents))
+	mux.HandleFunc("GET /api/activity", s.session(s.listActivity))
+	mux.HandleFunc("GET /api/activity/stream", s.session(s.streamActivity))
 
 	mux.HandleFunc("POST /runner/v1/claim", s.runner(s.claim))
 	mux.HandleFunc("POST /runner/v1/runs/{id}/events", s.runner(s.postEvent))
