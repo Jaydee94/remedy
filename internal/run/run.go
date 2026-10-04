@@ -38,6 +38,8 @@ const (
 	ReasonTimeout = "timeout"
 	// ReasonInvalidOutput means the agent finished but its structured answer was missing or invalid.
 	ReasonInvalidOutput = "invalid_output"
+	// ReasonCancelled means the maintainer cancelled the run. A runner reports it after stopping the agent.
+	ReasonCancelled = "cancelled"
 )
 
 type Run struct {

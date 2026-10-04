@@ -67,7 +67,7 @@ func (s *Store) MintRunToken(ctx context.Context, runID string) (string, error) 
 func (s *Store) RunForToken(ctx context.Context, token string) (run.Run, error) {
 	r, err := scanRun(s.db.QueryRowContext(ctx, `
 		SELECT `+runCols+` FROM runs
-		WHERE status = 'running'
+		WHERE status = 'running' AND cancel_requested = 0
 		  AND id = (SELECT run_id FROM run_tokens WHERE token_hash = ? AND revoked_at IS NULL)`, hashToken(token)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return run.Run{}, ErrNotFound
@@ -75,9 +75,13 @@ func (s *Store) RunForToken(ctx context.Context, token string) (run.Run, error) 
 	return r, err
 }
 
-// closeRunTx is what ending a run does besides setting its status, in the transaction that ends it.
+// closeRunTx is what ending a run does besides setting its status, in the transaction that ends it: its token
+// stops working and its waiting calls are abandoned.
 func closeRunTx(ctx context.Context, tx *sql.Tx, runID string, now time.Time) error {
-	_, err := tx.ExecContext(ctx,
-		`UPDATE run_tokens SET revoked_at = ? WHERE run_id = ? AND revoked_at IS NULL`, formatTS(now), runID)
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE run_tokens SET revoked_at = ? WHERE run_id = ? AND revoked_at IS NULL`, formatTS(now), runID); err != nil {
+		return err
+	}
+	_, err := abandonTx(ctx, tx, now, `run_id = ?`, runID)
 	return err
 }
