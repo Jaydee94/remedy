@@ -7,12 +7,15 @@ import { statusColor } from './status.ts'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
 export default function RunsPage() {
   const navigate = useNavigate()
   const [runs, setRuns] = useState<Run[]>([])
   const [prompt, setPrompt] = useState('')
+  const [tools, setTools] = useState(false)
   const [error, setError] = useState('')
 
   const refresh = useCallback(() => {
@@ -29,7 +32,7 @@ export default function RunsPage() {
     e.preventDefault()
     setError('')
     try {
-      const created = await api.createRun(prompt)
+      const created = await api.createRun(prompt, tools)
       setPrompt('')
       navigate(`/runs/${created.id}`)
     } catch (err) {
@@ -51,9 +54,18 @@ export default function RunsPage() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
-              placeholder="What should the agent do? (read-only)"
+              placeholder="What should the agent do?"
               aria-label="Prompt"
             />
+            <div className="flex items-center gap-3">
+              <Switch id="tools" checked={tools} onCheckedChange={setTools} />
+              <Label htmlFor="tools">Allow gatekeeper tools</Label>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {tools
+                ? 'The agent can read incidents and ask to add a note to one. Every note waits for your decision under Approvals, and the run waits with it.'
+                : 'The agent can only read the files of its workspace.'}
+            </p>
             <Button type="submit" className="self-start" disabled={prompt.trim() === ''}>
               Start run
             </Button>
@@ -77,6 +89,7 @@ export default function RunsPage() {
           >
             <span className={`h-2.5 w-2.5 rounded-full ${statusColor[r.status]}`} />
             <span className="flex-1 truncate">{r.prompt}</span>
+            {r.mcp && <span className="text-xs text-muted-foreground">tools</span>}
             <span className="text-xs text-muted-foreground">{new Date(r.createdAt).toLocaleString()}</span>
           </Link>
         ))}
