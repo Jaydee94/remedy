@@ -106,6 +106,23 @@ export interface Limits {
   staleRunMinutes: number
 }
 
+/** One line of the timeline. The summary may contain text from GitHub: show it as text, never as HTML. */
+export interface TimelineEntry {
+  id: number
+  at: string
+  kind: string
+  summary: string
+  repo?: string
+  incidentId?: number
+  runId?: string
+}
+
+export interface TimelinePage {
+  /** Newest first. */
+  entries: TimelineEntry[]
+  hasMore: boolean
+}
+
 export class ApiError extends Error {
   status: number
 
@@ -157,6 +174,29 @@ export const api = {
   ignoreIncident: (id: number) => request<Incident>('POST', `/api/incidents/${id}/ignore`),
   diagnoseIncident: (id: number) => request<{ runId: string }>('POST', `/api/incidents/${id}/diagnose`),
   getLimits: () => request<Limits>('GET', '/api/limits'),
+
+  /** The newest entries, or the ones before the entry with the id `before`. */
+  listActivity: (before?: number) =>
+    request<TimelinePage>('GET', before === undefined ? '/api/activity' : `/api/activity?before=${before}`),
+}
+
+/** 'closed' means the browser gave up, for example because the session ended and the server answered 401. */
+export type StreamState = 'live' | 'reconnecting' | 'closed'
+
+/**
+ * Follows the activity log from the entry with the id `after` on (0 means from the start). The browser
+ * reconnects on its own and then sends Last-Event-ID, which the server prefers to `after`.
+ */
+export function streamActivity(
+  after: number,
+  onEntry: (e: TimelineEntry) => void,
+  onState: (state: StreamState) => void,
+): () => void {
+  const es = new EventSource(`/api/activity/stream?after=${after}`)
+  es.onopen = () => onState('live')
+  es.onerror = () => onState(es.readyState === EventSource.CLOSED ? 'closed' : 'reconnecting')
+  es.addEventListener('activity', (m) => onEntry(JSON.parse((m as MessageEvent<string>).data) as TimelineEntry))
+  return () => es.close()
 }
 
 /** Opens the live stream of a run. The browser reconnects with Last-Event-ID on its own. */
