@@ -31,7 +31,9 @@ type App struct {
 // New wires everything for a configuration. web is the built UI, or nil.
 func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	engine := &incident.Engine{Store: st}
-	reader := func(token secret.Value) *github.Client { return github.New(cfg.GitHubAPIURL, token, nil) }
+	reader := func(token secret.Value) *github.Client {
+		return github.New(cfg.GitHubAPIURL, token, nil, github.WithLog(log))
+	}
 
 	diagnoser := &responder.Responder{
 		Store:     st,
