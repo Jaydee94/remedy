@@ -66,6 +66,7 @@ func failingTool() gatekeeper.Tool {
 
 type env struct {
 	st    *store.Store
+	g     *gatekeeper.Gatekeeper
 	ts    *httptest.Server
 	run   run.Run
 	token string
@@ -92,7 +93,8 @@ func newEnvWith(t *testing.T, build func(st *store.Store) []gatekeeper.Tool, opt
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	e.ts = httptest.NewServer(gatekeeper.New(cfg))
+	e.g = gatekeeper.New(cfg)
+	e.ts = httptest.NewServer(e.g)
 	t.Cleanup(e.ts.Close)
 
 	ctx := context.Background()

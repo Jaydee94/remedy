@@ -22,6 +22,10 @@ type Tool struct {
 	// Decode validates the arguments an agent sent and returns them in canonical form. That form is what is stored,
 	// shown for approval and executed. A problem the agent can fix is an ArgumentError.
 	Decode func(raw json.RawMessage) (json.RawMessage, error)
+	// Check is an optional precondition of a mutating tool, run on the decoded arguments before an approval is asked
+	// for: asking the maintainer to approve something that cannot work wastes their attention. Its error is shown to
+	// the agent like an argument error.
+	Check func(ctx context.Context, args json.RawMessage) error
 	// Incident returns the incident a call with these (decoded) arguments is about, or 0. Optional.
 	Incident func(args json.RawMessage) int64
 	// Run executes the tool with decoded arguments and returns the text for the model.
