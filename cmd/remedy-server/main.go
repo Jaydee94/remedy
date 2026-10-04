@@ -21,6 +21,13 @@ import (
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
+	level, err := config.LogLevelFromEnv(os.Getenv)
+	if err != nil {
+		log.Error("invalid configuration", "err", err)
+		os.Exit(2)
+	}
+	log = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+
 	cfg, err := config.ServerFromEnv(os.Getenv)
 	if err != nil {
 		log.Error("invalid configuration", "err", err)

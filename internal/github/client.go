@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -159,15 +160,33 @@ type Client struct {
 }
 
 // New returns a client for baseURL (for example https://api.github.com). A nil httpClient gets a
-// 20 second timeout.
-func New(baseURL string, token secret.Value, httpClient *http.Client) *Client {
+// 20 second timeout. Every request goes through a transport that refuses anything but GET and HEAD and,
+// with WithLog, logs it.
+func New(baseURL string, token secret.Value, httpClient *http.Client, opts ...Option) *Client {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+	apiHost := ""
+	if u, err := url.Parse(baseURL); err == nil {
+		apiHost = u.Host
+	}
+
 	stream := httpClient
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 20 * time.Second}
 		stream = &http.Client{} // a download can take longer than 20 seconds; the caller's context limits it
 	}
+	shared := stream == httpClient
+	httpClient = audited(httpClient, apiHost, o.log)
+	if shared {
+		stream = httpClient
+	} else {
+		stream = audited(stream, apiHost, o.log)
+	}
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
+		baseURL: baseURL,
 		token:   token,
 		http:    httpClient,
 		stream:  stream,
