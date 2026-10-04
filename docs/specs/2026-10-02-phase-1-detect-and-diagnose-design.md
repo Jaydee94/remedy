@@ -1,6 +1,6 @@
 # Phase 1 (part 1): detect and diagnose
 
-Status: accepted by the maintainer on 2026-10-02. Implementation plans: [`phase-1a`](../plans/phase-1a-github-foundation.md) (steps 0 to 4) and [`phase-1b`](../plans/phase-1b-signals-and-incidents.md) (steps 5 and 6) and [`phase-1c`](../plans/phase-1c-responder.md) (step 7), all implemented; the plan for the remaining steps follows.
+Status: accepted by the maintainer on 2026-10-02. Implementation plans: [`phase-1a`](../plans/phase-1a-github-foundation.md) (steps 0 to 4) and [`phase-1b`](../plans/phase-1b-signals-and-incidents.md) (steps 5 and 6) and [`phase-1c`](../plans/phase-1c-responder.md) (step 7) and [`phase-1d`](../plans/phase-1d-timeline-and-real-run.md) (steps 8 and 9), all implemented. The run against the real GitHub is recorded in [`phase-1-real-run.md`](../research/phase-1-real-run.md).
 Parent documents: [`../design.md`](../design.md) (sections 2.2 to 2.4, 2.9 and the roadmap) and
 [`../research/spike-claude-billing.md`](../research/spike-claude-billing.md) (CLI isolation, real event shapes).
 
@@ -197,8 +197,11 @@ Admin API (session cookie and `X-Remedy-CSRF`, as today):
 - `GET|POST /api/repos`, `PATCH|DELETE /api/repos/{id}` (enable or disable, remove)
 - `GET /api/incidents?state=&repo=`, `GET /api/incidents/{id}`,
   `POST /api/incidents/{id}/diagnose`, `POST /api/incidents/{id}/ignore`
-- `GET /api/activity?before=&limit=` and a live stream `GET /api/activity/stream` (SSE, resumable with
-  `Last-Event-ID`, like the run stream)
+- `GET /api/activity?before=&limit=` answers `{entries, hasMore}`, newest first (`limit` 1 to 200, default 50).
+  `GET /api/activity/stream?after=` is an SSE stream of the entries above `after`, oldest first. A reconnecting
+  browser resumes with `Last-Event-ID`, which wins over `after`; without either the stream starts at the end of
+  the log. The stream follows the table by id once a second instead of waking on writes, because the entries are
+  written from many places.
 
 Runner API additions (bearer token, as today): `GET /runner/v1/runs/{id}/snapshot`, and the claim response
 carries `role`, `incident_id`, the schema and a `snapshot` flag; `POST /runner/v1/runs/{id}/finish` accepts an optional
@@ -265,6 +268,8 @@ With a read-only PAT and the Remedy repository registered:
 - The maintainer must create a suitable fine-grained PAT.
 - Automatic runs consume subscription quota; the limits in section 5 bound it. A later change can derive the
   budget from the CLI's `rate_limit_event`.
-- GitHub's API shapes and rate limits are only exercised against fixtures (taken from real answers) until step 9.
+- GitHub's API shapes and rate limits were only exercised against fixtures (taken from real answers) until step 9;
+  [`phase-1-real-run.md`](../research/phase-1-real-run.md) records what the real service showed. The client's
+  transport also refuses every method but `GET` and `HEAD`, and `REMEDY_LOG_LEVEL=debug` logs each request.
 - Repository files other than the filtered names go to the agent as they are: a secret committed in another file is
   readable by it. Only text that looks like a secret in logs and pull requests is redacted.
