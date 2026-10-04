@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Jaydee94/remedy/internal/auth"
+	"github.com/Jaydee94/remedy/internal/gatekeeper"
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/secret"
@@ -37,6 +38,10 @@ type Deps struct {
 
 	// ActivityInterval is how often the activity stream looks for new entries. Zero means one second.
 	ActivityInterval time.Duration
+
+	// Gatekeeper serves the MCP tools of agents at /mcp and decides approvals. When it is nil there are neither, and
+	// a run cannot be created with tools.
+	Gatekeeper *gatekeeper.Gatekeeper
 }
 
 type srv struct {
@@ -59,6 +64,15 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/runs", s.session(s.listRuns))
 	mux.HandleFunc("GET /api/runs/{id}", s.session(s.getRun))
 	mux.HandleFunc("GET /api/runs/{id}/events", s.session(s.streamEvents))
+	mux.HandleFunc("GET /api/runs/{id}/tool-calls", s.session(s.listToolCalls))
+	mux.HandleFunc("POST /api/runs/{id}/cancel", s.session(s.cancelRun))
+	if d.Gatekeeper != nil {
+		// The gatekeeper authenticates by the run token itself: this is neither an admin nor a runner route.
+		mux.Handle("/mcp", d.Gatekeeper)
+		mux.HandleFunc("GET /api/approvals", s.session(s.listApprovals))
+		mux.HandleFunc("POST /api/approvals/{id}/approve", s.session(s.decide(true)))
+		mux.HandleFunc("POST /api/approvals/{id}/deny", s.session(s.decide(false)))
+	}
 	mux.HandleFunc("GET /api/activity", s.session(s.listActivity))
 	mux.HandleFunc("GET /api/activity/stream", s.session(s.streamActivity))
 

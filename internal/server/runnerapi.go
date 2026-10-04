@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -45,7 +46,18 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if claimed != nil {
-			writeJSON(w, http.StatusOK, claimFor(*claimed))
+			// A run with gatekeeper access gets its token now: only a hash of it is kept, so the claim is the one
+			// moment it can be handed out. A run that cannot get one fails instead of running without tools.
+			token := ""
+			if claimed.MCP {
+				if token, err = s.d.Store.MintRunToken(r.Context(), claimed.ID); err != nil {
+					_ = s.d.Store.FinishRun(context.WithoutCancel(r.Context()), claimed.ID,
+						run.Outcome{ExitCode: -1, Result: "The run token could not be created."})
+					writeErr(w, http.StatusInternalServerError, "could not create the run token")
+					return
+				}
+			}
+			writeJSON(w, http.StatusOK, claimFor(*claimed, token))
 			return
 		}
 		select {
@@ -91,7 +103,7 @@ func (s *srv) finish(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if out.FailureReason != "" && out.FailureReason != run.ReasonTimeout {
+	if out.FailureReason != "" && out.FailureReason != run.ReasonTimeout && out.FailureReason != run.ReasonCancelled {
 		writeErr(w, http.StatusBadRequest, "unknown failure reason")
 		return
 	}

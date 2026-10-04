@@ -89,6 +89,9 @@ type Claim struct {
 	Schema json.RawMessage `json:"schema,omitempty"`
 	// Snapshot is true when the runner must download the repository snapshot of the run before it starts.
 	Snapshot bool `json:"snapshot,omitempty"`
+	// MCPToken is the token of a run with gatekeeper access: the bearer token for the MCP endpoint of the control
+	// plane. It exists only in this answer; the control plane keeps a hash.
+	MCPToken string `json:"mcp_token,omitempty"`
 }
 
 // NewID returns a random 128-bit identifier as 32 hex characters.
