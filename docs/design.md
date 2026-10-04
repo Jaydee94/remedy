@@ -143,7 +143,8 @@ running as a service for other people's homelabs.
 
 Phase plans live in [`plans/`](plans/). Phase 1 is delivered in parts: the first part (detect and diagnose, with the
 timeline) is implemented; the fixer that changes a workspace and lets the control plane open a pull request, and
-the Home Assistant notification, are separate later cycles.
+the Home Assistant notification, are separate later cycles. Phase 2 is delivered in parts as well: the gatekeeper and the approvals
+(parts A and B) are implemented, cluster access and the signal adapters are later cycles.
 
 ## 4. Accepted risks
 
