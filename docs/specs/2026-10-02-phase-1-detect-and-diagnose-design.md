@@ -1,6 +1,6 @@
 # Phase 1 (part 1): detect and diagnose
 
-Status: accepted by the maintainer on 2026-10-02. Implementation plans: [`phase-1a`](../plans/phase-1a-github-foundation.md) (steps 0 to 4) and [`phase-1b`](../plans/phase-1b-signals-and-incidents.md) (steps 5 and 6), both implemented; the plans for the remaining steps follow.
+Status: accepted by the maintainer on 2026-10-02. Implementation plans: [`phase-1a`](../plans/phase-1a-github-foundation.md) (steps 0 to 4) and [`phase-1b`](../plans/phase-1b-signals-and-incidents.md) (steps 5 and 6) and [`phase-1c`](../plans/phase-1c-responder.md) (step 7), all implemented; the plan for the remaining steps follows.
 Parent documents: [`../design.md`](../design.md) (sections 2.2 to 2.4, 2.9 and the roadmap) and
 [`../research/spike-claude-billing.md`](../research/spike-claude-billing.md) (CLI isolation, real event shapes).
 
@@ -62,7 +62,7 @@ New packages under `internal/`:
 Existing packages that change: `store` (migration and queries), `server` (new API, runner API additions),
 `runner` (snapshot download and unpacking, run timeout), `provider` (structured output), `config`.
 
-## 4. Data model (migrations 002 to 004)
+## 4. Data model (migrations 002 to 005)
 
 - `github_connections`: `id`, `token_ciphertext`, `token_hint` (last four characters), `login`, `status`
   (`ok`, `error`, `undecryptable`), `status_detail`, `checked_at`. One row for now.
@@ -72,7 +72,9 @@ Existing packages that change: `store` (migration and queries), `server` (new AP
   `last_seen`, `last_diagnosis_at`, `resolved_at`, `resolved_reason`, `diagnosis` (JSON), `run_id`. A unique
   index on `(repo_id, ref, check_name)` for rows whose state is not `resolved`.
 - `activity`: `id`, `at`, `kind`, `repo_id`, `incident_id`, `run_id`, `summary`, `data` (JSON).
-- `runs` gains `incident_id`, `role` (`adhoc` or `responder`), `output` (structured JSON) and `failure_reason`.
+- `runs` gains `incident_id`, `role` (`adhoc` or `responder`), `output` (structured JSON) and `failure_reason`, and
+  later `head_sha` (the commit the prompt and the snapshot are for) and `automatic` (started by Remedy, not by a
+  click). `incidents` gains `diagnosed_sha` (the commit its diagnosis is about).
 
 Activity kinds: `incident_opened`, `incident_recurred`, `incident_resolved`, `incident_ignored`,
 `diagnosis_started`, `diagnosis_finished`, `diagnosis_failed`, `poll_failed`, `poll_recovered`,
@@ -109,7 +111,12 @@ An ignored incident keeps its key: new failures change nothing, and a green chec
 
 The numbers are configuration defaults. A manual diagnosis from the UI ignores the cooldown, the cap of three
 and the 24-hour limit (the maintainer asked for it explicitly), but still respects "one run at a time".
-`incidents.diagnoses` counts automatic diagnoses only, which is what the cap uses.
+`incidents.diagnoses` counts automatic diagnoses only, which is what the cap uses. A failed or invalid run counts.
+The daily limit counts the automatic runs created in the last 24 hours, and a daily limit of 0 turns automatic
+diagnosis off. An incident that has a diagnosis is diagnosed again automatically when its head commit changed since
+(cooldown and cap apply). A diagnosis starts only when its whole context could be read from GitHub: if a read
+fails, nothing starts, and an automatic start waits for the cooldown before it tries that incident again. The limits
+are checked inside the transaction that creates the run, so a poll and a click cannot both start one.
 
 **Errors:** on `403` or `429` the poller waits for `Retry-After`. A repo's failure is stored in
 `repos.last_error` and logged as `poll_failed`; the next success logs `poll_recovered`. The reaper fails runs
@@ -119,13 +126,16 @@ that a dead runner leaves a run `running` forever.
 ## 6. The responder run
 
 1. The incident code creates a run (`role = responder`, `incident_id`). The runner claims it as before.
-2. At claim time the control plane builds the **context package**:
+2. When the run is created the control plane builds the **context package** (the prompt is stored in
+   `runs.prompt`, so what the agent saw can be audited, and the claim stays a pure database call):
    - the **prompt**: instructions plus the untrusted data (PR title and description, logs of the failed jobs,
-     diff summary), truncated with priority on the end of the log,
+     diff summary), the log cleaned (byte order mark, timestamps, ANSI escapes) and cut after its last `##[error]`
+     line, because the runner cleanup after it is noise, then truncated to its end,
    - a **snapshot endpoint** `GET /runner/v1/runs/{id}/snapshot` that streams the repo tarball at the head
      commit, fetched with the PAT,
    - the **JSON schema** of the diagnosis.
-3. The runner unpacks the snapshot into the workspace (rejecting path traversal, symlinks pointing outside,
+3. The runner unpacks the snapshot into the workspace (rejecting path traversal, extracting only symlinks with a
+   relative target without a `..` component, since resolving `..` lexically is not safe,
    and anything beyond the size limit) and starts the CLI as today: tools `Read`, `Grep`, `Glob` only,
    confined to the workspace, no credentials.
 4. The diagnosis comes back as structured JSON. The control plane **validates it against the schema**. Invalid
@@ -149,12 +159,15 @@ Diagnosis schema (fields): `summary`, `cause`, `confidence` (`high`, `medium`, `
 
 Limits: run timeout 10 minutes (in the runner), snapshot at most 50 MB, log excerpt at most 200 KB.
 
-### Open verification (first task of the plan)
+### Verification of structured output (done)
 
 The CLI documents structured output (`--json-schema`) for `--output-format json`. Whether the `stream-json`
 mode delivers it in the `result` event is **not yet verified**. It is tested against the real CLI before
 anything builds on it. If it does not work, the fallback is to ask for a JSON object in the final `text` block
-and extract and validate it in the control plane.
+and extract and validate it in the control plane. Verified: the `result` event of `stream-json` carries
+`structured_output` ([`spike-structured-output.md`](../research/spike-structured-output.md)), and the whole input of
+the responder, on a real failure, gave a valid diagnosis
+([`spike-responder-dry-run.md`](../research/spike-responder-dry-run.md)).
 
 ## 7. The GitHub connection and its encryption
 
@@ -188,7 +201,7 @@ Admin API (session cookie and `X-Remedy-CSRF`, as today):
   `Last-Event-ID`, like the run stream)
 
 Runner API additions (bearer token, as today): `GET /runner/v1/runs/{id}/snapshot`, and the claim response
-carries `role`, `incident_id` and the schema; `POST /runner/v1/runs/{id}/finish` accepts an optional
+carries `role`, `incident_id`, the schema and a `snapshot` flag; `POST /runner/v1/runs/{id}/finish` accepts an optional
 `output`.
 
 ## 9. User interface
@@ -252,4 +265,6 @@ With a read-only PAT and the Remedy repository registered:
 - The maintainer must create a suitable fine-grained PAT.
 - Automatic runs consume subscription quota; the limits in section 5 bound it. A later change can derive the
   budget from the CLI's `rate_limit_event`.
-- GitHub's API shapes and rate limits are only exercised against fixtures until step 9.
+- GitHub's API shapes and rate limits are only exercised against fixtures (taken from real answers) until step 9.
+- Repository files other than the filtered names go to the agent as they are: a secret committed in another file is
+  readable by it. Only text that looks like a secret in logs and pull requests is redacted.
