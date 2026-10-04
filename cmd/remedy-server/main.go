@@ -12,15 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Jaydee94/remedy/internal/auth"
+	"github.com/Jaydee94/remedy/internal/app"
 	"github.com/Jaydee94/remedy/internal/config"
-	"github.com/Jaydee94/remedy/internal/github"
-	"github.com/Jaydee94/remedy/internal/incident"
-	"github.com/Jaydee94/remedy/internal/poller"
-	"github.com/Jaydee94/remedy/internal/reaper"
-	"github.com/Jaydee94/remedy/internal/responder"
-	"github.com/Jaydee94/remedy/internal/secret"
-	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/store"
 	"github.com/Jaydee94/remedy/web"
 )
@@ -55,46 +48,13 @@ func main() {
 		}()
 	}
 
-	engine := &incident.Engine{Store: st}
-	diagnoser := &responder.Responder{
-		Store: st,
-		Key:   cfg.MasterKey,
-		NewSource: func(token secret.Value) responder.Source {
-			return github.New(cfg.GitHubAPIURL, token, nil)
-		},
-		Limits: store.DiagnosisLimits{
-			Cooldown: cfg.DiagnoseCooldown, MaxPerIncident: cfg.DiagnoseMaxPerIncident, MaxPerDay: cfg.DiagnoseMaxPerDay,
-		},
-		Log: log,
-	}
-	background((&poller.Poller{
-		Store:  st,
-		Engine: engine,
-		Key:    cfg.MasterKey,
-		NewSource: func(token secret.Value) poller.Source {
-			return github.New(cfg.GitHubAPIURL, token, nil)
-		},
-		Interval: cfg.PollInterval,
-		Log:      log,
-	}).Run)
-
-	background((&reaper.Reaper{Store: st, Log: log}).Run)
+	a := app.New(cfg, st, log, web.FS())
+	background(a.Poller.Run)
+	background(a.Reaper.Run)
 
 	srv := &http.Server{
-		Addr: cfg.Addr,
-		Handler: server.New(server.Deps{
-			Store:       st,
-			Auth:        auth.New(cfg.AdminPassword),
-			RunnerToken: cfg.RunnerToken,
-			Web:         web.FS(),
-			Key:         cfg.MasterKey,
-			NewGitHub: func(token secret.Value) server.GitHub {
-				return github.New(cfg.GitHubAPIURL, token, nil)
-			},
-			Incidents:    engine,
-			Responder:    diagnoser,
-			PollInterval: cfg.PollInterval,
-		}),
+		Addr:              cfg.Addr,
+		Handler:           a.Handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
