@@ -14,8 +14,8 @@ export interface Run {
   finishedAt?: string
   role: 'adhoc' | 'responder'
   incidentId?: number
-  /** Set when the run was stopped for taking too long. */
-  failureReason?: 'timeout'
+  /** Set when the run was stopped for taking too long, or its answer was not a valid diagnosis. */
+  failureReason?: 'timeout' | 'invalid_output'
 }
 
 export interface RunEvent {
@@ -64,6 +64,14 @@ export interface Incident {
   lastSeen: string
   resolvedAt?: string
   resolvedReason?: string
+  /** Automatic diagnoses started for this incident. */
+  diagnoses: number
+  lastDiagnosisAt?: string
+  diagnosis?: Diagnosis
+  /** The commit the diagnosis is about. It differs from headSha when a newer commit failed since. */
+  diagnosedSha?: string
+  /** The latest responder run. */
+  runId?: string
 }
 
 export interface ActivityEntry {
@@ -76,6 +84,26 @@ export interface ActivityEntry {
 export interface IncidentDetail {
   incident: Incident
   activity: ActivityEntry[]
+}
+
+/** The answer of the responder agent. The names are those of the schema. Show it as text, never as HTML. */
+export interface Diagnosis {
+  summary: string
+  cause: string
+  confidence: 'high' | 'medium' | 'low'
+  category: string
+  affected_files: string[]
+  proposed_fix: string
+  fix_looks_automatable: boolean
+}
+
+export interface Limits {
+  pollIntervalSeconds: number
+  diagnoseCooldownSeconds: number
+  diagnoseMaxPerIncident: number
+  /** 0 means automatic diagnosis is off. */
+  diagnoseMaxPerDay: number
+  staleRunMinutes: number
 }
 
 export class ApiError extends Error {
@@ -127,6 +155,8 @@ export const api = {
   },
   getIncident: (id: number) => request<IncidentDetail>('GET', `/api/incidents/${id}`),
   ignoreIncident: (id: number) => request<Incident>('POST', `/api/incidents/${id}/ignore`),
+  diagnoseIncident: (id: number) => request<{ runId: string }>('POST', `/api/incidents/${id}/diagnose`),
+  getLimits: () => request<Limits>('GET', '/api/limits'),
 }
 
 /** Opens the live stream of a run. The browser reconnects with Last-Event-ID on its own. */

@@ -41,6 +41,23 @@ export function reasonText(reason?: string): string {
   }
 }
 
+const categoryLabels: Record<string, string> = {
+  dependency_update: 'Dependency update',
+  test_failure: 'Test failure',
+  build_error: 'Build error',
+  configuration: 'Configuration',
+  infrastructure_or_flaky: 'Infrastructure or flaky',
+  unknown: 'Unknown cause',
+}
+
+export function categoryText(category: string): string {
+  return categoryLabels[category] ?? category
+}
+
+export function shortSha(sha: string): string {
+  return sha.slice(0, 7)
+}
+
 /** Only http(s) links become links. Anything else that comes from GitHub's data is shown as text. */
 export function safeUrl(url?: string): string | undefined {
   return url && /^https?:\/\//i.test(url) ? url : undefined
