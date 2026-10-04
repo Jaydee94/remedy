@@ -11,9 +11,10 @@ import (
 
 // Spec describes one agent invocation.
 type Spec struct {
-	Prompt  string
-	Workdir string
-	Schema  string // JSON schema of the answer; empty means free text
+	Prompt    string
+	Workdir   string
+	Schema    string // JSON schema of the answer; empty means free text
+	MCPConfig string // MCP config file of a run with gatekeeper access; empty means no tools
 }
 
 // Final carries the end-of-run summary some CLIs emit as their last line.

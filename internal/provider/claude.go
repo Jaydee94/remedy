@@ -13,6 +13,10 @@ import (
 // DefaultModel is used when Claude.Model is empty.
 const DefaultModel = "sonnet"
 
+// MCPServerName is the name the gatekeeper has in the MCP config of a run. The CLI calls its tools
+// mcp__remedy__<tool>.
+const MCPServerName = "remedy"
+
 // readOnlyTools is everything an agent may use for now. Roles that need more (the fixer) will name
 // their own list in a later phase.
 const readOnlyTools = "Read,Grep,Glob"
@@ -35,7 +39,9 @@ func (c Claude) Command(ctx context.Context, spec Spec, parentEnv []string) *exe
 		model = DefaultModel
 	}
 	// Isolation (measured against the real CLI, see docs/research/spike-claude-billing.md):
-	//   --safe-mode        disables the user's CLAUDE.md, plugins, hooks, MCP servers and skills
+	//   --safe-mode        disables the user's CLAUDE.md, plugins, hooks, MCP servers and skills. It also turns MCP
+	//                      off for a server passed with --mcp-config (docs/research/spike-mcp-blocking.md), so a run
+	//                      with gatekeeper access has to go without it; --restricted alone keeps the user's plugins out.
 	//   --restricted       ignores user/project/local settings, removes command-running tools,
 	//                      confines file tools to the working directory
 	//   --strict-mcp-config ignores every MCP server not passed explicitly (none yet)
@@ -43,9 +49,15 @@ func (c Claude) Command(ctx context.Context, spec Spec, parentEnv []string) *exe
 	//   --model            must be pinned: --restricted drops the user's default model
 	// dontAsk denies whatever would still prompt. --bare is intentionally not used: it ignores
 	// the subscription login.
-	args := []string{
-		"-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
-		"--safe-mode", "--restricted", "--strict-mcp-config", "--tools", readOnlyTools, "--model", model,
+	args := []string{"-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk"}
+	if spec.MCPConfig == "" {
+		args = append(args, "--safe-mode")
+	}
+	args = append(args, "--restricted", "--strict-mcp-config", "--tools", readOnlyTools, "--model", model)
+	if spec.MCPConfig != "" {
+		// Only the gatekeeper's tools, and all of them: what the agent may do is decided by the gatekeeper's registry
+		// and its approvals, not by this flag.
+		args = append(args, "--mcp-config", spec.MCPConfig, "--allowedTools", "mcp__"+MCPServerName)
 	}
 	// With a schema the CLI answers through structured output, and its result event carries the answer in
 	// structured_output (docs/research/spike-structured-output.md). The control plane validates it again.
