@@ -14,8 +14,36 @@ export interface Run {
   finishedAt?: string
   role: 'adhoc' | 'responder'
   incidentId?: number
-  /** Set when the run was stopped for taking too long, or its answer was not a valid diagnosis. */
-  failureReason?: 'timeout' | 'invalid_output'
+  /** Why a failed run failed, when it was not the agent's own exit code. */
+  failureReason?: 'timeout' | 'invalid_output' | 'cancelled' | 'runner_lost'
+  /** The run has access to the gatekeeper's tools. */
+  mcp?: boolean
+  /** The maintainer cancelled the run; the runner is stopping the agent. */
+  cancelRequested?: boolean
+  /** The id of the approval the run waits for. Only `GET /api/runs/{id}` has it, and only while there is one. */
+  waitingApproval?: number
+}
+
+/** A call of an agent to a gatekeeper tool: a row of the audit log, and for a mutating tool an approval. */
+export interface ToolCall {
+  id: number
+  runId: string
+  incidentId?: number
+  tool: string
+  kind: 'read' | 'mutating'
+  /** What the agent asked for. Usually an object. Show it as text, never as HTML. */
+  arguments: unknown
+  status: 'running' | 'waiting' | 'succeeded' | 'failed' | 'denied' | 'abandoned'
+  /** Empty for a read tool. */
+  decision: '' | 'pending' | 'approved' | 'denied' | 'abandoned'
+  reason?: string
+  result?: string
+  error?: string
+  requestedAt: string
+  decidedAt?: string
+  finishedAt?: string
+  /** An agent still waits for the answer of the call: only then can it be decided. */
+  waiting: boolean
 }
 
 export interface RunEvent {
@@ -152,8 +180,15 @@ export const api = {
   logout: () => request<void>('POST', '/api/logout'),
   me: () => request<{ user: string }>('GET', '/api/me'),
   listRuns: () => request<Run[]>('GET', '/api/runs'),
-  createRun: (prompt: string) => request<Run>('POST', '/api/runs', { prompt }),
+  createRun: (prompt: string, tools = false) => request<Run>('POST', '/api/runs', { prompt, tools }),
   getRun: (id: string) => request<Run>('GET', `/api/runs/${id}`),
+  listToolCalls: (runId: string) => request<ToolCall[]>('GET', `/api/runs/${runId}/tool-calls`),
+  cancelRun: (id: string) => request<void>('POST', `/api/runs/${id}/cancel`),
+
+  /** The mutating calls of agents: "pending" are the ones that wait for a decision, "all" is the history as well. */
+  listApprovals: (status: 'pending' | 'all') => request<ToolCall[]>('GET', `/api/approvals?status=${status}`),
+  decideApproval: (id: number, approve: boolean, reason?: string) =>
+    request<ToolCall>('POST', `/api/approvals/${id}/${approve ? 'approve' : 'deny'}`, reason ? { reason } : undefined),
 
   getConnection: () => request<GitHubConnection>('GET', '/api/github/connection'),
   putConnection: (token: string) => request<GitHubConnection>('PUT', '/api/github/connection', { token }),
