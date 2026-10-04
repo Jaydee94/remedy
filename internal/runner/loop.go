@@ -82,14 +82,25 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 		}
 	}
 
+	spec := provider.Spec{Prompt: r.Prompt, Workdir: dir, Schema: string(c.Schema)}
+	if c.MCPToken != "" {
+		path, cleanup, err := writeMCPConfig(l.WorkspaceRoot, r.ID, l.Client.BaseURL, c.MCPToken)
+		if err != nil {
+			log.Error("cannot write the MCP config", "err", err)
+			l.finish(log, r.ID, run.Outcome{ExitCode: 127, Result: "The tools of the run could not be prepared."})
+			return
+		}
+		defer cleanup()
+		spec.MCPConfig = path
+	}
+
 	timeout := l.RunTimeout
 	if timeout <= 0 {
 		timeout = DefaultRunTimeout
 	}
 	execCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	out, err := Execute(execCtx, p, provider.Spec{Prompt: r.Prompt, Workdir: dir, Schema: string(c.Schema)}, l.Env,
-		clientSink{client: l.Client, runID: r.ID})
+	out, err := Execute(execCtx, p, spec, l.Env, clientSink{client: l.Client, runID: r.ID})
 	if err != nil {
 		log.Error("execution problem", "err", err)
 	}
