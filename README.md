@@ -11,7 +11,8 @@ CLIs (Claude Code, Antigravity CLI), without API tokens.
 > **incidents**. For a real failure a read-only agent reads the failure log and a copy of the repository
 > and stores a **diagnosis** on the incident (cause, confidence, affected files, proposed fix), on its own
 > within limits or by a click. Everything Remedy does shows up in a live **timeline**, and the GitHub
-> client is read-only down to its HTTP transport. The fixer, the approval gatekeeper and the learning graph come next (see
+> client is read-only down to its HTTP transport. Agents get tools through an MCP gatekeeper whose mutating tools wait for your
+> approval. The fixer, cluster access and the learning graph come next (see
 > [`docs/design.md`](docs/design.md), [`docs/specs/`](docs/specs/) and [`docs/plans/`](docs/plans/)).
 
 ## Documentation
@@ -82,8 +83,11 @@ files named `.env*`, `*.pem`, `*.key` and `id_rsa*` are not part of the copy; a 
 readable by the agent. The runner never receives a GitHub token: the control plane fetches the copy.
 
 Open <http://localhost:8080> and sign in. The home page is the **Timeline**, a live feed of everything Remedy
-does: incidents, diagnoses, polling problems, changes to the settings. Under **Runs** you can start a read-only
-agent run by hand. `REMEDY_LOG_LEVEL=debug` (default `info`) logs every request to GitHub with its method, host,
+does: incidents, diagnoses, polling problems, changes to the settings. Under **Runs** you can start an agent run by
+hand, with or without the gatekeeper tools: a run with tools can read incidents and ask to add a note to one, and every note waits
+for your decision under **Approvals** (the run waits with it, as long as it takes; **Cancel run** ends it). A first run against the
+real CLI is described in [`docs/runbook/gatekeeper-real-run.md`](docs/runbook/gatekeeper-real-run.md) and
+[`docs/research/phase-2ab-real-run.md`](docs/research/phase-2ab-real-run.md). `REMEDY_LOG_LEVEL=debug` (default `info`) logs every request to GitHub with its method, host,
 path and status, never a query or the token; the GitHub client refuses to send anything but `GET` and `HEAD`.
 The runner removes `ANTHROPIC_API_KEY` from the CLI's environment on purpose, so runs are
 always billed to the subscription login.

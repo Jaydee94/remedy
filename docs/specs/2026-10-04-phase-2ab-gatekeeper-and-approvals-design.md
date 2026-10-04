@@ -1,6 +1,6 @@
 # Phase 2 (parts A and B): the gatekeeper and approvals
 
-Status: accepted by the maintainer on 2026-10-04. Implementation plans: [`phase-2a`](../plans/phase-2a-gatekeeper-server.md) (steps 1 to 3, the server side), implemented; plan 2b (steps 4 to 6: runner, heartbeat, reaper, UI, the real run) follows.
+Status: accepted by the maintainer on 2026-10-04. Implementation plans: [`phase-2a`](../plans/phase-2a-gatekeeper-server.md) (steps 1 to 3, the server side), implemented; [`phase-2b`](../plans/phase-2b-runner-and-approvals-ui.md) (steps 4 to 6: runner, heartbeat, reaper, UI, the real run), implemented. The run against the real CLI is recorded in [`phase-2ab-real-run.md`](../research/phase-2ab-real-run.md).
 Parent documents: [`../design.md`](../design.md) (sections 2.2, 2.6, 2.8 and the roadmap),
 [`../research/spike-mcp-blocking.md`](../research/spike-mcp-blocking.md) (how the CLI behaves with a blocking MCP tool) and
 [`2026-10-02-phase-1-detect-and-diagnose-design.md`](2026-10-02-phase-1-detect-and-diagnose-design.md) (the incidents, the activity log and the
