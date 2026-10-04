@@ -15,8 +15,8 @@ import (
 
 // claimFor is the answer to a runner that claimed a run. A responder run also gets the diagnosis schema and
 // the order to download the repository snapshot first.
-func claimFor(r run.Run) run.Claim {
-	c := run.Claim{Run: r}
+func claimFor(r run.Run, mcpToken string) run.Claim {
+	c := run.Claim{Run: r, MCPToken: mcpToken}
 	if r.Role == run.RoleResponder {
 		c.Schema = json.RawMessage(diagnosis.Schema)
 		c.Snapshot = true
