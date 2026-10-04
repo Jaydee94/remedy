@@ -23,6 +23,10 @@ type Reaper struct {
 	Interval time.Duration // default DefaultInterval
 	Log      *slog.Logger
 	Now      func() time.Time // default time.Now
+
+	// OnFailed is called with the IDs of the runs a sweep failed, for example to close the diagnosis of a
+	// responder run.
+	OnFailed func(ctx context.Context, ids []string)
 }
 
 // Sweep fails the runs that have been running for longer than MaxAge and returns how many it failed.
@@ -39,6 +43,9 @@ func (r *Reaper) Sweep(ctx context.Context) (int, error) {
 		fmt.Sprintf("The run did not finish within %s and was failed by the control plane.", maxAge))
 	for _, id := range ids {
 		r.Log.Warn("failed a stale run", "run", id, "after", maxAge)
+	}
+	if len(ids) > 0 && r.OnFailed != nil {
+		r.OnFailed(ctx, ids)
 	}
 	return len(ids), err
 }

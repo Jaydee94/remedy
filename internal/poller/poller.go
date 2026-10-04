@@ -33,6 +33,10 @@ type Poller struct {
 	Log       *slog.Logger
 	Now       func() time.Time // default time.Now
 
+	// AfterCycle is called at the end of every cycle that reached GitHub, for example to start automatic
+	// diagnoses. It is not called when the cycle was paused or stopped by a rate limit or a rejected token.
+	AfterCycle func(ctx context.Context)
+
 	source      Source // reused between cycles so that its ETag cache works
 	sealed      []byte // the ciphertext source was built from
 	pausedUntil time.Time
@@ -109,6 +113,9 @@ func (p *Poller) PollOnce(ctx context.Context) {
 			p.react(ctx, err)
 			return
 		}
+	}
+	if p.AfterCycle != nil && ctx.Err() == nil {
+		p.AfterCycle(ctx)
 	}
 }
 
