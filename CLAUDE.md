@@ -6,7 +6,7 @@ Remedy is an AI operator for a homelab GitOps setup: it reacts to alerts, logs a
 
 ## Current state
 
-Phase 0 is done: control plane (SQLite, admin and runner APIs, SSE), runner, UI, Docker image. Phase 1 is built in small plans: the spec is `docs/specs/2026-10-02-phase-1-detect-and-diagnose-design.md`, the plans are in `docs/plans/`. Plans 1a (GitHub connection and repos) and 1b (poller, incidents, activity log, run extension, reaper) are implemented; the responder (1c) and the timeline with the real run against GitHub (1d) are next. Check `git log` and the plan before assuming a package from a later task exists, and build only within the current plan.
+Phase 0 is done: control plane (SQLite, admin and runner APIs, SSE), runner, UI, Docker image. Phase 1 is built in small plans: the spec is `docs/specs/2026-10-02-phase-1-detect-and-diagnose-design.md`, the plans are in `docs/plans/`. Plans 1a (GitHub connection and repos), 1b (poller, incidents, activity log, run extension, reaper) and 1c (the responder: diagnosis of an incident by a read-only agent) are implemented; the timeline with the real run against GitHub (1d) is next. Check `git log` and the plan before assuming a package from a later task exists, and build only within the current plan.
 
 Docs: `docs/design.md` (decisions), `docs/specs/` (what and why), `docs/plans/` (how), `docs/research/` (spikes and measurements).
 
@@ -27,7 +27,7 @@ make web-install                                 # npm ci in web/
 cd web && npm run lint                           # oxlint (there is no web test runner yet)
 ```
 
-The server needs `REMEDY_ADMIN_PASSWORD` (12+ chars), `REMEDY_RUNNER_TOKEN` (24+ chars) and `REMEDY_MASTER_KEY` (`openssl rand -base64 32`). The runner needs the same runner token. Optional: `REMEDY_POLL_INTERVAL` (server, default 60s, at least 10s) and `REMEDY_RUN_TIMEOUT` (runner, default 10m). See the README quick start.
+The server needs `REMEDY_ADMIN_PASSWORD` (12+ chars), `REMEDY_RUNNER_TOKEN` (24+ chars) and `REMEDY_MASTER_KEY` (`openssl rand -base64 32`). The runner needs the same runner token. Optional: `REMEDY_POLL_INTERVAL` (server, default 60s, at least 10s), `REMEDY_RUN_TIMEOUT` (runner, default 10m) and the limits of automatic diagnosis `REMEDY_DIAGNOSE_COOLDOWN` (15m), `REMEDY_DIAGNOSE_MAX_PER_INCIDENT` (3) and `REMEDY_DIAGNOSE_MAX_PER_DAY` (20, `0` turns it off). See the README quick start.
 
 A fresh git worktree has no `web/node_modules`: run `make web-install` first, otherwise `make check` fails with `oxlint: command not found`, which looks like a code error.
 
@@ -39,7 +39,7 @@ The maintainer's shell aliases `ls` to a tool that rejects plain paths; use `com
 
 Two Go processes (module `github.com/Jaydee94/remedy`, `go 1.27.1`) plus a UI in `web/`:
 
-- **Control plane** (`cmd/remedy-server`): admin API for the UI, runner API, SSE stream, SQLite, a GitHub poller that feeds the incident engine (`internal/poller`, `internal/incident`), a reaper for runs that stay `running` (`internal/reaper`), and later the MCP gatekeeper.
+- **Control plane** (`cmd/remedy-server`): admin API for the UI, runner API, SSE stream, SQLite, a GitHub poller that feeds the incident engine (`internal/poller`, `internal/incident`), a reaper for runs that stay `running` (`internal/reaper`), a responder that diagnoses incidents (`internal/responder`), and later the MCP gatekeeper. `internal/app` wires all of it for `cmd/remedy-server` and for the tests that run the whole chain.
 - **Runner** (`cmd/remedy-runner`): the only place that holds agent-CLI logins. It dials out to the control plane, long-polls `POST /runner/v1/claim`, runs one CLI subprocess per run in a temp workspace, and posts each output line back as an event (`/runner/v1/runs/{id}/events`, then `/finish`). It has no GitHub, cluster or DB credentials.
 - **UI** (`web/`): React 19, Vite, TypeScript, Tailwind, React Router and shadcn/ui (components live in `src/components/ui`, imports use the `@/` alias, no `baseUrl`). Reads run events over SSE (`/api/runs/{id}/events`, resumable via `Last-Event-ID`). The Go server embeds `web/dist` only behind the `webui` build tag, so plain `go build`/`go vet` work without a built UI.
 
@@ -52,13 +52,14 @@ Trust boundaries that span several files and are easy to break:
 - **Admin API:** session cookie (`HttpOnly`, `SameSite=Strict`) plus a required `X-Remedy-CSRF: 1` header on every non-GET. **Runner API:** shared bearer token, constant-time compare. The two are separate middleware and must stay separate.
 - **Persistence:** one SQLite file, opened with a single connection (`SetMaxOpenConns(1)`), embedded SQL migrations. The graph (phase 3) lives in the same DB behind an interface. A run's events are always posted before `finish`, and the SSE handler reads run status before events; that ordering is what guarantees a client sees every event before `done`.
 - **Incidents** are keyed by `(repo, ref, check name)`, and every state change writes its `activity` entry in the same transaction. The poller must stay idempotent (a second cycle on the same GitHub state changes nothing) and must not resolve PR incidents from a full page of 100 PRs, which may be truncated. Inside `Store.inTx` use only the `tx`: the store has one connection, so a call on `s.db` there deadlocks.
+- **Everything from GitHub that reaches an agent is untrusted data.** `internal/prompt` is the only place that builds the prompt: it cleans, redacts (`internal/redact`) and bounds the data and puts it in blocks with a random delimiter, while the instructions stay outside. The control plane validates the agent's answer (`diagnosis.Parse`, strict; `responder.CheckOutcome` in `finish`) and the UI shows it as text. The repository snapshot goes through the control plane, which filters secret files (`snapshot.Filter`); the runner unpacks it with `snapshot.Unpack`, which refuses path traversal and extracts only symlinks with a relative target without `..`. The runner never holds a GitHub token. A change to any of this needs the care the token handling gets. Automatic diagnosis must stay within its limits: they are checked inside one store transaction (`StartDiagnosis`), not around it.
 
 ## Hard rules
 
 - Never read, copy, log or store the agent CLIs' credentials; only start the unmodified binary (terms of use).
 - No auto-merge, no force-push (additional commits only; abort on new foreign commits).
 - Logs, alert text, PR text and commit messages are untrusted input and never go to an agent as instructions.
-- Secrets are redacted before anything is handed to a CLI.
+- Secrets are redacted before anything is handed to a CLI. Repository files are handed over as they are, minus `.env*`, `*.pem`, `*.key` and `id_rsa*`; a secret committed elsewhere reaches the agent (accepted in the spec).
 - No multi-user operation and no third-party access through the subscription logins.
 
 ## Conventions
