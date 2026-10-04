@@ -3,10 +3,10 @@ package runner
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/Jaydee94/remedy/internal/provider"
@@ -25,13 +25,14 @@ const (
 // Loop claims runs one at a time, executes them and reports the outcome. A runner that dies
 // mid-run leaves its run "running"; the control plane's reaper fails it after a while.
 type Loop struct {
-	Client        *Client
-	Providers     map[string]provider.Provider
-	WorkspaceRoot string
-	Env           []string
-	Log           *slog.Logger
-	Backoff       time.Duration // wait after a failed claim, default 3s
-	RunTimeout    time.Duration // longest a run may take, default DefaultRunTimeout
+	Client            *Client
+	Providers         map[string]provider.Provider
+	WorkspaceRoot     string
+	Env               []string
+	Log               *slog.Logger
+	Backoff           time.Duration // wait after a failed claim, default 3s
+	RunTimeout        time.Duration // longest a run may take while it does not wait for an approval, default DefaultRunTimeout
+	HeartbeatInterval time.Duration // how often a run with tools reports to the control plane, default DefaultHeartbeatInterval
 }
 
 func (l *Loop) Run(ctx context.Context) {
@@ -98,15 +99,30 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 	if timeout <= 0 {
 		timeout = DefaultRunTimeout
 	}
-	execCtx, cancel := context.WithTimeout(ctx, timeout)
+	// The time limit is a budget of running time. A run that waits for an approval does not use it up, and the
+	// control plane can cancel the run: both reach the runner through the heartbeat of a run with tools.
+	execCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	clock := newRunClock(timeout, cancel)
+	defer clock.Stop()
+	var stopped atomic.Bool // the control plane cancelled the run, or no longer has it
+	if c.MCPToken != "" {
+		go l.watch(execCtx, log, r.ID, clock, func() { stopped.Store(true); cancel() })
+	}
 	out, err := Execute(execCtx, p, spec, l.Env, clientSink{client: l.Client, runID: r.ID})
 	if err != nil {
 		log.Error("execution problem", "err", err)
 	}
-	// The deadline kills the subprocess. A run that ended by itself is not a timeout, even if the
-	// deadline passed a moment later; neither is a run that was cut short by the runner shutting down.
-	if ctx.Err() == nil && errors.Is(execCtx.Err(), context.DeadlineExceeded) && out.ExitCode != 0 {
+	switch {
+	case stopped.Load():
+		out.FailureReason = run.ReasonCancelled
+		out.Result = "The run was cancelled."
+		if out.ExitCode == 0 {
+			out.ExitCode = -1
+		}
+	// The budget kills the subprocess. A run that ended by itself is not a timeout, even if the budget ran out a
+	// moment later; neither is a run that was cut short by the runner shutting down.
+	case ctx.Err() == nil && clock.Expired() && out.ExitCode != 0:
 		out.FailureReason = run.ReasonTimeout
 		if out.Result == "" {
 			out.Result = fmt.Sprintf("The run was stopped after %s.", timeout)
