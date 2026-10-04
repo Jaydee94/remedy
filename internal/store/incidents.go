@@ -319,15 +319,18 @@ type Activity struct {
 	At         time.Time
 	Kind       string
 	RepoID     int64
+	RepoName   string // empty when the entry has no repository, or the repository was removed
 	IncidentID int64
 	RunID      string
 	Summary    string
 	Data       json.RawMessage
 }
 
-// ActivityQuery selects activity entries. IncidentID 0 means all of them; Limit defaults to 100.
+// ActivityQuery selects activity entries. IncidentID 0 means all of them. Before is a cursor: only entries
+// with a smaller id, 0 means no cursor. Limit defaults to 100.
 type ActivityQuery struct {
 	IncidentID int64
+	Before     int64
 	Limit      int
 }
 
@@ -368,42 +371,79 @@ func (s *Store) AddActivity(ctx context.Context, a NewActivity) error {
 	return insertActivity(ctx, s.db, a)
 }
 
+const activitySelect = `SELECT a.id, a.at, a.kind, a.repo_id, a.incident_id, a.run_id, a.summary, a.data, r.full_name
+	FROM activity a LEFT JOIN repos r ON r.id = a.repo_id`
+
+func activityLimit(n int) int {
+	if n <= 0 {
+		return 100
+	}
+	return n
+}
+
 // ListActivity returns activity entries, newest first.
 func (s *Store) ListActivity(ctx context.Context, q ActivityQuery) ([]Activity, error) {
-	query := `SELECT id, at, kind, repo_id, incident_id, run_id, summary, data FROM activity`
+	var where []string
 	var args []any
 	if q.IncidentID != 0 {
-		query += ` WHERE incident_id = ?`
+		where = append(where, `a.incident_id = ?`)
 		args = append(args, q.IncidentID)
 	}
-	limit := q.Limit
-	if limit <= 0 {
-		limit = 100
+	if q.Before != 0 {
+		where = append(where, `a.id < ?`)
+		args = append(args, q.Before)
 	}
-	query += ` ORDER BY id DESC LIMIT ?`
-	args = append(args, limit)
+	query := activitySelect
+	if len(where) > 0 {
+		query += ` WHERE ` + strings.Join(where, ` AND `)
+	}
+	query += ` ORDER BY a.id DESC LIMIT ?`
+	args = append(args, activityLimit(q.Limit))
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	return collectActivity(rows)
+}
 
+// ListActivitySince returns the entries with an id above afterID, oldest first. It is how a stream follows
+// the log.
+func (s *Store) ListActivitySince(ctx context.Context, afterID int64, limit int) ([]Activity, error) {
+	rows, err := s.db.QueryContext(ctx, activitySelect+` WHERE a.id > ? ORDER BY a.id LIMIT ?`, afterID, activityLimit(limit))
+	if err != nil {
+		return nil, err
+	}
+	return collectActivity(rows)
+}
+
+// LastActivityID returns the highest activity id, or 0 when the log is empty.
+func (s *Store) LastActivityID(ctx context.Context) (int64, error) {
+	var id sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `SELECT MAX(id) FROM activity`).Scan(&id); err != nil {
+		return 0, err
+	}
+	return id.Int64, nil
+}
+
+func collectActivity(rows *sql.Rows) ([]Activity, error) {
+	defer rows.Close()
 	list := []Activity{}
 	for rows.Next() {
 		var (
-			a         Activity
-			at, data  string
-			repo, inc sql.NullInt64
-			runID     sql.NullString
+			a               Activity
+			at, data        string
+			repo, inc       sql.NullInt64
+			runID, repoName sql.NullString
 		)
-		if err := rows.Scan(&a.ID, &at, &a.Kind, &repo, &inc, &runID, &a.Summary, &data); err != nil {
+		if err := rows.Scan(&a.ID, &at, &a.Kind, &repo, &inc, &runID, &a.Summary, &data, &repoName); err != nil {
 			return nil, err
 		}
+		var err error
 		if a.At, err = parseTS(at); err != nil {
 			return nil, err
 		}
-		a.RepoID, a.IncidentID, a.RunID = repo.Int64, inc.Int64, runID.String
+		a.RepoID, a.RepoName, a.IncidentID, a.RunID = repo.Int64, repoName.String, inc.Int64, runID.String
 		a.Data = json.RawMessage(data)
 		list = append(list, a)
 	}
