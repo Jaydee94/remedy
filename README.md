@@ -10,7 +10,8 @@ CLIs (Claude Code, Antigravity CLI), without API tokens.
 > under **Settings**, and see failed checks of their pull requests and default branches as
 > **incidents**. For a real failure a read-only agent reads the failure log and a copy of the repository
 > and stores a **diagnosis** on the incident (cause, confidence, affected files, proposed fix), on its own
-> within limits or by a click. The timeline, the approval gatekeeper and the learning graph come next (see
+> within limits or by a click. Everything Remedy does shows up in a live **timeline**, and the GitHub
+> client is read-only down to its HTTP transport. The fixer, the approval gatekeeper and the learning graph come next (see
 > [`docs/design.md`](docs/design.md), [`docs/specs/`](docs/specs/) and [`docs/plans/`](docs/plans/)).
 
 ## Documentation
@@ -19,6 +20,8 @@ CLIs (Claude Code, Antigravity CLI), without API tokens.
 - [`docs/specs/`](docs/specs/): design specs per phase part (what and why), next to the plans (how)
 - [`docs/research/subscription-cli-usage.md`](docs/research/subscription-cli-usage.md): research on using the CLIs with a subscription
 - [`docs/plans/`](docs/plans/): implementation plans per phase
+- [`docs/runbook/first-real-run.md`](docs/runbook/first-real-run.md): a first run against a real repository, step by step, and
+  [`docs/research/phase-1-real-run.md`](docs/research/phase-1-real-run.md): what it showed
 
 ## Layout
 
@@ -78,7 +81,10 @@ only read, and its answer is checked before it is stored. Secret-looking text is
 files named `.env*`, `*.pem`, `*.key` and `id_rsa*` are not part of the copy; a secret in any other file would be
 readable by the agent. The runner never receives a GitHub token: the control plane fetches the copy.
 
-Open <http://localhost:8080>, sign in, start a run. The agent is read-only in this phase.
+Open <http://localhost:8080> and sign in. The home page is the **Timeline**, a live feed of everything Remedy
+does: incidents, diagnoses, polling problems, changes to the settings. Under **Runs** you can start a read-only
+agent run by hand. `REMEDY_LOG_LEVEL=debug` (default `info`) logs every request to GitHub with its method, host,
+path and status, never a query or the token; the GitHub client refuses to send anything but `GET` and `HEAD`.
 The runner removes `ANTHROPIC_API_KEY` from the CLI's environment on purpose, so runs are
 always billed to the subscription login.
 

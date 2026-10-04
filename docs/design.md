@@ -141,7 +141,9 @@ running as a service for other people's homelabs.
 | **3 Learning phase + graph** | Parsers, graph in SQLite, learner, review queue, drift, Loki signals | Fewer tokens, better fixes |
 | **4 Expansion** | `agy` adapter and fallback, ad-hoc chat, graph explorer, hardening | Comfort, hardening |
 
-Phase plans live in [`plans/`](plans/).
+Phase plans live in [`plans/`](plans/). Phase 1 is delivered in parts: the first part (detect and diagnose, with the
+timeline) is implemented; the fixer that changes a workspace and lets the control plane open a pull request, and
+the Home Assistant notification, are separate later cycles.
 
 ## 4. Accepted risks
 
