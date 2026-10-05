@@ -18,6 +18,7 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<Toast | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const lastId = useRef(0)
+  const ref = useRef<HTMLDivElement>(null)
 
   const arm = useCallback(() => {
     clearTimeout(timer.current)
@@ -25,6 +26,18 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const hold = useCallback(() => clearTimeout(timer.current), [])
+
+  // Re-arms the timer only when neither the pointer nor the focus is on the toast. At blur time document.activeElement is not yet
+  // the new element, so a blur passes the element the focus moves to.
+  const settle = useCallback(
+    (focusMovingTo?: EventTarget | null) => {
+      const el = ref.current
+      const focusInside = el !== null && (focusMovingTo instanceof Node ? el.contains(focusMovingTo) : el.contains(document.activeElement))
+      if (el !== null && (el.matches(':hover') || focusInside)) return
+      arm()
+    },
+    [arm],
+  )
 
   const show = useCallback(
     (text: string, undo?: () => void) => {
@@ -55,10 +68,15 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
         {toast && (
           <div
             key={toast.id}
-            onMouseEnter={hold}
-            onMouseLeave={arm}
+            ref={ref}
+            onPointerEnter={(e) => {
+              if (e.pointerType === 'mouse') hold()
+            }}
+            onPointerLeave={(e) => {
+              if (e.pointerType === 'mouse') settle()
+            }}
             onFocus={hold}
-            onBlur={arm}
+            onBlur={(e) => settle(e.relatedTarget)}
             className="pointer-events-auto flex w-max max-w-full animate-rm-in items-center gap-3.5 rounded-full bg-foreground py-2.5 pr-2.5 pl-4.5 text-background shadow-2xl"
           >
             <span className="min-w-0 font-semibold break-words">{toast.text}</span>
