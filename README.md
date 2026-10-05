@@ -103,7 +103,11 @@ one (`REMEDY_K8S_READ_TOKEN_FILE`, a file with a service account token) and one 
 the namespaces of `REMEDY_K8S_WRITE_NAMESPACES`). `REMEDY_K8S_API` (default: the in-cluster address), `REMEDY_K8S_CA_FILE` and `REMEDY_K8S_ARGO_NAMESPACE`
 (default `argocd`) say where and how. With the read token set, the **Runs** page offers "Allow cluster tools". A run started with it gets seven
 read tools (workloads, pods, describe, events, pod logs, nodes, Argo CD applications); what a cluster returns is shown to the agent as data, never as
-an instruction. Actions in the cluster come with the next plan ([`docs/specs/2026-10-04-phase-2c-cluster-design.md`](docs/specs/2026-10-04-phase-2c-cluster-design.md)).
+an instruction. Four actions are possible in the namespaces of
+`REMEDY_K8S_WRITE_NAMESPACES`, each one only after you approve it under **Approvals**: restart a workload, delete a pod, refresh and sync an Argo CD
+application ([`docs/specs/2026-10-04-phase-2c-cluster-design.md`](docs/specs/2026-10-04-phase-2c-cluster-design.md)). A run with the real CLI against the
+testbed is described in [`docs/runbook/cluster-real-run.md`](docs/runbook/cluster-real-run.md) and recorded in
+[`docs/research/phase-2c-real-run.md`](docs/research/phase-2c-real-run.md).
 [`dev/kind/`](dev/kind/README.md) has a throwaway kind cluster with demo workloads and Argo CD to try it on.
 
 ### Container
