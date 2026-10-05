@@ -10,6 +10,7 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [hello] = useState(() => greeting(new Date().getHours()))
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -34,7 +35,7 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
           <span className="font-serif text-3xl font-medium tracking-tight">remedy</span>
         </span>
         <div className="flex flex-col gap-2.5">
-          <h1 className="font-serif text-4xl leading-tight font-normal tracking-tight">{greeting(new Date().getHours())}.</h1>
+          <h1 className="font-serif text-4xl leading-tight font-normal tracking-tight">{hello}.</h1>
           <p className="text-muted-foreground">Sign in with the admin password and I'll walk you through what happened.</p>
         </div>
         <form onSubmit={submit} className="flex flex-col gap-2.5">
