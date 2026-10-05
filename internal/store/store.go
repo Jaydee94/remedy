@@ -25,7 +25,7 @@ var ErrNotFound = errors.New("not found")
 const tsLayout = "2006-01-02T15:04:05.000000000Z"
 
 const runCols = `id, provider, prompt, status, exit_code, result, session_id, cost_usd, created_at, started_at, finished_at,
-	role, incident_id, output, failure_reason, head_sha, automatic, mcp, cancel_requested`
+	role, incident_id, output, failure_reason, head_sha, automatic, mcp, cancel_requested, cluster`
 
 type Store struct{ db *sql.DB }
 
@@ -105,15 +105,16 @@ func scanRun(sc scanner) (run.Run, error) {
 		output            sql.NullString
 		automatic         int
 	)
-	var mcp, cancelRequested int
+	var mcp, cancelRequested, cluster int
 	if err := sc.Scan(&r.ID, &r.Provider, &r.Prompt, &status, &exit, &r.Result, &r.SessionID,
 		&r.CostUSD, &created, &started, &finished, &role, &incident, &output, &r.FailureReason,
-		&r.HeadSHA, &automatic, &mcp, &cancelRequested); err != nil {
+		&r.HeadSHA, &automatic, &mcp, &cancelRequested, &cluster); err != nil {
 		return run.Run{}, err
 	}
 	r.Status = run.Status(status)
 	r.Automatic = automatic != 0
 	r.MCP, r.CancelRequested = mcp != 0, cancelRequested != 0
+	r.Cluster = cluster != 0
 	r.Role = run.Role(role)
 	if incident.Valid {
 		r.IncidentID = &incident.Int64
