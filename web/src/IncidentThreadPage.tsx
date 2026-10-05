@@ -39,6 +39,7 @@ const when = (iso: string) => new Date(iso).toLocaleString()
 const undiagnosedText = {
   fresh: "I haven't looked at this yet. I diagnose real failures on my own, within my limits. You can also start it by hand.",
   manual: "Cancelled and action-required results aren't diagnosed automatically. You can start it by hand.",
+  failed: "My last diagnosis didn't finish.",
 } as const
 
 /** The incident as a conversation: its history, Remedy's diagnosis, what the maintainer asked, what waits for a decision. */
@@ -49,13 +50,21 @@ export default function IncidentThreadPage({ id }: { id: number }) {
   const incident = detail?.incident
   useShellHeader(incident ? { title: incident.title, back: '/incidents' } : null)
   const [diagnoseBusy, setDiagnoseBusy] = useState(false)
-  const [diagnoseError, setDiagnoseError] = useState('')
+  // The state the incident was in when starting the diagnosis failed: the message is only shown while it is still in that state.
+  const [diagnoseFailure, setDiagnoseFailure] = useState<{ state: string; message: string } | null>(null)
+  const diagnoseError = diagnoseFailure && diagnoseFailure.state === incident?.state ? diagnoseFailure.message : ''
   const [panelError, setPanelError] = useState('')
+  const [panelBusy, setPanelBusy] = useState(false)
 
   const items = useMemo(
     () =>
       incident && detail
-        ? buildThread({ incident, activity: detail.activity, questionRuns: runs.filter((r) => r.role === 'adhoc'), asks })
+        ? buildThread({ incident, activity: detail.activity, questionRuns: runs.filter((r) => r.role === 'adhoc'),
+            asks,
+            // The runs are newest first.
+            lastResponder: runs.find((r) => r.role === 'responder'),
+            diagnosisRun: runs.find((r) => r.role === 'responder' && r.status === 'succeeded'),
+          })
         : [],
     [incident, detail, runs, asks],
   )
@@ -73,34 +82,43 @@ export default function IncidentThreadPage({ id }: { id: number }) {
 
   async function diagnose() {
     setDiagnoseBusy(true)
-    setDiagnoseError('')
+    setDiagnoseFailure(null)
     try {
       await api.diagnoseIncident(id)
       await reload()
     } catch (e) {
-      setDiagnoseError(e instanceof ApiError ? e.message : 'Could not start the diagnosis')
+      setDiagnoseFailure({ state: incident?.state ?? '', message: e instanceof ApiError ? e.message : 'Could not start the diagnosis' })
     } finally {
       setDiagnoseBusy(false)
     }
   }
 
   async function ignore() {
+    if (panelBusy) return
+    setPanelBusy(true)
     setPanelError('')
     try {
       await api.ignoreIncident(id)
       await reload()
       toast.show(`Ignored #${id}.`, () => {
+        if (panelBusy) return
+        setPanelBusy(true)
         void api
           .unignoreIncident(id)
           .then(reload)
           .catch((e: unknown) => setPanelError(e instanceof ApiError ? e.message : 'Could not stop ignoring the incident'))
+          .finally(() => setPanelBusy(false))
       })
     } catch (e) {
       setPanelError(e instanceof ApiError ? e.message : 'Could not ignore the incident')
+    } finally {
+      setPanelBusy(false)
     }
   }
 
   async function unignore() {
+    if (panelBusy) return
+    setPanelBusy(true)
     setPanelError('')
     try {
       await api.unignoreIncident(id)
@@ -108,6 +126,8 @@ export default function IncidentThreadPage({ id }: { id: number }) {
       toast.show(`Stopped ignoring #${id}.`)
     } catch (e) {
       setPanelError(e instanceof ApiError ? e.message : 'Could not stop ignoring the incident')
+    } finally {
+      setPanelBusy(false)
     }
   }
 
@@ -174,8 +194,13 @@ export default function IncidentThreadPage({ id }: { id: number }) {
                 )}
                 <div>
                   <Button disabled={diagnoseBusy} onClick={() => void diagnose()}>
-                    {item.reason === 'manual' ? 'Diagnose' : 'Diagnose now'}
+                    {item.reason === 'manual' ? 'Diagnose' : item.reason === 'failed' ? 'Diagnose again' : 'Diagnose now'}
                   </Button>
+                  {item.reason === 'failed' && item.runId && (
+                    <Link to={`/runs/${encodeURIComponent(item.runId)}`} className={cn(buttonVariants({ variant: 'outline' }), 'ml-2')}>
+                      See my work
+                    </Link>
+                  )}
                 </div>
               </>
             )}
@@ -241,6 +266,12 @@ export default function IncidentThreadPage({ id }: { id: number }) {
                 <dd className="font-mono text-[12.5px]">{shortSha(incident.headSha)}</dd>
               </>
             )}
+            {incident.source !== 'github' && incident.severity && incident.severity !== 'none' && (
+              <>
+                <dt className="text-subtle">Severity</dt>
+                <dd>{incident.severity}</dd>
+              </>
+            )}
             <dt className="text-subtle">Occurrences</dt>
             <dd>{incident.occurrences}</dd>
             <dt className="text-subtle">First seen</dt>
@@ -278,12 +309,12 @@ export default function IncidentThreadPage({ id }: { id: number }) {
             </span>
           )}
           {incident.state === 'ignored' ? (
-            <Button variant="outline" size="sm" className="self-start" onClick={() => void unignore()}>
+            <Button variant="outline" size="sm" className="self-start" disabled={panelBusy} onClick={() => void unignore()}>
               Stop ignoring
             </Button>
           ) : (
             (incident.state === 'open' || incident.state === 'diagnosing' || incident.state === 'diagnosed') && (
-              <Button variant="outline" size="sm" className="self-start" onClick={() => void ignore()}>
+              <Button variant="outline" size="sm" className="self-start" disabled={panelBusy} onClick={() => void ignore()}>
                 Ignore
               </Button>
             )
@@ -303,7 +334,9 @@ function AnswerMessage({ run }: { run: Run }) {
       {phase === 'queued' && <span className="text-[13px] text-muted-foreground">Waiting for the runner…</span>}
       {phase === 'running' && <span className="text-[13px] text-muted-foreground">Working…</span>}
       {phase === 'succeeded' && (
-        <p className="font-serif text-[clamp(16.5px,1.9vw,19px)] leading-relaxed text-pretty break-words whitespace-pre-wrap">{run.result}</p>
+        <p className="font-serif text-[clamp(16.5px,1.9vw,19px)] leading-relaxed text-pretty break-words whitespace-pre-wrap">
+          {run.result.trim() === '' ? 'Done. There is nothing more to say.' : run.result}
+        </p>
       )}
       {failure && <FailCard title={failure.title}>{failure.text}</FailCard>}
       <div>
