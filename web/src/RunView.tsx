@@ -81,6 +81,7 @@ export default function RunView({ id }: { id: string }) {
             {run.exitCode !== undefined && <span className="text-sm text-muted-foreground">exit {run.exitCode}</span>}
             {run.role === 'responder' && <Badge variant="secondary">responder</Badge>}
             {run.mcp && <Badge variant="secondary">tools</Badge>}
+            {run.cluster && <Badge variant="secondary">cluster</Badge>}
             {run.failureReason === 'timeout' && <Badge variant="destructive">timed out</Badge>}
             {run.failureReason === 'invalid_output' && <Badge variant="destructive">invalid answer</Badge>}
             {run.failureReason === 'cancelled' && <Badge variant="destructive">cancelled</Badge>}

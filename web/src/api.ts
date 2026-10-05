@@ -18,10 +18,24 @@ export interface Run {
   failureReason?: 'timeout' | 'invalid_output' | 'cancelled' | 'runner_lost'
   /** The run has access to the gatekeeper's tools. */
   mcp?: boolean
+  /** The run has the cluster tools of the gatekeeper (it was started with "Allow cluster tools"). */
+  cluster?: boolean
   /** The maintainer cancelled the run; the runner is stopping the agent. */
   cancelRequested?: boolean
   /** The id of the approval the run waits for. Only `GET /api/runs/{id}` has it, and only while there is one. */
   waitingApproval?: number
+}
+
+/** What the control plane can do in a cluster. It carries no address and no token. */
+export interface Capabilities {
+  cluster: {
+    /** The cluster can be read: a run can be started with cluster tools. */
+    read: boolean
+    /** Actions in the cluster are possible, each one after an approval. */
+    write: boolean
+    /** The namespaces in which actions may be used. */
+    namespaces: string[]
+  }
 }
 
 /** A call of an agent to a gatekeeper tool: a row of the audit log, and for a mutating tool an approval. */
@@ -180,7 +194,9 @@ export const api = {
   logout: () => request<void>('POST', '/api/logout'),
   me: () => request<{ user: string }>('GET', '/api/me'),
   listRuns: () => request<Run[]>('GET', '/api/runs'),
-  createRun: (prompt: string, tools = false) => request<Run>('POST', '/api/runs', { prompt, tools }),
+  createRun: (prompt: string, tools = false, cluster = false) =>
+    request<Run>('POST', '/api/runs', { prompt, tools, cluster }),
+  getCapabilities: () => request<Capabilities>('GET', '/api/capabilities'),
   getRun: (id: string) => request<Run>('GET', `/api/runs/${id}`),
   listToolCalls: (runId: string) => request<ToolCall[]>('GET', `/api/runs/${runId}/tool-calls`),
   cancelRun: (id: string) => request<void>('POST', `/api/runs/${id}/cancel`),
