@@ -1,4 +1,4 @@
-import type { Incident } from './api.ts'
+import type { Incident, ToolCall } from './api.ts'
 
 export type Section = 'today' | 'conversations' | 'needs' | 'ask' | 'setup'
 
@@ -45,12 +45,14 @@ export function defaultHeader(pathname: string): Header {
 /** What the shell shows: calls that wait for a decision, the active incidents, whether the server answers, whether it has answered once. */
 export interface ShellState {
   pending: number
+  /** The calls that wait for a decision. Oldest asked first is not guaranteed: the API answers newest first. */
+  asks: ToolCall[]
   incidents: Incident[]
   online: boolean
   loaded: boolean
 }
 
-export const emptyShell: ShellState = { pending: 0, incidents: [], online: true, loaded: false }
+export const emptyShell: ShellState = { pending: 0, asks: [], incidents: [], online: true, loaded: false }
 
 /** The statuses a reverse proxy answers when it cannot reach the server. Remedy's own routes that the shell polls never answer them. */
 export function isGatewayStatus(status: number): boolean {
@@ -64,13 +66,15 @@ export function isGatewayStatus(status: number): boolean {
  */
 export function nextShell(
   prev: ShellState,
-  approvals: PromiseSettledResult<readonly unknown[]>,
+  approvals: PromiseSettledResult<readonly ToolCall[]>,
   incidents: PromiseSettledResult<Incident[]>,
   isHttpError: (reason: unknown) => boolean,
 ): ShellState {
   const unreachable = [approvals, incidents].some((r) => r.status === 'rejected' && !isHttpError(r.reason))
+  const asks = approvals.status === 'fulfilled' ? [...approvals.value] : prev.asks
   return {
-    pending: approvals.status === 'fulfilled' ? approvals.value.length : prev.pending,
+    pending: asks.length,
+    asks,
     incidents: incidents.status === 'fulfilled' ? incidents.value : prev.incidents,
     online: !unreachable,
     loaded: prev.loaded || incidents.status === 'fulfilled',

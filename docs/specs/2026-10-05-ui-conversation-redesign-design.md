@@ -152,7 +152,7 @@ Remedy cannot back). A `401` shows "That isn't the admin password."; any other e
 
 - One card per incident: a round state marker, the title (`title`, for every source), "repository, ref" for GitHub and the source's label otherwise, the age, a
   preview in Literata, and chips for the state, "result, N times" and "asks you" when an approval waits for this incident (`ToolCall.incidentId`).
-- Filter pills Active, Resolved and Ignored with counts (one `all` request, counted in the browser). Source and repository stay as small pill selects, shown
+- Filter pills Active, Resolved and Ignored with counts (one `all` request and one `ignored` request, merged by id and counted in the browser: the API answers the 200 incidents seen most recently, and an ignored incident is not seen any more, so without the second request it would drop out of the list). Source and repository stay as small pill selects, shown
   only when there is more than one source or repository. The list polls every 5 s.
 - **Preview**, from data: ignored: "You ignored this incident."; resolved: "Resolved: <reason>."; an approval waits: its question; diagnosing: "I'm looking into
   it..."; a diagnosis: its `summary`; otherwise "I haven't looked yet." or, when `autoDiagnose` is false, "I don't diagnose this kind of result automatically. Ask

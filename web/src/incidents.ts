@@ -8,6 +8,23 @@ export const incidentStateColor: Record<IncidentState, string> = {
   ignored: 'bg-neutral',
 }
 
+/** The soft background and the text colour of an incident's state: the marker of a card and the state chip. */
+export const incidentStateSoft: Record<IncidentState, string> = {
+  open: 'bg-soft-open',
+  diagnosing: 'bg-soft-diagnosing',
+  diagnosed: 'bg-soft-diagnosed',
+  resolved: 'bg-soft-resolved',
+  ignored: 'bg-soft-ignored',
+}
+
+export const incidentStateText: Record<IncidentState, string> = {
+  open: 'text-destructive',
+  diagnosing: 'text-primary',
+  diagnosed: 'text-info',
+  resolved: 'text-success',
+  ignored: 'text-neutral',
+}
+
 /** Links that leave Remedy are underlined, so that they do not read as plain text. */
 export const externalLinkClass = 'underline decoration-muted-foreground/50 underline-offset-4 hover:decoration-foreground'
 
