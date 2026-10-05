@@ -36,6 +36,8 @@ func (s *srv) diagnoseIncident(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "incident not found")
 	case errors.Is(err, store.ErrNotDiagnosable):
 		writeErr(w, http.StatusConflict, "this incident cannot be diagnosed: it is resolved, ignored or already being diagnosed")
+	case errors.Is(err, responder.ErrSourceNotSupported):
+		writeErr(w, http.StatusConflict, "the diagnosis of an incident from this source is not available yet")
 	case errors.Is(err, store.ErrBusy):
 		writeErr(w, http.StatusConflict, "another run is queued or running; try again when it has finished")
 	case errors.Is(err, responder.ErrNoConnection):

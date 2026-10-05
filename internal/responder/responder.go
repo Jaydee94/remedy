@@ -30,6 +30,9 @@ var (
 	ErrNoConnection = errors.New("GitHub is not connected, or the stored token cannot be used")
 	// ErrGitHub means a read from GitHub failed.
 	ErrGitHub = errors.New("could not read the failing run from GitHub")
+	// ErrSourceNotSupported means the incident does not come from GitHub, and the responder handles only those until
+	// plan 2d-3.
+	ErrSourceNotSupported = errors.New("the diagnosis of an incident from this source is not available yet")
 	// ErrNotSnapshotRun means the run is not a running responder run, so it has no snapshot.
 	ErrNotSnapshotRun = errors.New("the run does not take a snapshot")
 )
@@ -111,6 +114,9 @@ func (r *Responder) start(ctx context.Context, incidentID int64, automatic bool)
 	// Refuse before any network traffic what the store would refuse anyway.
 	if in.State != store.IncOpen && in.State != store.IncDiagnosed {
 		return run.Run{}, store.ErrNotDiagnosable
+	}
+	if in.Source != store.SourceGitHub {
+		return run.Run{}, ErrSourceNotSupported
 	}
 	if busy, err := r.Store.HasActiveRun(ctx); err != nil {
 		return run.Run{}, err

@@ -12,21 +12,28 @@ import (
 )
 
 type incidentView struct {
-	ID             int64      `json:"id"`
-	RepoID         int64      `json:"repoId"`
-	Repo           string     `json:"repo"`
-	Ref            string     `json:"ref"`
-	RefURL         string     `json:"refUrl,omitempty"`
-	CheckName      string     `json:"checkName"`
-	State          string     `json:"state"`
-	Conclusion     string     `json:"conclusion"`
-	HeadSHA        string     `json:"headSha"`
-	CheckURL       string     `json:"checkUrl,omitempty"`
-	Occurrences    int        `json:"occurrences"`
-	FirstSeen      time.Time  `json:"firstSeen"`
-	LastSeen       time.Time  `json:"lastSeen"`
-	ResolvedAt     *time.Time `json:"resolvedAt,omitempty"`
-	ResolvedReason string     `json:"resolvedReason,omitempty"`
+	ID int64 `json:"id"`
+	// Source is github, alertmanager or argocd; Title is the line of the list, Details the signal of an incident from a
+	// source other than GitHub. The fields of GitHub below are empty for such an incident.
+	Source         string          `json:"source"`
+	Title          string          `json:"title"`
+	Severity       string          `json:"severity"`
+	AutoDiagnose   bool            `json:"autoDiagnose"`
+	Details        json.RawMessage `json:"details,omitempty"`
+	RepoID         int64           `json:"repoId"`
+	Repo           string          `json:"repo"`
+	Ref            string          `json:"ref"`
+	RefURL         string          `json:"refUrl,omitempty"`
+	CheckName      string          `json:"checkName"`
+	State          string          `json:"state"`
+	Conclusion     string          `json:"conclusion"`
+	HeadSHA        string          `json:"headSha"`
+	CheckURL       string          `json:"checkUrl,omitempty"`
+	Occurrences    int             `json:"occurrences"`
+	FirstSeen      time.Time       `json:"firstSeen"`
+	LastSeen       time.Time       `json:"lastSeen"`
+	ResolvedAt     *time.Time      `json:"resolvedAt,omitempty"`
+	ResolvedReason string          `json:"resolvedReason,omitempty"`
 
 	Diagnoses       int             `json:"diagnoses"`
 	LastDiagnosisAt *time.Time      `json:"lastDiagnosisAt,omitempty"`
@@ -37,7 +44,8 @@ type incidentView struct {
 
 func incidentViewOf(in store.Incident) incidentView {
 	return incidentView{
-		ID: in.ID, RepoID: in.RepoID, Repo: in.RepoName, Ref: in.Ref, RefURL: in.RefURL, CheckName: in.CheckName,
+		ID: in.ID, Source: in.Source, Title: in.Title, Severity: in.Severity, AutoDiagnose: in.AutoDiagnose, Details: in.Details,
+		RepoID: in.RepoID, Repo: in.RepoName, Ref: in.Ref, RefURL: in.RefURL, CheckName: in.CheckName,
 		State: string(in.State), Conclusion: in.Conclusion, HeadSHA: in.HeadSHA, CheckURL: in.CheckURL,
 		Occurrences: in.Occurrences, FirstSeen: in.FirstSeen, LastSeen: in.LastSeen,
 		ResolvedAt: in.ResolvedAt, ResolvedReason: in.ResolvedReason,
@@ -51,6 +59,14 @@ type activityView struct {
 	At      time.Time `json:"at"`
 	Kind    string    `json:"kind"`
 	Summary string    `json:"summary"`
+}
+
+func validSourceFilter(s string) bool {
+	switch s {
+	case "", store.SourceGitHub, store.SourceAlertmanager, store.SourceArgoCD:
+		return true
+	}
+	return false
 }
 
 func validStateFilter(s string) bool {
@@ -73,6 +89,11 @@ func (s *srv) listIncidents(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "unknown state")
 		return
 	}
+	source := r.URL.Query().Get("source")
+	if !validSourceFilter(source) {
+		writeErr(w, http.StatusBadRequest, "unknown source")
+		return
+	}
 	var repoID int64
 	if v := r.URL.Query().Get("repo"); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
@@ -83,7 +104,7 @@ func (s *srv) listIncidents(w http.ResponseWriter, r *http.Request) {
 		repoID = id
 	}
 
-	list, err := s.d.Store.ListIncidents(r.Context(), store.IncidentFilter{State: state, RepoID: repoID, Limit: 200})
+	list, err := s.d.Store.ListIncidents(r.Context(), store.IncidentFilter{State: state, RepoID: repoID, Source: source, Limit: 200})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not list incidents")
 		return

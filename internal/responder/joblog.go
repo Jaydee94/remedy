@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Jaydee94/remedy/internal/github"
+	"github.com/Jaydee94/remedy/internal/store"
 )
 
 // JobLog returns the raw log of the job behind an incident's check. note says why there is no log, or what is
@@ -15,6 +16,9 @@ func (r *Responder) JobLog(ctx context.Context, incidentID int64) (log, note str
 	in, err := r.Store.GetIncident(ctx, incidentID)
 	if err != nil {
 		return "", "", err
+	}
+	if in.Source != store.SourceGitHub {
+		return "", "this incident does not come from GitHub, so it has no job log", nil
 	}
 	src, err := r.source(ctx)
 	if errors.Is(err, ErrNoConnection) {
