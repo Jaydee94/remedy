@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Jaydee94/remedy/internal/diagnosis"
+	"github.com/Jaydee94/remedy/internal/prompt"
 	"github.com/Jaydee94/remedy/internal/reaper"
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/run"
@@ -14,12 +15,16 @@ import (
 )
 
 // claimFor is the answer to a runner that claimed a run. A responder run also gets the diagnosis schema and
-// the order to download the repository snapshot first.
+// the order to download the repository snapshot first. A question about an incident (an ad-hoc run with an incident) gets the
+// frame of prompt.Question around the stored question; the stored prompt stays the bare question.
 func claimFor(r run.Run, mcpToken string) run.Claim {
 	c := run.Claim{Run: r, MCPToken: mcpToken}
 	if r.Role == run.RoleResponder {
 		c.Schema = json.RawMessage(diagnosis.Schema)
 		c.Snapshot = true
+	}
+	if r.Role == run.RoleAdhoc && r.IncidentID != nil {
+		c.Prompt = prompt.Question(*r.IncidentID, r.Prompt)
 	}
 	return c
 }
