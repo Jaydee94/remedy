@@ -1,7 +1,9 @@
+import { useRef } from 'react'
 import { Link } from 'react-router'
 import { splitApprovals } from './needs.ts'
 import { timeAgo } from './incidents.ts'
 import { useApprovals } from './useApprovals.ts'
+import { useNow } from './useNow.ts'
 import AnsweredRow from '@/components/needs/AnsweredRow'
 import ApprovalAsk from '@/components/conversation/ApprovalAsk'
 import EmptyState from '@/components/EmptyState'
@@ -9,19 +11,37 @@ import RemedyMessage from '@/components/conversation/RemedyMessage'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 
+const LOCK_TICK_MS = 250 // the asks unlock about 700 ms after the list changed: the clock must tick well within that
+
 const linkClass = 'rounded-sm text-primary outline-none hover:text-primary-hover focus-visible:ring-3 focus-visible:ring-ring/50'
 
 /** What waits for a decision, as Remedy's questions, oldest first; under them what was answered. */
 export default function NeedsYouPage() {
-  const { calls, error, reload } = useApprovals()
+  const { calls, error, reload, lockedUntil } = useApprovals()
   const { pending, answered } = splitApprovals(calls ?? [])
+  const locked = useNow(LOCK_TICK_MS).getTime() < lockedUntil
+  const heading = useRef<HTMLHeadingElement>(null)
+
+  // After a decision the control that had the focus is gone and the focus falls to the page: bring it back to the top of the page.
+  async function changed() {
+    await reload()
+    await new Promise((resolve) => setTimeout(resolve, 50)) // let the list render without the decided ask
+    const active = document.activeElement
+    if (active === null || active === document.body) heading.current?.focus({ preventScroll: true })
+  }
 
   return (
     <div className="mx-auto flex max-w-205 flex-col gap-6 px-4 py-5 md:px-10 md:py-12">
       <div className="flex flex-col gap-1">
-        <h1 className="font-serif text-[clamp(26px,3vw,34px)] font-normal">Needs you</h1>
+        <h1 ref={heading} tabIndex={-1} className="font-serif text-[clamp(26px,3vw,34px)] font-normal outline-none">
+          Needs you
+        </h1>
         <span className="text-muted-foreground">Questions I can't answer for myself. I wait for you before I change anything.</span>
       </div>
+
+      <p className="sr-only" aria-live="polite">
+        {pending.length === 0 ? '' : pending.length === 1 ? '1 question waits for you.' : `${pending.length} questions wait for you.`}
+      </p>
 
       {error && (
         <Alert variant="destructive">
@@ -52,7 +72,7 @@ export default function NeedsYouPage() {
                     The run
                   </Link>
                 </span>
-                <ApprovalAsk call={call} variant="large" onChanged={() => void reload()} />
+                <ApprovalAsk call={call} variant="large" disabled={locked} onChanged={() => void changed()} />
               </RemedyMessage>
             ))
           )}
