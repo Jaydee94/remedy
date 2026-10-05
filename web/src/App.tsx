@@ -4,7 +4,7 @@ import { api } from './api.ts'
 import AppLayout from './components/AppLayout.tsx'
 import LegacyPage from './components/LegacyPage.tsx'
 import ApprovalsPage from './ApprovalsPage.tsx'
-import IncidentsPage from './IncidentsPage.tsx'
+import ConversationsPage from './ConversationsPage.tsx'
 import IncidentView from './IncidentView.tsx'
 import Login from './Login.tsx'
 import NotFound from './NotFound.tsx'
@@ -43,9 +43,9 @@ export default function App() {
   return (
     <Routes>
       <Route element={<AppLayout onSignOut={signOut} />}>
+        <Route path="incidents" element={<ConversationsPage />} />
         <Route element={<LegacyPage />}>
           <Route index element={<TimelinePage />} />
-          <Route path="incidents" element={<IncidentsPage />} />
           <Route path="incidents/:id" element={<IncidentRoute />} />
           <Route path="approvals" element={<ApprovalsPage />} />
           <Route path="runs" element={<RunsPage />} />
