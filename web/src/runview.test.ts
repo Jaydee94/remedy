@@ -49,6 +49,12 @@ describe('stepLabel', () => {
     assert.equal(stepLabel('mcp__remedy__incident_get', { id: { x: 1 } }), 'Read an incident')
     assert.equal(stepLabel('SomethingNew', { a: 1 }), 'Used SomethingNew')
   })
+
+  it('cuts the name of an unknown tool', () => {
+    const label = stepLabel(`mcp__remedy__${'x'.repeat(500)}`, {})
+    assert.ok(label.length <= 'Used '.length + 81, label.length.toString())
+    assert.ok(label.startsWith('Used xxx'))
+  })
 })
 
 describe('runSteps', () => {

@@ -90,7 +90,7 @@ export function stepLabel(tool: string, input: unknown): string {
     case 'Glob':
       return v('pattern') ? `Listed the files matching ${v('pattern')}` : 'Listed files'
   }
-  return `Used ${name}`
+  return `Used ${line(name, 80)}`
 }
 
 const MAX_ARGS = 240
