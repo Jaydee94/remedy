@@ -95,6 +95,79 @@ describe('buildThread: the diagnosis', () => {
     assert.equal(u.sourceLabel, 'Alertmanager')
   })
 
+  it('shows the failure of the last responder run instead of a fresh incident', () => {
+    const failed = run({ id: 'rf', role: 'responder', status: 'failed' })
+    const mk = (over: Partial<Incident> = {}, lastResponder: Run | undefined = failed) =>
+      buildThread({ incident: inc(over), activity: [], questionRuns: [], asks: [], lastResponder }).find((i) => i.type === 'undiagnosed')
+    for (const autoDiagnose of [true, false]) {
+      const u = mk({ autoDiagnose })
+      assert.ok(u && u.type === 'undiagnosed')
+      assert.equal(u.reason, 'failed')
+      assert.equal(u.runId, 'rf')
+    }
+  })
+
+  it('keeps fresh and manual when the last responder run did not fail or there is none', () => {
+    const mk = (over: Partial<Incident>, lastResponder?: Run) =>
+      buildThread({ incident: inc(over), activity: [], questionRuns: [], asks: [], lastResponder }).find((i) => i.type === 'undiagnosed')
+    const ok = run({ role: 'responder', status: 'succeeded' })
+    for (const last of [ok, undefined]) {
+      const fresh = mk({}, last)
+      assert.ok(fresh && fresh.type === 'undiagnosed' && fresh.reason === 'fresh' && fresh.runId === undefined)
+      const manual = mk({ autoDiagnose: false }, last)
+      assert.ok(manual && manual.type === 'undiagnosed' && manual.reason === 'manual')
+    }
+  })
+
+  it('lets the source win over a failed responder run', () => {
+    const items = buildThread({
+      incident: inc({ source: 'alertmanager', repoId: 0, repo: '', ref: '' }),
+      activity: [],
+      questionRuns: [],
+      asks: [],
+      lastResponder: run({ role: 'responder', status: 'failed' }),
+    })
+    const u = items.find((i) => i.type === 'undiagnosed')
+    assert.ok(u && u.type === 'undiagnosed' && u.reason === 'source')
+  })
+
+  it('does not change a stored diagnosis because the last responder run failed', () => {
+    const items = buildThread({ incident: inc({ state: 'diagnosed', diagnosis }), activity: [], questionRuns: [], asks: [], lastResponder: run({ role: 'responder', status: 'failed' }) })
+    assert.ok(!types(items).includes('undiagnosed'))
+    assert.ok(types(items).includes('diagnosis'))
+  })
+
+  it('points the diagnosis at the succeeded responder run, and falls back to the latest run of the incident', () => {
+    const mk = (diagnosisRun?: Run) =>
+      buildThread({ incident: inc({ state: 'diagnosed', diagnosis, runId: 'latest' }), activity: [], questionRuns: [], asks: [], diagnosisRun }).find((i) => i.type === 'diagnosis')
+    const d = mk(run({ id: 'rok', role: 'responder' }))
+    assert.ok(d && d.type === 'diagnosis' && d.runId === 'rok')
+    const fallback = mk()
+    assert.ok(fallback && fallback.type === 'diagnosis' && fallback.runId === 'latest')
+  })
+
+  it('shows both the diagnosis and that it is working when the incident is diagnosed again', () => {
+    const items = buildThread({ incident: inc({ state: 'diagnosing', diagnosis, runId: 'rd', lastDiagnosisAt: '2026-10-05T08:30:00Z' }), activity: [], questionRuns: [], asks: [] })
+    assert.equal(items.filter((i) => i.type === 'diagnosis').length, 1)
+    const w = items.filter((i) => i.type === 'working')
+    assert.equal(w.length, 1)
+    assert.equal(w[0].at, '2026-10-05T08:30:00Z')
+  })
+
+  it('times the diagnosis by the finished entry, then the last diagnosis, then the last sighting', () => {
+    const at = (over: Partial<Incident>, activity: ActivityEntry[]) =>
+      buildThread({ incident: inc({ state: 'diagnosed', diagnosis, ...over }), activity, questionRuns: [], asks: [] }).find((i) => i.type === 'diagnosis')?.at
+    assert.equal(at({ lastDiagnosisAt: '2026-10-05T07:50:00Z' }, [act(1, 'diagnosis_finished', '2026-10-05T08:00:00Z')]), '2026-10-05T08:00:00Z')
+    assert.equal(at({ lastDiagnosisAt: '2026-10-05T07:50:00Z' }, []), '2026-10-05T07:50:00Z')
+    assert.equal(at({}, []), '2026-10-05T07:00:00Z')
+  })
+
+  it('names the head commit when the diagnosed commit is empty', () => {
+    const d = buildThread({ incident: inc({ state: 'diagnosed', diagnosis, diagnosedSha: '' }), activity: [], questionRuns: [], asks: [] }).find((i) => i.type === 'diagnosis')
+    assert.ok(d && d.type === 'diagnosis')
+    assert.equal(d.sha, '3f9c2ab')
+  })
+
   it('does not offer a diagnosis for a resolved or ignored incident', () => {
     for (const state of ['resolved', 'ignored'] as const) {
       assert.ok(!types(buildThread({ incident: inc({ state }), activity: [], questionRuns: [], asks: [] })).includes('undiagnosed'))
@@ -119,6 +192,11 @@ describe('buildThread: questions, answers and approvals', () => {
   it('does not show the responder runs of the incident as questions', () => {
     const items = buildThread({ incident: inc(), activity: [], questionRuns: [run({ role: 'responder' })], asks: [] })
     assert.ok(!types(items).includes('question'))
+  })
+
+  it('does not count the approvals of a responder run among the question runs', () => {
+    const items = buildThread({ incident: inc(), activity: [], questionRuns: [run({ id: 'rr', role: 'responder' })], asks: [call({ id: 11, runId: 'rr', incidentId: undefined })] })
+    assert.ok(!types(items).includes('ask'))
   })
 
   it('shows the approvals that wait for this incident', () => {
