@@ -155,6 +155,9 @@ func (g *Gatekeeper) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "tools/list":
 		list := make([]map[string]any, 0, len(g.tools))
 		for _, t := range g.tools {
+			if !t.offeredTo(r0) {
+				continue
+			}
 			list = append(list, map[string]any{"name": t.Name, "description": t.Description, "inputSchema": t.Schema})
 		}
 		writeJSON(w, http.StatusOK, result(req.ID, map[string]any{"tools": list}))
