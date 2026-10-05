@@ -37,23 +37,30 @@ type failure struct {
 	message string
 }
 
-// Server is the fake API server. It accepts one bearer token and answers 401 to any other.
+// Server is the fake API server. It accepts the bearer tokens it was given and answers 401 to any other.
 type Server struct {
 	*httptest.Server
-	token string
+	tokens map[string]bool
 
 	mu       sync.Mutex
 	reqs     []Request
 	failures map[string]failure
 }
 
-// New starts a server that accepts the token.
+// New starts a server that accepts the token. Accept adds another: the read and the write identity have one each.
 func New(t testing.TB, token string) *Server {
 	t.Helper()
-	s := &Server{token: token, failures: map[string]failure{}}
+	s := &Server{tokens: map[string]bool{token: true}, failures: map[string]failure{}}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.Close)
 	return s
+}
+
+// Accept makes the server accept another bearer token.
+func (s *Server) Accept(token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tokens[token] = true
 }
 
 // Requests returns every request the server has seen, oldest first.
@@ -85,10 +92,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.reqs = append(s.reqs, Request{r.Method, r.URL.Path, r.URL.RawQuery, r.Header.Get("Authorization"), body.String()})
 	fail, failing := s.failures[r.URL.Path]
+	known := s.tokens[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")] && strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ")
 	s.mu.Unlock()
 
 	switch {
-	case r.Header.Get("Authorization") != "Bearer "+s.token:
+	case !known:
 		status(w, http.StatusUnauthorized, "Unauthorized")
 	case failing:
 		status(w, fail.status, fail.message)

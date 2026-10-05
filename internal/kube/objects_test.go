@@ -161,6 +161,52 @@ func TestListPodsSaysWhatIsWrongWithAPod(t *testing.T) {
 	}
 }
 
+func TestGetOneWorkload(t *testing.T) {
+	r, srv := recordedReader(t, "")
+	ctx := context.Background()
+	web, err := r.GetWorkload(ctx, "deployment", "demo", "web")
+	if err != nil || web.Name != "web" || web.Namespace != "demo" || web.Kind != "deployment" || web.Desired != 2 || !web.Healthy() {
+		t.Fatalf("web = %+v, %v", web, err)
+	}
+	if ds, err := r.GetWorkload(ctx, "daemonset", "kube-system", "kindnet"); err != nil || ds.Kind != "daemonset" || ds.Desired != 1 {
+		t.Fatalf("kindnet = %+v, %v", ds, err)
+	}
+	if _, err := r.GetWorkload(ctx, "deployment", "demo", "nope"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a deployment that is not there: %v", err)
+	}
+	if _, err := r.GetWorkload(ctx, "deployment", "other", "crashy"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a deployment of another namespace: %v", err)
+	}
+	for _, bad := range []struct{ kind, ns, name string }{{"secret", "demo", "x"}, {"deployment", "", "x"}, {"deployment", "De mo", "x"}, {"deployment", "demo", "../x"}} {
+		if _, err := r.GetWorkload(ctx, bad.kind, bad.ns, bad.name); !errors.Is(err, ErrInvalid) {
+			t.Errorf("GetWorkload(%+v) = %v", bad, err)
+		}
+	}
+	for _, req := range srv.Requests() {
+		if strings.Contains(req.Path, "secret") || strings.Contains(req.Path, "..") {
+			t.Fatalf("an argument that cannot be used reached the server: %+v", req)
+		}
+	}
+}
+
+func TestGetOnePod(t *testing.T) {
+	r, _ := recordedReader(t, "")
+	ctx := context.Background()
+	name := kubetest.PodName(t, "crashy")
+	p, err := r.GetPod(ctx, "demo", name)
+	if err != nil || p.Name != name || p.Namespace != "demo" || p.Created.IsZero() || p.Problem() == "" {
+		t.Fatalf("pod = %+v, %v", p, err)
+	}
+	if _, err := r.GetPod(ctx, "demo", "gone-1"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a pod that is not there: %v", err)
+	}
+	for _, bad := range []struct{ ns, name string }{{"", "x"}, {"De mo", "x"}, {"demo", "../x"}} {
+		if _, err := r.GetPod(ctx, bad.ns, bad.name); !errors.Is(err, ErrInvalid) {
+			t.Errorf("GetPod(%+v) = %v", bad, err)
+		}
+	}
+}
+
 // A Deployment without spec.replicas wants one replica; the recording has none like that.
 func TestADeploymentWithoutReplicasWantsOne(t *testing.T) {
 	api := newFakeAPI(t, jsonReply(200, `{"items":[{"metadata":{"name":"a","namespace":"n"},"spec":{},"status":{"readyReplicas":1,"updatedReplicas":1,"availableReplicas":1}}]}`))
