@@ -1,5 +1,5 @@
-// Package incident turns observations of CI checks into incidents and keeps their lifecycle. It
-// knows nothing about GitHub: the poller hands it observations.
+// Package incident turns observations (of a CI check, an alert, an Argo CD application) into incidents and keeps their
+// lifecycle. It does not fetch anything: a poller hands it observations.
 package incident
 
 import (
@@ -17,6 +17,8 @@ import (
 const (
 	ReasonGreen    = "green"
 	ReasonPRClosed = "pr_closed"
+	// ReasonCleared is the reason for an incident of another source: the signal is no longer reported.
+	ReasonCleared = "cleared"
 )
 
 // ErrNotActive is returned when an incident cannot be changed because it is resolved or ignored.
@@ -50,8 +52,19 @@ func Classify(status, conclusion string) Class {
 	return Pending
 }
 
-// Observation is the state of one check on one ref, as seen by the poller.
+// Observation is the state of one signal, as seen by a poller: a check on a ref, an alert, an application.
+//
+// An empty Source means GitHub. The incident is then named by RepoID, Ref and CheckName, and Key, Title, Severity,
+// AutoDiagnose and Details are not used (the store derives them). Any other source names its incident with Key and says in
+// Title what the list shows; Class says whether it is there (Bad), gone (Green) or not decided yet (Pending).
 type Observation struct {
+	Source       string
+	Key          string
+	Title        string
+	Severity     string
+	AutoDiagnose bool
+	Details      json.RawMessage
+
 	RepoID     int64
 	RepoName   string
 	Ref        string // "pr:<number>" or "branch:<name>"
@@ -71,17 +84,25 @@ func (e *Engine) Observe(ctx context.Context, o Observation) error {
 	if o.Class == Pending {
 		return nil
 	}
-	cur, err := e.Store.FindActiveIncident(ctx, o.RepoID, o.Ref, o.CheckName)
+	source, key := o.Source, o.Key
+	if source == "" {
+		source, key = store.SourceGitHub, store.GitHubKey(o.RepoID, o.Ref, o.CheckName)
+	}
+	if key == "" {
+		return fmt.Errorf("an observation of %s needs a key", source)
+	}
+	cur, err := e.Store.FindActiveIncidentByKey(ctx, source, key)
 	if errors.Is(err, store.ErrNotFound) {
 		if o.Class == Green {
 			return nil
 		}
 		_, err := e.Store.OpenIncident(ctx, store.NewIncident{
+			Source: source, Key: o.Key, Title: o.Title, Severity: o.Severity, AutoDiagnose: o.AutoDiagnose, Details: o.Details,
 			RepoID: o.RepoID, Ref: o.Ref, RefURL: o.RefURL, CheckName: o.CheckName,
 			Conclusion: o.Conclusion, HeadSHA: o.HeadSHA, CheckURL: o.URL,
 		}, store.NewActivity{
 			Kind:    store.KindIncidentOpened,
-			Summary: fmt.Sprintf("%s %s on %s in %s", o.CheckName, verb(o.Conclusion), refLabel(o.Ref), o.RepoName),
+			Summary: openedText(source, o),
 			Data:    payload(o),
 		})
 		if errors.Is(err, store.ErrExists) {
@@ -96,10 +117,14 @@ func (e *Engine) Observe(ctx context.Context, o Observation) error {
 	var change error
 	switch {
 	case o.Class == Green:
-		change = e.Store.ResolveIncident(ctx, cur.ID, ReasonGreen, store.NewActivity{
+		reason := ReasonCleared
+		if cur.Source == store.SourceGitHub {
+			reason = ReasonGreen
+		}
+		change = e.Store.ResolveIncident(ctx, cur.ID, reason, store.NewActivity{
 			Kind:    store.KindIncidentResolved,
 			RepoID:  cur.RepoID,
-			Summary: fmt.Sprintf("%s is green again on %s in %s", cur.CheckName, refLabel(cur.Ref), cur.RepoName),
+			Summary: resolvedText(cur),
 			Data:    payload(o),
 		})
 	case cur.State == store.IncIgnored:
@@ -164,7 +189,7 @@ func (e *Engine) Ignore(ctx context.Context, id int64) (store.Incident, error) {
 	err = e.Store.IgnoreIncident(ctx, id, store.NewActivity{
 		Kind:    store.KindIncidentIgnored,
 		RepoID:  cur.RepoID,
-		Summary: fmt.Sprintf("Ignored the incident for %s on %s in %s", cur.CheckName, refLabel(cur.Ref), cur.RepoName),
+		Summary: ignoredText(cur),
 	})
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Incident{}, ErrNotActive
@@ -173,6 +198,41 @@ func (e *Engine) Ignore(ctx context.Context, id int64) (store.Incident, error) {
 		return store.Incident{}, err
 	}
 	return e.Store.GetIncident(ctx, id)
+}
+
+// noun is what a source's incident is called in a sentence.
+func noun(source string) string {
+	switch source {
+	case store.SourceAlertmanager:
+		return "alert"
+	case store.SourceArgoCD:
+		return "Argo CD application"
+	}
+	return source
+}
+
+// what names the thing an incident of another source is about: "alert HighLatency api".
+func what(source, title string) string { return noun(source) + " " + title }
+
+func openedText(source string, o Observation) string {
+	if source == store.SourceGitHub {
+		return fmt.Sprintf("%s %s on %s in %s", o.CheckName, verb(o.Conclusion), refLabel(o.Ref), o.RepoName)
+	}
+	return "Incident opened: " + what(source, o.Title)
+}
+
+func resolvedText(cur store.Incident) string {
+	if cur.Source == store.SourceGitHub {
+		return fmt.Sprintf("%s is green again on %s in %s", cur.CheckName, refLabel(cur.Ref), cur.RepoName)
+	}
+	return "Incident resolved: " + what(cur.Source, cur.Title) + " is no longer reported"
+}
+
+func ignoredText(cur store.Incident) string {
+	if cur.Source == store.SourceGitHub {
+		return fmt.Sprintf("Ignored the incident for %s on %s in %s", cur.CheckName, refLabel(cur.Ref), cur.RepoName)
+	}
+	return "Ignored the incident for " + what(cur.Source, cur.Title)
 }
 
 // RefLabel is how a ref reads in a sentence: "PR #7" or "branch main".
@@ -212,8 +272,14 @@ func short(sha string) string {
 }
 
 // payload is the machine-readable part of an activity entry. It never contains more than names,
-// SHAs and links that GitHub itself shows.
+// SHAs and links that the source itself shows.
 func payload(o Observation) json.RawMessage {
+	if o.Source != "" && o.Source != store.SourceGitHub {
+		b, _ := json.Marshal(map[string]string{
+			"source": o.Source, "key": o.Key, "title": o.Title, "severity": o.Severity, "conclusion": o.Conclusion, "url": o.URL,
+		})
+		return b
+	}
 	b, _ := json.Marshal(map[string]string{
 		"checkName": o.CheckName, "ref": o.Ref, "conclusion": o.Conclusion, "headSha": o.HeadSHA, "url": o.URL,
 	})
