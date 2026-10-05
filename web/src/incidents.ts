@@ -1,11 +1,11 @@
 import type { Incident, IncidentSource, IncidentState } from './api.ts'
 
 export const incidentStateColor: Record<IncidentState, string> = {
-  open: 'bg-rose-500',
-  diagnosing: 'bg-amber-500',
-  diagnosed: 'bg-sky-500',
-  resolved: 'bg-emerald-500',
-  ignored: 'bg-slate-600',
+  open: 'bg-destructive',
+  diagnosing: 'bg-primary',
+  diagnosed: 'bg-info',
+  resolved: 'bg-success',
+  ignored: 'bg-neutral',
 }
 
 /** Links that leave Remedy are underlined, so that they do not read as plain text. */
