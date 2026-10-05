@@ -34,7 +34,7 @@ const TITLE_MAX = 140
 /** One tidy line of text: whitespace collapsed, cut at `max` characters. */
 function oneLine(text: string, max: number): string {
   const flat = text.replace(/\s+/g, ' ').trim()
-  return flat.length > max ? `${flat.slice(0, max)}…` : flat
+  return flat.length > max ? `${flat.slice(0, max).trimEnd()}…` : flat
 }
 
 export interface RecentRun {

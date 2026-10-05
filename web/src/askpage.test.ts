@@ -39,6 +39,12 @@ describe('recentRun', () => {
     assert.ok(r.title.startsWith('line one line two xxx'))
     assert.ok(r.title.length <= 141)
     assert.ok(!r.title.includes('\n'))
+    assert.ok(r.title.endsWith('…'))
+  })
+  it('leaves no space before the ellipsis when the cut falls right after a space', () => {
+    const r = recentRun(run({ prompt: `${'a'.repeat(139)} ${'b'.repeat(50)}` }), [])
+    assert.ok(r.title.endsWith('…'))
+    assert.ok(!r.title.endsWith(' …'))
   })
   it('never shows the prompt of a responder run', () => {
     const r = recentRun(run({ role: 'responder', incidentId: 27, prompt: 'SECRET GitHub log' }), [])

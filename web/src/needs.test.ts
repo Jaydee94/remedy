@@ -42,6 +42,13 @@ describe('decisionView', () => {
     assert.equal(decisionView(call({ decision: 'approved', status: 'running' })).label, 'approved, running')
     assert.equal(decisionView(call({ decision: 'approved', status: 'waiting' })).label, 'approved, running')
   })
+  it('says approved, did not run for an approved action that was abandoned or denied afterwards', () => {
+    for (const status of ['abandoned', 'denied'] as const) {
+      const v = decisionView(call({ decision: 'approved', status }))
+      assert.equal(v.label, 'approved, did not run')
+      assert.equal(v.text, 'text-muted-foreground')
+    }
+  })
   it('names the other decisions, each with a token colour', () => {
     assert.equal(decisionView(call({ decision: 'denied', status: 'denied' })).label, 'denied')
     assert.equal(decisionView(call({ decision: 'abandoned', status: 'abandoned' })).label, 'abandoned')

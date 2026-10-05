@@ -18,6 +18,7 @@ export function decisionView(call: ToolCall): { label: string; text: string } {
     case 'approved':
       if (call.status === 'failed') return { label: 'approved, failed', text: 'text-destructive' }
       if (call.status === 'succeeded') return { label: 'approved', text: 'text-success' }
+      if (call.status === 'abandoned' || call.status === 'denied') return { label: 'approved, did not run', text: 'text-muted-foreground' }
       return { label: 'approved, running', text: 'text-primary' }
     case 'denied':
       return { label: 'denied', text: 'text-muted-foreground' }
