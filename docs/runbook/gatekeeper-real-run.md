@@ -45,13 +45,13 @@ printf '{"password":"%s"}' "$REMEDY_ADMIN_PASSWORD" | curl -sf -c cookies -H 'X-
 
 ## 2. Scenario A: a wait that outlasts the runner's time limit
 
-Under **Runs**, switch on **Allow gatekeeper tools** and start a run with the prompt
+On **Ask Remedy**, switch on the chip **Use gatekeeper tools** and start a run with the prompt
 
 > Use your tools to look at incident 1, then add a short note to it that says what you found. Reply with "finished" when the note is added.
 
 Expected: the run page shows the badge **tools**, the **Tool calls** card gets a read call (`incident_get` or
 `incident_list`) and then an `incident_add_note` call "waiting for you", the banner "This run is waiting for your approval"
-appears, and **Approvals** in the sidebar shows 1. The card shows the note the agent wants to add.
+appears, and **Needs you** in the sidebar shows 1. The card shows the note the agent wants to add.
 
 Now wait **more than 11 minutes** without deciding. Every minute check that the run is still `running`:
 `curl -s -b cookies http://localhost:8080/api/runs/<id> | jq .status`, and that `runner.log` has no "run timed out" and no "heartbeat failed".
@@ -64,13 +64,13 @@ WS=${REMEDY_WORKSPACES:-${TMPDIR:-/tmp}/remedy-workspaces}   # the runner logs i
 ls -l "$WS"/*-mcp-*/mcp.json     # -rw------- and a directory of its own, next to the workspace of the run
 ```
 
-Then **Approve** with a reason. Expected: the agent receives "note added" and finishes, the run ends `succeeded`, the incident's
+Then **Yes, add it** with a reason. Expected: the agent receives "note added" and finishes, the run ends `succeeded`, the incident's
 history (`/incidents/1`) shows "Note added to incident #1 by an agent: ...", the Timeline shows `approval_requested`,
 `approval_decided` and `note_added`, and the config file and its directory are gone from the workspace root.
 
 ## 3. Scenario B: a denial
 
-Start the same run again and **Deny** with the reason "not now". Expected: the agent is told `denied: not now`, says so and finishes
+Start the same run again and **No** with the reason "not now". Expected: the agent is told `denied: not now`, says so and finishes
 (its final answer is not "finished" with a note added), the incident has no second note, and the call shows as denied in the history.
 
 ## 4. Scenario C: cancelling a waiting run

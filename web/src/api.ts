@@ -18,7 +18,7 @@ export interface Run {
   failureReason?: 'timeout' | 'invalid_output' | 'cancelled' | 'runner_lost'
   /** The run has access to the gatekeeper's tools. */
   mcp?: boolean
-  /** The run has the cluster tools of the gatekeeper (it was started with "Allow cluster tools"). */
+  /** The run has the cluster tools of the gatekeeper (it was started with the chip "Read the cluster"). */
   cluster?: boolean
   /** The maintainer cancelled the run; the runner is stopping the agent. */
   cancelRequested?: boolean

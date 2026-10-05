@@ -14,13 +14,15 @@ interface Props {
   variant?: 'compact' | 'large'
   /** Called after every decision, whatever happened: the state may have changed under the page. */
   onChanged: () => void
+  /** Yes and No are locked from outside (the list of questions just changed under the pointer). Default false. */
+  disabled?: boolean
 }
 
 /**
  * A call that waits for a decision. The question is Remedy's sentence (a fixed table); under it the arguments of the call exactly as
  * stored: what is shown is what runs when it is approved. The values are the agent's text and are only shown.
  */
-function AskBody({ call, variant = 'compact', onChanged }: Props) {
+function AskBody({ call, variant = 'compact', onChanged, disabled = false }: Props) {
   const toast = useToast()
   const [reason, setReason] = useState('')
   const [reasonOpen, setReasonOpen] = useState(false)
@@ -38,7 +40,9 @@ function AskBody({ call, variant = 'compact', onChanged }: Props) {
       toast.show(approve ? 'Approved. Running…' : 'Denied. I told the agent.')
       // The buttons stay disabled on success until the parent has refreshed the call: a second click would be a 409.
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not record the decision')
+      const message = e instanceof ApiError ? e.message : 'Could not record the decision'
+      setError(message)
+      toast.show(message) // the ask may leave the list within milliseconds (a 409): the toast outlives it
       setBusy(false)
     } finally {
       onChanged()
@@ -71,7 +75,7 @@ function AskBody({ call, variant = 'compact', onChanged }: Props) {
                 autoFocus={!large}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                className="h-11 bg-background text-sm"
+                className="h-11 bg-background text-base md:text-sm"
               />
             )}
             {error && (
@@ -80,10 +84,10 @@ function AskBody({ call, variant = 'compact', onChanged }: Props) {
               </span>
             )}
             <div className="flex flex-wrap items-center gap-2">
-              <Button disabled={busy} onClick={() => void decide(true)} className={large ? 'h-11 flex-1' : undefined}>
+              <Button disabled={busy || disabled} onClick={() => void decide(true)} className={large ? 'h-11 flex-1' : undefined}>
                 {ask.yes}
               </Button>
-              <Button variant="outline" disabled={busy} onClick={() => void decide(false)} className={large ? 'h-11 flex-1' : undefined}>
+              <Button variant="outline" disabled={busy || disabled} onClick={() => void decide(false)} className={large ? 'h-11 flex-1' : undefined}>
                 No
               </Button>
               {!large && !reasonOpen && (
@@ -96,6 +100,7 @@ function AskBody({ call, variant = 'compact', onChanged }: Props) {
                 </button>
               )}
             </div>
+            {disabled && <p className="text-[13px] text-muted-foreground">Hold on, the list just changed.</p>}
           </>
         ) : (
           <p className="text-[13px] text-muted-foreground">

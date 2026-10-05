@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router'
 import { api } from './api.ts'
 import AppLayout from './components/AppLayout.tsx'
+import AskPage from './AskPage.tsx'
 import LegacyPage from './components/LegacyPage.tsx'
-import ApprovalsPage from './ApprovalsPage.tsx'
 import ConversationsPage from './ConversationsPage.tsx'
 import IncidentThreadPage from './IncidentThreadPage.tsx'
 import Login from './Login.tsx'
+import NeedsYouPage from './NeedsYouPage.tsx'
 import NotFound from './NotFound.tsx'
 import RunPage from './RunPage.tsx'
-import RunsPage from './RunsPage.tsx'
 import SettingsPage from './SettingsPage.tsx'
 import TodayPage from './TodayPage.tsx'
 
@@ -51,10 +51,10 @@ export default function App() {
         <Route index element={<TodayPage />} />
         <Route path="incidents" element={<ConversationsPage />} />
         <Route path="incidents/:id" element={<IncidentRoute />} />
+        <Route path="approvals" element={<NeedsYouPage />} />
+        <Route path="runs" element={<AskPage />} />
         <Route path="runs/:id" element={<RunRoute />} />
         <Route element={<LegacyPage />}>
-          <Route path="approvals" element={<ApprovalsPage />} />
-          <Route path="runs" element={<RunsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
