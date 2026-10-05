@@ -25,7 +25,7 @@ export function runPhase(status: RunStatus, waiting: boolean): RunPhase {
 }
 
 export const phaseView: Record<RunPhase, { label: string; dot: string; soft: string; text: string }> = {
-  queued: { label: 'Queued', dot: 'bg-neutral', soft: 'bg-soft-ignored', text: 'text-neutral' },
+  queued: { label: 'Queued', dot: 'bg-neutral', soft: 'bg-soft-ignored', text: 'text-muted-foreground' },
   working: { label: 'Working', dot: 'bg-primary', soft: 'bg-soft-diagnosing', text: 'text-primary' },
   waiting: { label: 'Waiting for you', dot: 'bg-primary', soft: 'bg-soft-diagnosing', text: 'text-primary' },
   done: { label: 'Done', dot: 'bg-success', soft: 'bg-soft-resolved', text: 'text-success' },

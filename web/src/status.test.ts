@@ -32,6 +32,12 @@ describe('phaseView', () => {
   })
 })
 
+describe('phaseView.queued', () => {
+  it('uses the muted foreground for its text, which reads on the soft background', () => {
+    assert.equal(phaseView.queued.text, 'text-muted-foreground')
+  })
+})
+
 describe('statusColor', () => {
   it('uses tokens, not palette colours', () => {
     for (const cls of Object.values(statusColor)) assert.match(cls, /^bg-(neutral|primary|success|destructive)$/)
