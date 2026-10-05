@@ -5,24 +5,29 @@ import AppLayout from './components/AppLayout.tsx'
 import LegacyPage from './components/LegacyPage.tsx'
 import ApprovalsPage from './ApprovalsPage.tsx'
 import ConversationsPage from './ConversationsPage.tsx'
-import IncidentView from './IncidentView.tsx'
+import IncidentThreadPage from './IncidentThreadPage.tsx'
 import Login from './Login.tsx'
 import NotFound from './NotFound.tsx'
+import RunPage from './RunPage.tsx'
 import RunsPage from './RunsPage.tsx'
-import RunView from './RunView.tsx'
 import SettingsPage from './SettingsPage.tsx'
 import TodayPage from './TodayPage.tsx'
 
-/** Mounts RunView with key={id} so that switching runs resets its state. */
+/** Mounts RunPage with key={id} so that switching runs resets its state. */
 function RunRoute() {
   const { id } = useParams()
-  return id ? <RunView key={id} id={id} /> : <Navigate to="/runs" replace />
+  return id ? <RunPage key={id} id={id} /> : <Navigate to="/runs" replace />
 }
 
-/** Mounts IncidentView with key={id}; anything that is not a positive whole number is not an incident. */
+/** Mounts IncidentThreadPage with key={id}; anything that is not a positive whole number is not an incident. */
 function IncidentRoute() {
   const id = Number(useParams().id)
-  return Number.isInteger(id) && id > 0 ? <IncidentView key={id} id={id} /> : <NotFound />
+  if (Number.isInteger(id) && id > 0) return <IncidentThreadPage key={id} id={id} />
+  return (
+    <div className="mx-auto max-w-190 px-4 py-10 md:px-10">
+      <NotFound />
+    </div>
+  )
 }
 
 export default function App() {
@@ -45,11 +50,11 @@ export default function App() {
       <Route element={<AppLayout onSignOut={signOut} />}>
         <Route index element={<TodayPage />} />
         <Route path="incidents" element={<ConversationsPage />} />
+        <Route path="incidents/:id" element={<IncidentRoute />} />
+        <Route path="runs/:id" element={<RunRoute />} />
         <Route element={<LegacyPage />}>
-          <Route path="incidents/:id" element={<IncidentRoute />} />
           <Route path="approvals" element={<ApprovalsPage />} />
           <Route path="runs" element={<RunsPage />} />
-          <Route path="runs/:id" element={<RunRoute />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>

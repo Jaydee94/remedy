@@ -20,12 +20,12 @@ export const decisionLabel: Record<string, string> = {
 }
 
 export const callStatusColor: Record<ToolCall['status'], string> = {
-  running: 'bg-amber-500',
-  waiting: 'bg-amber-500',
-  succeeded: 'bg-emerald-500',
-  failed: 'bg-rose-500',
-  denied: 'bg-slate-500',
-  abandoned: 'bg-slate-600',
+  running: 'bg-primary',
+  waiting: 'bg-primary',
+  succeeded: 'bg-success',
+  failed: 'bg-destructive',
+  denied: 'bg-neutral',
+  abandoned: 'bg-neutral',
 }
 
 /** What came of a call, in a sentence: its result, or why it did not run. */

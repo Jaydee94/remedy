@@ -18,7 +18,7 @@ export default function MobileBar({ header, online }: { header: Header; online: 
         </Link>
       )}
       <RemedyMark size={24} />
-      <h1 className="min-w-0 flex-1 truncate font-serif text-[17px] font-medium">{header.title}</h1>
+      <p className="min-w-0 flex-1 truncate font-serif text-[17px] font-medium">{header.title}</p>
       <span aria-hidden className={cn('size-2 rounded-full', online ? 'bg-success' : 'bg-primary')} />
       <span className="sr-only">{online ? 'Remedy is awake' : 'Remedy is dozing'}</span>
     </div>

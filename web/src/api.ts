@@ -205,8 +205,8 @@ export const api = {
   logout: () => request<void>('POST', '/api/logout'),
   me: () => request<{ user: string }>('GET', '/api/me'),
   listRuns: () => request<Run[]>('GET', '/api/runs'),
-  createRun: (prompt: string, tools = false, cluster = false) =>
-    request<Run>('POST', '/api/runs', { prompt, tools, cluster }),
+  createRun: (prompt: string, tools = false, cluster = false, incidentId?: number) =>
+    request<Run>('POST', '/api/runs', incidentId === undefined ? { prompt, tools, cluster } : { prompt, tools, cluster, incidentId }),
   getCapabilities: () => request<Capabilities>('GET', '/api/capabilities'),
   getRun: (id: string) => request<Run>('GET', `/api/runs/${id}`),
   listToolCalls: (runId: string) => request<ToolCall[]>('GET', `/api/runs/${runId}/tool-calls`),
@@ -235,6 +235,9 @@ export const api = {
   },
   getIncident: (id: number) => request<IncidentDetail>('GET', `/api/incidents/${id}`),
   ignoreIncident: (id: number) => request<Incident>('POST', `/api/incidents/${id}/ignore`),
+  unignoreIncident: (id: number) => request<Incident>('POST', `/api/incidents/${id}/unignore`),
+  /** The runs of one incident, newest first: its responder runs and the questions asked about it. */
+  listIncidentRuns: (incidentId: number) => request<Run[]>('GET', `/api/runs?incident=${incidentId}`),
   diagnoseIncident: (id: number) => request<{ runId: string }>('POST', `/api/incidents/${id}/diagnose`),
   getLimits: () => request<Limits>('GET', '/api/limits'),
 

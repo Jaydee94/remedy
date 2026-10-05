@@ -181,7 +181,7 @@ the question runs (`GET /api/runs?incident=`). Its items:
 - **No diagnosis yet:** "Diagnose now" for a result that is not diagnosed automatically or whose limit is reached; for an incident of another source: "I can't
   diagnose incidents from <source> yet."
 - **An approval that waits**, inline (the shared ask, 6.3).
-- **A question and its answer:** the question as the user's bubble; the answer as a Remedy message with steps and text, or a working indicator.
+- **A question and its answer:** the question as the user's bubble; the answer as a Remedy message with its text, a working indicator or the failure, and a link to the run (the steps of the run are on the run page: showing them here would need one event stream per question).
 
 The composer ("Ask Remedy about this incident...") calls `POST /api/runs` with `{prompt, tools: true, incidentId}` and stays in the thread. An error such as "the
 gatekeeper tools are not enabled" shows under the field. The thread polls every 5 s, every 2 s while a diagnosis or a question runs.
