@@ -20,7 +20,7 @@ interface Props {
  * A call that waits for a decision. The question is Remedy's sentence (a fixed table); under it the arguments of the call exactly as
  * stored: what is shown is what runs when it is approved. The values are the agent's text and are only shown.
  */
-export default function ApprovalAsk({ call, variant = 'compact', onChanged }: Props) {
+function AskBody({ call, variant = 'compact', onChanged }: Props) {
   const toast = useToast()
   const [reason, setReason] = useState('')
   const [reasonOpen, setReasonOpen] = useState(false)
@@ -30,15 +30,17 @@ export default function ApprovalAsk({ call, variant = 'compact', onChanged }: Pr
   const large = variant === 'large'
 
   async function decide(approve: boolean) {
+    if (busy) return
     setBusy(true)
     setError('')
     try {
       await api.decideApproval(call.id, approve, reason.trim() || undefined)
       toast.show(approve ? 'Approved. Running…' : 'Denied. I told the agent.')
+      // The buttons stay disabled on success until the parent has refreshed the call: a second click would be a 409.
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not record the decision')
-    } finally {
       setBusy(false)
+    } finally {
       onChanged()
     }
   }
@@ -54,7 +56,7 @@ export default function ApprovalAsk({ call, variant = 'compact', onChanged }: Pr
         <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]">
           {argumentList(call.arguments).map(({ name, value }) => (
             <div key={name} className="contents">
-              <dt className="text-subtle">{name}</dt>
+              <dt className="break-all text-subtle">{name}</dt>
               <dd className="break-words whitespace-pre-wrap">{value}</dd>
             </div>
           ))}
@@ -66,6 +68,7 @@ export default function ApprovalAsk({ call, variant = 'compact', onChanged }: Pr
                 aria-label="Reason (optional)"
                 placeholder="Add a reason (optional)"
                 maxLength={500}
+                autoFocus={!large}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 className="h-11 bg-background text-sm"
@@ -102,4 +105,9 @@ export default function ApprovalAsk({ call, variant = 'compact', onChanged }: Pr
       </div>
     </div>
   )
+}
+
+/** The state (reason, error, busy) belongs to one call: another call gets a fresh body. */
+export default function ApprovalAsk(props: Props) {
+  return <AskBody key={props.call.id} {...props} />
 }

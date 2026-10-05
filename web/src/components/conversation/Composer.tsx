@@ -34,14 +34,15 @@ export default function Composer({ placeholder, onSend }: Props) {
 
   return (
     <div className="mt-auto flex flex-col gap-2">
-      <form onSubmit={(e) => void submit(e)} className="flex items-center gap-2.5 rounded-[28px] border border-input bg-card py-1.5 pr-1.5 pl-5">
+      <form onSubmit={(e) => void submit(e)} className="flex items-center gap-2.5 rounded-[28px] border border-input bg-card py-1.5 pr-1.5 pl-5 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={placeholder}
           aria-label={placeholder}
           maxLength={4000}
-          className="h-10 min-w-0 flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-subtle"
+          readOnly={busy}
+          className="h-10 min-w-0 flex-1 border-0 bg-transparent text-base text-foreground md:text-sm outline-none placeholder:text-subtle"
         />
         <button
           type="submit"
