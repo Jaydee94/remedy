@@ -8,12 +8,15 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"slices"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/config"
 	"github.com/Jaydee94/remedy/internal/gatekeeper"
 	"github.com/Jaydee94/remedy/internal/github"
 	"github.com/Jaydee94/remedy/internal/incident"
+	"github.com/Jaydee94/remedy/internal/kube"
 	"github.com/Jaydee94/remedy/internal/poller"
 	"github.com/Jaydee94/remedy/internal/reaper"
 	"github.com/Jaydee94/remedy/internal/responder"
@@ -28,6 +31,51 @@ type App struct {
 	Reaper     *reaper.Reaper
 	Responder  *responder.Responder
 	Gatekeeper *gatekeeper.Gatekeeper
+
+	// KubeReader reads the cluster; nil when no cluster is configured. KubeWriter does the approved actions; nil unless
+	// a write token and an allowlist are configured. The cluster tools are built on them.
+	KubeReader *kube.Reader
+	KubeWriter *kube.Writer
+
+	log *slog.Logger
+}
+
+// clusterClients builds the cluster clients a configuration asks for. The configuration was validated when it was
+// read, so a failure here is unexpected: it is logged and the cluster stays off, as if it were not configured.
+func clusterClients(c kube.Config, log *slog.Logger) (*kube.Reader, *kube.Writer) {
+	if !c.ReadEnabled() {
+		return nil, nil
+	}
+	reader, err := kube.NewReader(c, kube.WithLog(log))
+	if err != nil {
+		log.Error("the cluster is off: cannot set up the read side", "err", err)
+		return nil, nil
+	}
+	if !c.WriteEnabled() {
+		return reader, nil
+	}
+	writer, err := kube.NewWriter(c, kube.WithLog(log))
+	if err != nil {
+		log.Error("cluster actions are off: cannot set up the write side", "err", err)
+		return reader, nil
+	}
+	return reader, writer
+}
+
+// CheckCluster says in the log whether the cluster answers to the read token. It changes nothing: a cluster that is
+// down at start-up may be up a minute later.
+func (a *App) CheckCluster(ctx context.Context) {
+	if a.KubeReader == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	v, err := a.KubeReader.GetVersion(ctx)
+	if err != nil {
+		a.log.Warn("the cluster cannot be reached with the read token: cluster tools will fail", "err", err)
+		return
+	}
+	a.log.Info("the cluster answers", "version", v.GitVersion, "actions", a.KubeWriter != nil)
 }
 
 // New wires everything for a configuration. web is the built UI, or nil.
@@ -46,6 +94,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		},
 		Log: log,
 	}
+	kubeReader, kubeWriter := clusterClients(cfg.Cluster, log)
 	gate := gatekeeper.New(gatekeeper.Config{
 		Store: st,
 		Tools: append(append(gatekeeper.IncidentTools(st), gatekeeper.JobLogTool(diagnoser)), gatekeeper.NoteTool(st)),
@@ -61,6 +110,9 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	return &App{
 		Responder:  diagnoser,
 		Gatekeeper: gate,
+		KubeReader: kubeReader,
+		KubeWriter: kubeWriter,
+		log:        log,
 		Poller: &poller.Poller{
 			Store:      st,
 			Engine:     engine,
@@ -90,6 +142,17 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 			Responder:    diagnoser,
 			PollInterval: cfg.PollInterval,
 			Gatekeeper:   gate,
+			Cluster:      clusterCapabilities(cfg.Cluster, kubeReader, kubeWriter),
 		}),
 	}
+}
+
+// clusterCapabilities is what the UI is told: the read side as far as it was set up, and the namespaces of the
+// allowlist only when actions are possible at all.
+func clusterCapabilities(c kube.Config, reader *kube.Reader, writer *kube.Writer) server.Cluster {
+	caps := server.Cluster{Read: reader != nil, Write: writer != nil}
+	if writer != nil {
+		caps.Namespaces = slices.Clone(c.WriteNamespaces)
+	}
+	return caps
 }
