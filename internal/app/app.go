@@ -95,9 +95,13 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		Log: log,
 	}
 	kubeReader, kubeWriter := clusterClients(cfg.Cluster, log)
+	tools := append(append(gatekeeper.IncidentTools(st), gatekeeper.JobLogTool(diagnoser)), gatekeeper.NoteTool(st))
+	if kubeReader != nil {
+		tools = append(tools, gatekeeper.ClusterTools(kubeReader, nil)...)
+	}
 	gate := gatekeeper.New(gatekeeper.Config{
 		Store: st,
-		Tools: append(append(gatekeeper.IncidentTools(st), gatekeeper.JobLogTool(diagnoser)), gatekeeper.NoteTool(st)),
+		Tools: tools,
 		Log:   log,
 	})
 	// The requests that waited for an approval died with the previous process; nobody can receive their results.

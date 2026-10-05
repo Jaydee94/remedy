@@ -1,6 +1,6 @@
 # Phase 2 (part C): cluster access
 
-Status: draft for the maintainer's review, 2026-10-04. Implementation plans: to be written after the review (`phase-2c-1`, `phase-2c-2`, `phase-2c-3`, see 10).
+Status: draft for the maintainer's review, 2026-10-04. Implementation plans: [`phase-2c-1`](../plans/phase-2c-1-cluster-foundation.md), implemented; [`phase-2c-2`](../plans/phase-2c-2-cluster-read-tools.md), implemented; `phase-2c-3` follows (see 10).
 Parent documents: [`../design.md`](../design.md) (sections 2.2, 2.4, 2.6 and the roadmap),
 [`2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md`](2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md) (the gatekeeper, the approvals and the run
 model this builds on) and [`../research/phase-2ab-real-run.md`](../research/phase-2ab-real-run.md) (how the mechanism behaved with the real CLI).
