@@ -1,15 +1,17 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from './api.ts'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { greeting } from './greeting.ts'
+import { isGatewayStatus } from './shell.ts'
+import RemedyMark from '@/components/RemedyMark'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 
 export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [hello] = useState(() => greeting(new Date().getHours()))
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -19,40 +21,50 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
       await api.login(password)
       onLoggedIn()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Login failed')
+      if (err instanceof ApiError) {
+        if (err.status === 401) setError("That isn't the admin password.")
+        else if (isGatewayStatus(err.status)) setError("I can't reach the server right now.")
+        else setError(err.message)
+      }
+      else setError('Login failed')
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-2xl">Remedy</CardTitle>
-          <CardDescription>Sign in with the admin password.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={submit} className="flex flex-col gap-3">
-            <Input
-              type="password"
-              autoFocus
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Admin password"
-              aria-label="Admin password"
-            />
-            <Button type="submit" disabled={busy || password === ''}>
-              Sign in
-            </Button>
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-          </form>
-        </CardContent>
-      </Card>
+    <main className="flex min-h-dvh items-center justify-center p-7">
+      <div className="flex w-full max-w-100 flex-col gap-7">
+        <span className="flex items-center gap-3">
+          <RemedyMark size={40} />
+          <span className="font-serif text-3xl font-medium tracking-tight">remedy</span>
+        </span>
+        <div className="flex flex-col gap-2.5">
+          <h1 className="font-serif text-4xl leading-tight font-normal tracking-tight">{hello}.</h1>
+          <p className="text-muted-foreground">Sign in with the admin password and I'll walk you through what happened.</p>
+        </div>
+        <form onSubmit={submit} className="flex flex-col gap-2.5">
+          <Input
+            type="password"
+            autoFocus
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Admin password"
+            aria-label="Admin password"
+            aria-invalid={error !== ''}
+            className="h-13 text-[15px]"
+          />
+          {error && (
+            <span role="alert" className="pl-5 text-[13px] text-destructive">
+              {error}
+            </span>
+          )}
+          <Button type="submit" size="lg" className="h-13" disabled={busy || password === ''}>
+            Sign in
+          </Button>
+        </form>
+      </div>
     </main>
   )
 }
