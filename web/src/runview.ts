@@ -22,11 +22,19 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-/** A text or number value of an input, or undefined when it is missing, empty or of another type. */
+/** One tidy line of text: whitespace collapsed, cut at `max` characters. */
+function line(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat
+}
+
+const MAX_VALUE = 80
+
+/** A text or number value of an input as one tidy line, cut at 80 characters, or undefined when it is missing, empty or of another type. */
 function value(input: unknown, name: string): string | undefined {
   if (!isRecord(input)) return undefined
   const v = input[name]
-  if (typeof v === 'string' && v !== '') return v
+  if (typeof v === 'string') return line(v, MAX_VALUE) || undefined
   if (typeof v === 'number') return String(v)
   return undefined
 }
@@ -88,12 +96,6 @@ export function stepLabel(tool: string, input: unknown): string {
 const MAX_ARGS = 240
 const MAX_RESULT = 160
 
-/** One tidy line of text: whitespace collapsed, cut at `max` characters. */
-function line(text: string, max: number): string {
-  const flat = text.replace(/\s+/g, ' ').trim()
-  return flat.length > max ? `${flat.slice(0, max)}…` : flat
-}
-
 function resultText(content: unknown): string {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) {
@@ -144,7 +146,9 @@ export function runSteps(events: readonly RunEvent[]): Step[] {
         const failed = b.is_error === true
         step.done = true
         step.failed = failed
-        step.raw = `${step.raw} → ${failed ? 'error: ' : ''}${line(resultText(b.content), MAX_RESULT)}`.trimEnd()
+        const text = line(resultText(b.content), MAX_RESULT)
+        if (failed) step.raw = `${step.raw} → error${text ? `: ${text}` : ''}`
+        else if (text) step.raw = `${step.raw} → ${text}`
       }
     }
   }

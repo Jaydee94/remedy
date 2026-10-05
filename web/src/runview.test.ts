@@ -120,6 +120,43 @@ describe('runSteps', () => {
     assert.doesNotThrow(() => runSteps(odd))
     for (const s of runSteps(odd)) assert.ok(!s.label.includes('undefined') && !s.raw.includes('undefined'))
   })
+
+  it('makes a step of a tool_use without input or id, and takes a result with null content as empty', () => {
+    const steps = runSteps([assistant(1, { type: 'tool_use', name: 'mcp__remedy__incident_list' }), assistant(2, use('t2', 'Read', { file_path: 'a' })), ev(3, 'user', { message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: null }] } })])
+    assert.equal(steps.length, 2)
+    assert.equal(steps[0].id, 'seq1-0')
+    assert.equal(steps[0].label, 'Looked at the incidents')
+    assert.equal(steps[0].raw, 'incident_list')
+    assert.equal(steps[0].done, false)
+    assert.equal(steps[1].done, true)
+    assert.equal(steps[1].failed, false)
+    assert.equal(steps[1].raw, 'Read {"file_path":"a"}')
+  })
+
+  it('leaves no dangling arrow for a result without text, and keeps "error" for a failed one', () => {
+    const steps = runSteps([
+      assistant(1, use('t1', 'Read', { file_path: 'a' })),
+      result(2, 't1', ''),
+      assistant(3, use('t2', 'Read', { file_path: 'b' })),
+      ev(4, 'user', { message: { content: [{ type: 'tool_result', tool_use_id: 't2', is_error: true, content: '  ' }] } }),
+      assistant(5, use('t3', 'Read', { file_path: 'c' })),
+      ev(6, 'user', { message: { content: [{ type: 'tool_result', tool_use_id: 't3', is_error: true, content: 'denied' }] } }),
+    ])
+    assert.equal(steps[0].raw, 'Read {"file_path":"a"}')
+    assert.equal(steps[0].done, true)
+    assert.equal(steps[1].raw, 'Read {"file_path":"b"} → error')
+    assert.equal(steps[1].failed, true)
+    assert.equal(steps[2].raw, 'Read {"file_path":"c"} → error: denied')
+  })
+
+  it('cuts every value that a label inserts', () => {
+    const long = 'a'.repeat(500)
+    const [read, pods] = runSteps([assistant(1, use('t1', 'Read', { file_path: long })), assistant(2, use('t2', 'mcp__remedy__cluster_pods', { namespace: `${long}\n${long}` }))])
+    assert.ok(read.label.length < 120)
+    assert.ok(read.label.includes('…'))
+    assert.ok(pods.label.length < 120)
+    assert.ok(!pods.label.includes('\n'))
+  })
 })
 
 describe('effectiveStatus', () => {
