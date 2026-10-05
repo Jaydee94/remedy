@@ -144,8 +144,9 @@ running as a service for other people's homelabs.
 Phase plans live in [`plans/`](plans/). Phase 1 is delivered in parts: the first part (detect and diagnose, with the
 timeline) is implemented; the fixer that changes a workspace and lets the control plane open a pull request, and
 the Home Assistant notification, are separate later cycles. Phase 2 is delivered in parts as well: the gatekeeper and the approvals
-(parts A and B) and cluster access (part C: read tools and actions after an approval, tried on a kind testbed) are implemented, the signal adapters (part D)
-are a later cycle.
+(parts A and B) and cluster access (part C: read tools and actions after an approval, tried on a kind testbed) are implemented, the signal adapters (part D: Alertmanager and Argo CD by polling, a general
+incident model, an automatic responder for outages whose actions wait for an approval) are specified in
+[`specs/2026-10-05-phase-2d-signals-design.md`](specs/2026-10-05-phase-2d-signals-design.md) and not built yet.
 
 ## 4. Accepted risks
 

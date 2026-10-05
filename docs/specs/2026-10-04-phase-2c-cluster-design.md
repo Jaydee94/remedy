@@ -17,7 +17,7 @@ configuration and RBAC afterwards, not of code.
 |---|---|---|
 | A, B | Gatekeeper, approvals, the run clock, cancelling | implemented |
 | C | Cluster: Kubernetes and Argo CD read tools, approved mutating actions | this spec |
-| D | Signals: Alertmanager and Argo CD adapters, a general incident model, the responder for outages | later cycle |
+| D | Signals: Alertmanager and Argo CD adapters, a general incident model, the responder for outages | specified in [`2026-10-05-phase-2d-signals-design.md`](2026-10-05-phase-2d-signals-design.md) |
 
 ### Non-goals
 
