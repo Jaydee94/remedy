@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from './api.ts'
 
-/** The number of calls that wait for a decision, refreshed every five seconds. */
+/** The number of calls that wait for a decision, refreshed every two seconds. */
 export function usePendingApprovals(): number {
   const [count, setCount] = useState(0)
 
@@ -15,7 +15,7 @@ export function usePendingApprovals(): number {
         })
         .catch(() => undefined) // a failed refresh keeps the last number
     void load()
-    const timer = setInterval(load, 5000)
+    const timer = setInterval(load, 2000)
     return () => {
       active = false
       clearInterval(timer)

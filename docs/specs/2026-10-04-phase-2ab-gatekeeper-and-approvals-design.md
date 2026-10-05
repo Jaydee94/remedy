@@ -154,9 +154,9 @@ MCP: `POST|GET|DELETE /mcp` (run token). The three domains use three separate mi
 
 ## 9. User interface
 
-- **Approvals** (new sidebar item with the pending count; the count refreshes every 5 seconds): a card per pending approval with the tool, the arguments as text
+- **Approvals** (new sidebar item with the pending count; the count refreshes every 2 seconds): a card per pending approval with the tool, the arguments as text
   (escaped, in full), the run and the incident it concerns (links), how long it has been waiting, a reason field, and **Approve** and **Deny** buttons.
-  Below, the history: decision, reason and when it was decided. The page refreshes every 3 seconds.
+  Below, the history: decision, reason and when it was decided. The page refreshes every second, so that a call appears within the two seconds of the success criteria (it was 3 and 5 seconds until the real run showed that the UI could not keep that promise).
 - **Run view:** a banner "Waiting for your approval" with a link while an approval is pending; a "Tool calls" list (tool, status, time, and the arguments and
   result on expansion); **Cancel run** for a queued or running run, with a confirmation inside the page.
 - **Runs page:** the form for a new run gets a checkbox "Allow gatekeeper tools".
