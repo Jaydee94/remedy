@@ -22,7 +22,12 @@ function RunRoute() {
 /** Mounts IncidentThreadPage with key={id}; anything that is not a positive whole number is not an incident. */
 function IncidentRoute() {
   const id = Number(useParams().id)
-  return Number.isInteger(id) && id > 0 ? <IncidentThreadPage key={id} id={id} /> : <NotFound />
+  if (Number.isInteger(id) && id > 0) return <IncidentThreadPage key={id} id={id} />
+  return (
+    <div className="mx-auto max-w-190 px-4 py-10 md:px-10">
+      <NotFound />
+    </div>
+  )
 }
 
 export default function App() {

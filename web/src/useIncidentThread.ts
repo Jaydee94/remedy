@@ -24,33 +24,39 @@ export function useIncidentThread(id: number): ThreadData {
   const [error, setError] = useState('')
   const [missing, setMissing] = useState(false)
   const fast = useRef(false)
-  const alive = useRef(true)
+  /** The number of the latest load that started: a response of an older one is out of order and is dropped. */
+  const latest = useRef(0)
+  /** The server said 404: there is nothing to poll for. */
+  const gone = useRef(false)
 
   const load = useCallback(async () => {
+    const mine = ++latest.current
     try {
       const [d, r] = await Promise.all([api.getIncident(id), api.listIncidentRuns(id)])
-      if (!alive.current) return
+      if (mine !== latest.current) return
       setDetail(d)
       setRuns(r)
       setError('')
       fast.current = d.incident.state === 'diagnosing' || r.some((x) => x.status === 'queued' || x.status === 'running')
     } catch (e) {
-      if (!alive.current) return
-      if (e instanceof ApiError && e.status === 404) setMissing(true)
-      else setError(e instanceof ApiError ? e.message : 'Could not load the incident')
+      if (mine !== latest.current) return
+      if (e instanceof ApiError && e.status === 404) {
+        gone.current = true
+        setMissing(true)
+      } else setError(e instanceof ApiError ? e.message : 'Could not load the incident')
     }
   }, [id])
 
   useEffect(() => {
-    alive.current = true
+    let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
     const tick = async () => {
       await load()
-      if (alive.current) timer = setTimeout(() => void tick(), fast.current ? FAST_MS : SLOW_MS)
+      if (!cancelled && !gone.current) timer = setTimeout(() => void tick(), fast.current ? FAST_MS : SLOW_MS)
     }
     void tick()
     return () => {
-      alive.current = false
+      cancelled = true
       clearTimeout(timer)
     }
   }, [load])
