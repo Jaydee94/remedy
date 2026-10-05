@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,6 +28,19 @@ const (
 	KindDiagnosisFailed   = "diagnosis_failed"
 )
 
+// The sources of an incident. A source decides what its incidents are called (Key) and whether the responder may
+// start on its own.
+const (
+	SourceGitHub       = "github"
+	SourceAlertmanager = "alertmanager"
+	SourceArgoCD       = "argocd"
+)
+
+var sources = []string{SourceGitHub, SourceAlertmanager, SourceArgoCD}
+
+// Severities of an incident. GitHub incidents have none.
+var severities = []string{"critical", "warning", "info", "none"}
+
 type IncidentState string
 
 const (
@@ -36,14 +52,24 @@ const (
 )
 
 type Incident struct {
-	ID             int64
+	ID int64
+	// Source is github, alertmanager or argocd. Key is the identity inside the source, Title a short line for the
+	// list, Severity critical, warning, info or none, and Details the signal as JSON (an object).
+	Source       string
+	Key          string
+	Title        string
+	Severity     string
+	AutoDiagnose bool // the responder may start on its own; decided by the source
+	Details      json.RawMessage
+
+	// The GitHub fields. RepoID is 0 and the others are empty for an incident of another source.
 	RepoID         int64
 	RepoName       string
 	Ref            string // "pr:<number>" or "branch:<name>"
 	RefURL         string
 	CheckName      string
 	State          IncidentState
-	Conclusion     string
+	Conclusion     string // for a GitHub incident the conclusion of the check; for another source its state (firing, degraded, ...)
 	HeadSHA        string
 	CheckURL       string
 	Occurrences    int
@@ -63,9 +89,80 @@ type Incident struct {
 	RunID string
 }
 
+// NewIncident describes an incident to open. An empty Source means GitHub: then RepoID is required, Key and Title
+// default to the key of the check and its name, and AutoDiagnose is decided from the conclusion. Any other source needs
+// Key, Title and Conclusion, takes no repository, and decides AutoDiagnose itself.
 type NewIncident struct {
+	Source                                                string
+	Key, Title, Severity                                  string
+	AutoDiagnose                                          bool
+	Details                                               json.RawMessage
 	RepoID                                                int64
 	Ref, RefURL, CheckName, Conclusion, HeadSHA, CheckURL string
+}
+
+// GitHubKey is the key of a GitHub incident: the repository, the ref and the name of the check, joined with U+001F,
+// which no ref can contain. Migration 008 computes the same string in SQL for the incidents that exist.
+func GitHubKey(repoID int64, ref, checkName string) string {
+	return strconv.FormatInt(repoID, 10) + "\x1f" + ref + "\x1f" + checkName
+}
+
+// githubAutoDiagnoses says whether the responder starts on its own for a check conclusion. Cancelled and
+// action_required results are shown, and diagnosed by a click.
+func githubAutoDiagnoses(conclusion string) bool {
+	switch conclusion {
+	case "failure", "timed_out", "startup_failure":
+		return true
+	}
+	return false
+}
+
+// ErrInvalidIncident means NewIncident cannot be stored.
+var ErrInvalidIncident = errors.New("invalid incident")
+
+// normalize fills the defaults of n and checks it.
+func (n NewIncident) normalize() (NewIncident, error) {
+	bad := func(msg string) (NewIncident, error) {
+		return NewIncident{}, fmt.Errorf("%w: %s", ErrInvalidIncident, msg)
+	}
+	if n.Source == "" {
+		n.Source = SourceGitHub
+	}
+	if !slices.Contains(sources, n.Source) {
+		return bad("unknown source " + strconv.Quote(n.Source))
+	}
+	if n.Severity == "" {
+		n.Severity = "none"
+	}
+	if !slices.Contains(severities, n.Severity) {
+		return bad("unknown severity " + strconv.Quote(n.Severity))
+	}
+	if len(n.Details) == 0 {
+		n.Details = json.RawMessage(`{}`)
+	}
+	if !json.Valid(n.Details) || n.Details[0] != '{' {
+		return bad("details must be a JSON object")
+	}
+	if n.Source == SourceGitHub {
+		if n.RepoID == 0 {
+			return bad("a GitHub incident needs a repository")
+		}
+		if n.Key == "" {
+			n.Key = GitHubKey(n.RepoID, n.Ref, n.CheckName)
+		}
+		if n.Title == "" {
+			n.Title = n.CheckName
+		}
+		n.AutoDiagnose = githubAutoDiagnoses(n.Conclusion)
+		return n, nil
+	}
+	if n.RepoID != 0 {
+		return bad("only a GitHub incident belongs to a repository")
+	}
+	if n.Key == "" || n.Title == "" || n.Conclusion == "" {
+		return bad("an incident of this source needs a key, a title and a conclusion")
+	}
+	return n, nil
 }
 
 // IncidentFilter selects incidents. State is "" or "all" for every incident, "active" for open,
@@ -73,14 +170,16 @@ type NewIncident struct {
 type IncidentFilter struct {
 	State  string
 	RepoID int64
-	Limit  int // default 200
+	Source string // "" for every source
+	Limit  int    // default 200
 }
 
 const (
-	incidentCols = `i.id, i.repo_id, r.full_name, i.ref, i.ref_url, i.check_name, i.state, i.conclusion,
+	incidentCols = `i.id, i.source, i.key, i.title, i.severity, i.auto_diagnose, i.details,
+		i.repo_id, r.full_name, i.ref, i.ref_url, i.check_name, i.state, i.conclusion,
 		i.head_sha, i.check_url, i.occurrences, i.first_seen, i.last_seen, i.resolved_at, i.resolved_reason,
 		i.diagnoses, i.last_diagnosis_at, i.diagnosis, i.diagnosed_sha, i.run_id`
-	incidentFrom = ` FROM incidents i JOIN repos r ON r.id = i.repo_id`
+	incidentFrom = ` FROM incidents i LEFT JOIN repos r ON r.id = i.repo_id`
 )
 
 func scanIncident(sc scanner) (Incident, error) {
@@ -92,13 +191,19 @@ func scanIncident(sc scanner) (Incident, error) {
 		lastDiag    sql.NullString
 		diagnosis   sql.NullString
 		runID       sql.NullString
+		details     string
+		repoID      sql.NullInt64
+		repoName    sql.NullString
 	)
-	if err := sc.Scan(&in.ID, &in.RepoID, &in.RepoName, &in.Ref, &in.RefURL, &in.CheckName, &state, &in.Conclusion,
+	if err := sc.Scan(&in.ID, &in.Source, &in.Key, &in.Title, &in.Severity, &in.AutoDiagnose, &details,
+		&repoID, &repoName, &in.Ref, &in.RefURL, &in.CheckName, &state, &in.Conclusion,
 		&in.HeadSHA, &in.CheckURL, &in.Occurrences, &first, &last, &resolved, &in.ResolvedReason,
 		&in.Diagnoses, &lastDiag, &diagnosis, &in.DiagnosedSHA, &runID); err != nil {
 		return Incident{}, err
 	}
 	in.State = IncidentState(state)
+	in.Details = json.RawMessage(details)
+	in.RepoID, in.RepoName = repoID.Int64, repoName.String
 	var err error
 	if in.FirstSeen, err = parseTS(first); err != nil {
 		return Incident{}, err
@@ -167,14 +272,19 @@ func oneRow(res sql.Result, err error) error {
 // OpenIncident creates an open incident and logs act in the same transaction. It returns ErrExists
 // if the key already has an active incident.
 func (s *Store) OpenIncident(ctx context.Context, n NewIncident, act NewActivity) (Incident, error) {
+	n, err := n.normalize()
+	if err != nil {
+		return Incident{}, err
+	}
 	var id int64
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		now := formatTS(time.Now())
 		res, err := tx.ExecContext(ctx, `
-			INSERT INTO incidents (repo_id, ref, ref_url, check_name, state, conclusion, head_sha, check_url,
-				occurrences, first_seen, last_seen)
-			VALUES (?, ?, ?, ?, 'open', ?, ?, ?, 1, ?, ?)`,
-			n.RepoID, n.Ref, n.RefURL, n.CheckName, n.Conclusion, n.HeadSHA, n.CheckURL, now, now)
+			INSERT INTO incidents (source, key, title, severity, auto_diagnose, details, repo_id, ref, ref_url, check_name,
+				state, conclusion, head_sha, check_url, occurrences, first_seen, last_seen)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, 1, ?, ?)`,
+			n.Source, n.Key, n.Title, n.Severity, n.AutoDiagnose, string(n.Details), nullInt(n.RepoID), n.Ref, n.RefURL,
+			n.CheckName, n.Conclusion, n.HeadSHA, n.CheckURL, now, now)
 		if err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				return ErrExists
@@ -197,8 +307,10 @@ func (s *Store) OpenIncident(ctx context.Context, n NewIncident, act NewActivity
 func (s *Store) RecordRecurrence(ctx context.Context, id int64, conclusion, headSHA, checkURL string, act NewActivity) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		if err := oneRow(tx.ExecContext(ctx, `
-			UPDATE incidents SET occurrences = occurrences + 1, conclusion = ?, head_sha = ?, check_url = ?, last_seen = ?
-			WHERE id = ? AND state <> 'resolved'`, conclusion, headSHA, checkURL, formatTS(time.Now()), id)); err != nil {
+			UPDATE incidents SET occurrences = occurrences + 1, conclusion = ?, head_sha = ?, check_url = ?, last_seen = ?,
+				auto_diagnose = CASE WHEN source = 'github' THEN ? ELSE auto_diagnose END
+			WHERE id = ? AND state <> 'resolved'`,
+			conclusion, headSHA, checkURL, formatTS(time.Now()), githubAutoDiagnoses(conclusion), id)); err != nil {
 			return err
 		}
 		act.IncidentID = id
@@ -247,10 +359,15 @@ func (s *Store) GetIncident(ctx context.Context, id int64) (Incident, error) {
 	return in, err
 }
 
-// FindActiveIncident returns the incident of a key that is not resolved (ErrNotFound if there is none).
+// FindActiveIncident returns the GitHub incident of a check on a ref that is not resolved (ErrNotFound if there is none).
 func (s *Store) FindActiveIncident(ctx context.Context, repoID int64, ref, checkName string) (Incident, error) {
+	return s.FindActiveIncidentByKey(ctx, SourceGitHub, GitHubKey(repoID, ref, checkName))
+}
+
+// FindActiveIncidentByKey returns the incident of a source and key that is not resolved (ErrNotFound if there is none).
+func (s *Store) FindActiveIncidentByKey(ctx context.Context, source, key string) (Incident, error) {
 	in, err := scanIncident(s.db.QueryRowContext(ctx, `SELECT `+incidentCols+incidentFrom+
-		` WHERE i.repo_id = ? AND i.ref = ? AND i.check_name = ? AND i.state <> 'resolved'`, repoID, ref, checkName))
+		` WHERE i.source = ? AND i.key = ? AND i.state <> 'resolved'`, source, key))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Incident{}, ErrNotFound
 	}
@@ -284,6 +401,10 @@ func (s *Store) ListIncidents(ctx context.Context, f IncidentFilter) ([]Incident
 	if f.RepoID != 0 {
 		conds = append(conds, `i.repo_id = ?`)
 		args = append(args, f.RepoID)
+	}
+	if f.Source != "" {
+		conds = append(conds, `i.source = ?`)
+		args = append(args, f.Source)
 	}
 	query := `SELECT ` + incidentCols + incidentFrom
 	if len(conds) > 0 {

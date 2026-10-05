@@ -468,7 +468,7 @@ type Note struct {
 // AddNote stores a note on an incident and logs it. It returns ErrNotFound for an unknown incident.
 func (s *Store) AddNote(ctx context.Context, incidentID int64, runID, note string) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		var repoID int64
+		var repoID sql.NullInt64
 		err := tx.QueryRowContext(ctx, `SELECT repo_id FROM incidents WHERE id = ?`, incidentID).Scan(&repoID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
@@ -482,7 +482,7 @@ func (s *Store) AddNote(ctx context.Context, incidentID int64, runID, note strin
 			return err
 		}
 		return insertActivity(ctx, tx, NewActivity{
-			Kind: KindNoteAdded, RepoID: repoID, IncidentID: incidentID, RunID: runID,
+			Kind: KindNoteAdded, RepoID: repoID.Int64, IncidentID: incidentID, RunID: runID,
 			Summary: fmt.Sprintf("Note added to incident #%d by an agent: %s", incidentID, truncateRunes(note, 200)),
 		})
 	})
