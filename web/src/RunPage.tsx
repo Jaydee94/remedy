@@ -23,9 +23,10 @@ const summaryClass = 'cursor-pointer rounded-sm text-[13px] text-muted-foregroun
 /** One run as a conversation: what was asked, what the agent did, what it answered, and what waits for a decision. */
 export default function RunPage({ id }: { id: string }) {
   const navigate = useNavigate()
-  const { run, events, calls, status, ended, refresh } = useRun(id)
+  const { run, events, calls, status, ended, missing, error: loadError, refresh } = useRun(id)
   useShellHeader(run ? { title: 'Run', back: run.incidentId !== undefined ? `/incidents/${run.incidentId}` : '/runs' } : null)
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
   const steps = useMemo(() => runSteps(events), [events])
   const waitingCall = calls.find((c) => c.decision === 'pending')
 
@@ -40,27 +41,51 @@ export default function RunPage({ id }: { id: string }) {
   }
 
   async function again() {
-    if (!run) return
+    if (!run || busy) return
     setError('')
+    setBusy(true)
     try {
       const created = await api.createRun(run.prompt, run.mcp === true, run.cluster === true, run.incidentId)
+      // The page navigates away: the button stays disabled until then.
       void navigate(`/runs/${created.id}`)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not start the run')
+      setBusy(false)
     }
+  }
+
+  if (missing) {
+    return (
+      <div className="mx-auto flex max-w-190 flex-col gap-3 px-4 py-10 md:px-10">
+        <h1 className="font-serif text-3xl font-normal">I can't find that run.</h1>
+        <Link to="/runs" className="text-primary hover:text-primary-hover">
+          Back to Ask Remedy
+        </Link>
+      </div>
+    )
   }
 
   if (!run || !status) {
     return (
       <div className="mx-auto flex max-w-190 flex-col gap-4 px-4 py-5 md:px-10 md:py-12">
         <h1 className="sr-only">Run</h1>
-        <Skeleton className="h-8 w-2/5" />
-        <Skeleton className="h-24" />
+        {loadError ? (
+          <Alert variant="destructive">
+            <AlertDescription>{loadError}</AlertDescription>
+          </Alert>
+        ) : (
+          <>
+            <Skeleton className="h-8 w-2/5" />
+            <Skeleton className="h-24" />
+          </>
+        )}
       </div>
     )
   }
 
-  const phase = runPhase(status, waitingCall !== undefined && !ended)
+  // The approval the run waits for, from its calls; when they have not loaded, the run itself says that it waits.
+  const waiting = !ended && (waitingCall !== undefined ? waitingCall.waiting === true : run.waitingApproval !== undefined)
+  const phase = runPhase(status, waiting)
   const view = phaseView[phase]
   const failure = runFailure(run)
   const responder = run.role === 'responder'
@@ -120,9 +145,19 @@ export default function RunPage({ id }: { id: string }) {
               )}
             </p>
           ) : (
-            <p className="font-serif text-[clamp(16.5px,1.9vw,19px)] leading-relaxed text-pretty break-words whitespace-pre-wrap">{run.result}</p>
+            <p className="font-serif text-[clamp(16.5px,1.9vw,19px)] leading-relaxed text-pretty break-words whitespace-pre-wrap">
+              {run.result.trim() === '' ? 'Done. There is nothing more to say.' : run.result}
+            </p>
           ))}
         {waitingCall && !ended && <ApprovalAsk call={waitingCall} onChanged={refresh} />}
+        {!waitingCall && !ended && run.waitingApproval !== undefined && (
+          <span className="text-[13px] text-primary">
+            This run waits for your decision.{' '}
+            <Link to="/approvals" className="underline underline-offset-2 hover:text-primary-hover">
+              Open Needs you
+            </Link>
+          </span>
+        )}
         {failure && <FailCard title={failure.title}>{failure.text}</FailCard>}
         {phase === 'queued' && <span className="text-[13px] text-muted-foreground">Waiting for the runner…</span>}
         {phase === 'working' && <span className="text-[13px] text-muted-foreground">Working…</span>}
@@ -138,7 +173,7 @@ export default function RunPage({ id }: { id: string }) {
             )
           ) : (
             <div>
-              <Button size="sm" onClick={() => void again()}>
+              <Button size="sm" disabled={busy} onClick={() => void again()}>
                 Start it again
               </Button>
             </div>
