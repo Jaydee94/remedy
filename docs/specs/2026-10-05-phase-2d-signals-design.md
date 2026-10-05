@@ -1,6 +1,6 @@
 # Phase 2 (part D): signals and the responder for outages
 
-Status: draft for the maintainer's review, 2026-10-05. Implementation plans: not written yet (see 10).
+Status: draft for the maintainer's review, 2026-10-05. Implementation plans: [`phase-2d-1`](../plans/phase-2d-1-incident-model.md), written, not built yet; 2d-2 and 2d-3 are not written yet (see 10).
 Parent documents: [`../design.md`](../design.md) (sections 2.3, 2.4 and the roadmap),
 [`2026-10-02-phase-1-detect-and-diagnose-design.md`](2026-10-02-phase-1-detect-and-diagnose-design.md) (incidents, the poller, the responder),
 [`2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md`](2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md) (the gatekeeper and the approvals) and
