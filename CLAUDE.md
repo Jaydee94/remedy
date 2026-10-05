@@ -17,7 +17,7 @@ Docs: `docs/design.md` (decisions), `docs/specs/` (what and why), `docs/plans/` 
 ## Commands
 
 ```sh
-make check                                       # fmt, vet, test, web lint, web build (same as CI)
+make check                                       # fmt, vet, test, web lint, web test, web build (same as CI)
 make test                                        # all Go tests
 go test ./internal/server -run TestHealthz -v    # single Go test
 go test ./internal/secret -run TestSealOpenRoundTrip -v   # another single Go test
@@ -28,8 +28,8 @@ go test -tags webui ./web/                       # needs a built UI (make web-bu
 make dev-server                                  # control plane on :8080
 make dev-web                                     # Vite dev server, proxies /api and /healthz to :8080
 make web-install                                 # npm ci in web/
-cd web && npm run lint                           # oxlint (there is no web test runner yet)
-cd web && npm test                                # node --test over src/**/*.test.ts: pure logic only, no DOM
+cd web && npm run lint                           # oxlint
+cd web && npm test                               # node --test over src/**/*.test.ts: pure logic only, no DOM
 dev/kind/up.sh                                   # the kind testbed for the cluster tools; see dev/kind/README.md
 . ~/remedy-kind/env.sh && go test -tags kind -run Live ./internal/kube   # the read methods against the real testbed
 . ~/remedy-kind/env.sh && go test -tags kindwrite -run 'LiveWrite|LiveActions' ./internal/kube ./internal/gatekeeper   # CHANGES the testbed: restarts, deletes, syncs

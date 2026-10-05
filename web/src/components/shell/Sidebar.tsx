@@ -37,7 +37,7 @@ export default function Sidebar({ section, pathname, shell, onSignOut }: Props) 
             <Link
               key={item.to}
               to={item.to}
-              aria-current={active ? 'page' : undefined}
+              aria-current={pathname === item.to ? 'page' : active ? 'true' : undefined}
               className={cn(
                 'flex h-10 items-center gap-3 rounded-full px-3 transition-colors',
                 active ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-card hover:text-foreground',
@@ -65,7 +65,10 @@ export default function Sidebar({ section, pathname, shell, onSignOut }: Props) 
             >
               <span aria-hidden className={cn('mt-1.5 size-2 shrink-0 rounded-full', incidentStateColor[incident.state])} />
               <span className="flex min-w-0 flex-1 gap-2">
-                <span className="flex-1 truncate font-semibold">{incident.title}</span>
+                <span className="flex-1 truncate font-semibold">
+                  <span className="sr-only">{incident.state}: </span>
+                  {incident.title}
+                </span>
                 <span className="shrink-0 text-xs text-subtle">{timeAgo(incident.lastSeen)}</span>
               </span>
             </Link>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from './api.ts'
 import { greeting } from './greeting.ts'
+import { isGatewayStatus } from './shell.ts'
 import RemedyMark from '@/components/RemedyMark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,7 +21,11 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
       await api.login(password)
       onLoggedIn()
     } catch (err) {
-      if (err instanceof ApiError) setError(err.status === 401 ? "That isn't the admin password." : err.message)
+      if (err instanceof ApiError) {
+        if (err.status === 401) setError("That isn't the admin password.")
+        else if (isGatewayStatus(err.status)) setError("I can't reach the server right now.")
+        else setError(err.message)
+      }
       else setError('Login failed')
     } finally {
       setBusy(false)

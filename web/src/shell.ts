@@ -52,6 +52,11 @@ export interface ShellState {
 
 export const emptyShell: ShellState = { pending: 0, incidents: [], online: true, loaded: false }
 
+/** The statuses a reverse proxy answers when it cannot reach the server. Remedy's own routes that the shell polls never answer them. */
+export function isGatewayStatus(status: number): boolean {
+  return status === 502 || status === 503 || status === 504
+}
+
 /**
  * The state after one poll. A rejection that is an HTTP answer (the route may not exist on this server, or it failed once) leaves
  * the shell online and keeps what it had for that part; any other rejection means the server cannot be reached: the shell goes

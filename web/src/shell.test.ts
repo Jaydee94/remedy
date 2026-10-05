@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Incident } from './api.ts'
-import { defaultHeader, emptyShell, navItems, nextShell, sectionOf } from './shell.ts'
+import { defaultHeader, emptyShell, isGatewayStatus, navItems, nextShell, sectionOf } from './shell.ts'
 
 describe('sectionOf', () => {
   it('maps every navigation path to its section', () => {
@@ -96,5 +96,23 @@ describe('nextShell', () => {
     const got = nextShell(before, failed(new HttpError('500')), ok([]), isHttpError)
     assert.equal(got.pending, 2)
     assert.equal(got.online, true)
+  })
+
+  it('keeps the incidents and the loaded flag when the incidents route answers with an HTTP error', () => {
+    const before = nextShell(emptyShell, ok([1]), ok([incident(7)]), isHttpError)
+    const got = nextShell(before, ok([1]), failed(new HttpError('500')), isHttpError)
+    assert.deepEqual(got.incidents, [incident(7)])
+    assert.equal(got.loaded, true)
+    assert.equal(got.online, true)
+  })
+})
+
+describe('isGatewayStatus', () => {
+  it('is true for the statuses a reverse proxy answers when the server is down', () => {
+    for (const status of [502, 503, 504]) assert.equal(isGatewayStatus(status), true)
+  })
+
+  it('is false for every other status', () => {
+    for (const status of [200, 401, 404, 500]) assert.equal(isGatewayStatus(status), false)
   })
 })

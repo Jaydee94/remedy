@@ -6,7 +6,7 @@ import PendingBadge from '@/components/shell/PendingBadge'
 import { cn } from '@/lib/utils'
 
 /** The bottom tab bar of a phone. 44 px or more per target, and the safe-area inset under it. Hidden from the md breakpoint up. */
-export default function TabBar({ section, pending }: { section: Section | null; pending: number }) {
+export default function TabBar({ section, pathname, pending }: { section: Section | null; pathname: string; pending: number }) {
   return (
     <nav
       aria-label="Main"
@@ -19,7 +19,7 @@ export default function TabBar({ section, pending }: { section: Section | null; 
           <Link
             key={item.to}
             to={item.to}
-            aria-current={active ? 'page' : undefined}
+            aria-current={pathname === item.to ? 'page' : active ? 'true' : undefined}
             className={cn(
               'relative flex h-13.5 flex-1 flex-col items-center justify-center gap-1 rounded-2xl text-[11px] outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
               active ? 'text-primary' : 'text-muted-foreground',

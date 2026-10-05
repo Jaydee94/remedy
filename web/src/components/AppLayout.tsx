@@ -31,7 +31,7 @@ export default function AppLayout({ onSignOut }: { onSignOut: () => void }) {
               <div className="min-h-0 flex-1 overflow-auto">
                 <Outlet />
               </div>
-              <TabBar section={section} pending={shell.pending} />
+              <TabBar section={section} pathname={pathname} pending={shell.pending} />
             </main>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from './api.ts'
-import { emptyShell, nextShell } from './shell.ts'
+import { emptyShell, isGatewayStatus, nextShell } from './shell.ts'
 import type { ShellState } from './shell.ts'
 
 const POLL_MS = 2000 // a call that waits for a decision must show within two seconds (phase 2 spec, success criteria)
@@ -11,9 +11,16 @@ export function useShell(): ShellState {
 
   useEffect(() => {
     let active = true
+    let busy = false // a slow poll must not overlap the next one
     const load = async () => {
-      const [approvals, incidents] = await Promise.allSettled([api.listApprovals('pending'), api.listIncidents('active')])
-      if (active) setState((prev) => nextShell(prev, approvals, incidents, (e) => e instanceof ApiError))
+      if (busy) return
+      busy = true
+      try {
+        const [approvals, incidents] = await Promise.allSettled([api.listApprovals('pending'), api.listIncidents('active')])
+        if (active) setState((prev) => nextShell(prev, approvals, incidents, (e) => e instanceof ApiError && !isGatewayStatus(e.status)))
+      } finally {
+        busy = false
+      }
     }
     void load()
     const timer = setInterval(() => void load(), POLL_MS)
