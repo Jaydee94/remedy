@@ -24,6 +24,9 @@ const (
 // ErrNotActive is returned when an incident cannot be changed because it is resolved or ignored.
 var ErrNotActive = errors.New("incident is already resolved or ignored")
 
+// ErrNotIgnored is returned when an incident cannot be un-ignored because it is not ignored.
+var ErrNotIgnored = errors.New("incident is not ignored")
+
 // Class says what a check run means for an incident. The values are ordered by severity: when
 // several check runs share a key, the highest wins.
 type Class int
@@ -200,6 +203,30 @@ func (e *Engine) Ignore(ctx context.Context, id int64) (store.Incident, error) {
 	return e.Store.GetIncident(ctx, id)
 }
 
+// Unignore moves an ignored incident back. It returns store.ErrNotFound for an unknown incident and ErrNotIgnored for one
+// that is not ignored, which includes one that turned green while it was ignored.
+func (e *Engine) Unignore(ctx context.Context, id int64) (store.Incident, error) {
+	cur, err := e.Store.GetIncident(ctx, id)
+	if err != nil {
+		return store.Incident{}, err
+	}
+	if cur.State != store.IncIgnored {
+		return store.Incident{}, ErrNotIgnored
+	}
+	err = e.Store.UnignoreIncident(ctx, id, store.NewActivity{
+		Kind:    store.KindIncidentUnignored,
+		RepoID:  cur.RepoID,
+		Summary: unignoredText(cur),
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		return store.Incident{}, ErrNotIgnored // another writer was faster
+	}
+	if err != nil {
+		return store.Incident{}, err
+	}
+	return e.Store.GetIncident(ctx, id)
+}
+
 // noun is what a source's incident is called in a sentence.
 func noun(source string) string {
 	switch source {
@@ -233,6 +260,13 @@ func ignoredText(cur store.Incident) string {
 		return fmt.Sprintf("Ignored the incident for %s on %s in %s", cur.CheckName, refLabel(cur.Ref), cur.RepoName)
 	}
 	return "Ignored the incident for " + what(cur.Source, cur.Title)
+}
+
+func unignoredText(cur store.Incident) string {
+	if cur.Source == store.SourceGitHub {
+		return fmt.Sprintf("Stopped ignoring the incident for %s on %s in %s", cur.CheckName, refLabel(cur.Ref), cur.RepoName)
+	}
+	return "Stopped ignoring the incident for " + what(cur.Source, cur.Title)
 }
 
 // RefLabel is how a ref reads in a sentence: "PR #7" or "branch main".

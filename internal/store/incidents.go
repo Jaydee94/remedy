@@ -18,6 +18,7 @@ const (
 	KindIncidentRecurred  = "incident_recurred"
 	KindIncidentResolved  = "incident_resolved"
 	KindIncidentIgnored   = "incident_ignored"
+	KindIncidentUnignored = "incident_unignored"
 	KindPollFailed        = "poll_failed"
 	KindPollRecovered     = "poll_recovered"
 	KindConnectionChanged = "connection_changed"
@@ -344,6 +345,25 @@ func (s *Store) IgnoreIncident(ctx context.Context, id int64, act NewActivity) e
 		if err := oneRow(tx.ExecContext(ctx, `
 			UPDATE incidents SET state = 'ignored'
 			WHERE id = ? AND state IN ('open', 'diagnosing', 'diagnosed')`, id)); err != nil {
+			return err
+		}
+		act.IncidentID = id
+		return insertActivity(ctx, tx, act)
+	})
+}
+
+// UnignoreIncident moves an ignored incident back to where it would be. The state before the ignore is not stored, so it is
+// derived: diagnosing while a responder run of the incident is queued or running, else diagnosed if a diagnosis is stored,
+// else open. It returns ErrNotFound unless the incident is ignored.
+func (s *Store) UnignoreIncident(ctx context.Context, id int64, act NewActivity) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if err := oneRow(tx.ExecContext(ctx, `
+			UPDATE incidents SET state = CASE
+				WHEN EXISTS (SELECT 1 FROM runs r WHERE r.incident_id = incidents.id AND r.role = 'responder'
+					AND r.status IN ('queued', 'running')) THEN 'diagnosing'
+				WHEN diagnosis IS NOT NULL THEN 'diagnosed'
+				ELSE 'open' END
+			WHERE id = ? AND state = 'ignored'`, id)); err != nil {
 			return err
 		}
 		act.IncidentID = id
