@@ -10,7 +10,10 @@ import (
 
 // Reader is the read-only client. Every exported method is a Get or a List, enforced by a test, and its transport
 // refuses everything but GET and HEAD. It uses the read identity's token.
-type Reader struct{ *client }
+type Reader struct {
+	*client
+	argo string // the namespace of the Argo CD applications
+}
 
 // NewReader builds a Reader for a configuration whose read side is on.
 func NewReader(c Config, opts ...Option) (*Reader, error) {
@@ -22,7 +25,7 @@ func NewReader(c Config, opts ...Option) (*Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Reader{cl}, nil
+	return &Reader{client: cl, argo: c.argoNamespace()}, nil
 }
 
 // Version is what the API server says about itself.
