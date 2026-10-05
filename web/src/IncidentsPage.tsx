@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { api, ApiError } from './api.ts'
-import type { Incident, Repo } from './api.ts'
-import { conclusionText, timeAgo } from './incidents.ts'
+import type { Incident, IncidentSource, Repo } from './api.ts'
+import { conclusionText, sourceLabels, timeAgo } from './incidents.ts'
 import RefLink from './RefLink.tsx'
+import SourceBadge from './SourceBadge.tsx'
 import StateBadge from './StateBadge.tsx'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent } from '@/components/ui/card'
@@ -22,6 +23,7 @@ const stateOptions = [
 
 export default function IncidentsPage() {
   const [state, setState] = useState('active')
+  const [source, setSource] = useState('')
   const [repoId, setRepoId] = useState('')
   const [incidents, setIncidents] = useState<Incident[] | null>(null)
   const [repos, setRepos] = useState<Repo[]>([])
@@ -35,7 +37,7 @@ export default function IncidentsPage() {
     let active = true
     const load = () =>
       api
-        .listIncidents(state, repoId ? Number(repoId) : undefined)
+        .listIncidents(state, repoId ? Number(repoId) : undefined, source ? (source as IncidentSource) : undefined)
         .then((list) => {
           if (!active) return
           setIncidents(list)
@@ -50,7 +52,7 @@ export default function IncidentsPage() {
       active = false
       clearInterval(timer)
     }
-  }, [state, repoId])
+  }, [state, repoId, source])
 
   return (
     <div className="flex flex-col gap-6">
@@ -61,6 +63,14 @@ export default function IncidentsPage() {
             {stateOptions.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
+              </option>
+            ))}
+          </select>
+          <select aria-label="Source" className={selectClass} value={source} onChange={(e) => setSource(e.target.value)}>
+            <option value="">All sources</option>
+            {Object.entries(sourceLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
               </option>
             ))}
           </select>
@@ -91,7 +101,7 @@ export default function IncidentsPage() {
       ) : incidents.length === 0 ? (
         <p className="text-muted-foreground">
           {state === 'active'
-            ? 'No active incidents. Remedy checks the enabled repositories regularly.'
+            ? 'No active incidents. Remedy checks the enabled repositories and the signal sources it is configured for regularly.'
             : 'No incidents match.'}
         </p>
       ) : (
@@ -100,7 +110,8 @@ export default function IncidentsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Check</TableHead>
+                  <TableHead>Incident</TableHead>
+                  <TableHead>Source</TableHead>
                   <TableHead>Repository</TableHead>
                   <TableHead>Ref</TableHead>
                   <TableHead>State</TableHead>
@@ -114,12 +125,19 @@ export default function IncidentsPage() {
                   <TableRow key={i.id}>
                     <TableCell className="font-medium">
                       <Link to={`/incidents/${i.id}`} className="underline-offset-4 hover:underline">
-                        {i.checkName}
+                        {i.title}
                       </Link>
                     </TableCell>
-                    <TableCell>{i.repo}</TableCell>
                     <TableCell>
-                      <RefLink refName={i.ref} url={i.refUrl} />
+                      <SourceBadge source={i.source} />
+                    </TableCell>
+                    <TableCell>{i.source === 'github' ? i.repo : <span className="text-muted-foreground">-</span>}</TableCell>
+                    <TableCell>
+                      {i.source === 'github' ? (
+                        <RefLink refName={i.ref} url={i.refUrl} />
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <StateBadge state={i.state} />

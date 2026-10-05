@@ -3,8 +3,9 @@ import { Link } from 'react-router'
 import { api, ApiError } from './api.ts'
 import type { IncidentDetail } from './api.ts'
 import DiagnosisCard from './DiagnosisCard.tsx'
-import { conclusionText, externalLinkClass, reasonText, safeUrl } from './incidents.ts'
+import { conclusionText, externalLinkClass, reasonText, safeUrl, severityText } from './incidents.ts'
 import RefLink from './RefLink.tsx'
+import SourceBadge from './SourceBadge.tsx'
 import StateBadge from './StateBadge.tsx'
 import ConfirmButton from '@/components/ConfirmButton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -78,6 +79,8 @@ export default function IncidentView({ id }: { id: number }) {
   const incident = detail?.incident
   const checkHref = safeUrl(incident?.checkUrl)
   const canIgnore = incident && ['open', 'diagnosing', 'diagnosed'].includes(incident.state)
+  const fromGitHub = incident?.source === 'github'
+  const signal = incident?.details && Object.keys(incident.details).length > 0 ? JSON.stringify(incident.details, null, 2) : ''
 
   return (
     <div className="flex flex-col gap-6">
@@ -97,18 +100,27 @@ export default function IncidentView({ id }: { id: number }) {
         <>
           <header className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-2xl font-semibold tracking-tight break-all">{incident.checkName}</h1>
+              <h1 className="text-2xl font-semibold tracking-tight break-all">{incident.title}</h1>
               <StateBadge state={incident.state} />
             </div>
             <p className="flex flex-wrap items-center gap-x-2 text-muted-foreground">
-              <span>{incident.repo}</span>
-              <span aria-hidden>·</span>
-              <RefLink refName={incident.ref} url={incident.refUrl} />
+              {fromGitHub ? (
+                <>
+                  <span>{incident.repo}</span>
+                  <span aria-hidden>·</span>
+                  <RefLink refName={incident.ref} url={incident.refUrl} />
+                </>
+              ) : (
+                <>
+                  <SourceBadge source={incident.source} />
+                  {severityText(incident.severity) && <span>{severityText(incident.severity)}</span>}
+                </>
+              )}
               {checkHref && (
                 <>
                   <span aria-hidden>·</span>
                   <a href={checkHref} target="_blank" rel="noreferrer" className={externalLinkClass}>
-                    Open the check run
+                    {fromGitHub ? 'Open the check run' : 'Open the source'}
                   </a>
                 </>
               )}
@@ -125,8 +137,12 @@ export default function IncidentView({ id }: { id: number }) {
               <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
                 <dt className="text-muted-foreground">Conclusion</dt>
                 <dd>{conclusionText(incident.conclusion)}</dd>
-                <dt className="text-muted-foreground">Commit</dt>
-                <dd className="font-mono">{incident.headSha.slice(0, 7)}</dd>
+                {fromGitHub && (
+                  <>
+                    <dt className="text-muted-foreground">Commit</dt>
+                    <dd className="font-mono">{incident.headSha.slice(0, 7)}</dd>
+                  </>
+                )}
                 <dt className="text-muted-foreground">Occurrences</dt>
                 <dd>{incident.occurrences}</dd>
                 <dt className="text-muted-foreground">First seen</dt>
@@ -154,6 +170,17 @@ export default function IncidentView({ id }: { id: number }) {
               )}
             </CardContent>
           </Card>
+
+          {signal && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Signal</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <pre className="max-h-96 overflow-auto font-mono text-xs break-words whitespace-pre-wrap">{signal}</pre>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
