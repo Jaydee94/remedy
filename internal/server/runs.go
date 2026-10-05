@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/store"
@@ -13,10 +14,11 @@ const maxPromptBytes = 20_000
 
 func (s *srv) createRun(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Provider string `json:"provider"`
-		Prompt   string `json:"prompt"`
-		Tools    bool   `json:"tools"`
-		Cluster  bool   `json:"cluster"`
+		Provider   string `json:"provider"`
+		Prompt     string `json:"prompt"`
+		Tools      bool   `json:"tools"`
+		Cluster    bool   `json:"cluster"`
+		IncidentID *int64 `json:"incidentId"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid request body")
@@ -46,6 +48,23 @@ func (s *srv) createRun(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, "no cluster is configured")
 		return
 	}
+	if req.IncidentID != nil && !req.Tools {
+		writeErr(w, http.StatusBadRequest, "a question about an incident needs the gatekeeper tools")
+		return
+	}
+	if req.IncidentID != nil {
+		created, err := s.d.Store.CreateQuestionRun(r.Context(), req.Provider, req.Prompt, *req.IncidentID, req.Cluster)
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "incident not found")
+			return
+		}
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "could not create run")
+			return
+		}
+		writeJSON(w, http.StatusCreated, created)
+		return
+	}
 	create := s.d.Store.CreateRun
 	switch {
 	case req.Cluster:
@@ -62,6 +81,20 @@ func (s *srv) createRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *srv) listRuns(w http.ResponseWriter, r *http.Request) {
+	if v := r.URL.Query().Get("incident"); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			writeErr(w, http.StatusBadRequest, "incident must be a positive whole number")
+			return
+		}
+		runs, err := s.d.Store.ListIncidentRuns(r.Context(), id, 50)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "could not list runs")
+			return
+		}
+		writeJSON(w, http.StatusOK, runs)
+		return
+	}
 	runs, err := s.d.Store.ListRuns(r.Context(), 50)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not list runs")

@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/diagnosis"
+	"github.com/Jaydee94/remedy/internal/prompt"
 	"github.com/Jaydee94/remedy/internal/reaper"
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/run"
@@ -14,12 +16,16 @@ import (
 )
 
 // claimFor is the answer to a runner that claimed a run. A responder run also gets the diagnosis schema and
-// the order to download the repository snapshot first.
+// the order to download the repository snapshot first. A question about an incident (an ad-hoc run with an incident) gets the
+// frame of prompt.Question around the stored question; the stored prompt stays the bare question.
 func claimFor(r run.Run, mcpToken string) run.Claim {
 	c := run.Claim{Run: r, MCPToken: mcpToken}
 	if r.Role == run.RoleResponder {
 		c.Schema = json.RawMessage(diagnosis.Schema)
 		c.Snapshot = true
+	}
+	if r.Role == run.RoleAdhoc && r.IncidentID != nil {
+		c.Prompt = prompt.Question(*r.IncidentID, r.Prompt)
 	}
 	return c
 }
@@ -57,16 +63,24 @@ type limitsView struct {
 	DiagnoseMaxPerIncident  int `json:"diagnoseMaxPerIncident"`
 	DiagnoseMaxPerDay       int `json:"diagnoseMaxPerDay"`
 	StaleRunMinutes         int `json:"staleRunMinutes"`
+	// DiagnosesLast24h is how many automatic diagnoses were started in the last 24 hours, counted the way the daily limit counts.
+	DiagnosesLast24h int `json:"diagnosesLast24h"`
 }
 
-func (s *srv) getLimits(w http.ResponseWriter, _ *http.Request) {
+func (s *srv) getLimits(w http.ResponseWriter, r *http.Request) {
 	l := s.d.Responder.Limits
+	used, err := s.d.Store.AutoRunsSince(r.Context(), time.Now().Add(-24*time.Hour))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not count the diagnoses")
+		return
+	}
 	writeJSON(w, http.StatusOK, limitsView{
 		PollIntervalSeconds:     int(s.d.PollInterval.Seconds()),
 		DiagnoseCooldownSeconds: int(l.Cooldown.Seconds()),
 		DiagnoseMaxPerIncident:  l.MaxPerIncident,
 		DiagnoseMaxPerDay:       l.MaxPerDay,
 		StaleRunMinutes:         int(reaper.DefaultMaxAge.Minutes()),
+		DiagnosesLast24h:        used,
 	})
 }
 
