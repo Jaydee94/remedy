@@ -1,4 +1,5 @@
 import { Link } from 'react-router'
+import { askFor, incidentPreview } from '@/conversation.ts'
 import { incidentStateColor, timeAgo } from '@/incidents.ts'
 import { navItems } from '@/shell.ts'
 import type { Section, ShellState } from '@/shell.ts'
@@ -64,12 +65,17 @@ export default function Sidebar({ section, pathname, shell, onSignOut }: Props) 
               className={cn('flex gap-2.5 rounded-2xl px-3 py-2.5 transition-colors hover:bg-card', here && 'bg-card', focus)}
             >
               <span aria-hidden className={cn('mt-1.5 size-2 shrink-0 rounded-full', incidentStateColor[incident.state])} />
-              <span className="flex min-w-0 flex-1 gap-2">
-                <span className="flex-1 truncate font-semibold">
-                  <span className="sr-only">{incident.state}: </span>
-                  {incident.title}
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="flex gap-2">
+                  <span className="flex-1 truncate font-semibold">
+                    <span className="sr-only">{incident.state}: </span>
+                    {incident.title}
+                  </span>
+                  <span className="shrink-0 text-xs text-subtle">{timeAgo(incident.lastSeen)}</span>
                 </span>
-                <span className="shrink-0 text-xs text-subtle">{timeAgo(incident.lastSeen)}</span>
+                <span className="truncate text-[13px] text-muted-foreground">
+                  {incidentPreview(incident, askFor(shell.asks, incident.id))}
+                </span>
               </span>
             </Link>
           )
