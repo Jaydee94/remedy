@@ -42,6 +42,9 @@ type Deps struct {
 	// Gatekeeper serves the MCP tools of agents at /mcp and decides approvals. When it is nil there are neither, and
 	// a run cannot be created with tools.
 	Gatekeeper *gatekeeper.Gatekeeper
+
+	// Cluster says what can be done in a cluster. The zero value is no cluster.
+	Cluster Cluster
 }
 
 type srv struct {
@@ -61,6 +64,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/logout", s.session(s.logout))
 	mux.HandleFunc("GET /api/me", s.session(s.me))
 	mux.HandleFunc("POST /api/runs", s.session(s.createRun))
+	mux.HandleFunc("GET /api/capabilities", s.session(s.capabilities))
 	mux.HandleFunc("GET /api/runs", s.session(s.listRuns))
 	mux.HandleFunc("GET /api/runs/{id}", s.session(s.getRun))
 	mux.HandleFunc("GET /api/runs/{id}/events", s.session(s.streamEvents))

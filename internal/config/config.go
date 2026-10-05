@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jaydee94/remedy/internal/kube"
 	"github.com/Jaydee94/remedy/internal/secret"
 )
 
@@ -40,6 +41,7 @@ type Server struct {
 	DiagnoseCooldown       time.Duration // REMEDY_DIAGNOSE_COOLDOWN, per incident, default 15m, at least 1m
 	DiagnoseMaxPerIncident int           // REMEDY_DIAGNOSE_MAX_PER_INCIDENT, automatic diagnoses, default 3, 0 to 20
 	DiagnoseMaxPerDay      int           // REMEDY_DIAGNOSE_MAX_PER_DAY, automatic runs in 24 hours, default 20, 0 to 200; 0 turns it off
+	Cluster                kube.Config   // REMEDY_K8S_*: how to reach the cluster; the zero value means no cluster
 }
 
 func ServerFromEnv(get func(string) string) (Server, error) {
@@ -90,6 +92,22 @@ func ServerFromEnv(get func(string) string) (Server, error) {
 		return Server{}, err
 	}
 	if c.DiagnoseMaxPerDay, err = wholeNumber(get, "REMEDY_DIAGNOSE_MAX_PER_DAY", 20, 200); err != nil {
+		return Server{}, err
+	}
+
+	namespaces, err := kube.ParseNamespaces(get("REMEDY_K8S_WRITE_NAMESPACES"))
+	if err != nil {
+		return Server{}, fmt.Errorf("REMEDY_K8S_WRITE_NAMESPACES: %w", err)
+	}
+	c.Cluster = kube.Config{
+		API:             get("REMEDY_K8S_API"),
+		CAFile:          get("REMEDY_K8S_CA_FILE"),
+		ReadTokenFile:   get("REMEDY_K8S_READ_TOKEN_FILE"),
+		WriteTokenFile:  get("REMEDY_K8S_WRITE_TOKEN_FILE"),
+		WriteNamespaces: namespaces,
+		ArgoNamespace:   get("REMEDY_K8S_ARGO_NAMESPACE"),
+	}
+	if err := c.Cluster.Validate(); err != nil {
 		return Server{}, err
 	}
 	return c, nil

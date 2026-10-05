@@ -55,7 +55,12 @@ func main() {
 		}()
 	}
 
+	for _, w := range cfg.Cluster.Warnings() {
+		log.Warn(w)
+	}
+
 	a := app.New(cfg, st, log, web.FS())
+	background(a.CheckCluster)
 	background(a.Poller.Run)
 	background(a.Reaper.Run)
 
