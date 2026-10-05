@@ -62,6 +62,9 @@ func (c Config) argoNamespace() string {
 
 var dnsLabel = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
 
+// ValidNamespace says whether s is a namespace name.
+func ValidNamespace(s string) bool { return dnsLabel.MatchString(s) }
+
 // ParseNamespaces reads a comma separated list of namespaces. It drops empty entries and duplicates and refuses
 // anything that is not a namespace name: a wildcard or a path would widen what the list is meant to say.
 func ParseNamespaces(list string) ([]string, error) {

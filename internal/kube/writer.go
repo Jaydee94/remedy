@@ -45,6 +45,9 @@ func validName(name string) error {
 	return nil
 }
 
+// ValidName says whether s can be the name of an object in a request path.
+func ValidName(s string) bool { return validName(s) == nil }
+
 // target checks the namespace against the allowlist and the name against the name rules, before anything is sent.
 func (w *Writer) target(namespace, name string) error {
 	if !slices.Contains(w.namespaces, namespace) {
