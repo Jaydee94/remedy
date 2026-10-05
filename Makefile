@@ -16,8 +16,9 @@ build: web-build ## Build the UI, then both Go binaries with the UI embedded
 test: ## Run Go tests
 	go test ./...
 
-vet: ## Run go vet
+vet: ## Run go vet, also over the tests that need the kind testbed (they are not run, but they must compile)
 	go vet ./...
+	go vet -tags kind,kindwrite ./...
 
 fmt: ## Fail if Go files are not gofmt-clean
 	@test -z "$$(gofmt -l .)" || { gofmt -l .; exit 1; }

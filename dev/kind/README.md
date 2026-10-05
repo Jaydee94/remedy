@@ -55,3 +55,14 @@ counts in `internal/gatekeeper/tools_cluster_test.go` and `internal/kube/objects
 
 runs the read methods against the real testbed instead of the recording, and shows that the read identity cannot read
 Secrets or change anything. If it fails after a Kubernetes or Argo CD upgrade, the recording is out of date.
+
+## Tests that change the testbed
+
+```sh
+. ~/remedy-kind/env.sh && go test -tags kindwrite -run 'LiveWrite|LiveActions' -v ./internal/kube ./internal/gatekeeper
+```
+
+restart `demo/web`, delete one of its pods, refresh and sync `guestbook` (which creates `guestbook-ui` in `demo`) with the write identity, and show that
+RBAC stops a `Writer` that the code would let act in `other` or in `kube-system`. They also show that the action tools' checks hold against real
+pods (the creation time of a pod has a resolution of one second) and a real Argo CD. Run them on a testbed you are about to throw away, after the
+read-only tests: after a sync the testbed is no longer what those expect.
