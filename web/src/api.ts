@@ -157,6 +157,8 @@ export interface Limits {
   /** 0 means automatic diagnosis is off. */
   diagnoseMaxPerDay: number
   staleRunMinutes: number
+  /** Automatic diagnoses started in the last 24 hours (they count against `diagnoseMaxPerDay`). */
+  diagnosesLast24h: number
 }
 
 /** One line of the timeline. The summary may contain text from GitHub: show it as text, never as HTML. */
