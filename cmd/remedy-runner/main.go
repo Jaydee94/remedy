@@ -30,6 +30,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	if n, err := runner.SweepWorkspaces(cfg.WorkspaceRoot); err != nil {
+		log.Warn("cannot remove everything an earlier runner left behind", "path", cfg.WorkspaceRoot, "removed", n, "err", err)
+	} else if n > 0 {
+		log.Info("removed what an earlier runner left behind", "path", cfg.WorkspaceRoot, "directories", n)
+	}
+
 	loop := &runner.Loop{
 		Client:        &runner.Client{BaseURL: cfg.ServerURL, Token: cfg.Token, HTTP: &http.Client{}},
 		Providers:     map[string]provider.Provider{"claude": provider.Claude{Binary: cfg.ClaudeBin, Model: cfg.ClaudeModel}},
