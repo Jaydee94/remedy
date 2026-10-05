@@ -161,3 +161,22 @@ func (s *srv) ignoreIncident(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, incidentViewOf(in))
 	}
 }
+
+func (s *srv) unignoreIncident(w http.ResponseWriter, r *http.Request) {
+	id, ok := incidentID(r)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "incident not found")
+		return
+	}
+	in, err := s.d.Incidents.Unignore(r.Context(), id)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeErr(w, http.StatusNotFound, "incident not found")
+	case errors.Is(err, incident.ErrNotIgnored):
+		writeErr(w, http.StatusConflict, "this incident is not ignored")
+	case err != nil:
+		writeErr(w, http.StatusInternalServerError, "could not stop ignoring the incident")
+	default:
+		writeJSON(w, http.StatusOK, incidentViewOf(in))
+	}
+}

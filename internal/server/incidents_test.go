@@ -199,6 +199,70 @@ func TestIgnoreNeedsTheCSRFHeader(t *testing.T) {
 	}
 }
 
+func TestUnignoreIncident(t *testing.T) {
+	e, repoID := withRepo(t)
+	in := openIncident(t, e, repoID, "pr:7", "go")
+	id := strconv.FormatInt(in.ID, 10)
+
+	if code, _ := e.call(t, http.MethodPost, "/api/incidents/"+id+"/unignore", ""); code != http.StatusConflict {
+		t.Errorf("un-ignoring an open incident = %d, want 409", code)
+	}
+	if code, body := e.call(t, http.MethodPost, "/api/incidents/"+id+"/ignore", ""); code != http.StatusOK {
+		t.Fatalf("ignore = %d %s", code, body)
+	}
+
+	code, body := e.call(t, http.MethodPost, "/api/incidents/"+id+"/unignore", "")
+	if code != http.StatusOK || field(t, body, "state") != "open" {
+		t.Fatalf("POST unignore = %d %s", code, body)
+	}
+	if code, _ := e.call(t, http.MethodPost, "/api/incidents/"+id+"/unignore", ""); code != http.StatusConflict {
+		t.Errorf("un-ignoring twice = %d, want 409", code)
+	}
+	if code, _ := e.call(t, http.MethodPost, "/api/incidents/9999/unignore", ""); code != http.StatusNotFound {
+		t.Errorf("un-ignoring an unknown incident = %d, want 404", code)
+	}
+	if got := listIncidents(t, e, "?state=ignored"); len(got) != 0 {
+		t.Fatalf("ignored = %+v", got)
+	}
+	log, _ := e.store.ListActivity(context.Background(), store.ActivityQuery{IncidentID: in.ID})
+	if len(log) != 3 || log[0].Kind != store.KindIncidentUnignored {
+		t.Fatalf("activity = %+v", log)
+	}
+}
+
+func TestUnignoreNeedsASessionAndTheCSRFHeader(t *testing.T) {
+	e, repoID := withRepo(t)
+	in := openIncident(t, e, repoID, "pr:7", "go")
+	if err := e.store.IgnoreIncident(context.Background(), in.ID, store.NewActivity{Kind: store.KindIncidentIgnored, RepoID: repoID, Summary: "ignored"}); err != nil {
+		t.Fatal(err)
+	}
+	url := e.ts.URL + "/api/incidents/" + strconv.FormatInt(in.ID, 10) + "/unignore"
+
+	req, _ := http.NewRequest(http.MethodPost, url, strings.NewReader(""))
+	resp, err := e.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("POST without X-Remedy-CSRF = %d, want 403", resp.StatusCode)
+	}
+
+	req, _ = http.NewRequest(http.MethodPost, url, strings.NewReader(""))
+	req.Header.Set("X-Remedy-CSRF", "1")
+	resp, err = http.DefaultClient.Do(req) // no session cookie
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("POST without a session = %d, want 401", resp.StatusCode)
+	}
+	if got, _ := e.store.GetIncident(context.Background(), in.ID); got.State != store.IncIgnored {
+		t.Fatalf("state = %q: a refused request changed the incident", got.State)
+	}
+}
+
 func TestConnectionAndRepoChangesAreLogged(t *testing.T) {
 	e, repoID := withRepo(t)
 	if code, _ := e.call(t, http.MethodDelete, "/api/repos/"+strconv.FormatInt(repoID, 10), ""); code != http.StatusNoContent {

@@ -100,6 +100,7 @@ func New(d Deps) http.Handler {
 		mux.HandleFunc("GET /api/incidents", s.session(s.listIncidents))
 		mux.HandleFunc("GET /api/incidents/{id}", s.session(s.getIncident))
 		mux.HandleFunc("POST /api/incidents/{id}/ignore", s.session(s.ignoreIncident))
+		mux.HandleFunc("POST /api/incidents/{id}/unignore", s.session(s.unignoreIncident))
 	}
 
 	if d.Responder != nil {
