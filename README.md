@@ -83,9 +83,9 @@ files named `.env*`, `*.pem`, `*.key` and `id_rsa*` are not part of the copy; a 
 readable by the agent. The runner never receives a GitHub token: the control plane fetches the copy.
 
 Open <http://localhost:8080> and sign in. The home page is the **Timeline**, a live feed of everything Remedy
-does: incidents, diagnoses, polling problems, changes to the settings. Under **Runs** you can start an agent run by
+does: incidents, diagnoses, polling problems, changes to the settings. Under **Ask Remedy** you can start an agent run by
 hand, with or without the gatekeeper tools: a run with tools can read incidents and ask to add a note to one, and every note waits
-for your decision under **Approvals** (the run waits with it, as long as it takes; **Cancel run** ends it). A first run against the
+for your decision under **Needs you** (the run waits with it, as long as it takes; **Cancel run** ends it). A first run against the
 real CLI is described in [`docs/runbook/gatekeeper-real-run.md`](docs/runbook/gatekeeper-real-run.md) and
 [`docs/research/phase-2ab-real-run.md`](docs/research/phase-2ab-real-run.md). `REMEDY_LOG_LEVEL=debug` (default `info`) logs every request to GitHub with its method, host,
 path and status, never a query or the token; the GitHub client refuses to send anything but `GET` and `HEAD`.
@@ -101,10 +101,10 @@ skills, plugins, hooks and MCP servers are **not** loaded, the agent only gets t
 **Cluster access (optional, in progress).** The control plane can reach a Kubernetes cluster with two separate identities: a read-only
 one (`REMEDY_K8S_READ_TOKEN_FILE`, a file with a service account token) and one for approved actions (`REMEDY_K8S_WRITE_TOKEN_FILE`, usable only in
 the namespaces of `REMEDY_K8S_WRITE_NAMESPACES`). `REMEDY_K8S_API` (default: the in-cluster address), `REMEDY_K8S_CA_FILE` and `REMEDY_K8S_ARGO_NAMESPACE`
-(default `argocd`) say where and how. With the read token set, the **Runs** page offers "Allow cluster tools". A run started with it gets seven
+(default `argocd`) say where and how. With the read token set, the **Ask Remedy** page offers the chip "Read the cluster". A run started with it gets seven
 read tools (workloads, pods, describe, events, pod logs, nodes, Argo CD applications); what a cluster returns is shown to the agent as data, never as
 an instruction. Four actions are possible in the namespaces of
-`REMEDY_K8S_WRITE_NAMESPACES`, each one only after you approve it under **Approvals**: restart a workload, delete a pod, refresh and sync an Argo CD
+`REMEDY_K8S_WRITE_NAMESPACES`, each one only after you approve it under **Needs you**: restart a workload, delete a pod, refresh and sync an Argo CD
 application ([`docs/specs/2026-10-04-phase-2c-cluster-design.md`](docs/specs/2026-10-04-phase-2c-cluster-design.md)). A run with the real CLI against the
 testbed is described in [`docs/runbook/cluster-real-run.md`](docs/runbook/cluster-real-run.md) and recorded in
 [`docs/research/phase-2c-real-run.md`](docs/research/phase-2c-real-run.md).

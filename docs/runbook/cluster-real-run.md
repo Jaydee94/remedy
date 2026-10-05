@@ -29,7 +29,7 @@ printf '{"password":"%s"}' "$REMEDY_ADMIN_PASSWORD" | curl -sf -c cookies -H 'X-
 
 Expected: `server.log` says "the cluster answers" with the version of the cluster and `actions=true`, and
 `curl -s -b cookies http://127.0.0.1:8080/api/capabilities` answers `{"cluster":{"read":true,"write":true,"namespaces":["demo"]}}`. Sign in
-at <http://127.0.0.1:8080> with `REMEDY_ADMIN_PASSWORD`: the **Runs** page has the switches **Allow gatekeeper tools** and **Allow cluster tools**.
+at <http://127.0.0.1:8080> with `REMEDY_ADMIN_PASSWORD`: the **Ask Remedy** page has the chips **Use gatekeeper tools** and **Read the cluster**.
 
 Four helpers keep the commands short (they work in this shell, from `~/remedy-cluster-run`):
 
@@ -78,9 +78,9 @@ kubectl --context kind-remedy-dev -n demo get pods -l app=web       # note the t
 start "Restart the deployment web in the namespace demo of the Kubernetes cluster, then check with your tools that its pods are back up and tell me the result in one sentence."
 ```
 
-Within seconds the run waits: the run page says "This run is waiting for your approval", **Approvals** in the sidebar shows 1, and the card shows
+Within seconds the run waits: the run page says "This run is waiting for your approval", **Needs you** in the sidebar shows 1, and the card shows
 `cluster_rollout_restart` with the arguments `kind deployment`, `namespace demo`, `name web`. Check that **nothing has changed yet**: the two pod names
-are the same. In the browser, type a reason and click **Approve**.
+are the same. In the browser, type a reason and click **Yes, restart it**.
 
 Expected: the run `succeeded` within a few seconds with an answer that the pods are back up; the pod names are **new**; the deployment's template has
 the annotation `kubectl.kubernetes.io/restartedAt`
@@ -89,7 +89,7 @@ the annotation `kubectl.kubernetes.io/restartedAt`
 
 ## 5. Scenario 4: a restart that is denied
 
-Run the same prompt again, and **Deny** with the reason "not now" (UI or `decide deny <id> "not now"`). Expected: the pod names stay as they were
+Run the same prompt again, and **No** with the reason "not now" (UI or `decide deny <id> "not now"`). Expected: the pod names stay as they were
 after scenario 3, the answer says that the restart was not done, the call is `denied`, and the Timeline has `approval_requested` and
 `approval_decided` ("Denied ...") but no "Restarted" entry.
 
