@@ -118,6 +118,16 @@ running as a service for other people's homelabs.
   follows later.
 - Access via a local admin account with a password. Basics: Argon2, session cookie with
   CSRF protection, login rate limit. Reachable only on the LAN/VPN.
+- **Conversation UI (2026-10-05).** The UI speaks as Remedy, in the first person: Today, Conversations (one thread per
+  incident), Needs you (the approvals), Ask Remedy (runs) and Setup. Routes, API and trust boundaries do not change. A sentence
+  Remedy "says" is a template filled with values from the data; agent-written text is shown as text and never decides a
+  sentence's structure. Spec: [`specs/2026-10-05-ui-conversation-redesign-design.md`](specs/2026-10-05-ui-conversation-redesign-design.md).
+- **Three additions to the admin API carry it.** (1) `POST /api/incidents/{id}/unignore` moves an ignored incident back: to
+  `diagnosing` while a responder run of it is queued or running, else `diagnosed` if it has a diagnosis, else `open`. (2) `POST
+  /api/runs` takes `incidentId` with `tools: true`: an ad-hoc run about an incident. The question is the maintainer's own text;
+  the frame around it is built in `internal/prompt` at the claim, and the incident's text is not in the prompt: the agent reads
+  it with `incident_get` as data. This is a bounded part of the ad-hoc chat that the roadmap puts into phase 4. `GET /api/runs`
+  takes `?incident=`. (3) `GET /api/limits` carries `diagnosesLast24h`, the count the daily limit uses.
 
 ### 2.9 Agent roles and triggers (branch 9)
 
