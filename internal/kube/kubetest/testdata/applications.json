@@ -1,0 +1,75 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "items": [
+    {
+      "apiVersion": "argoproj.io/v1alpha1",
+      "kind": "Application",
+      "metadata": {
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"argoproj.io/v1alpha1\",\"kind\":\"Application\",\"metadata\":{\"annotations\":{},\"name\":\"guestbook\",\"namespace\":\"argocd\"},\"spec\":{\"destination\":{\"namespace\":\"demo\",\"server\":\"https://kubernetes.default.svc\"},\"project\":\"default\",\"source\":{\"path\":\"guestbook\",\"repoURL\":\"https://github.com/argoproj/argocd-example-apps.git\",\"targetRevision\":\"HEAD\"}}}\n"
+        },
+        "creationTimestamp": "2026-10-05T05:26:25Z",
+        "name": "guestbook",
+        "namespace": "argocd"
+      },
+      "spec": {
+        "destination": {
+          "namespace": "demo",
+          "server": "https://kubernetes.default.svc"
+        },
+        "project": "default",
+        "source": {
+          "path": "guestbook",
+          "repoURL": "https://github.com/argoproj/argocd-example-apps.git",
+          "targetRevision": "HEAD"
+        }
+      },
+      "status": {
+        "controllerNamespace": "argocd",
+        "health": {
+          "lastTransitionTime": "2026-10-05T05:27:32Z",
+          "status": "Missing"
+        },
+        "reconciledAt": "2026-10-05T05:30:31Z",
+        "resourceHealthSource": "appTree",
+        "resources": [
+          {
+            "kind": "Service",
+            "name": "guestbook-ui",
+            "namespace": "demo",
+            "status": "OutOfSync",
+            "version": "v1"
+          },
+          {
+            "group": "apps",
+            "kind": "Deployment",
+            "name": "guestbook-ui",
+            "namespace": "demo",
+            "status": "OutOfSync",
+            "version": "v1"
+          }
+        ],
+        "sourceType": "Directory",
+        "sync": {
+          "comparedTo": {
+            "destination": {
+              "namespace": "demo",
+              "server": "https://kubernetes.default.svc"
+            },
+            "source": {
+              "path": "guestbook",
+              "repoURL": "https://github.com/argoproj/argocd-example-apps.git",
+              "targetRevision": "HEAD"
+            }
+          },
+          "revision": "8088f4c0d970abb09e250248cc97e35623447cb5",
+          "status": "OutOfSync"
+        }
+      }
+    }
+  ],
+  "kind": "ApplicationList",
+  "metadata": {
+    "continue": ""
+  }
+}

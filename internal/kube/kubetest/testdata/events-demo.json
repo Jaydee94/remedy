@@ -1,0 +1,1103 @@
+{
+  "apiVersion": "v1",
+  "items": [
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "badimage-6667f8b47-wk96n",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:48Z",
+      "message": "0/1 nodes are available: 1 node(s) had untolerated taint(s). preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling.",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:48Z",
+        "name": "badimage-6667f8b47-wk96n.18db8ada8a3e318d",
+        "namespace": "demo"
+      },
+      "reason": "FailedScheduling",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "",
+      "source": {
+        "component": "default-scheduler"
+      },
+      "type": "Warning"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:58Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "badimage-6667f8b47-wk96n",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:58Z",
+      "message": "Successfully assigned demo/badimage-6667f8b47-wk96n to remedy-dev-control-plane",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:58Z",
+        "name": "badimage-6667f8b47-wk96n.18db8adcffcb1acd",
+        "namespace": "demo"
+      },
+      "reason": "Scheduled",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "",
+      "source": {
+        "component": "default-scheduler"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 5,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:59Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{badimage}",
+        "kind": "Pod",
+        "name": "badimage-6667f8b47-wk96n",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:29:10Z",
+      "message": "Pulling image \"registry.invalid/remedy/badimage:1.0\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:59Z",
+        "name": "badimage-6667f8b47-wk96n.18db8add27084c77",
+        "namespace": "demo"
+      },
+      "reason": "Pulling",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 5,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:12Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{badimage}",
+        "kind": "Pod",
+        "name": "badimage-6667f8b47-wk96n",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:29:10Z",
+      "message": "Failed to pull image \"registry.invalid/remedy/badimage:1.0\": failed to pull and unpack image \"registry.invalid/remedy/badimage:1.0\": failed to resolve reference \"registry.invalid/remedy/badimage:1.0\": failed to do request: Head \"https://registry.invalid/v2/remedy/badimage/manifests/1.0\": dial tcp: lookup registry.invalid on 192.168.65.254:53: no such host",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:12Z",
+        "name": "badimage-6667f8b47-wk96n.18db8ae0409e526d",
+        "namespace": "demo"
+      },
+      "reason": "Failed",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Warning"
+    },
+    {
+      "count": 5,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:12Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{badimage}",
+        "kind": "Pod",
+        "name": "badimage-6667f8b47-wk96n",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:29:10Z",
+      "message": "Error: ErrImagePull",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:12Z",
+        "name": "badimage-6667f8b47-wk96n.18db8ae040a0a963",
+        "namespace": "demo"
+      },
+      "reason": "Failed",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Warning"
+    },
+    {
+      "count": 20,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:12Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{badimage}",
+        "kind": "Pod",
+        "name": "badimage-6667f8b47-wk96n",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:31:25Z",
+      "message": "Back-off pulling image \"registry.invalid/remedy/badimage:1.0\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:12Z",
+        "name": "badimage-6667f8b47-wk96n.18db8ae0585be83e",
+        "namespace": "demo"
+      },
+      "reason": "BackOff",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 19,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:12Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{badimage}",
+        "kind": "Pod",
+        "name": "badimage-6667f8b47-wk96n",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:31:13Z",
+      "message": "Error: ImagePullBackOff",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:12Z",
+        "name": "badimage-6667f8b47-wk96n.18db8ae0585cf3fc",
+        "namespace": "demo"
+      },
+      "reason": "Failed",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Warning"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:48Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "badimage-6667f8b47",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:48Z",
+      "message": "Created pod: badimage-6667f8b47-wk96n",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:48Z",
+        "name": "badimage-6667f8b47.18db8ada89ba737a",
+        "namespace": "demo"
+      },
+      "reason": "SuccessfulCreate",
+      "reportingComponent": "replicaset-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:47Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "badimage",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:47Z",
+      "message": "Scaled up replica set badimage-6667f8b47 from 0 to 1",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:47Z",
+        "name": "badimage.18db8ada674787ec",
+        "namespace": "demo"
+      },
+      "reason": "ScalingReplicaSet",
+      "reportingComponent": "deployment-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "deployment-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "chatty-55f5867576-lqkmm",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:48Z",
+      "message": "0/1 nodes are available: 1 node(s) had untolerated taint(s). preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling.",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:48Z",
+        "name": "chatty-55f5867576-lqkmm.18db8ada8a1a00e7",
+        "namespace": "demo"
+      },
+      "reason": "FailedScheduling",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "",
+      "source": {
+        "component": "default-scheduler"
+      },
+      "type": "Warning"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:58Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "chatty-55f5867576-lqkmm",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:58Z",
+      "message": "Successfully assigned demo/chatty-55f5867576-lqkmm to remedy-dev-control-plane",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:58Z",
+        "name": "chatty-55f5867576-lqkmm.18db8adcffca62b8",
+        "namespace": "demo"
+      },
+      "reason": "Scheduled",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "",
+      "source": {
+        "component": "default-scheduler"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:59Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{chatty}",
+        "kind": "Pod",
+        "name": "chatty-55f5867576-lqkmm",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:59Z",
+      "message": "Pulling image \"busybox:1.37\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:59Z",
+        "name": "chatty-55f5867576-lqkmm.18db8add1fe94f68",
+        "namespace": "demo"
+      },
+      "reason": "Pulling",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:01Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{chatty}",
+        "kind": "Pod",
+        "name": "chatty-55f5867576-lqkmm",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:26:01Z",
+      "message": "Successfully pulled image \"busybox:1.37\" in 2.427s (2.427s including waiting). Image size: 1911395 bytes.",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:01Z",
+        "name": "chatty-55f5867576-lqkmm.18db8addb0959e2b",
+        "namespace": "demo"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:01Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{chatty}",
+        "kind": "Pod",
+        "name": "chatty-55f5867576-lqkmm",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:26:01Z",
+      "message": "Container created",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:01Z",
+        "name": "chatty-55f5867576-lqkmm.18db8addb1066eb4",
+        "namespace": "demo"
+      },
+      "reason": "Created",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:01Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{chatty}",
+        "kind": "Pod",
+        "name": "chatty-55f5867576-lqkmm",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:26:01Z",
+      "message": "Container started",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:01Z",
+        "name": "chatty-55f5867576-lqkmm.18db8addb2d295db",
+        "namespace": "demo"
+      },
+      "reason": "Started",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:48Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "chatty-55f5867576",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:48Z",
+      "message": "Created pod: chatty-55f5867576-lqkmm",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:48Z",
+        "name": "chatty-55f5867576.18db8ada89b756ee",
+        "namespace": "demo"
+      },
+      "reason": "SuccessfulCreate",
+      "reportingComponent": "replicaset-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:47Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "chatty",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:47Z",
+      "message": "Scaled up replica set chatty-55f5867576 from 0 to 1",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:47Z",
+        "name": "chatty.18db8ada6746a2eb",
+        "namespace": "demo"
+      },
+      "reason": "ScalingReplicaSet",
+      "reportingComponent": "deployment-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "deployment-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "crashy-77cfcdd775-k9k5s",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:48Z",
+      "message": "0/1 nodes are available: 1 node(s) had untolerated taint(s). preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling.",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:48Z",
+        "name": "crashy-77cfcdd775-k9k5s.18db8ada8a54d714",
+        "namespace": "demo"
+      },
+      "reason": "FailedScheduling",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "",
+      "source": {
+        "component": "default-scheduler"
+      },
+      "type": "Warning"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:58Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "crashy-77cfcdd775-k9k5s",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:58Z",
+      "message": "Successfully assigned demo/crashy-77cfcdd775-k9k5s to remedy-dev-control-plane",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:58Z",
+        "name": "crashy-77cfcdd775-k9k5s.18db8adcffcae882",
+        "namespace": "demo"
+      },
+      "reason": "Scheduled",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "",
+      "source": {
+        "component": "default-scheduler"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:59Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{crashy}",
+        "kind": "Pod",
+        "name": "crashy-77cfcdd775-k9k5s",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:59Z",
+      "message": "Pulling image \"busybox:1.37\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:59Z",
+        "name": "crashy-77cfcdd775-k9k5s.18db8add26dc3390",
+        "namespace": "demo"
+      },
+      "reason": "Pulling",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:12Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{crashy}",
+        "kind": "Pod",
+        "name": "crashy-77cfcdd775-k9k5s",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:26:12Z",
+      "message": "Successfully pulled image \"busybox:1.37\" in 697ms (13.289s including waiting). Image size: 1911395 bytes.",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:12Z",
+        "name": "crashy-77cfcdd775-k9k5s.18db8ae03efd5f7f",
+        "namespace": "demo"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 6,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:12Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{crashy}",
+        "kind": "Pod",
+        "name": "crashy-77cfcdd775-k9k5s",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:29:09Z",
+      "message": "Container created",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:12Z",
+        "name": "crashy-77cfcdd775-k9k5s.18db8ae03fa92909",
+        "namespace": "demo"
+      },
+      "reason": "Created",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 6,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:12Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{crashy}",
+        "kind": "Pod",
+        "name": "crashy-77cfcdd775-k9k5s",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:29:09Z",
+      "message": "Container started",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:12Z",
+        "name": "crashy-77cfcdd775-k9k5s.18db8ae04233cae2",
+        "namespace": "demo"
+      },
+      "reason": "Started",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 5,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:12Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{crashy}",
+        "kind": "Pod",
+        "name": "crashy-77cfcdd775-k9k5s",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:29:09Z",
+      "message": "Container image \"busybox:1.37\" already present on machine and can be accessed by the pod",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:12Z",
+        "name": "crashy-77cfcdd775-k9k5s.18db8ae058570203",
+        "namespace": "demo"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 9,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:13Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{crashy}",
+        "kind": "Pod",
+        "name": "crashy-77cfcdd775-k9k5s",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:31:21Z",
+      "message": "Back-off restarting failed container crashy in pod crashy-77cfcdd775-k9k5s_demo(7ed71b5a-5c99-4b84-8519-f94f92522ffa)",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:13Z",
+        "name": "crashy-77cfcdd775-k9k5s.18db8ae09422a0d4",
+        "namespace": "demo"
+      },
+      "reason": "BackOff",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Warning"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:48Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "crashy-77cfcdd775",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:48Z",
+      "message": "Created pod: crashy-77cfcdd775-k9k5s",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:48Z",
+        "name": "crashy-77cfcdd775.18db8ada89b4bede",
+        "namespace": "demo"
+      },
+      "reason": "SuccessfulCreate",
+      "reportingComponent": "replicaset-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:47Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "crashy",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:47Z",
+      "message": "Scaled up replica set crashy-77cfcdd775 from 0 to 1",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:48Z",
+        "name": "crashy.18db8ada674a22ea",
+        "namespace": "demo"
+      },
+      "reason": "ScalingReplicaSet",
+      "reportingComponent": "deployment-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "deployment-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "web-78f66fd67f-267ln",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:48Z",
+      "message": "0/1 nodes are available: 1 node(s) had untolerated taint(s). preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling.",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:48Z",
+        "name": "web-78f66fd67f-267ln.18db8ada89eb6d90",
+        "namespace": "demo"
+      },
+      "reason": "FailedScheduling",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "",
+      "source": {
+        "component": "default-scheduler"
+      },
+      "type": "Warning"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:58Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "web-78f66fd67f-267ln",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:58Z",
+      "message": "Successfully assigned demo/web-78f66fd67f-267ln to remedy-dev-control-plane",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:58Z",
+        "name": "web-78f66fd67f-267ln.18db8adcffcac3e3",
+        "namespace": "demo"
+      },
+      "reason": "Scheduled",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "",
+      "source": {
+        "component": "default-scheduler"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:59Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{web}",
+        "kind": "Pod",
+        "name": "web-78f66fd67f-267ln",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:59Z",
+      "message": "Pulling image \"nginx:1.27-alpine\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:59Z",
+        "name": "web-78f66fd67f-267ln.18db8add256e65e5",
+        "namespace": "demo"
+      },
+      "reason": "Pulling",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:11Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{web}",
+        "kind": "Pod",
+        "name": "web-78f66fd67f-267ln",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:26:11Z",
+      "message": "Successfully pulled image \"nginx:1.27-alpine\" in 719ms (12.616s including waiting). Image size: 21832241 bytes.",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:11Z",
+        "name": "web-78f66fd67f-267ln.18db8ae0156a027c",
+        "namespace": "demo"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:11Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{web}",
+        "kind": "Pod",
+        "name": "web-78f66fd67f-267ln",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:26:11Z",
+      "message": "Container created",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:11Z",
+        "name": "web-78f66fd67f-267ln.18db8ae015eae065",
+        "namespace": "demo"
+      },
+      "reason": "Created",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:11Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{web}",
+        "kind": "Pod",
+        "name": "web-78f66fd67f-267ln",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:26:11Z",
+      "message": "Container started",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:11Z",
+        "name": "web-78f66fd67f-267ln.18db8ae017c24674",
+        "namespace": "demo"
+      },
+      "reason": "Started",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:48Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "web-78f66fd67f-npzf7",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:48Z",
+      "message": "0/1 nodes are available: 1 node(s) had untolerated taint(s). preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling.",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:48Z",
+        "name": "web-78f66fd67f-npzf7.18db8ada8a7001fe",
+        "namespace": "demo"
+      },
+      "reason": "FailedScheduling",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "",
+      "source": {
+        "component": "default-scheduler"
+      },
+      "type": "Warning"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:58Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "name": "web-78f66fd67f-npzf7",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:58Z",
+      "message": "Successfully assigned demo/web-78f66fd67f-npzf7 to remedy-dev-control-plane",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:58Z",
+        "name": "web-78f66fd67f-npzf7.18db8adcffc96523",
+        "namespace": "demo"
+      },
+      "reason": "Scheduled",
+      "reportingComponent": "default-scheduler",
+      "reportingInstance": "",
+      "source": {
+        "component": "default-scheduler"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:59Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{web}",
+        "kind": "Pod",
+        "name": "web-78f66fd67f-npzf7",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:59Z",
+      "message": "Pulling image \"nginx:1.27-alpine\"",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:59Z",
+        "name": "web-78f66fd67f-npzf7.18db8add2e450fc1",
+        "namespace": "demo"
+      },
+      "reason": "Pulling",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:13Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{web}",
+        "kind": "Pod",
+        "name": "web-78f66fd67f-npzf7",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:26:13Z",
+      "message": "Successfully pulled image \"nginx:1.27-alpine\" in 672ms (13.864s including waiting). Image size: 21832241 bytes.",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:13Z",
+        "name": "web-78f66fd67f-npzf7.18db8ae068ae8e75",
+        "namespace": "demo"
+      },
+      "reason": "Pulled",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:13Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{web}",
+        "kind": "Pod",
+        "name": "web-78f66fd67f-npzf7",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:26:13Z",
+      "message": "Container created",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:13Z",
+        "name": "web-78f66fd67f-npzf7.18db8ae06938d056",
+        "namespace": "demo"
+      },
+      "reason": "Created",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:26:13Z",
+      "involvedObject": {
+        "apiVersion": "v1",
+        "fieldPath": "spec.containers{web}",
+        "kind": "Pod",
+        "name": "web-78f66fd67f-npzf7",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:26:13Z",
+      "message": "Container started",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:26:13Z",
+        "name": "web-78f66fd67f-npzf7.18db8ae06b56110c",
+        "namespace": "demo"
+      },
+      "reason": "Started",
+      "reportingComponent": "kubelet",
+      "reportingInstance": "remedy-dev-control-plane",
+      "source": {
+        "component": "kubelet",
+        "host": "remedy-dev-control-plane"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:48Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "web-78f66fd67f",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:48Z",
+      "message": "Created pod: web-78f66fd67f-267ln",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:48Z",
+        "name": "web-78f66fd67f.18db8ada89b707d4",
+        "namespace": "demo"
+      },
+      "reason": "SuccessfulCreate",
+      "reportingComponent": "replicaset-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:48Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "web-78f66fd67f",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:48Z",
+      "message": "Created pod: web-78f66fd67f-npzf7",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:48Z",
+        "name": "web-78f66fd67f.18db8ada89e77bcc",
+        "namespace": "demo"
+      },
+      "reason": "SuccessfulCreate",
+      "reportingComponent": "replicaset-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "replicaset-controller"
+      },
+      "type": "Normal"
+    },
+    {
+      "count": 1,
+      "eventTime": null,
+      "firstTimestamp": "2026-10-05T05:25:47Z",
+      "involvedObject": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "web",
+        "namespace": "demo"
+      },
+      "lastTimestamp": "2026-10-05T05:25:47Z",
+      "message": "Scaled up replica set web-78f66fd67f from 0 to 2",
+      "metadata": {
+        "creationTimestamp": "2026-10-05T05:25:47Z",
+        "name": "web.18db8ada6749ff98",
+        "namespace": "demo"
+      },
+      "reason": "ScalingReplicaSet",
+      "reportingComponent": "deployment-controller",
+      "reportingInstance": "",
+      "source": {
+        "component": "deployment-controller"
+      },
+      "type": "Normal"
+    }
+  ],
+  "kind": "EventList",
+  "metadata": {}
+}
