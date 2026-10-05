@@ -1,0 +1,6 @@
+# A single-node cluster for trying Remedy's cluster tools. See up.sh.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: remedy-dev
+nodes:
+  - role: control-plane
