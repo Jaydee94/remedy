@@ -98,6 +98,13 @@ skills, plugins, hooks and MCP servers are **not** loaded, the agent only gets t
 `claude` CLI (the flags exist in 2.1.287). The model is `sonnet` unless you set `REMEDY_CLAUDE_MODEL`
 (see [`docs/research/spike-claude-billing.md`](docs/research/spike-claude-billing.md)).
 
+**Cluster access (optional, in progress).** The control plane can reach a Kubernetes cluster with two separate identities: a read-only
+one (`REMEDY_K8S_READ_TOKEN_FILE`, a file with a service account token) and one for approved actions (`REMEDY_K8S_WRITE_TOKEN_FILE`, usable only in
+the namespaces of `REMEDY_K8S_WRITE_NAMESPACES`). `REMEDY_K8S_API` (default: the in-cluster address), `REMEDY_K8S_CA_FILE` and `REMEDY_K8S_ARGO_NAMESPACE`
+(default `argocd`) say where and how. With the read token set, the **Runs** page offers "Allow cluster tools". The tools themselves come with the
+next plans ([`docs/specs/2026-10-04-phase-2c-cluster-design.md`](docs/specs/2026-10-04-phase-2c-cluster-design.md)); today only the configuration, the
+clients and the switch exist.
+
 ### Container
 
 ```sh

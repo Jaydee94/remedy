@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { api, ApiError } from './api.ts'
-import type { Run } from './api.ts'
+import type { Capabilities, Run } from './api.ts'
 import { statusColor } from './status.ts'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -16,10 +16,16 @@ export default function RunsPage() {
   const [runs, setRuns] = useState<Run[]>([])
   const [prompt, setPrompt] = useState('')
   const [tools, setTools] = useState(false)
+  const [cluster, setCluster] = useState(false)
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
   const [error, setError] = useState('')
 
   const refresh = useCallback(() => {
     api.listRuns().then(setRuns).catch((e: unknown) => setError(String(e)))
+  }, [])
+
+  useEffect(() => {
+    api.getCapabilities().then(setCapabilities).catch(() => setCapabilities(null))
   }, [])
 
   useEffect(() => {
@@ -32,7 +38,7 @@ export default function RunsPage() {
     e.preventDefault()
     setError('')
     try {
-      const created = await api.createRun(prompt, tools)
+      const created = await api.createRun(prompt, tools, cluster)
       setPrompt('')
       navigate(`/runs/${created.id}`)
     } catch (err) {
@@ -58,7 +64,14 @@ export default function RunsPage() {
               aria-label="Prompt"
             />
             <div className="flex items-center gap-3">
-              <Switch id="tools" checked={tools} onCheckedChange={setTools} />
+              <Switch
+                id="tools"
+                checked={tools}
+                onCheckedChange={(on) => {
+                  setTools(on)
+                  if (!on) setCluster(false) // the cluster tools are a part of the gatekeeper's tools
+                }}
+              />
               <Label htmlFor="tools">Allow gatekeeper tools</Label>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -66,6 +79,26 @@ export default function RunsPage() {
                 ? 'The agent can read incidents and ask to add a note to one. Every note waits for your decision under Approvals, and the run waits with it.'
                 : 'The agent can only read the files of its workspace.'}
             </p>
+            {capabilities?.cluster.read && (
+              <>
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="cluster"
+                    checked={cluster}
+                    onCheckedChange={(on) => {
+                      setCluster(on)
+                      if (on) setTools(true) // cluster tools need the gatekeeper
+                    }}
+                  />
+                  <Label htmlFor="cluster">Allow cluster tools</Label>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {capabilities.cluster.write
+                    ? `The agent can read the cluster. Actions in the cluster wait for your decision under Approvals; they are possible in: ${capabilities.cluster.namespaces.join(', ')}.`
+                    : 'The agent can read the cluster. No action in the cluster is possible: no write access is configured.'}
+                </p>
+              </>
+            )}
             <Button type="submit" className="self-start" disabled={prompt.trim() === ''}>
               Start run
             </Button>
@@ -90,6 +123,7 @@ export default function RunsPage() {
             <span className={`h-2.5 w-2.5 rounded-full ${statusColor[r.status]}`} />
             <span className="flex-1 truncate">{r.prompt}</span>
             {r.mcp && <span className="text-xs text-muted-foreground">tools</span>}
+            {r.cluster && <span className="text-xs text-muted-foreground">cluster</span>}
             <span className="text-xs text-muted-foreground">{new Date(r.createdAt).toLocaleString()}</span>
           </Link>
         ))}
