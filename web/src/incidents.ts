@@ -1,4 +1,4 @@
-import type { IncidentState } from './api.ts'
+import type { Incident, IncidentSource, IncidentState } from './api.ts'
 
 export const incidentStateColor: Record<IncidentState, string> = {
   open: 'bg-rose-500',
@@ -24,6 +24,25 @@ const conclusionLabels: Record<string, string> = {
   startup_failure: 'failed to start',
   cancelled: 'cancelled',
   action_required: 'needs action',
+  firing: 'firing',
+  degraded: 'degraded',
+  missing: 'missing',
+  sync_failed: 'sync failed',
+}
+
+export const sourceLabels: Record<IncidentSource, string> = {
+  github: 'GitHub',
+  alertmanager: 'Alertmanager',
+  argocd: 'Argo CD',
+}
+
+export function sourceLabel(source: IncidentSource): string {
+  return sourceLabels[source] ?? source
+}
+
+/** The text of a severity, or nothing for the severity of an incident that has none. */
+export function severityText(severity: Incident['severity']): string {
+  return severity === 'none' ? '' : severity
 }
 
 export function conclusionText(conclusion: string): string {
@@ -36,6 +55,8 @@ export function reasonText(reason?: string): string {
       return 'the check turned green'
     case 'pr_closed':
       return 'the pull request was closed or merged'
+    case 'cleared':
+      return 'the signal is no longer reported'
     default:
       return reason ?? ''
   }

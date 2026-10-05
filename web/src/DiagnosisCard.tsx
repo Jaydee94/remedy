@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { api, ApiError } from './api.ts'
 import type { Incident } from './api.ts'
-import { categoryText, shortSha } from './incidents.ts'
+import { categoryText, shortSha, sourceLabel } from './incidents.ts'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -47,6 +47,19 @@ export default function DiagnosisCard({ incident, onChanged }: Props) {
     } finally {
       setBusy(false)
     }
+  }
+
+  if (incident.source !== 'github') {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Diagnosis</CardTitle>
+          <CardDescription>
+            The diagnosis of an incident from {sourceLabel(incident.source)} is not available yet.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )
   }
 
   let subtitle = 'Written by an agent that read the failure log and the repository at the failing commit. Check it before you act on it.'

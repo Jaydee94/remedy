@@ -89,8 +89,19 @@ export interface Repo {
 
 export type IncidentState = 'open' | 'diagnosing' | 'diagnosed' | 'resolved' | 'ignored'
 
+export type IncidentSource = 'github' | 'alertmanager' | 'argocd'
+
 export interface Incident {
   id: number
+  source: IncidentSource
+  /** The line of the list. For a GitHub incident it is the check name. */
+  title: string
+  severity: 'critical' | 'warning' | 'info' | 'none'
+  /** The responder may start on its own. */
+  autoDiagnose: boolean
+  /** The signal of an incident from a source other than GitHub: labels, annotations, the state of an application. */
+  details?: Record<string, unknown>
+  /** The fields from here to checkUrl belong to GitHub. They are empty for another source. */
   repoId: number
   repo: string
   /** "pr:<number>" or "branch:<name>". */
@@ -215,10 +226,11 @@ export const api = {
   setRepoEnabled: (id: number, enabled: boolean) => request<void>('PATCH', `/api/repos/${id}`, { enabled }),
   deleteRepo: (id: number) => request<void>('DELETE', `/api/repos/${id}`),
 
-  /** state is "active", "all" or one incident state. */
-  listIncidents: (state: string, repoId?: number) => {
+  /** state is "active", "all" or one incident state. source is left out for every source. */
+  listIncidents: (state: string, repoId?: number, source?: IncidentSource) => {
     const query = new URLSearchParams({ state })
     if (repoId !== undefined) query.set('repo', String(repoId))
+    if (source !== undefined) query.set('source', source)
     return request<Incident[]>('GET', `/api/incidents?${query.toString()}`)
   },
   getIncident: (id: number) => request<IncidentDetail>('GET', `/api/incidents/${id}`),
