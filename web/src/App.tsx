@@ -11,7 +11,7 @@ import NotFound from './NotFound.tsx'
 import RunsPage from './RunsPage.tsx'
 import RunView from './RunView.tsx'
 import SettingsPage from './SettingsPage.tsx'
-import TimelinePage from './TimelinePage.tsx'
+import TodayPage from './TodayPage.tsx'
 
 /** Mounts RunView with key={id} so that switching runs resets its state. */
 function RunRoute() {
@@ -43,9 +43,9 @@ export default function App() {
   return (
     <Routes>
       <Route element={<AppLayout onSignOut={signOut} />}>
+        <Route index element={<TodayPage />} />
         <Route path="incidents" element={<ConversationsPage />} />
         <Route element={<LegacyPage />}>
-          <Route index element={<TimelinePage />} />
           <Route path="incidents/:id" element={<IncidentRoute />} />
           <Route path="approvals" element={<ApprovalsPage />} />
           <Route path="runs" element={<RunsPage />} />
