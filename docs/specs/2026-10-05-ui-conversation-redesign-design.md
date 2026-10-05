@@ -1,6 +1,6 @@
 # UI redesign: Remedy speaks
 
-Status: draft for the maintainer's review, 2026-10-05. Implementation plans: [`ui-0-backend`](../plans/ui-0-backend.md), written; ui-1 to ui-5 are not written yet (see 11).
+Status: draft for the maintainer's review, 2026-10-05. Implementation plans: [`ui-0-backend`](../plans/ui-0-backend.md), implemented; ui-1 to ui-5 are not written yet (see 11).
 Parent documents: [`../design.md`](../design.md) (section 2.8, the roadmap),
 [`2026-10-02-phase-1-detect-and-diagnose-design.md`](2026-10-02-phase-1-detect-and-diagnose-design.md) (incidents, the timeline, the diagnosis),
 [`2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md`](2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md) (approvals, the run view) and
