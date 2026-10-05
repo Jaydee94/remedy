@@ -10,6 +10,7 @@ export default function RecentRunRow({ run }: { run: RecentRun }) {
   return (
     <Link
       to={`/runs/${encodeURIComponent(run.id)}`}
+      title={run.title}
       className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 outline-none transition-colors hover:border-input focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       <span aria-hidden className={cn('size-2.5 shrink-0 rounded-full', view.dot)} />

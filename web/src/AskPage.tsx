@@ -8,6 +8,7 @@ import { askHint, recentRun, toggleCluster, toggleTools } from './askpage.ts'
 import type { AskSwitches } from './askpage.ts'
 import { useShellState } from './shellContext.ts'
 import RecentRunRow from '@/components/ask/RecentRunRow'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
@@ -29,6 +30,7 @@ export default function AskPage() {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [listError, setListError] = useState('')
 
   useEffect(() => {
     api.getCapabilities().then(setCapabilities).catch(() => setCapabilities(null))
@@ -40,9 +42,13 @@ export default function AskPage() {
     const tick = async () => {
       try {
         const list = await api.listRuns()
-        if (!cancelled) setRuns(list)
-      } catch {
-        // the list keeps what it had; the page still works
+        if (!cancelled) {
+          setRuns(list)
+          setListError('')
+        }
+      } catch (e) {
+        // the list keeps what it had; the page still works. Without a list there is something to say; the poll retries quietly.
+        if (!cancelled) setListError(e instanceof ApiError ? e.message : 'Could not load the earlier conversations')
       }
       if (!cancelled) timer = setTimeout(() => void tick(), POLL_MS)
     }
@@ -119,7 +125,7 @@ export default function AskPage() {
           </button>
         </div>
       </form>
-      <p className="-mt-3 pl-1 text-[13px] text-muted-foreground">{askHint(switches, capabilities)} Cmd or Ctrl and Enter send.</p>
+      <p className="-mt-3 pl-1 text-[13px] text-muted-foreground">{askHint(switches, capabilities)}<span className="hidden sm:inline"> Cmd or Ctrl and Enter send.</span></p>
       {error && (
         <span role="alert" className="-mt-3 pl-1 text-[13px] text-destructive">
           {error}
@@ -129,7 +135,13 @@ export default function AskPage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-semibold text-muted-foreground">Earlier conversations</h2>
         {runs === null ? (
-          <Skeleton className="h-14" />
+          listError ? (
+            <Alert variant="destructive">
+              <AlertDescription>{listError}</AlertDescription>
+            </Alert>
+          ) : (
+            <Skeleton className="h-14" />
+          )
         ) : runs.length === 0 ? (
           <p className="text-[13px] text-muted-foreground">Nothing yet. Ask me something above.</p>
         ) : (
