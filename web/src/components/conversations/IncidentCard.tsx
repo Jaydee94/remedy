@@ -1,6 +1,6 @@
 import { Link } from 'react-router'
 import type { Incident, ToolCall } from '@/api.ts'
-import { incidentPreview } from '@/conversation.ts'
+import { incidentPreview, matchesFilter } from '@/conversation.ts'
 import { conclusionText, incidentStateColor, incidentStateSoft, incidentStateText, refLabel, sourceLabel, timeAgo } from '@/incidents.ts'
 import { cn } from '@/lib/utils'
 
@@ -13,7 +13,7 @@ interface Props {
 /** One incident of the conversations list. Everything from GitHub and from the agent is shown as text. */
 export default function IncidentCard({ incident, ask }: Props) {
   const github = incident.source === 'github'
-  const active = incident.state === 'open' || incident.state === 'diagnosing' || incident.state === 'diagnosed'
+  const active = matchesFilter(incident, 'active')
   return (
     <Link
       to={`/incidents/${incident.id}`}
@@ -28,7 +28,7 @@ export default function IncidentCard({ incident, ask }: Props) {
       <span className="flex min-w-0 flex-1 flex-col gap-1.5">
         <span className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
           <span className="min-w-0 text-[15px] font-semibold break-words">{incident.title}</span>
-          <span className="text-[13px] text-muted-foreground">
+          <span className="min-w-0 text-[13px] break-words text-muted-foreground">
             {github ? `${incident.repo} · ${refLabel(incident.ref)}` : sourceLabel(incident.source)}
           </span>
           <span className="ml-auto text-xs text-subtle">{timeAgo(incident.lastSeen)}</span>

@@ -1,4 +1,4 @@
-import type { Incident, ToolCall } from './api.ts'
+import type { Incident, IncidentSource, ToolCall } from './api.ts'
 import { askText } from './ask.ts'
 import { reasonText } from './incidents.ts'
 
@@ -22,6 +22,34 @@ export function filterCounts(list: readonly Incident[]): Record<StateFilter, num
     resolved: list.filter((i) => matchesFilter(i, 'resolved')).length,
     ignored: list.filter((i) => matchesFilter(i, 'ignored')).length,
   }
+}
+
+/** The incidents of the list narrowed by a source and a repository, and the choices the selects can offer. */
+export interface Scope {
+  sources: IncidentSource[]
+  repos: Map<number, string>
+  /** The selected source, or '' when none is selected or the selected one is not in the list any more. */
+  source: string
+  /** The selected repository id as text, or '' when none is selected or the selected one is not in the list any more. */
+  repoId: string
+  incidents: Incident[]
+}
+
+/**
+ * Narrows the list by the selected source and repository. A selection whose value is not in the list any more counts as no
+ * selection: the selects are hidden when there is nothing to choose, and a stale value must not leave an empty list that cannot
+ * be left.
+ */
+export function scopeIncidents(list: readonly Incident[], source: string, repoId: string): Scope {
+  const sources = [...new Set(list.map((i) => i.source))]
+  const repos = new Map<number, string>()
+  for (const i of list) if (i.source === 'github') repos.set(i.repoId, i.repo)
+  const effectiveSource = sources.some((s) => s === source) ? source : ''
+  const effectiveRepo = repoId !== '' && repos.has(Number(repoId)) ? repoId : ''
+  const incidents = list.filter(
+    (i) => (effectiveSource === '' || i.source === effectiveSource) && (effectiveRepo === '' || String(i.repoId) === effectiveRepo),
+  )
+  return { sources, repos, source: effectiveSource, repoId: effectiveRepo, incidents }
 }
 
 /** The waiting call that was asked first for an incident. */

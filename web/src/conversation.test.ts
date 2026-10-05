@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Diagnosis, Incident, ToolCall } from './api.ts'
-import { askFor, digestText, filterCounts, filterIncidents, incidentPreview, lastDiagnosed } from './conversation.ts'
+import {
+  askFor,
+  digestText,
+  filterCounts,
+  filterIncidents,
+  incidentPreview,
+  lastDiagnosed,
+  scopeIncidents,
+} from './conversation.ts'
 
 const inc = (over: Partial<Incident> = {}): Incident => ({
   id: 1,
@@ -75,6 +83,71 @@ describe('filterIncidents and filterCounts', () => {
     const before = list.map((i) => i.id)
     filterIncidents(list, 'active')
     assert.deepEqual(list.map((i) => i.id), before)
+  })
+})
+
+describe('scopeIncidents', () => {
+  const list = [
+    inc({ id: 1, repoId: 1, repo: 'octo/hello' }),
+    inc({ id: 2, repoId: 2, repo: 'octo/world' }),
+    inc({ id: 3, source: 'alertmanager', repoId: 0, repo: '' }),
+    inc({ id: 4, repoId: 2, repo: 'octo/world' }),
+  ]
+  const ids = (s: { incidents: Incident[] }) => s.incidents.map((i) => i.id)
+
+  it('without a selection returns everything, the sources once and only the github repositories', () => {
+    const s = scopeIncidents(list, '', '')
+    assert.deepEqual(ids(s), [1, 2, 3, 4])
+    assert.deepEqual(s.sources, ['github', 'alertmanager'])
+    assert.deepEqual([...s.repos], [
+      [1, 'octo/hello'],
+      [2, 'octo/world'],
+    ])
+    assert.equal(s.source, '')
+    assert.equal(s.repoId, '')
+  })
+
+  it('narrows by a source', () => {
+    const s = scopeIncidents(list, 'alertmanager', '')
+    assert.deepEqual(ids(s), [3])
+    assert.equal(s.source, 'alertmanager')
+  })
+
+  it('narrows by a repository given as text', () => {
+    const s = scopeIncidents(list, '', '2')
+    assert.deepEqual(ids(s), [2, 4])
+    assert.equal(s.repoId, '2')
+  })
+
+  it('treats a source that is not in the list as no selection', () => {
+    const s = scopeIncidents(list, 'argocd', '')
+    assert.equal(s.source, '')
+    assert.deepEqual(ids(s), [1, 2, 3, 4])
+  })
+
+  it('treats a repository that is not in the list as no selection', () => {
+    const s = scopeIncidents(list, '', '99')
+    assert.equal(s.repoId, '')
+    assert.deepEqual(ids(s), [1, 2, 3, 4])
+  })
+
+  it('treats an empty or non-numeric repository as no selection', () => {
+    assert.deepEqual(ids(scopeIncidents(list, '', '')), [1, 2, 3, 4])
+    const s = scopeIncidents(list, '', 'abc')
+    assert.equal(s.repoId, '')
+    assert.deepEqual(ids(s), [1, 2, 3, 4])
+  })
+
+  it('combines both selections', () => {
+    const s = scopeIncidents(list, 'github', '1')
+    assert.deepEqual(ids(s), [1])
+    assert.equal(scopeIncidents(list, 'alertmanager', '1').incidents.length, 0)
+  })
+
+  it('recovers when the selected repository drops out of the list', () => {
+    const s = scopeIncidents([inc({ id: 1, repoId: 1 })], '', '2')
+    assert.equal(s.repoId, '')
+    assert.deepEqual(ids(s), [1])
   })
 })
 

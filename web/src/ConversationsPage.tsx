@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import type { IncidentSource } from './api.ts'
-import { askFor, filterCounts, filterIncidents } from './conversation.ts'
+import { askFor, filterCounts, filterIncidents, scopeIncidents } from './conversation.ts'
 import type { StateFilter } from './conversation.ts'
 import { sourceLabel } from './incidents.ts'
 import { useShellState } from './shellContext.ts'
@@ -30,15 +29,9 @@ export default function ConversationsPage() {
   const [source, setSource] = useState('')
   const [repoId, setRepoId] = useState('')
 
-  const sources = [...new Set((incidents ?? []).map((i) => i.source))]
-  const repos = new Map<number, string>()
-  for (const i of incidents ?? []) if (i.source === 'github') repos.set(i.repoId, i.repo)
-
-  const scoped = (incidents ?? []).filter(
-    (i) => (source === '' || i.source === source) && (repoId === '' || String(i.repoId) === repoId),
-  )
-  const counts = filterCounts(scoped)
-  const shown = filterIncidents(scoped, filter)
+  const scope = scopeIncidents(incidents ?? [], source, repoId)
+  const counts = filterCounts(scope.incidents)
+  const shown = filterIncidents(scope.incidents, filter)
 
   return (
     <div className="mx-auto flex max-w-205 flex-col gap-5 px-4 py-5 md:px-10 md:py-12">
@@ -70,22 +63,22 @@ export default function ConversationsPage() {
         </span>
       </div>
 
-      {(sources.length > 1 || repos.size > 1) && (
+      {(scope.sources.length > 1 || scope.repos.size > 1) && (
         <div className="flex flex-wrap gap-2">
-          {sources.length > 1 && (
-            <select aria-label="Source" className={selectClass} value={source} onChange={(e) => setSource(e.target.value)}>
+          {scope.sources.length > 1 && (
+            <select aria-label="Source" className={selectClass} value={scope.source} onChange={(e) => setSource(e.target.value)}>
               <option value="">All sources</option>
-              {sources.map((s: IncidentSource) => (
+              {scope.sources.map((s) => (
                 <option key={s} value={s}>
                   {sourceLabel(s)}
                 </option>
               ))}
             </select>
           )}
-          {repos.size > 1 && (
-            <select aria-label="Repository" className={selectClass} value={repoId} onChange={(e) => setRepoId(e.target.value)}>
+          {scope.repos.size > 1 && (
+            <select aria-label="Repository" className={selectClass} value={scope.repoId} onChange={(e) => setRepoId(e.target.value)}>
               <option value="">All repositories</option>
-              {[...repos].map(([id, name]) => (
+              {[...scope.repos].map(([id, name]) => (
                 <option key={id} value={id}>
                   {name}
                 </option>
