@@ -52,20 +52,26 @@ export function mergeEntries(current: TimelineEntry[], incoming: TimelineEntry[]
 }
 
 const kindDots: Record<string, string> = {
-  incident_opened: 'bg-rose-500',
-  incident_recurred: 'bg-rose-500',
-  incident_resolved: 'bg-emerald-500',
-  incident_ignored: 'bg-slate-500',
-  poll_failed: 'bg-amber-500',
-  poll_recovered: 'bg-emerald-500',
-  diagnosis_started: 'bg-amber-500',
-  diagnosis_finished: 'bg-sky-500',
-  diagnosis_failed: 'bg-rose-500',
-  cluster_action: 'bg-violet-500',
+  incident_opened: 'bg-destructive',
+  incident_recurred: 'bg-destructive',
+  incident_resolved: 'bg-success',
+  incident_ignored: 'bg-neutral',
+  incident_unignored: 'bg-primary',
+  poll_failed: 'bg-primary',
+  poll_recovered: 'bg-success',
+  diagnosis_started: 'bg-primary',
+  diagnosis_finished: 'bg-info',
+  diagnosis_failed: 'bg-destructive',
+  approval_requested: 'bg-primary',
+  approval_decided: 'bg-neutral',
+  approval_abandoned: 'bg-neutral',
+  note_added: 'bg-primary',
+  run_cancelled: 'bg-neutral',
+  cluster_action: 'bg-violet',
 }
 
 export function kindDotClass(kind: string): string {
-  return kindDots[kind] ?? 'bg-slate-500'
+  return kindDots[kind] ?? 'bg-neutral'
 }
 
 export function timeOfDay(iso: string): string {

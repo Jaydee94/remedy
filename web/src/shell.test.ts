@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { Incident } from './api.ts'
+import type { Incident, ToolCall } from './api.ts'
 import { defaultHeader, emptyShell, isGatewayStatus, navItems, nextShell, sectionOf } from './shell.ts'
 
 describe('sectionOf', () => {
@@ -47,6 +47,7 @@ describe('defaultHeader', () => {
 })
 
 const incident = (id: number): Incident => ({ id }) as Incident
+const call = (id: number): ToolCall => ({ id }) as ToolCall
 const ok = <T>(value: T): PromiseFulfilledResult<T> => ({ status: 'fulfilled', value })
 const failed = (reason: unknown): PromiseRejectedResult => ({ status: 'rejected', reason })
 class HttpError extends Error {}
@@ -54,26 +55,28 @@ const isHttpError = (e: unknown) => e instanceof HttpError
 
 describe('nextShell', () => {
   it('starts not loaded, online, with nothing', () => {
-    assert.deepEqual(emptyShell, { pending: 0, incidents: [], online: true, loaded: false })
+    assert.deepEqual(emptyShell, { pending: 0, asks: [], incidents: [], online: true, loaded: false })
   })
 
   it('takes both answers and is loaded', () => {
-    const got = nextShell(emptyShell, ok([1, 2]), ok([incident(7)]), isHttpError)
-    assert.deepEqual(got, { pending: 2, incidents: [incident(7)], online: true, loaded: true })
+    const got = nextShell(emptyShell, ok([call(1), call(2)]), ok([incident(7)]), isHttpError)
+    assert.deepEqual(got, { pending: 2, asks: [call(1), call(2)], incidents: [incident(7)], online: true, loaded: true })
   })
 
   it('stays online when a route answers with an HTTP error (the route may not exist)', () => {
     const got = nextShell(emptyShell, failed(new HttpError('404')), ok([incident(7)]), isHttpError)
     assert.equal(got.online, true)
     assert.equal(got.pending, 0)
+    assert.deepEqual(got.asks, [])
     assert.equal(got.loaded, true)
   })
 
   it('goes offline when the server cannot be reached, and keeps the last data', () => {
-    const before = nextShell(emptyShell, ok([1, 2, 3]), ok([incident(1), incident(2)]), isHttpError)
+    const before = nextShell(emptyShell, ok([call(1), call(2), call(3)]), ok([incident(1), incident(2)]), isHttpError)
     const got = nextShell(before, failed(new TypeError('fetch failed')), failed(new TypeError('fetch failed')), isHttpError)
     assert.equal(got.online, false)
     assert.equal(got.pending, 3)
+    assert.deepEqual(got.asks, [call(1), call(2), call(3)])
     assert.deepEqual(got.incidents, [incident(1), incident(2)])
     assert.equal(got.loaded, true)
   })
@@ -86,21 +89,22 @@ describe('nextShell', () => {
 
   it('comes back online when the server answers again', () => {
     const down = nextShell(emptyShell, failed(new TypeError('x')), failed(new TypeError('x')), isHttpError)
-    const up = nextShell(down, ok([1]), ok([]), isHttpError)
+    const up = nextShell(down, ok([call(1)]), ok([]), isHttpError)
     assert.equal(up.online, true)
     assert.equal(up.pending, 1)
   })
 
-  it('keeps the previous count when a route answers with a transient HTTP error', () => {
-    const before = nextShell(emptyShell, ok([1, 2]), ok([]), isHttpError)
+  it('keeps the previous asks when a route answers with a transient HTTP error', () => {
+    const before = nextShell(emptyShell, ok([call(1), call(2)]), ok([]), isHttpError)
     const got = nextShell(before, failed(new HttpError('500')), ok([]), isHttpError)
     assert.equal(got.pending, 2)
+    assert.deepEqual(got.asks, [call(1), call(2)])
     assert.equal(got.online, true)
   })
 
   it('keeps the incidents and the loaded flag when the incidents route answers with an HTTP error', () => {
-    const before = nextShell(emptyShell, ok([1]), ok([incident(7)]), isHttpError)
-    const got = nextShell(before, ok([1]), failed(new HttpError('500')), isHttpError)
+    const before = nextShell(emptyShell, ok([call(1)]), ok([incident(7)]), isHttpError)
+    const got = nextShell(before, ok([call(1)]), failed(new HttpError('500')), isHttpError)
     assert.deepEqual(got.incidents, [incident(7)])
     assert.equal(got.loaded, true)
     assert.equal(got.online, true)
