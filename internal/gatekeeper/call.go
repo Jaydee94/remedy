@@ -143,7 +143,7 @@ func (g *Gatekeeper) callTool(w http.ResponseWriter, r *http.Request, rn run.Run
 		return
 	}
 
-	text, err := tool.Run(r.Context(), Call{RunID: rn.ID, CallID: call.ID, Args: args})
+	text, err := tool.Run(r.Context(), Call{RunID: rn.ID, CallID: call.ID, Args: args, RequestedAt: call.CreatedAt})
 	if err != nil {
 		g.log.Warn("a tool failed", "run", rn.ID, "tool", p.Name, "err", err)
 		msg := toolErrorMessage(err)
