@@ -8,15 +8,15 @@ import ConversationsPage from './ConversationsPage.tsx'
 import IncidentThreadPage from './IncidentThreadPage.tsx'
 import Login from './Login.tsx'
 import NotFound from './NotFound.tsx'
+import RunPage from './RunPage.tsx'
 import RunsPage from './RunsPage.tsx'
-import RunView from './RunView.tsx'
 import SettingsPage from './SettingsPage.tsx'
 import TodayPage from './TodayPage.tsx'
 
-/** Mounts RunView with key={id} so that switching runs resets its state. */
+/** Mounts RunPage with key={id} so that switching runs resets its state. */
 function RunRoute() {
   const { id } = useParams()
-  return id ? <RunView key={id} id={id} /> : <Navigate to="/runs" replace />
+  return id ? <RunPage key={id} id={id} /> : <Navigate to="/runs" replace />
 }
 
 /** Mounts IncidentThreadPage with key={id}; anything that is not a positive whole number is not an incident. */
@@ -46,10 +46,10 @@ export default function App() {
         <Route index element={<TodayPage />} />
         <Route path="incidents" element={<ConversationsPage />} />
         <Route path="incidents/:id" element={<IncidentRoute />} />
+        <Route path="runs/:id" element={<RunRoute />} />
         <Route element={<LegacyPage />}>
           <Route path="approvals" element={<ApprovalsPage />} />
           <Route path="runs" element={<RunsPage />} />
-          <Route path="runs/:id" element={<RunRoute />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
