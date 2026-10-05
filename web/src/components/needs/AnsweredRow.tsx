@@ -21,11 +21,14 @@ export default function AnsweredRow({ call }: { call: ToolCall }) {
             {timeAgo(at)}
           </span>
         </span>
-        <span className="text-[13px] break-words whitespace-pre-wrap text-muted-foreground">
-          {argumentList(call.arguments)
-            .map(({ name, value }) => `${name}: ${value}`)
-            .join(' · ')}
-        </span>
+        <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 text-[13px]">
+          {argumentList(call.arguments).map(({ name, value }) => (
+            <div key={name} className="contents">
+              <dt className="break-all text-muted-foreground">{name}</dt>
+              <dd className="font-mono break-words whitespace-pre-wrap">{value}</dd>
+            </div>
+          ))}
+        </dl>
         {call.reason && <span className="text-[13px] break-words">Reason: {call.reason}</span>}
         {outcome && <span className="text-[13px] break-words whitespace-pre-wrap text-muted-foreground">{outcome}</span>}
         <span className="flex gap-3 text-xs">

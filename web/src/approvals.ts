@@ -11,14 +11,6 @@ export function argumentList(args: unknown): { name: string; value: string }[] {
   }))
 }
 
-export const decisionLabel: Record<string, string> = {
-  '': 'read',
-  pending: 'waiting for you',
-  approved: 'approved',
-  denied: 'denied',
-  abandoned: 'abandoned',
-}
-
 export const callStatusColor: Record<ToolCall['status'], string> = {
   running: 'bg-primary',
   waiting: 'bg-primary',

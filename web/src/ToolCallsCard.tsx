@@ -1,6 +1,7 @@
 import type { ToolCall } from './api.ts'
-import { argumentList, callStatusColor, decisionLabel, outcomeText } from './approvals.ts'
+import { argumentList, callStatusColor, outcomeText } from './approvals.ts'
 import { timeAgo } from './incidents.ts'
+import { decisionView } from './needs.ts'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -22,7 +23,7 @@ export default function ToolCallsCard({ calls }: { calls: ToolCall[] }) {
                   <span className="font-mono break-all">{c.tool}</span>
                   <Badge variant="secondary">{c.kind}</Badge>
                   <span className="text-sm text-muted-foreground">
-                    {c.kind === 'mutating' ? (decisionLabel[c.decision] ?? c.decision) : c.status}
+                    {c.kind === 'mutating' ? decisionView(c).label : c.status}
                   </span>
                   <span className="text-xs text-muted-foreground" title={new Date(c.requestedAt).toLocaleString()}>
                     {timeAgo(c.requestedAt)}
