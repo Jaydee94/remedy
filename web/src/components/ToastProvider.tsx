@@ -39,7 +39,7 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
         <div
           key={toast.id}
           role="status"
-          className="fixed bottom-24 left-1/2 z-50 flex max-w-[calc(100%-2rem)] -translate-x-1/2 animate-rm-in items-center gap-3.5 rounded-full bg-foreground py-2.5 pr-2.5 pl-4.5 text-background shadow-2xl md:bottom-7"
+          className="fixed bottom-24 left-1/2 z-50 flex w-max max-w-[calc(100%-2rem)] -translate-x-1/2 animate-rm-in items-center gap-3.5 rounded-full bg-foreground py-2.5 pr-2.5 pl-4.5 text-background shadow-2xl md:bottom-7"
         >
           <span className="font-semibold">{toast.text}</span>
           {toast.undo && (
