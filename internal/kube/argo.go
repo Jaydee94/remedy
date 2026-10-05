@@ -55,9 +55,11 @@ type rawApplication struct {
 			Server    string `json:"server"`
 			Namespace string `json:"namespace"`
 		} `json:"destination"`
-		Operation *struct{} `json:"operation"`
 	} `json:"spec"`
-	Status struct {
+	// Operation is what Argo CD has been asked to do and has not done yet. It is a field of the application next to spec
+	// and status, not a part of the spec, and Argo CD removes it when the operation has ended.
+	Operation *struct{} `json:"operation"`
+	Status    struct {
 		Sync struct {
 			Status   string `json:"status"`
 			Revision string `json:"revision"`
@@ -97,7 +99,7 @@ func (raw rawApplication) application() Application {
 		HealthMessage: raw.Status.Health.Message, Revision: raw.Status.Sync.Revision,
 		RepoURL: raw.Spec.Source.RepoURL, Path: raw.Spec.Source.Path, TargetRevision: raw.Spec.Source.TargetRevision,
 		DestinationNamespace: raw.Spec.Destination.Namespace, DestinationServer: raw.Spec.Destination.Server,
-		Syncing: raw.Spec.Operation != nil,
+		Syncing: raw.Operation != nil,
 	}
 	for _, c := range raw.Status.Conditions {
 		a.Conditions = append(a.Conditions, ApplicationCondition{Type: c.Type, Message: c.Message})

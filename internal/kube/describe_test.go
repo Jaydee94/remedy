@@ -165,10 +165,11 @@ func TestTheApplicationsAreReadFromTheConfiguredArgoNamespace(t *testing.T) {
 	}
 }
 
-// What the recording does not have: an operation that was requested but has not started, one that runs, and an
+// What the recording does not have: an operation that was requested but has not started (Argo CD keeps it at the top level
+// of the application, next to spec and status, and removes it when the operation is done), one that runs, and an
 // application in which only some of the resources differ.
 func TestAnApplicationWithARequestedOperationIsSyncing(t *testing.T) {
-	api := newFakeAPI(t, jsonReply(200, `{"metadata":{"name":"app"},"spec":{"project":"p","operation":{"sync":{}}},"status":{}}`))
+	api := newFakeAPI(t, jsonReply(200, `{"metadata":{"name":"app"},"spec":{"project":"p"},"operation":{"sync":{}},"status":{}}`))
 	a, err := newTestReader(t, api, "tok").GetApplication(context.Background(), "app")
 	if err != nil || !a.Syncing || a.Operation != nil {
 		t.Fatalf("application = %+v, %v", a, err)

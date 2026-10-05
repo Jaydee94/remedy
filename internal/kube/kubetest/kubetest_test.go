@@ -51,6 +51,19 @@ func TestTheServerKnowsOnlyItsToken(t *testing.T) {
 	}
 }
 
+func TestAnotherTokenCanBeAccepted(t *testing.T) {
+	srv := kubetest.New(t, "read")
+	srv.Accept("write")
+	for _, token := range []string{"read", "write"} {
+		if code, _ := get(t, srv, "GET", "/version", token); code != 200 {
+			t.Fatalf("token %q: %d", token, code)
+		}
+	}
+	if code, _ := get(t, srv, "GET", "/version", "other"); code != http.StatusUnauthorized {
+		t.Fatalf("an unknown token: %d", code)
+	}
+}
+
 func TestNamespaceViewsAreDerivedFromTheRecordedLists(t *testing.T) {
 	srv := kubetest.New(t, "tok")
 	for path, want := range map[string]int{

@@ -163,6 +163,31 @@ func (r *Reader) ListWorkloads(ctx context.Context, namespace string) (Listing[W
 	return out, nil
 }
 
+var workloadResource = map[string]string{"deployment": "deployments", "statefulset": "statefulsets", "daemonset": "daemonsets"}
+
+// GetWorkload returns one deployment, statefulset or daemonset, or ErrNotFound.
+func (r *Reader) GetWorkload(ctx context.Context, kind, namespace, name string) (Workload, error) {
+	resource, ok := workloadResource[kind]
+	if !ok {
+		return Workload{}, fmt.Errorf("%w: %q is not deployment, statefulset or daemonset", ErrInvalid, kind)
+	}
+	if namespace == "" {
+		return Workload{}, fmt.Errorf("%w: a %s needs a namespace", ErrInvalid, kind)
+	}
+	if err := validName(name); err != nil {
+		return Workload{}, err
+	}
+	path, err := collection("/apis/apps/v1", namespace, resource)
+	if err != nil {
+		return Workload{}, err
+	}
+	var raw rawWorkload
+	if err := getJSON(ctx, r, path+"/"+name, &raw); err != nil {
+		return Workload{}, fmt.Errorf("%s %s/%s: %w", kind, namespace, name, err)
+	}
+	return raw.workload(kind), nil
+}
+
 // ContainerStatus is what the cluster says about one container of a pod.
 type ContainerStatus struct {
 	Name         string
@@ -282,6 +307,25 @@ func (raw rawPod) pod() Pod {
 		p.Restarts += c.Restarts
 	}
 	return p
+}
+
+// GetPod returns one pod, or ErrNotFound.
+func (r *Reader) GetPod(ctx context.Context, namespace, name string) (Pod, error) {
+	if namespace == "" {
+		return Pod{}, fmt.Errorf("%w: a pod needs a namespace", ErrInvalid)
+	}
+	if err := validName(name); err != nil {
+		return Pod{}, err
+	}
+	path, err := collection("/api/v1", namespace, "pods")
+	if err != nil {
+		return Pod{}, err
+	}
+	var raw rawPod
+	if err := getJSON(ctx, r, path+"/"+name, &raw); err != nil {
+		return Pod{}, fmt.Errorf("pod %s/%s: %w", namespace, name, err)
+	}
+	return raw.pod(), nil
 }
 
 // ListPods lists the pods of a namespace, or of all namespaces, ordered by namespace and name.
