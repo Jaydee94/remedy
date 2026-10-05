@@ -36,6 +36,8 @@ const (
 	KindApprovalAbandoned = "approval_abandoned"
 	KindNoteAdded         = "note_added"
 	KindRunCancelled      = "run_cancelled"
+	// KindClusterAction is an action in the cluster that was approved and done.
+	KindClusterAction = "cluster_action"
 )
 
 const (
@@ -258,6 +260,24 @@ func (s *Store) FinishToolCall(ctx context.Context, id int64, status, result, er
 	return oneRow(s.db.ExecContext(ctx, `
 		UPDATE tool_calls SET status = ?, result = ?, error = ?, finished_at = ?
 		WHERE id = ? AND status = 'running'`, status, result, errText, formatTS(time.Now()), id))
+}
+
+// FinishToolCallWithActivity finishes a running call as succeeded and logs what it did, in one transaction: an action
+// is in the audit log of its run and in the activity log, or in neither. It returns ErrNotFound when the call is not
+// running.
+func (s *Store) FinishToolCallWithActivity(ctx context.Context, id int64, result, summary string) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if err := oneRow(tx.ExecContext(ctx, `
+			UPDATE tool_calls SET status = ?, result = ?, error = '', finished_at = ?
+			WHERE id = ? AND status = 'running'`, CallSucceeded, result, formatTS(time.Now()), id)); err != nil {
+			return err
+		}
+		c, err := scanCall(tx.QueryRowContext(ctx, `SELECT `+callCols+` FROM tool_calls WHERE id = ?`, id))
+		if err != nil {
+			return err
+		}
+		return callActivity(ctx, tx, KindClusterAction, summary, c)
+	})
 }
 
 func (s *Store) GetToolCall(ctx context.Context, id int64) (ToolCall, error) {

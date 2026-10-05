@@ -209,7 +209,7 @@ func (g *Gatekeeper) awaitDecision(w http.ResponseWriter, r *http.Request, req r
 func (g *Gatekeeper) execute(ctx context.Context, tool Tool, call store.ToolCall) toolResult {
 	ctx, cancel := context.WithTimeout(ctx, executeTimeout)
 	defer cancel()
-	text, err := tool.Run(ctx, Call{RunID: call.RunID, CallID: call.ID, Args: call.Arguments})
+	text, err := tool.Run(ctx, Call{RunID: call.RunID, CallID: call.ID, Args: call.Arguments, RequestedAt: call.CreatedAt})
 	if err != nil {
 		g.log.Warn("an approved tool failed", "run", call.RunID, "tool", call.Tool, "err", err)
 		msg := toolErrorMessage(err)
@@ -218,8 +218,14 @@ func (g *Gatekeeper) execute(ctx context.Context, tool Tool, call store.ToolCall
 		return errorResult(msg)
 	}
 	text = sanitize(text)
-	if err := g.store.FinishToolCall(ctx, call.ID, store.CallSucceeded, text, ""); err != nil {
-		g.log.Error("could not record the result of an approved tool", "call", call.ID, "err", err)
+	var recorded error
+	if tool.Activity != nil {
+		recorded = g.store.FinishToolCallWithActivity(ctx, call.ID, text, tool.Activity(call.Arguments))
+	} else {
+		recorded = g.store.FinishToolCall(ctx, call.ID, store.CallSucceeded, text, "")
+	}
+	if recorded != nil {
+		g.log.Error("could not record the result of an approved tool", "call", call.ID, "err", recorded)
 	}
 	g.notify(call.ID) // the other waiters of the call (replays) read the result now, not at the next tick
 	return textResult(text)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/run"
 )
@@ -38,6 +39,10 @@ type Tool struct {
 	Check func(ctx context.Context, args json.RawMessage) error
 	// Incident returns the incident a call with these (decoded) arguments is about, or 0. Optional.
 	Incident func(args json.RawMessage) int64
+	// Activity is optional and for a mutating tool: the text of the entry the activity log gets when the approved call
+	// succeeded. The entry is written in the transaction that records the result, so an action is logged or it did not
+	// happen.
+	Activity func(args json.RawMessage) string
 	// Run executes the tool with decoded arguments and returns the text for the model.
 	Run func(ctx context.Context, c Call) (string, error)
 }
@@ -47,6 +52,9 @@ type Call struct {
 	RunID  string
 	CallID int64
 	Args   json.RawMessage
+	// RequestedAt is when the call was made, which for a mutating tool is when the approval was asked for. A tool can
+	// tell with it whether the world changed after the question was asked.
+	RequestedAt time.Time
 }
 
 // ArgumentError is an error the agent can fix: its text is shown to the agent. Any other error of a tool is shown as
