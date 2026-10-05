@@ -122,6 +122,12 @@ func (g *Gatekeeper) callTool(w http.ResponseWriter, r *http.Request, rn run.Run
 		return
 	}
 
+	// One line per call that reaches the audit log: a replay (the CLI sends a call in flight again after SIGTERM) and a
+	// refusal are visible here (refused is about this request; the row keeps the answer of the first). Neither the arguments
+	// nor the refusal text go in: they are the agent's.
+	g.log.Debug("tool call", "run", rn.ID, "tool", p.Name, "tool_use_id", p.Meta.ToolUseID, "call", call.ID,
+		"kind", string(kind), "replay", existed, "refused", refused != nil)
+
 	// The context of the store writes that end a call: the client going away must not leave the row running.
 	done := context.WithoutCancel(r.Context())
 	if existed {
