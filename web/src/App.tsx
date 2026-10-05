@@ -5,7 +5,7 @@ import AppLayout from './components/AppLayout.tsx'
 import LegacyPage from './components/LegacyPage.tsx'
 import ApprovalsPage from './ApprovalsPage.tsx'
 import ConversationsPage from './ConversationsPage.tsx'
-import IncidentView from './IncidentView.tsx'
+import IncidentThreadPage from './IncidentThreadPage.tsx'
 import Login from './Login.tsx'
 import NotFound from './NotFound.tsx'
 import RunsPage from './RunsPage.tsx'
@@ -19,10 +19,10 @@ function RunRoute() {
   return id ? <RunView key={id} id={id} /> : <Navigate to="/runs" replace />
 }
 
-/** Mounts IncidentView with key={id}; anything that is not a positive whole number is not an incident. */
+/** Mounts IncidentThreadPage with key={id}; anything that is not a positive whole number is not an incident. */
 function IncidentRoute() {
   const id = Number(useParams().id)
-  return Number.isInteger(id) && id > 0 ? <IncidentView key={id} id={id} /> : <NotFound />
+  return Number.isInteger(id) && id > 0 ? <IncidentThreadPage key={id} id={id} /> : <NotFound />
 }
 
 export default function App() {
@@ -45,8 +45,8 @@ export default function App() {
       <Route element={<AppLayout onSignOut={signOut} />}>
         <Route index element={<TodayPage />} />
         <Route path="incidents" element={<ConversationsPage />} />
+        <Route path="incidents/:id" element={<IncidentRoute />} />
         <Route element={<LegacyPage />}>
-          <Route path="incidents/:id" element={<IncidentRoute />} />
           <Route path="approvals" element={<ApprovalsPage />} />
           <Route path="runs" element={<RunsPage />} />
           <Route path="runs/:id" element={<RunRoute />} />
