@@ -87,6 +87,9 @@ func (g *Gatekeeper) callTool(w http.ResponseWriter, r *http.Request, rn run.Run
 	// Every call is audited, also one that is refused. A refused call is recorded as a read call, whatever the tool:
 	// it never asks for an approval.
 	tool, known := g.byName[p.Name]
+	if known && !tool.offeredTo(rn) {
+		tool, known = Tool{}, false // not offered to this run: the same answer as for a tool that does not exist
+	}
 	args := p.Arguments
 	var refused error
 	if known {

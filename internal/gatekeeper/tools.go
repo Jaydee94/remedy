@@ -8,13 +8,23 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+
+	"github.com/Jaydee94/remedy/internal/run"
 )
+
+// GroupCluster is the group of the Kubernetes tools. A tool of a group is offered only to runs that have it; a tool
+// without a group is offered to every run with gatekeeper access.
+const GroupCluster = "cluster"
 
 // Tool is something an agent can call. Its arguments are validated by Decode, strictly: a tool never sees an argument
 // that Decode did not return.
 type Tool struct {
 	Name        string
 	Description string
+	// Group says which runs are offered the tool: empty for every run with gatekeeper access, GroupCluster for runs
+	// that were started with cluster tools. A run that is not offered a tool cannot call it either, and its attempt is
+	// answered like a call of a tool that does not exist.
+	Group string
 	// Mutating tools change something and wait for the maintainer's approval before they run.
 	Mutating bool
 	// Schema is the JSON schema of the arguments, shown to the model by tools/list. It documents; Decode enforces.
@@ -61,6 +71,17 @@ func DecodeArgs(raw json.RawMessage, v any) error {
 	return nil
 }
 
+// offeredTo says whether a run is offered the tool.
+func (t Tool) offeredTo(r run.Run) bool {
+	switch t.Group {
+	case "":
+		return true
+	case GroupCluster:
+		return r.Cluster
+	}
+	return false
+}
+
 var toolName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
 func validateTool(t Tool) error {
@@ -69,6 +90,8 @@ func validateTool(t Tool) error {
 		return fmt.Errorf("tool name %q is not lower case letters, digits and underscores", t.Name)
 	case t.Decode == nil || t.Run == nil:
 		return fmt.Errorf("tool %q needs Decode and Run", t.Name)
+	case t.Group != "" && t.Group != GroupCluster:
+		return fmt.Errorf("tool %q is in the group %q, which does not exist", t.Name, t.Group)
 	}
 	return nil
 }
