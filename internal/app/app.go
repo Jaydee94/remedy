@@ -98,6 +98,9 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	tools := append(append(gatekeeper.IncidentTools(st), gatekeeper.JobLogTool(diagnoser)), gatekeeper.NoteTool(st))
 	if kubeReader != nil {
 		tools = append(tools, gatekeeper.ClusterTools(kubeReader, nil)...)
+		if kubeWriter != nil {
+			tools = append(tools, gatekeeper.ClusterActionTools(kubeReader, kubeWriter, cfg.Cluster, nil)...)
+		}
 	}
 	gate := gatekeeper.New(gatekeeper.Config{
 		Store: st,

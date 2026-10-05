@@ -61,6 +61,7 @@ const kindDots: Record<string, string> = {
   diagnosis_started: 'bg-amber-500',
   diagnosis_finished: 'bg-sky-500',
   diagnosis_failed: 'bg-rose-500',
+  cluster_action: 'bg-violet-500',
 }
 
 export function kindDotClass(kind: string): string {
