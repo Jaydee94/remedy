@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
@@ -49,6 +50,11 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// foreignKeysOff is the first line of a migration that must run with foreign keys off: one that rebuilds a table other
+// tables point at (SQLite has no ALTER for some changes). Dropping such a table with foreign keys on runs the ON DELETE
+// actions of its children. See 008_incident_sources.sql.
+const foreignKeysOff = "-- remedy:foreign-keys-off\n"
+
 func (s *Store) migrate() error {
 	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY)`); err != nil {
 		return err
@@ -70,23 +76,58 @@ func (s *Store) migrate() error {
 		if err != nil {
 			return err
 		}
-		tx, err := s.db.Begin()
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(string(body)); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("%s: %w", e.Name(), err)
-		}
-		if _, err := tx.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, e.Name()); err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		if err := tx.Commit(); err != nil {
+		if err := s.apply(e.Name(), string(body)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// apply runs one migration in a transaction and records it. A migration that starts with foreignKeysOff runs with foreign
+// keys off, on one pinned connection (the setting belongs to the connection, and cannot change inside a transaction), and
+// is checked for violations before it commits. Foreign keys are switched on again afterwards, whatever happened.
+func (s *Store) apply(name, body string) error {
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	off := strings.HasPrefix(body, foreignKeysOff)
+	if off {
+		if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		defer func() { _, _ = conn.ExecContext(ctx, `PRAGMA foreign_keys = ON`) }()
+	}
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(body); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	if off {
+		rows, err := tx.Query(`PRAGMA foreign_key_check`)
+		if err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		violated := rows.Next()
+		_ = rows.Close()
+		if violated {
+			_ = tx.Rollback()
+			return fmt.Errorf("%s: the migration left rows that break a foreign key", name)
+		}
+	}
+	if _, err := tx.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, name); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func formatTS(t time.Time) string { return t.UTC().Format(tsLayout) }

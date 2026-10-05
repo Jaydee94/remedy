@@ -42,9 +42,6 @@ func DefaultLimits() DiagnosisLimits {
 	return DiagnosisLimits{Cooldown: 15 * time.Minute, MaxPerIncident: 3, MaxPerDay: 20}
 }
 
-// autoConclusions are diagnosed automatically; cancelled and action_required are only shown.
-const autoConclusions = `('failure', 'timed_out', 'startup_failure')`
-
 type StartParams struct {
 	IncidentID int64
 	Provider   string
@@ -108,9 +105,7 @@ func (s *Store) StartDiagnosis(ctx context.Context, p StartParams, act NewActivi
 }
 
 func checkAutomatic(ctx context.Context, tx *sql.Tx, in Incident, p StartParams) error {
-	switch in.Conclusion {
-	case "failure", "timed_out", "startup_failure":
-	default:
+	if !in.AutoDiagnose {
 		return &LimitError{Reason: fmt.Sprintf("a %s result is not diagnosed automatically", in.Conclusion)}
 	}
 	if in.State == IncDiagnosed && in.HeadSHA == in.DiagnosedSHA {
@@ -180,20 +175,23 @@ func (s *Store) FailDiagnosis(ctx context.Context, runID string, act NewActivity
 }
 
 func (s *Store) logRunActivity(ctx context.Context, tx *sql.Tx, incidentID int64, runID string, act NewActivity) error {
-	var repoID int64
+	var repoID sql.NullInt64
 	if err := tx.QueryRowContext(ctx, `SELECT repo_id FROM incidents WHERE id = ?`, incidentID).Scan(&repoID); err != nil {
 		return err
 	}
-	act.IncidentID, act.RepoID, act.RunID = incidentID, repoID, runID
+	act.IncidentID, act.RepoID, act.RunID = incidentID, repoID.Int64, runID
 	return insertActivity(ctx, tx, act)
 }
 
 // ListAutoCandidates returns the incidents an automatic diagnosis may pick now, oldest first: a real
 // failure that is open (or diagnosed for an older commit), in an enabled repo, below the per-incident cap
 // and past the cooldown. The daily limit and "one run at a time" are checked by StartDiagnosis.
+//
+// An incident of another source has no repository, so the join with an enabled repository leaves it out: the responder does
+// not handle those sources until plan 2d-3 lifts this.
 func (s *Store) ListAutoCandidates(ctx context.Context, now time.Time, l DiagnosisLimits) ([]Incident, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+incidentCols+incidentFrom+`
-		WHERE i.conclusion IN `+autoConclusions+`
+		WHERE i.auto_diagnose = 1
 		  AND (i.state = 'open' OR (i.state = 'diagnosed' AND i.head_sha <> i.diagnosed_sha))
 		  AND i.diagnoses < ?
 		  AND (i.last_diagnosis_at IS NULL OR i.last_diagnosis_at <= ?)
