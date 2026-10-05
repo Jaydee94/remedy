@@ -25,6 +25,18 @@ func (s *Store) CreateToolRun(ctx context.Context, provider, prompt string) (run
 	return s.GetRun(ctx, id)
 }
 
+// CreateClusterRun creates a queued ad-hoc run that has access to the gatekeeper and to its cluster tools.
+func (s *Store) CreateClusterRun(ctx context.Context, provider, prompt string) (run.Run, error) {
+	id := run.NewID()
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO runs (id, provider, prompt, status, mcp, cluster, created_at) VALUES (?, ?, ?, 'queued', 1, 1, ?)`,
+		id, provider, prompt, formatTS(time.Now()))
+	if err != nil {
+		return run.Run{}, err
+	}
+	return s.GetRun(ctx, id)
+}
+
 // hashToken is what is stored of a run token. The token is 256 random bits, so a plain SHA-256 is enough.
 func hashToken(token string) []byte {
 	sum := sha256.Sum256([]byte(token))

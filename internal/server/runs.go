@@ -16,6 +16,7 @@ func (s *srv) createRun(w http.ResponseWriter, r *http.Request) {
 		Provider string `json:"provider"`
 		Prompt   string `json:"prompt"`
 		Tools    bool   `json:"tools"`
+		Cluster  bool   `json:"cluster"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid request body")
@@ -37,8 +38,19 @@ func (s *srv) createRun(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "the gatekeeper tools are not enabled")
 		return
 	}
+	if req.Cluster && !req.Tools {
+		writeErr(w, http.StatusBadRequest, "cluster tools need the gatekeeper tools")
+		return
+	}
+	if req.Cluster && !s.d.Cluster.Read {
+		writeErr(w, http.StatusConflict, "no cluster is configured")
+		return
+	}
 	create := s.d.Store.CreateRun
-	if req.Tools {
+	switch {
+	case req.Cluster:
+		create = s.d.Store.CreateClusterRun
+	case req.Tools:
 		create = s.d.Store.CreateToolRun
 	}
 	created, err := create(r.Context(), req.Provider, req.Prompt)
