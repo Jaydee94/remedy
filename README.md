@@ -101,9 +101,10 @@ skills, plugins, hooks and MCP servers are **not** loaded, the agent only gets t
 **Cluster access (optional, in progress).** The control plane can reach a Kubernetes cluster with two separate identities: a read-only
 one (`REMEDY_K8S_READ_TOKEN_FILE`, a file with a service account token) and one for approved actions (`REMEDY_K8S_WRITE_TOKEN_FILE`, usable only in
 the namespaces of `REMEDY_K8S_WRITE_NAMESPACES`). `REMEDY_K8S_API` (default: the in-cluster address), `REMEDY_K8S_CA_FILE` and `REMEDY_K8S_ARGO_NAMESPACE`
-(default `argocd`) say where and how. With the read token set, the **Runs** page offers "Allow cluster tools". The tools themselves come with the
-next plans ([`docs/specs/2026-10-04-phase-2c-cluster-design.md`](docs/specs/2026-10-04-phase-2c-cluster-design.md)); today only the configuration, the
-clients and the switch exist.
+(default `argocd`) say where and how. With the read token set, the **Runs** page offers "Allow cluster tools". A run started with it gets seven
+read tools (workloads, pods, describe, events, pod logs, nodes, Argo CD applications); what a cluster returns is shown to the agent as data, never as
+an instruction. Actions in the cluster come with the next plan ([`docs/specs/2026-10-04-phase-2c-cluster-design.md`](docs/specs/2026-10-04-phase-2c-cluster-design.md)).
+[`dev/kind/`](dev/kind/README.md) has a throwaway kind cluster with demo workloads and Argo CD to try it on.
 
 ### Container
 
