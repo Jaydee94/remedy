@@ -1,13 +1,5 @@
 import type { RunStatus } from './api.ts'
 
-/** The dot of a run's status in a list. */
-export const statusColor: Record<RunStatus, string> = {
-  queued: 'bg-neutral',
-  running: 'bg-primary',
-  succeeded: 'bg-success',
-  failed: 'bg-destructive',
-}
-
 /** What Remedy says about a run: a run that waits for an approval is "waiting for you", not "working". */
 export type RunPhase = 'queued' | 'working' | 'waiting' | 'done' | 'failed'
 

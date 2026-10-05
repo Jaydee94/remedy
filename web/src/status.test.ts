@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { phaseView, runPhase, statusColor } from './status.ts'
+import { phaseView, runPhase } from './status.ts'
 
 describe('runPhase', () => {
   it('maps the statuses of a run to what Remedy says about it', () => {
@@ -35,11 +35,5 @@ describe('phaseView', () => {
 describe('phaseView.queued', () => {
   it('uses the muted foreground for its text, which reads on the soft background', () => {
     assert.equal(phaseView.queued.text, 'text-muted-foreground')
-  })
-})
-
-describe('statusColor', () => {
-  it('uses tokens, not palette colours', () => {
-    for (const cls of Object.values(statusColor)) assert.match(cls, /^bg-(neutral|primary|success|destructive)$/)
   })
 })
