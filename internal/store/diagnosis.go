@@ -130,7 +130,8 @@ func checkAutomatic(ctx context.Context, tx *sql.Tx, in Incident, p StartParams)
 }
 
 // CompleteDiagnosis stores a validated diagnosis on the incident of a responder run, if the run is the
-// latest one of that incident. A diagnosing incident becomes diagnosed; any other state stays.
+// latest one of that incident. A diagnosing or open incident becomes diagnosed (an open one is an incident that was
+// un-ignored between the end of the run and this call); an ignored or resolved incident stays as it is.
 func (s *Store) CompleteDiagnosis(ctx context.Context, runID string, diagnosis json.RawMessage, act NewActivity) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		var incidentID sql.NullInt64
@@ -144,7 +145,7 @@ func (s *Store) CompleteDiagnosis(ctx context.Context, runID string, diagnosis j
 		}
 		if err := oneRow(tx.ExecContext(ctx, `
 			UPDATE incidents SET diagnosis = ?, diagnosed_sha = ?,
-				state = CASE WHEN state = 'diagnosing' THEN 'diagnosed' ELSE state END
+				state = CASE WHEN state IN ('diagnosing', 'open') THEN 'diagnosed' ELSE state END
 			WHERE id = ? AND run_id = ?`, string(diagnosis), sha, incidentID.Int64, runID)); err != nil {
 			return err
 		}

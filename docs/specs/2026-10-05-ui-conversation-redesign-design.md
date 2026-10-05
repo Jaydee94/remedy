@@ -81,6 +81,7 @@ Three additions. Each is additive, none needs a migration, and each is recorded 
   `incident_get`, then answer. The incident's own text (GitHub's and an alert's) is **not** in the prompt; the agent gets it through the gatekeeper, as data.
 - The question is the operator's own text and is trusted like any ad-hoc prompt.
 - `GET /api/runs` takes `?incident=ID` and returns the runs of that incident, newest first, with the same limit. The run's JSON already has `incidentId`.
+- A question run is a run: the runner is sequential, so a diagnosis of any incident waits while a question run is queued, running or waiting for an approval, and `POST /api/incidents/{id}/diagnose` answers 409 until it has ended; the thread must handle that answer.
 
 ### 3.3 The usage of the daily limit
 

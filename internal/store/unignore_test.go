@@ -160,3 +160,34 @@ func TestAnIncidentThatTurnedGreenWhileIgnoredCannotBeUnignored(t *testing.T) {
 		t.Fatalf("state = %q, want resolved", got)
 	}
 }
+
+// An un-ignore between FinishRun and CompleteDiagnosis finds no active responder run and no diagnosis yet, so the incident
+// becomes open. The diagnosis that completes afterwards must still lift it to diagnosed, or the same commit is diagnosed again.
+func TestADiagnosisThatCompletesAfterAnUnignoreInTheWindowLeavesTheIncidentDiagnosed(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	repo := seedRepo(t, s)
+	in := open(t, s, repo, "pr:7", "go", "aaa", "failure")
+	r, err := start(s, in, false, limits, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustIgnore(t, s, in)
+	finishRun(t, s, r.ID, run.Outcome{ExitCode: 0})
+	if err := unignoreIncident(s, in); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustState(t, s, in); got != store.IncOpen {
+		t.Fatalf("state after the un-ignore = %q, want open", got)
+	}
+
+	if err := s.CompleteDiagnosis(ctx, r.ID, json.RawMessage(`{"summary":"s"}`), entry(store.KindDiagnosisFinished, repo.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustState(t, s, in); got != store.IncDiagnosed {
+		t.Fatalf("state = %q, want diagnosed", got)
+	}
+	got, err := s.GetIncident(ctx, in.ID)
+	if err != nil || len(got.Diagnosis) == 0 {
+		t.Fatalf("diagnosis = %q, %v: it must be stored", got.Diagnosis, err)
+	}
+}

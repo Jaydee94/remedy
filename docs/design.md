@@ -127,7 +127,9 @@ running as a service for other people's homelabs.
   /api/runs` takes `incidentId` with `tools: true`: an ad-hoc run about an incident. The question is the maintainer's own text;
   the frame around it is built in `internal/prompt` at the claim, and the incident's text is not in the prompt: the agent reads
   it with `incident_get` as data. This is a bounded part of the ad-hoc chat that the roadmap puts into phase 4. `GET /api/runs`
-  takes `?incident=`. (3) `GET /api/limits` carries `diagnosesLast24h`, the count the daily limit uses.
+  takes `?incident=`. A question run is a run: the runner is sequential, so a diagnosis of any incident waits while a question
+  run is queued, running or waiting for an approval, and `POST /api/incidents/{id}/diagnose` answers 409 until it has ended; the
+  thread must handle that answer. (3) `GET /api/limits` carries `diagnosesLast24h`, the count the daily limit uses.
 
 ### 2.9 Agent roles and triggers (branch 9)
 

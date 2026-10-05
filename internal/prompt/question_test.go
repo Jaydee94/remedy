@@ -35,7 +35,23 @@ func TestQuestionKeepsTheFrameInFrontOfAQuestionThatLooksLikeInstructions(t *tes
 	if !strings.HasSuffix(out, q+"\n") {
 		t.Errorf("the question must be kept as it is, at the end:\n%s", out)
 	}
-	if strings.Index(out, "incident_get") > strings.Index(out, q) {
+	i := strings.Index(out, "incident_get")
+	if i < 0 {
+		t.Fatalf("the prompt does not name incident_get:\n%s", out)
+	}
+	if i > strings.Index(out, q) {
 		t.Errorf("the instruction to read the incident must come before the question:\n%s", out)
+	}
+}
+
+// The question is appended, never used as a format string.
+func TestQuestionKeepsFormatVerbsLiteral(t *testing.T) {
+	out := prompt.Question(5, "why %d and %[1]s?")
+
+	if !strings.HasSuffix(out, "why %d and %[1]s?\n") {
+		t.Errorf("the question must be kept as it is, at the end:\n%s", out)
+	}
+	if strings.Contains(out, "%!") {
+		t.Errorf("a format verb in the question was interpreted:\n%s", out)
 	}
 }

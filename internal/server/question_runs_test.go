@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/gatekeeper"
@@ -171,6 +172,10 @@ func TestAQuestionAboutAnAlertIncidentWorksLikeOneAboutACheck(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want 201", resp.StatusCode)
 	}
+	body := bodyOf(t, resp)
+	if got := field(t, body, "incidentId"); got != float64(alert.ID) {
+		t.Fatalf("incidentId = %v, want %d: %s", got, alert.ID, body)
+	}
 }
 
 func TestListRunsCanBeFilteredByIncident(t *testing.T) {
@@ -205,6 +210,33 @@ func TestListRunsCanBeFilteredByIncident(t *testing.T) {
 	for _, bad := range []string{"abc", "0", "-3", "1.5", "99999999999999999999"} {
 		if got := e.do(t, c, http.MethodGet, "/api/runs?incident="+bad, "", false).StatusCode; got != http.StatusBadRequest {
 			t.Errorf("?incident=%s: status = %d, want 400", bad, got)
+		}
+	}
+}
+
+// The frame belongs to a question, not to a run in general: a responder run is claimed with the prompt that was stored for it
+// (which the responder built from cleaned and bounded data), without the frame of a question.
+func TestAResponderRunIsClaimedWithItsStoredPromptAndNotFramed(t *testing.T) {
+	e, repoID := withRepo(t)
+	in := openIncident(t, e, repoID, "pr:7", "go")
+	started, err := e.store.StartDiagnosis(context.Background(), store.StartParams{
+		IncidentID: in.ID, Provider: "claude", Prompt: "diagnose go: DATA from GitHub", HeadSHA: in.HeadSHA,
+		Limits: store.DefaultLimits(), Now: time.Now(),
+	}, store.NewActivity{Kind: store.KindDiagnosisStarted, RepoID: in.RepoID, Summary: "started"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c := claimOne(t, e.ts.URL)
+	if c.ID != started.ID {
+		t.Fatalf("claimed %s, want %s", c.ID, started.ID)
+	}
+	if c.Prompt != "diagnose go: DATA from GitHub" {
+		t.Errorf("the claimed prompt = %q, want the stored one", c.Prompt)
+	}
+	for _, unwanted := range []string{"incident_get", "Question:"} {
+		if strings.Contains(c.Prompt, unwanted) {
+			t.Errorf("the claimed prompt of a responder run contains %q:\n%s", unwanted, c.Prompt)
 		}
 	}
 }
