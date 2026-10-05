@@ -1,0 +1,28 @@
+# The default project (the core installation of Argo CD has no API server, which is what normally creates it) and an
+# application without automatic sync: it starts OutOfSync and stays so until someone syncs it.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: default
+  namespace: argocd
+spec:
+  sourceRepos: ['*']
+  destinations:
+    - {namespace: '*', server: '*'}
+  clusterResourceWhitelist:
+    - {group: '*', kind: '*'}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: guestbook
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: guestbook
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo

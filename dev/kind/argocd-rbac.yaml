@@ -1,0 +1,20 @@
+# The write identity may patch Argo CD applications, in the namespace they live in. RBAC cannot say "only applications
+# that deploy to demo": that limit is in Remedy's code.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: remedy-write
+  namespace: argocd
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [applications]
+    verbs: [patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: remedy-write
+  namespace: argocd
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: remedy-write}
+subjects:
+  - {kind: ServiceAccount, name: remedy-write, namespace: remedy-system}

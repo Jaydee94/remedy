@@ -1,0 +1,65 @@
+# The two identities of the control plane. They are service accounts in the namespace remedy-system; up.sh creates a
+# token for each. Nothing here can read a Secret.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: remedy-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: remedy-read
+  namespace: remedy-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: remedy-write
+  namespace: remedy-system
+---
+# The read identity: get and list, and nothing else, on what the read tools show.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: remedy-read
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, events, nodes]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets, replicasets]
+    verbs: [get, list]
+  - apiGroups: [argoproj.io]
+    resources: [applications]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: remedy-read
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: remedy-read}
+subjects:
+  - {kind: ServiceAccount, name: remedy-read, namespace: remedy-system}
+---
+# The write identity, in the namespace the actions are allowed in: restart a workload, delete a pod.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: remedy-write
+  namespace: demo
+rules:
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [patch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: remedy-write
+  namespace: demo
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: remedy-write}
+subjects:
+  - {kind: ServiceAccount, name: remedy-write, namespace: remedy-system}
