@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router'
 import { api } from './api.ts'
 import AppLayout from './components/AppLayout.tsx'
+import LegacyPage from './components/LegacyPage.tsx'
 import ApprovalsPage from './ApprovalsPage.tsx'
 import IncidentsPage from './IncidentsPage.tsx'
 import IncidentView from './IncidentView.tsx'
@@ -42,14 +43,16 @@ export default function App() {
   return (
     <Routes>
       <Route element={<AppLayout onSignOut={signOut} />}>
-        <Route index element={<TimelinePage />} />
-        <Route path="incidents" element={<IncidentsPage />} />
-        <Route path="incidents/:id" element={<IncidentRoute />} />
-        <Route path="approvals" element={<ApprovalsPage />} />
-        <Route path="runs" element={<RunsPage />} />
-        <Route path="runs/:id" element={<RunRoute />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="*" element={<NotFound />} />
+        <Route element={<LegacyPage />}>
+          <Route index element={<TimelinePage />} />
+          <Route path="incidents" element={<IncidentsPage />} />
+          <Route path="incidents/:id" element={<IncidentRoute />} />
+          <Route path="approvals" element={<ApprovalsPage />} />
+          <Route path="runs" element={<RunsPage />} />
+          <Route path="runs/:id" element={<RunRoute />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
       </Route>
     </Routes>
   )

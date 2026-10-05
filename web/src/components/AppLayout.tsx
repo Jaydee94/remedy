@@ -1,61 +1,41 @@
-import { History, LogOut, Play, Settings, ShieldCheck, TriangleAlert } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router'
-import { usePendingApprovals } from '@/usePendingApprovals'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { useMemo, useState } from 'react'
+import { Outlet, useLocation } from 'react-router'
+import { defaultHeader, sectionOf } from '@/shell.ts'
+import type { Header } from '@/shell.ts'
+import { ShellContext } from '@/shellContext.ts'
+import { useShell } from '@/useShell.ts'
+import MobileBar from '@/components/shell/MobileBar'
+import OfflineBanner from '@/components/shell/OfflineBanner'
+import Sidebar from '@/components/shell/Sidebar'
+import TabBar from '@/components/shell/TabBar'
+import ToastProvider from '@/components/ToastProvider'
 
-const nav = [
-  { to: '/', label: 'Timeline', icon: History, end: true },
-  { to: '/incidents', label: 'Incidents', icon: TriangleAlert, end: false },
-  { to: '/approvals', label: 'Approvals', icon: ShieldCheck, end: false },
-  { to: '/runs', label: 'Runs', icon: Play, end: false },
-  { to: '/settings', label: 'Settings', icon: Settings, end: false },
-]
-
+/** The shell: sidebar on a desktop, top bar and tab bar on a phone, an offline banner, and the toast. Only the content scrolls. */
 export default function AppLayout({ onSignOut }: { onSignOut: () => void }) {
-  const pending = usePendingApprovals()
+  const { pathname } = useLocation()
+  const shell = useShell()
+  const [custom, setCustom] = useState<Header | null>(null)
+  const context = useMemo(() => ({ setHeader: setCustom }), [])
+  const section = sectionOf(pathname)
+  const header = custom ?? defaultHeader(pathname)
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="flex w-56 shrink-0 flex-col gap-6 border-r border-border bg-card/40 p-4">
-        <NavLink to="/" className="px-2 text-xl font-semibold tracking-tight">
-          Remedy
-        </NavLink>
-        <nav className="flex flex-1 flex-col gap-1">
-          {nav.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
-                  isActive && 'bg-accent text-accent-foreground',
-                )
-              }
-            >
-              <Icon className="size-4" />
-              {label}
-              {to === '/approvals' && pending > 0 && (
-                <span
-                  aria-label={`${pending} waiting for a decision`}
-                  className="ml-auto rounded-full bg-amber-500 px-1.5 text-xs font-medium text-black"
-                >
-                  {pending}
-                </span>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-        <Button variant="ghost" size="sm" className="justify-start" onClick={onSignOut}>
-          <LogOut /> Sign out
-        </Button>
-      </aside>
-      <main className="min-w-0 flex-1 p-8">
-        <div className="mx-auto max-w-5xl">
-          <Outlet />
+    <ShellContext.Provider value={context}>
+      <ToastProvider>
+        <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+          {!shell.online && <OfflineBanner />}
+          <div className="flex min-h-0 flex-1">
+            <Sidebar section={section} pathname={pathname} shell={shell} onSignOut={onSignOut} />
+            <main className="flex min-w-0 flex-1 flex-col">
+              <MobileBar header={header} online={shell.online} />
+              <div className="min-h-0 flex-1 overflow-auto">
+                <Outlet />
+              </div>
+              <TabBar section={section} pending={shell.pending} />
+            </main>
+          </div>
         </div>
-      </main>
-    </div>
+      </ToastProvider>
+    </ShellContext.Provider>
   )
 }
