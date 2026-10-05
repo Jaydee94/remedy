@@ -60,7 +60,7 @@ export default function ApprovalsPage() {
 
   useEffect(() => {
     load()
-    const timer = setInterval(load, 3000)
+    const timer = setInterval(load, 1000) // a call must show within two seconds (spec, success criteria)
     return () => clearInterval(timer)
   }, [load])
 
