@@ -59,7 +59,7 @@ The runner invocation for runs with gatekeeper access is the current one **witho
 
 ## Not tested
 
-- A wait longer than 30 minutes. A 4 hour run with progress notifications was started (2026-10-04 19:56) and its result is not recorded yet.
+- A wait longer than 2 hours 37 minutes. The 4 hour run did not get there: the laptop went to sleep (see "Long runs").
 - Whether the per-server `timeout` key of the MCP config can replace progress notifications.
 - The CLI's behaviour with a response `Content-Type: application/json` that is streamed slowly, and with HTTP/2.
 - A denied tool call (`dontAsk` without `--allowedTools`): the gatekeeper is the enforcement point, so this was not needed.
@@ -69,4 +69,14 @@ The runner invocation for runs with gatekeeper access is the current one **witho
 
 - **30 minutes, progress every 20 s** (`ssep`, no environment variables): the call completed after 1803 s with `waited 1800s`, the agent
   answered `done`, exit 0, 2 turns, estimated cost 0.0041 USD. The CLI did not retry or reconnect: the server saw exactly one `tools/call`.
-- **4 hours:** started, result to be added.
+- **4 hours, progress every 20 s** (`ssep`, CLI 2.1.288, started 2026-10-04 19:56 local time): the call waited for **2 hours 37 minutes** (the
+  CLI's own `duration_ms` is 9,425,054) and was then aborted by the CLI: `MCP server "spike" tool "wait" sent no response or progress for 612s;
+  aborting`. The message names the two ways to change that idle limit: a per-server `timeout` (ms) in the MCP config, or the environment variable
+  `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` (ms, `0` disables it). The cause was the laptop, not the protocol: its lid was closed at 22:33:25 (`pmset -g log`:
+  "Clamshell Sleep") and it stayed asleep for 9 minutes 55 seconds until a maintenance wake at 22:43:20, which is the 612 s the CLI counted without a
+  progress notification; the CLI's `duration_ms` ends at the moment of the sleep. The agent then answered that the call had been aborted, exit 0, one
+  `tools/call` seen by the server, estimated cost 0.0175 USD. So: **a wait of 2 h 37 min with a progress notification every 20 s works; a call that is
+  silent for about 10 minutes is aborted (612 s observed); a host that sleeps for longer than that aborts a waiting call when it wakes.** A 4 hour wait
+  itself was not reached. What this means for Remedy: the control plane is meant to run in a cluster that does not sleep; a runner on a laptop that sleeps
+  for more than ten minutes while a run waits for an approval loses the call. What happens to such a run in Remedy (the call is abandoned, the run ends
+  without an answer) follows from the design but was not tried.
