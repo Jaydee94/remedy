@@ -554,7 +554,7 @@ func TestTheLimitsEndpointShowsTheConfiguration(t *testing.T) {
 	var got map[string]float64
 	_ = json.Unmarshal([]byte(body), &got)
 	want := map[string]float64{
-		"pollIntervalSeconds": 90, "diagnoseCooldownSeconds": 900, "diagnoseMaxPerIncident": 3, "diagnoseMaxPerDay": 20, "staleRunMinutes": 15,
+		"pollIntervalSeconds": 90, "diagnoseCooldownSeconds": 900, "diagnoseMaxPerIncident": 3, "diagnoseMaxPerDay": 20, "staleRunMinutes": 15, "diagnosesLast24h": 0,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("limits = %v, want %v", got, want)
@@ -563,6 +563,49 @@ func TestTheLimitsEndpointShowsTheConfiguration(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("without a session: %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestTheLimitsEndpointCountsTheAutomaticDiagnosesOfTheLastDay(t *testing.T) {
+	e := newRespEnv(t, goodKey(t))
+	ctx := context.Background()
+	now := time.Now()
+	var last store.Incident
+	// Two automatic diagnoses inside the last 24 hours and one outside.
+	for i, at := range []time.Time{now.Add(-time.Hour), now.Add(-2 * time.Hour), now.Add(-25 * time.Hour)} {
+		in, err := e.st.OpenIncident(ctx, store.NewIncident{
+			RepoID: e.repo.ID, Ref: "pr:" + strconv.Itoa(i+1), CheckName: "go", Conclusion: "failure", HeadSHA: "abc1234",
+		}, store.NewActivity{Kind: store.KindIncidentOpened, RepoID: e.repo.ID, Summary: "go failed"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := e.st.StartDiagnosis(ctx, store.StartParams{
+			IncidentID: in.ID, Provider: "claude", Prompt: "p", HeadSHA: in.HeadSHA, Automatic: true, Limits: store.DefaultLimits(), Now: at,
+		}, store.NewActivity{Kind: store.KindDiagnosisStarted, RepoID: in.RepoID, Summary: "started"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The runner is sequential: let the run end, so that the next diagnosis may start.
+		claimed, err := e.st.ClaimNext(ctx)
+		if err != nil || claimed == nil || claimed.ID != r.ID {
+			t.Fatalf("ClaimNext = %+v, %v, want run %s", claimed, err, r.ID)
+		}
+		if err := e.st.FinishRun(ctx, r.ID, run.Outcome{ExitCode: 0}); err != nil {
+			t.Fatal(err)
+		}
+		last = in
+	}
+	// A question about an incident is not a diagnosis and does not count.
+	if _, err := e.st.CreateQuestionRun(ctx, "claude", "why?", last.ID, false); err != nil {
+		t.Fatal(err)
+	}
+
+	code, body := e.admin(t, http.MethodGet, "/api/limits", "")
+	if code != http.StatusOK {
+		t.Fatalf("GET /api/limits = %d", code)
+	}
+	if got := field(t, body, "diagnosesLast24h"); got != float64(2) {
+		t.Fatalf("diagnosesLast24h = %v in %s, want 2", got, body)
 	}
 }
 

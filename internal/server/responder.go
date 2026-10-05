@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/diagnosis"
 	"github.com/Jaydee94/remedy/internal/prompt"
@@ -62,16 +63,24 @@ type limitsView struct {
 	DiagnoseMaxPerIncident  int `json:"diagnoseMaxPerIncident"`
 	DiagnoseMaxPerDay       int `json:"diagnoseMaxPerDay"`
 	StaleRunMinutes         int `json:"staleRunMinutes"`
+	// DiagnosesLast24h is how many automatic diagnoses were started in the last 24 hours, counted the way the daily limit counts.
+	DiagnosesLast24h int `json:"diagnosesLast24h"`
 }
 
-func (s *srv) getLimits(w http.ResponseWriter, _ *http.Request) {
+func (s *srv) getLimits(w http.ResponseWriter, r *http.Request) {
 	l := s.d.Responder.Limits
+	used, err := s.d.Store.AutoRunsSince(r.Context(), time.Now().Add(-24*time.Hour))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not count the diagnoses")
+		return
+	}
 	writeJSON(w, http.StatusOK, limitsView{
 		PollIntervalSeconds:     int(s.d.PollInterval.Seconds()),
 		DiagnoseCooldownSeconds: int(l.Cooldown.Seconds()),
 		DiagnoseMaxPerIncident:  l.MaxPerIncident,
 		DiagnoseMaxPerDay:       l.MaxPerDay,
 		StaleRunMinutes:         int(reaper.DefaultMaxAge.Minutes()),
+		DiagnosesLast24h:        used,
 	})
 }
 
