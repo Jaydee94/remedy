@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
 const filterLabels: Record<StateFilter, string> = { active: 'Active', resolved: 'Resolved', ignored: 'Ignored' }
 
 const empty: Record<StateFilter, { title: string; text: string }> = {
-  active: { title: 'All quiet.', text: 'No active incidents. I check the enabled repositories every minute.' },
+  active: { title: 'All quiet.', text: 'No active incidents. I check the enabled repositories regularly.' },
   resolved: { title: 'Nothing resolved yet.', text: 'Incidents land here when the check turns green or the pull request closes.' },
   ignored: { title: 'Nothing ignored.', text: 'Ignored incidents land here. You can stop ignoring them at any time.' },
 }
@@ -102,7 +102,11 @@ export default function ConversationsPage() {
           </div>
         )
       ) : shown.length === 0 ? (
-        <EmptyState title={empty[filter].title}>{empty[filter].text}</EmptyState>
+        scope.source !== '' || scope.repoId !== '' ? (
+          <EmptyState title="Nothing matches this selection.">Choose All sources or All repositories to see the rest.</EmptyState>
+        ) : (
+          <EmptyState title={empty[filter].title}>{empty[filter].text}</EmptyState>
+        )
       ) : (
         shown.map((incident) => <IncidentCard key={incident.id} incident={incident} ask={askFor(asks, incident.id)} />)
       )}

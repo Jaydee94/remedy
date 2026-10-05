@@ -8,6 +8,7 @@ import {
   filterIncidents,
   incidentPreview,
   lastDiagnosed,
+  mergeIncidents,
   scopeIncidents,
 } from './conversation.ts'
 
@@ -151,6 +152,56 @@ describe('scopeIncidents', () => {
   })
 })
 
+describe('scopeIncidents selections only count while their select is visible', () => {
+  const ids = (s: { incidents: Incident[] }) => s.incidents.map((i) => i.id)
+
+  it('ignores a source selection when the list has a single source', () => {
+    const single = [inc({ id: 1 }), inc({ id: 2, repoId: 2, repo: 'octo/world' })]
+    const s = scopeIncidents(single, 'github', '')
+    assert.equal(s.source, '')
+    assert.deepEqual(ids(s), [1, 2])
+  })
+
+  it('ignores a repository selection when the list has a single repository', () => {
+    const single = [inc({ id: 1 }), inc({ id: 2, source: 'alertmanager', repoId: 0, repo: '' })]
+    const s = scopeIncidents(single, '', '1')
+    assert.equal(s.repoId, '')
+    assert.deepEqual(ids(s), [1, 2])
+  })
+
+  it('keeps the sources and repositories complete after narrowing', () => {
+    const list = [
+      inc({ id: 1, repoId: 1, repo: 'octo/hello' }),
+      inc({ id: 2, repoId: 2, repo: 'octo/world' }),
+      inc({ id: 3, source: 'alertmanager', repoId: 0, repo: '' }),
+    ]
+    const s = scopeIncidents(list, 'github', '1')
+    assert.deepEqual(ids(s), [1])
+    assert.deepEqual(s.sources, ['github', 'alertmanager'])
+    assert.deepEqual([...s.repos.keys()], [1, 2])
+  })
+})
+
+describe('mergeIncidents', () => {
+  const ids = (l: Incident[]) => l.map((i) => i.id)
+
+  it('appends the ignored incidents that all does not have', () => {
+    assert.deepEqual(ids(mergeIncidents([inc({ id: 3 }), inc({ id: 1 })], [inc({ id: 7, state: 'ignored' })])), [3, 1, 7])
+  })
+
+  it('drops duplicates by id and the entry of all wins', () => {
+    const merged = mergeIncidents([inc({ id: 2, title: 'from all' })], [inc({ id: 2, title: 'from ignored' }), inc({ id: 5 })])
+    assert.deepEqual(ids(merged), [2, 5])
+    assert.equal(merged[0]?.title, 'from all')
+  })
+
+  it('handles empty inputs', () => {
+    assert.deepEqual(mergeIncidents([], []), [])
+    assert.deepEqual(ids(mergeIncidents([], [inc({ id: 4 })])), [4])
+    assert.deepEqual(ids(mergeIncidents([inc({ id: 4 })], [])), [4])
+  })
+})
+
 describe('askFor', () => {
   it('finds the call that was asked first for an incident', () => {
     const asks = [call({ id: 9, incidentId: 1 }), call({ id: 4, incidentId: 1 }), call({ id: 5, incidentId: 2 })]
@@ -177,6 +228,10 @@ describe('incidentPreview', () => {
   it('says ignored or resolved even when an approval is still waiting', () => {
     assert.equal(incidentPreview(inc({ state: 'ignored' }), call()), 'You ignored this incident.')
     assert.equal(incidentPreview(inc({ state: 'resolved', resolvedReason: 'cleared' }), call()), 'Resolved: the signal is no longer reported.')
+  })
+
+  it('shows the question of a waiting call even while the incident is diagnosing', () => {
+    assert.equal(incidentPreview(inc({ state: 'diagnosing' }), call()), 'May I restart guestbook-ui in guestbook?')
   })
 
   it('says that it is looking into an incident it diagnoses', () => {
@@ -226,6 +281,18 @@ describe('digestText', () => {
     assert.equal(digestText(now, list, 0), "All quiet. Nothing opened in the last 24 hours, and I'm still watching.")
   })
 
+  it('does not count an incident that is diagnosing again, whose stored answer is the previous one', () => {
+    const list = [inc({ firstSeen: hoursAgo(40), state: 'diagnosing', diagnosis, lastDiagnosisAt: hoursAgo(1) })]
+    assert.equal(digestText(now, list, 0), "All quiet. Nothing opened in the last 24 hours, and I'm still watching.")
+  })
+
+  it('counts an incident first seen exactly 24 hours ago and not one a millisecond older', () => {
+    const edge = new Date(now.getTime() - 24 * 3600_000)
+    assert.equal(digestText(now, [inc({ firstSeen: edge.toISOString() })], 0), 'In the last 24 hours I opened 1 incident.')
+    const older = new Date(edge.getTime() - 1).toISOString()
+    assert.equal(digestText(now, [inc({ firstSeen: older })], 0), "All quiet. Nothing opened in the last 24 hours, and I'm still watching.")
+  })
+
   it('is quiet when nothing happened', () => {
     assert.equal(digestText(now, [], 0), "All quiet. Nothing opened in the last 24 hours, and I'm still watching.")
   })
@@ -244,6 +311,14 @@ describe('lastDiagnosed', () => {
       inc({ id: 3, lastDiagnosisAt: '2026-10-05T10:00:00Z' }),
     ]
     assert.equal(lastDiagnosed(list)?.id, 2)
+  })
+
+  it('skips an incident whose time cannot be parsed', () => {
+    const bad = inc({ id: 1, diagnosis, lastDiagnosisAt: 'not a date' })
+    const good = inc({ id: 2, diagnosis, lastDiagnosisAt: '2026-10-05T08:00:00Z' })
+    assert.equal(lastDiagnosed([bad, good])?.id, 2)
+    assert.equal(lastDiagnosed([good, bad])?.id, 2)
+    assert.equal(lastDiagnosed([bad]), undefined)
   })
 
   it('is undefined when nothing was diagnosed', () => {

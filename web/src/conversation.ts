@@ -36,16 +36,17 @@ export interface Scope {
 }
 
 /**
- * Narrows the list by the selected source and repository. A selection whose value is not in the list any more counts as no
- * selection: the selects are hidden when there is nothing to choose, and a stale value must not leave an empty list that cannot
- * be left.
+ * Narrows the list by the selected source and repository. A selection whose value is not in the list any more, or whose select
+ * is hidden because there is only one choice, counts as no selection: a stale value must not leave an empty list that cannot be
+ * left.
  */
 export function scopeIncidents(list: readonly Incident[], source: string, repoId: string): Scope {
   const sources = [...new Set(list.map((i) => i.source))]
   const repos = new Map<number, string>()
   for (const i of list) if (i.source === 'github') repos.set(i.repoId, i.repo)
-  const effectiveSource = sources.some((s) => s === source) ? source : ''
-  const effectiveRepo = repoId !== '' && repos.has(Number(repoId)) ? repoId : ''
+  // A selection counts only while its select is visible: with one choice the select is hidden and cannot be cleared.
+  const effectiveSource = sources.length > 1 && sources.some((s) => s === source) ? source : ''
+  const effectiveRepo = repos.size > 1 && repoId !== '' && repos.has(Number(repoId)) ? repoId : ''
   const incidents = list.filter(
     (i) => (effectiveSource === '' || i.source === effectiveSource) && (effectiveRepo === '' || String(i.repoId) === effectiveRepo),
   )
@@ -87,8 +88,14 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 export function digestText(now: Date, incidents: readonly Incident[], pending: number): string {
   const since = now.getTime() - DAY_MS
   const opened = incidents.filter((i) => Date.parse(i.firstSeen) >= since).length
+  // An incident that is diagnosing again keeps its previous answer, and lastDiagnosisAt is the start of the new run: it is not
+  // counted. Known limitation: a failed re-diagnosis cannot be told apart from the API fields and may be counted for up to 24 hours.
   const diagnosed = incidents.filter(
-    (i) => i.diagnosis !== undefined && i.lastDiagnosisAt !== undefined && Date.parse(i.lastDiagnosisAt) >= since,
+    (i) =>
+      i.state !== 'diagnosing' &&
+      i.diagnosis !== undefined &&
+      i.lastDiagnosisAt !== undefined &&
+      Date.parse(i.lastDiagnosisAt) >= since,
   ).length
 
   let text: string
@@ -108,9 +115,21 @@ export function digestText(now: Date, incidents: readonly Incident[], pending: n
 /** The incident whose diagnosis was started last, among those that have one. */
 export function lastDiagnosed(incidents: readonly Incident[]): Incident | undefined {
   let best: Incident | undefined
+  let bestTime = -Infinity
   for (const i of incidents) {
     if (i.diagnosis === undefined || i.lastDiagnosisAt === undefined) continue
-    if (best === undefined || Date.parse(i.lastDiagnosisAt) > Date.parse(best.lastDiagnosisAt!)) best = i
+    const t = Date.parse(i.lastDiagnosisAt)
+    if (Number.isNaN(t)) continue
+    if (t > bestTime) {
+      best = i
+      bestTime = t
+    }
   }
   return best
+}
+
+/** The incidents of all, followed by those of ignored that all does not have. The entry of all wins, and the order is kept. */
+export function mergeIncidents(all: readonly Incident[], ignored: readonly Incident[]): Incident[] {
+  const seen = new Set(all.map((i) => i.id))
+  return [...all, ...ignored.filter((i) => !seen.has(i.id))]
 }

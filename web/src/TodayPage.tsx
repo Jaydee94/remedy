@@ -20,8 +20,8 @@ const linkClass = 'whitespace-nowrap text-primary outline-none hover:text-primar
 
 /** Today: Remedy's digest of the last 24 hours and the feed of what happened, newest first. */
 export default function TodayPage() {
-  const { incidents } = useIncidents()
-  const { pending } = useShellState()
+  const { incidents, error: incidentsError } = useIncidents()
+  const { pending, loaded } = useShellState()
   const now = useNow(60_000)
   const [entries, setEntries] = useState<TimelineEntry[] | null>(null)
   const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set())
@@ -69,6 +69,7 @@ export default function TodayPage() {
       const page = await api.listActivity(oldest.id)
       setEntries((current) => mergeEntries(current ?? [], page.entries))
       setHasMore(page.hasMore)
+      setError('')
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not load older entries')
     } finally {
@@ -80,6 +81,8 @@ export default function TodayPage() {
 
   return (
     <div className="mx-auto flex max-w-190 flex-col gap-6.5 px-4 py-5 md:px-10 md:py-12">
+      <h1 className="sr-only">Today</h1>
+
       {live === 'closed' && (
         <div role="status" className="flex flex-wrap items-center gap-3 rounded-2xl bg-soft-diagnosing px-4 py-2.5 text-[13px] text-primary">
           Live updates stopped.
@@ -89,14 +92,16 @@ export default function TodayPage() {
         </div>
       )}
 
-      {incidents === null ? (
+      {incidents !== null && loaded ? (
+        <Digest text={digestText(now, incidents, pending)} pending={pending} diagnosedId={lastDiagnosed(incidents)?.id} time={time} />
+      ) : incidents === null && incidentsError ? (
+        <p className="text-[13px] text-muted-foreground">I couldn't load the incidents.</p>
+      ) : (
         <div className="flex flex-col gap-3">
           <Skeleton className="size-9 rounded-full" />
           <Skeleton className="h-6 w-4/5" />
           <Skeleton className="h-6 w-3/5" />
         </div>
-      ) : (
-        <Digest text={digestText(now, incidents, pending)} pending={pending} diagnosedId={lastDiagnosed(incidents)?.id} time={time} />
       )}
 
       {error && (
@@ -117,7 +122,7 @@ export default function TodayPage() {
       ) : entries.length === 0 ? (
         <EmptyState title="Nothing has happened yet.">
           Connect GitHub and add a repository under{' '}
-          <Link to="/settings" className="text-primary hover:text-primary-hover">
+          <Link to="/settings" className={linkClass}>
             Setup
           </Link>
           .
@@ -128,7 +133,7 @@ export default function TodayPage() {
             <section key={group.key} className="flex flex-col gap-0.5">
               <div className="mt-1.5 mb-2.5 flex items-center gap-3">
                 <span className="h-px flex-1 bg-border" />
-                <span className="text-xs text-subtle">{dayLabel(group.key)}</span>
+                <h2 className="text-xs font-normal text-subtle">{dayLabel(group.key)}</h2>
                 <span className="h-px flex-1 bg-border" />
               </div>
               {group.entries.map((entry) => (

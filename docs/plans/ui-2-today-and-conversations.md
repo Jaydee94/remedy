@@ -27,11 +27,11 @@
 
 1. A waiting approval for an incident that is already resolved or ignored: the preview says it is ignored or resolved (those rules come first), and the "asks you" chip still shows only while the incident is active. (Task 1 tests the preview order; Task 3.)
 2. An incident of another source (no repository, no ref): the card shows the source's label instead of "repository, ref"; a GitHub incident shows "repository · ref". (Task 3, Task 5.)
-3. The digest never states what the data does not show: a clause with a count of 0 is left out; the quiet sentence appears only when nothing opened and nothing was diagnosed in the last 24 hours; "1 incident" is singular. (Task 1.)
+3. The digest never states what the data does not show: a clause with a count of 0 is left out; the quiet sentence appears only when nothing opened and nothing was diagnosed in the last 24 hours; "1 incident" is singular. Known limitation: a failed re-diagnosis keeps the old stored diagnosis and a recent last_diagnosis_at, so the digest can count it for up to 24 hours; a running re-diagnosis is not counted. (Task 1.)
 4. An approval whose arguments are missing or have another type must not print "undefined" or a hole: `askText` falls back to the general question. (Task 1.)
 5. The filter pills' counts follow the source and repository selects; the selects appear only when there is more than one source or repository; an empty filter shows its own empty state. (Task 3.)
 6. Only entries that arrive live fade in; the first page does not animate. The ended stream shows "Live updates stopped." with Reload. (Task 4.)
-7. The list has at most 200 incidents (the API limit): the counts are of what was loaded. (Documented, nothing to build.)
+7. The list has at most 200 incidents (the API limit): the counts are of what was loaded (the ignored incidents are loaded by a second request so they stay reachable). (Documented, nothing to build.)
 8. 390 px: cards and the feed wrap, long titles break, nothing scrolls sideways; the sidebar preview line truncates. (Task 3, 4, 5.)
 
 ---

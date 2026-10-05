@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { askFor, incidentPreview } from '@/conversation.ts'
+import { askFor, filterIncidents, incidentPreview } from '@/conversation.ts'
 import { incidentStateColor, timeAgo } from '@/incidents.ts'
 import { navItems } from '@/shell.ts'
 import type { Section, ShellState } from '@/shell.ts'
@@ -55,7 +55,7 @@ export default function Sidebar({ section, pathname, shell, onSignOut }: Props) 
 
       <div className="mx-5.5 mt-5.5 mb-2 text-xs text-subtle">Open conversations</div>
       <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-auto px-2.5">
-        {shell.incidents.map((incident) => {
+        {filterIncidents(shell.incidents, 'active').map((incident) => {
           const here = pathname === `/incidents/${incident.id}`
           return (
             <Link
