@@ -312,6 +312,16 @@ describe('announcements', () => {
     assert.notEqual(latestAnnouncement([failed('run-1')])?.key, latestAnnouncement([failed('run-2')])?.key)
   })
 
+  it('announces a failed diagnosis of an incident that already has one, once, and not a first failure (the undiagnosed message says that)', () => {
+    const withDiagnosis = buildThread({ incident: inc({ state: 'diagnosed', diagnosis }), activity: [act(5, 'diagnosis_failed', at, 'Diagnosis of go failed: the run timed out')], questionRuns: [], asks: [] })
+    const said = allAnnouncements(withDiagnosis).map((a) => a.text)
+    assert.deepEqual(said.filter((t) => t.includes('earlier')), ['My latest diagnosis did not finish: this is the earlier one.'])
+    const first = buildThread({ incident: inc({ state: 'open' }), activity: [act(5, 'diagnosis_failed', at)], questionRuns: [], asks: [] })
+    assert.deepEqual(allAnnouncements(first).map((a) => a.text).filter((t) => t.includes('earlier')), [])
+    const keys = allAnnouncements(withDiagnosis).map((a) => a.key)
+    assert.equal(new Set(keys).size, keys.length)
+  })
+
   it('gives the working message of two runs different keys', () => {
     const a = latestAnnouncement([working('run-1')])
     const b = latestAnnouncement([working('run-2')])

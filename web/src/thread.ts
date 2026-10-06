@@ -4,7 +4,7 @@ import { sourceLabel } from './incidents.ts'
 import { kindDotClass } from './timeline.ts'
 
 export type ThreadItem =
-  | { type: 'event'; key: string; at: string; dot: string; text: string }
+  | { type: 'event'; key: string; at: string; dot: string; text: string; /** What a screen reader hears when the entry appears, if anything. */ say?: string }
   | { type: 'working'; key: string; at: string; runId?: string }
   | { type: 'diagnosis'; key: string; at: string; diagnosis: Diagnosis; outdated: boolean; sha: string; runId?: string }
   | { type: 'undiagnosed'; key: string; at: string; reason: 'fresh' | 'manual' | 'source' | 'failed'; sourceLabel: string; runId?: string }
@@ -41,7 +41,9 @@ export function buildThread({ incident, activity, questionRuns, asks, lastRespon
 
   for (const a of [...activity].sort((x, y) => x.id - y.id)) {
     if (REPLACED.has(a.kind)) continue
-    items.push({ type: 'event', key: `a${a.id}`, at: a.at, dot: kindDotClass(a.kind), text: a.summary })
+    // A failed diagnosis of an incident with no diagnosis is said by the undiagnosed message; with one, nothing else changes in the thread.
+    const say = a.kind === 'diagnosis_failed' && incident.diagnosis ? 'My latest diagnosis did not finish: this is the earlier one.' : undefined
+    items.push({ type: 'event', key: `a${a.id}`, at: a.at, dot: kindDotClass(a.kind), text: a.summary, say })
   }
 
   if (incident.diagnosis) {
@@ -118,6 +120,9 @@ function announcementOf(item: ThreadItem): Announcement | null {
       break
     case 'working':
       text = 'Remedy is looking into this incident.'
+      break
+    case 'event':
+      text = item.say ?? ''
       break
     case 'undiagnosed':
       // The other reasons are states the incident starts in, not something that happened while the page was open.
