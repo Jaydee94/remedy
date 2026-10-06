@@ -274,7 +274,7 @@ describe('digestText', () => {
   it('counts what opened and what was diagnosed in the last 24 hours', () => {
     const list = [
       inc({ id: 1, firstSeen: hoursAgo(3) }),
-      inc({ id: 2, firstSeen: hoursAgo(5), state: 'diagnosed', diagnosis, lastDiagnosisAt: hoursAgo(4) }),
+      inc({ id: 2, firstSeen: hoursAgo(5), state: 'diagnosed', diagnosis, lastDiagnosisAt: hoursAgo(4), diagnosedAt: hoursAgo(4) }),
       inc({ id: 3, firstSeen: hoursAgo(30) }),
     ]
     assert.equal(digestText(now, list, 0), 'In the last 24 hours I opened 2 incidents and diagnosed 1.')
@@ -285,20 +285,35 @@ describe('digestText', () => {
   })
 
   it('leaves out a clause with a count of 0 and names the incidents when only diagnoses are counted', () => {
-    const list = [inc({ firstSeen: hoursAgo(40), state: 'diagnosed', diagnosis, lastDiagnosisAt: hoursAgo(2) })]
+    const list = [inc({ firstSeen: hoursAgo(40), state: 'diagnosed', diagnosis, lastDiagnosisAt: hoursAgo(2), diagnosedAt: hoursAgo(2) })]
     assert.equal(digestText(now, list, 0), 'In the last 24 hours I diagnosed 1 incident.')
   })
 
   it('does not count a diagnosis that is older than 24 hours or that has no stored answer', () => {
     const list = [
-      inc({ id: 1, firstSeen: hoursAgo(40), state: 'diagnosed', diagnosis, lastDiagnosisAt: hoursAgo(30) }),
+      inc({ id: 1, firstSeen: hoursAgo(40), state: 'diagnosed', diagnosis, lastDiagnosisAt: hoursAgo(30), diagnosedAt: hoursAgo(30) }),
       inc({ id: 2, firstSeen: hoursAgo(40), state: 'diagnosing', lastDiagnosisAt: hoursAgo(1) }),
     ]
     assert.equal(digestText(now, list, 0), "All quiet. Nothing opened in the last 24 hours, and I'm still watching.")
   })
 
-  it('does not count an incident that is diagnosing again, whose stored answer is the previous one', () => {
-    const list = [inc({ firstSeen: hoursAgo(40), state: 'diagnosing', diagnosis, lastDiagnosisAt: hoursAgo(1) })]
+  it('counts an incident that is diagnosing again by when its stored answer was written', () => {
+    const list = [inc({ firstSeen: hoursAgo(40), state: 'diagnosing', diagnosis, lastDiagnosisAt: hoursAgo(1), diagnosedAt: hoursAgo(3) })]
+    assert.equal(digestText(now, list, 0), 'In the last 24 hours I diagnosed 1 incident.')
+  })
+
+  it('counts a diagnosis by diagnosedAt whatever lastDiagnosisAt says', () => {
+    const list = [inc({ firstSeen: hoursAgo(40), state: 'diagnosed', diagnosis, lastDiagnosisAt: hoursAgo(30), diagnosedAt: hoursAgo(2) })]
+    assert.equal(digestText(now, list, 0), 'In the last 24 hours I diagnosed 1 incident.')
+  })
+
+  it('does not count an old diagnosis whose re-diagnosis failed recently', () => {
+    const list = [inc({ firstSeen: hoursAgo(40), state: 'diagnosed', diagnosis, lastDiagnosisAt: hoursAgo(1), diagnosedAt: hoursAgo(30) })]
+    assert.equal(digestText(now, list, 0), "All quiet. Nothing opened in the last 24 hours, and I'm still watching.")
+  })
+
+  it('does not count a diagnosis without diagnosedAt, as from a server that does not send it', () => {
+    const list = [inc({ firstSeen: hoursAgo(40), state: 'diagnosed', diagnosis, lastDiagnosisAt: hoursAgo(1) })]
     assert.equal(digestText(now, list, 0), "All quiet. Nothing opened in the last 24 hours, and I'm still watching.")
   })
 
@@ -322,19 +337,30 @@ describe('digestText', () => {
 describe('lastDiagnosed', () => {
   it('is the incident with the newest stored diagnosis', () => {
     const list = [
-      inc({ id: 1, diagnosis, lastDiagnosisAt: '2026-10-05T08:00:00Z' }),
-      inc({ id: 2, diagnosis, lastDiagnosisAt: '2026-10-05T09:00:00Z' }),
-      inc({ id: 3, lastDiagnosisAt: '2026-10-05T10:00:00Z' }),
+      inc({ id: 1, diagnosis, diagnosedAt: '2026-10-05T08:00:00Z' }),
+      inc({ id: 2, diagnosis, diagnosedAt: '2026-10-05T09:00:00Z' }),
+      inc({ id: 3, diagnosedAt: '2026-10-05T10:00:00Z' }),
     ]
     assert.equal(lastDiagnosed(list)?.id, 2)
   })
 
-  it('skips an incident whose time cannot be parsed', () => {
-    const bad = inc({ id: 1, diagnosis, lastDiagnosisAt: 'not a date' })
-    const good = inc({ id: 2, diagnosis, lastDiagnosisAt: '2026-10-05T08:00:00Z' })
+  it('goes by when the diagnosis was written, not when the last one was started', () => {
+    const list = [
+      inc({ id: 1, diagnosis, diagnosedAt: '2026-10-05T08:00:00Z', lastDiagnosisAt: '2026-10-05T11:00:00Z' }),
+      inc({ id: 2, diagnosis, diagnosedAt: '2026-10-05T09:00:00Z', lastDiagnosisAt: '2026-10-05T09:00:00Z' }),
+    ]
+    assert.equal(lastDiagnosed(list)?.id, 2)
+  })
+
+  it('skips an incident without diagnosedAt or whose time cannot be parsed', () => {
+    const bad = inc({ id: 1, diagnosis, diagnosedAt: 'not a date' })
+    const none = inc({ id: 3, diagnosis, lastDiagnosisAt: '2026-10-05T10:00:00Z' })
+    const good = inc({ id: 2, diagnosis, diagnosedAt: '2026-10-05T08:00:00Z' })
     assert.equal(lastDiagnosed([bad, good])?.id, 2)
     assert.equal(lastDiagnosed([good, bad])?.id, 2)
+    assert.equal(lastDiagnosed([none, good])?.id, 2)
     assert.equal(lastDiagnosed([bad]), undefined)
+    assert.equal(lastDiagnosed([none]), undefined)
   })
 
   it('is undefined when nothing was diagnosed', () => {

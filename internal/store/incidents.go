@@ -82,6 +82,9 @@ type Incident struct {
 	// Diagnoses counts the automatic diagnoses that were started.
 	Diagnoses       int
 	LastDiagnosisAt *time.Time
+	// DiagnosedAt is when the stored diagnosis was written, nil until there is one. Unlike LastDiagnosisAt, which is the
+	// start of the latest attempt, a diagnosis that fails does not move it.
+	DiagnosedAt *time.Time
 	// Diagnosis is the validated diagnosis as JSON, nil until there is one.
 	Diagnosis json.RawMessage
 	// DiagnosedSHA is the commit the diagnosis is about.
@@ -179,7 +182,7 @@ const (
 	incidentCols = `i.id, i.source, i.key, i.title, i.severity, i.auto_diagnose, i.details,
 		i.repo_id, r.full_name, i.ref, i.ref_url, i.check_name, i.state, i.conclusion,
 		i.head_sha, i.check_url, i.occurrences, i.first_seen, i.last_seen, i.resolved_at, i.resolved_reason,
-		i.diagnoses, i.last_diagnosis_at, i.diagnosis, i.diagnosed_sha, i.run_id`
+		i.diagnoses, i.last_diagnosis_at, i.diagnosed_at, i.diagnosis, i.diagnosed_sha, i.run_id`
 	incidentFrom = ` FROM incidents i LEFT JOIN repos r ON r.id = i.repo_id`
 )
 
@@ -190,6 +193,7 @@ func scanIncident(sc scanner) (Incident, error) {
 		first, last string
 		resolved    sql.NullString
 		lastDiag    sql.NullString
+		diagnosedAt sql.NullString
 		diagnosis   sql.NullString
 		runID       sql.NullString
 		details     string
@@ -199,7 +203,7 @@ func scanIncident(sc scanner) (Incident, error) {
 	if err := sc.Scan(&in.ID, &in.Source, &in.Key, &in.Title, &in.Severity, &in.AutoDiagnose, &details,
 		&repoID, &repoName, &in.Ref, &in.RefURL, &in.CheckName, &state, &in.Conclusion,
 		&in.HeadSHA, &in.CheckURL, &in.Occurrences, &first, &last, &resolved, &in.ResolvedReason,
-		&in.Diagnoses, &lastDiag, &diagnosis, &in.DiagnosedSHA, &runID); err != nil {
+		&in.Diagnoses, &lastDiag, &diagnosedAt, &diagnosis, &in.DiagnosedSHA, &runID); err != nil {
 		return Incident{}, err
 	}
 	in.State = IncidentState(state)
@@ -225,6 +229,13 @@ func scanIncident(sc scanner) (Incident, error) {
 			return Incident{}, err
 		}
 		in.LastDiagnosisAt = &t
+	}
+	if diagnosedAt.Valid {
+		t, err := parseTS(diagnosedAt.String)
+		if err != nil {
+			return Incident{}, err
+		}
+		in.DiagnosedAt = &t
 	}
 	if diagnosis.Valid {
 		in.Diagnosis = json.RawMessage(diagnosis.String)

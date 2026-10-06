@@ -74,7 +74,7 @@ Existing packages that change: `store` (migration and queries), `server` (new AP
 - `activity`: `id`, `at`, `kind`, `repo_id`, `incident_id`, `run_id`, `summary`, `data` (JSON).
 - `runs` gains `incident_id`, `role` (`adhoc` or `responder`), `output` (structured JSON) and `failure_reason`, and
   later `head_sha` (the commit the prompt and the snapshot are for) and `automatic` (started by Remedy, not by a
-  click). `incidents` gains `diagnosed_sha` (the commit its diagnosis is about).
+  click). `incidents` gains `diagnosed_sha` (the commit its diagnosis is about) and, in migration 009, `diagnosed_at` (when the stored diagnosis was written; a diagnosis that failed does not move it).
 
 Activity kinds: `incident_opened`, `incident_recurred`, `incident_resolved`, `incident_ignored`,
 `diagnosis_started`, `diagnosis_finished`, `diagnosis_failed`, `poll_failed`, `poll_recovered`,

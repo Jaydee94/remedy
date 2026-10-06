@@ -143,7 +143,7 @@ Remedy cannot back). A `401` shows "That isn't the admin password."; any other e
 - When the activity stream ends (`closed`: for example after a server restart and a new login) a line says "Live updates stopped." with a Reload button. The
   shell's banner covers only a failing poll.
 - **The digest sentence** is computed from `listIncidents('all')` (up to 200) and the pending approvals, over the last 24 hours: incidents opened (by
-  `firstSeen`), incidents diagnosed (by `lastDiagnosisAt`), questions waiting. "In the last 24 hours I opened 3 incidents and diagnosed 2. One question waits
+  `firstSeen`), incidents diagnosed (by the time the diagnosis was written, `diagnosedAt`), questions waiting. "In the last 24 hours I opened 3 incidents and diagnosed 2. One question waits
   for you." and, when there is nothing, "All quiet. Nothing opened in the last 24 hours, and I'm still watching." A clause whose count is 0 is left out; the
   sentence never states what the data does not show.
 - **Actions:** "Answer N questions" (to `/approvals`) only with pending approvals; "Read the diagnosis" (to the incident diagnosed last) only if there is one.

@@ -84,20 +84,15 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 /**
  * The digest of Today, from counts over the last 24 hours: incidents opened (by first seen), incidents diagnosed (a stored
- * diagnosis, by the time it was started) and the questions that wait. A clause with a count of 0 is left out, and the quiet
+ * diagnosis, by the time it was written) and the questions that wait. A clause with a count of 0 is left out, and the quiet
  * sentence appears only when nothing was counted.
  */
 export function digestText(now: Date, incidents: readonly Incident[], pending: number): string {
   const since = now.getTime() - DAY_MS
   const opened = incidents.filter((i) => Date.parse(i.firstSeen) >= since).length
-  // An incident that is diagnosing again keeps its previous answer, and lastDiagnosisAt is the start of the new run: it is not
-  // counted. Known limitation: a failed re-diagnosis cannot be told apart from the API fields and may be counted for up to 24 hours.
+  // diagnosedAt moves only when a diagnosis is written: a re-diagnosis that is running or failed does not make the old one new.
   const diagnosed = incidents.filter(
-    (i) =>
-      i.state !== 'diagnosing' &&
-      i.diagnosis !== undefined &&
-      i.lastDiagnosisAt !== undefined &&
-      Date.parse(i.lastDiagnosisAt) >= since,
+    (i) => i.diagnosis !== undefined && i.diagnosedAt !== undefined && Date.parse(i.diagnosedAt) >= since,
   ).length
 
   let text: string
@@ -114,13 +109,13 @@ export function digestText(now: Date, incidents: readonly Incident[], pending: n
   return text
 }
 
-/** The incident whose diagnosis was started last, among those that have one. */
+/** The incident whose diagnosis was written last, among those that have one. */
 export function lastDiagnosed(incidents: readonly Incident[]): Incident | undefined {
   let best: Incident | undefined
   let bestTime = -Infinity
   for (const i of incidents) {
-    if (i.diagnosis === undefined || i.lastDiagnosisAt === undefined) continue
-    const t = Date.parse(i.lastDiagnosisAt)
+    if (i.diagnosis === undefined || i.diagnosedAt === undefined) continue
+    const t = Date.parse(i.diagnosedAt)
     if (Number.isNaN(t)) continue
     if (t > bestTime) {
       best = i

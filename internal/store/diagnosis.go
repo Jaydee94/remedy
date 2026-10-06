@@ -144,9 +144,9 @@ func (s *Store) CompleteDiagnosis(ctx context.Context, runID string, diagnosis j
 			return err
 		}
 		if err := oneRow(tx.ExecContext(ctx, `
-			UPDATE incidents SET diagnosis = ?, diagnosed_sha = ?,
+			UPDATE incidents SET diagnosis = ?, diagnosed_sha = ?, diagnosed_at = ?,
 				state = CASE WHEN state IN ('diagnosing', 'open') THEN 'diagnosed' ELSE state END
-			WHERE id = ? AND run_id = ?`, string(diagnosis), sha, incidentID.Int64, runID)); err != nil {
+			WHERE id = ? AND run_id = ?`, string(diagnosis), sha, formatTS(time.Now()), incidentID.Int64, runID)); err != nil {
 			return err
 		}
 		return s.logRunActivity(ctx, tx, incidentID.Int64, runID, act)
