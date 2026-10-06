@@ -89,6 +89,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
   }
 
   async function diagnose() {
+    if (diagnoseBusy) return
     setDiagnoseBusy(true)
     setDiagnoseFailure(null)
     try {
@@ -202,7 +203,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
                   </span>
                 )}
                 <div>
-                  <Button disabled={diagnoseBusy} onClick={() => void diagnose()}>
+                  <Button aria-disabled={diagnoseBusy} className="aria-disabled:pointer-events-none aria-disabled:opacity-50" onClick={() => void diagnose()}>
                     {item.reason === 'manual' ? 'Diagnose' : item.reason === 'failed' ? 'Diagnose again' : 'Diagnose now'}
                   </Button>
                   {item.reason === 'failed' && item.runId && (
@@ -325,12 +326,12 @@ export default function IncidentThreadPage({ id }: { id: number }) {
             </span>
           )}
           {incident.state === 'ignored' ? (
-            <Button variant="outline" size="sm" className="self-start" disabled={panelBusy} onClick={() => void unignore()}>
+            <Button variant="outline" size="sm" className="self-start aria-disabled:pointer-events-none aria-disabled:opacity-50" aria-disabled={panelBusy} onClick={() => void unignore()}>
               Stop ignoring
             </Button>
           ) : (
             (incident.state === 'open' || incident.state === 'diagnosing' || incident.state === 'diagnosed') && (
-              <Button variant="outline" size="sm" className="self-start" disabled={panelBusy} onClick={() => void ignore()}>
+              <Button variant="outline" size="sm" className="self-start aria-disabled:pointer-events-none aria-disabled:opacity-50" aria-disabled={panelBusy} onClick={() => void ignore()}>
                 Ignore
               </Button>
             )

@@ -88,7 +88,15 @@ export default function DiagnosisMessage({ diagnosis: d, outdatedSha, headSha, r
             </Link>
           )}
           {onDiagnoseAgain && (
-            <Button variant="outline" size="sm" disabled={busy} onClick={onDiagnoseAgain}>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-disabled={busy}
+              className="aria-disabled:pointer-events-none aria-disabled:opacity-50"
+              onClick={() => {
+                if (!busy) onDiagnoseAgain()
+              }}
+            >
               Diagnose again
             </Button>
           )}
