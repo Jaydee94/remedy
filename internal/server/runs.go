@@ -92,6 +92,13 @@ func (s *srv) listRuns(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, "could not list runs")
 			return
 		}
+		// A responder run's prompt holds the cleaned data from GitHub and its output the whole diagnosis: the thread needs neither
+		// (the diagnosis is on the incident), so the list leaves them out. GET /api/runs/{id} still has everything.
+		for i := range runs {
+			if runs[i].Role == run.RoleResponder {
+				runs[i].Prompt, runs[i].Result, runs[i].Output = "", "", nil
+			}
+		}
 		writeJSON(w, http.StatusOK, runs)
 		return
 	}

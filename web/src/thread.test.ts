@@ -302,6 +302,16 @@ describe('announcements', () => {
     assert.deepEqual(allAnnouncements([]), [])
   })
 
+  it('announces a diagnosis that failed, and only that kind of undiagnosed message', () => {
+    const failed = (runId?: string): ThreadItem => ({ type: 'undiagnosed', key: 'undiagnosed', at, reason: 'failed', sourceLabel: 'GitHub', runId })
+    assert.equal(say([ev(), failed('run-1')]), 'Remedy could not diagnose this incident.')
+    for (const reason of ['fresh', 'manual', 'source'] as const) {
+      assert.equal(say([{ type: 'undiagnosed', key: 'undiagnosed', at, reason, sourceLabel: 'GitHub' }]), '')
+    }
+    // The second failure is a new message: its run tells it from the first.
+    assert.notEqual(latestAnnouncement([failed('run-1')])?.key, latestAnnouncement([failed('run-2')])?.key)
+  })
+
   it('gives the working message of two runs different keys', () => {
     const a = latestAnnouncement([working('run-1')])
     const b = latestAnnouncement([working('run-2')])
