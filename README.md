@@ -7,7 +7,7 @@ CLIs (Claude Code, Antigravity CLI), without API tokens.
 
 > Status: phase 1 is in progress. You can start a read-only agent run from the web UI and watch
 > its output stream in live, connect GitHub (read-only token, stored encrypted), add repositories
-> under **Settings**, and see failed checks of their pull requests and default branches as
+> under **Setup**, and see failed checks of their pull requests and default branches as
 > **incidents**. For a real failure a read-only agent reads the failure log and a copy of the repository
 > and stores a **diagnosis** on the incident (cause, confidence, affected files, proposed fix), on its own
 > within limits or by a click. Everything Remedy does shows up in a live **timeline**, and the GitHub
@@ -64,7 +64,7 @@ export REMEDY_MASTER_KEY="$(openssl rand -base64 32)"   # seals the GitHub token
 
 `REMEDY_MASTER_KEY` is required: Remedy refuses to start without it. Keep it outside the database and its
 backups; whoever has both can read the stored GitHub token. If you lose or change the key, enter the token
-again under **Settings**. Under **Settings** you also connect GitHub (a fine-grained, read-only personal access
+again under **Setup**. Under **Setup** you also connect GitHub (a fine-grained, read-only personal access
 token) and add repositories. `REMEDY_GITHUB_API_URL` (default `https://api.github.com`) exists for tests.
 
 Remedy polls the enabled repositories with that token every 60 seconds (`REMEDY_POLL_INTERVAL`, a Go

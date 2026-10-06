@@ -38,7 +38,7 @@ anyway.
 
 ## 3. Connect and register
 
-Open <http://localhost:8080>, sign in, go to **Settings**, paste the token into the GitHub connection field and
+Open <http://localhost:8080>, sign in, go to **Setup**, paste the token into the GitHub connection field and
 save, then add the repository `Jaydee94/remedy`. The **Timeline** (home) shows "connected" and "added" entries.
 
 ## 4. A real red check: the Renovate pull request

@@ -15,7 +15,7 @@ export default function AppLayout({ onSignOut }: { onSignOut: () => void }) {
   const { pathname } = useLocation()
   const shell = useShell()
   const [custom, setCustom] = useState<Header | null>(null)
-  const context = useMemo(() => ({ setHeader: setCustom }), [])
+  const context = useMemo(() => ({ setHeader: setCustom, signOut: onSignOut }), [onSignOut])
   const section = sectionOf(pathname)
   const header = custom ?? defaultHeader(pathname)
 
