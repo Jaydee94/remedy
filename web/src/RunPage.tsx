@@ -43,12 +43,14 @@ export default function RunPage({ id }: { id: string }) {
 
   async function cancel() {
     setError('')
+    const back = restore() // the cancel button goes away once the run has ended
     try {
       await api.cancelRun(id)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not cancel the run')
     }
-    refresh()
+    await refresh()
+    await back
   }
 
   async function again() {
@@ -186,7 +188,7 @@ export default function RunPage({ id }: { id: string }) {
             )
           ) : (
             <div>
-              <Button size="sm" disabled={busy} onClick={() => void again()}>
+              <Button size="sm" aria-disabled={busy} onClick={() => void again()}>
                 Start it again
               </Button>
             </div>

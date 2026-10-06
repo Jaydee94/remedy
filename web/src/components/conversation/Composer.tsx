@@ -46,7 +46,7 @@ export default function Composer({ placeholder, onSend }: Props) {
         />
         <button
           type="submit"
-          disabled={!ready}
+          aria-disabled={!ready}
           aria-label="Send"
           className={cn(
             'flex size-10 shrink-0 items-center justify-center rounded-full text-primary-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50',

@@ -64,7 +64,7 @@ export default function TodayPage() {
 
   async function loadMore() {
     const oldest = entries?.[entries.length - 1]
-    if (!oldest) return
+    if (!oldest || loadingMore) return
     setLoadingMore(true)
     try {
       const page = await api.listActivity(oldest.id)
@@ -163,7 +163,7 @@ export default function TodayPage() {
             </section>
           ))}
           {hasMore && (
-            <Button variant="outline" className="self-center" disabled={loadingMore} onClick={() => void loadMore()}>
+            <Button variant="outline" className="self-center" aria-disabled={loadingMore} onClick={() => void loadMore()}>
               {loadingMore ? 'Loading…' : 'Load older entries'}
             </Button>
           )}
