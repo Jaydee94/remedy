@@ -106,7 +106,7 @@ export default function RunPage({ id }: { id: string }) {
 
   return (
     <div className="mx-auto flex max-w-190 flex-col gap-5 px-4 py-5 md:px-10 md:py-12">
-      <h1 ref={heading} tabIndex={-1} className="sr-only outline-none">
+      <h1 ref={heading} tabIndex={-1} className="sr-only rounded-sm outline-none focus:not-sr-only focus:text-[13px] focus:text-muted-foreground focus:ring-3 focus:ring-ring/50">
         Run
       </h1>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
