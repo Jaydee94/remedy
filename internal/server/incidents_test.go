@@ -8,7 +8,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/store"
 )
 
@@ -294,5 +296,76 @@ func TestConnectionAndRepoChangesAreLogged(t *testing.T) {
 	}
 	if log[1].RepoID != 0 {
 		t.Fatalf("the removal entry links to the deleted repo %d", log[1].RepoID)
+	}
+}
+
+// diagnosedAt is when the stored diagnosis was written: the list and the single incident carry it for a diagnosed incident
+// and leave the key out for one without a diagnosis, like lastDiagnosisAt for an incident that was never diagnosed.
+func TestIncidentJSONCarriesDiagnosedAtOnlyWithADiagnosis(t *testing.T) {
+	e, repoID := withRepo(t)
+	ctx := context.Background()
+	plain := openIncident(t, e, repoID, "pr:7", "go")
+	diagnosed := openIncident(t, e, repoID, "pr:8", "go")
+	r, err := e.store.StartDiagnosis(ctx, store.StartParams{
+		IncidentID: diagnosed.ID, Provider: "claude", Prompt: "diagnose", HeadSHA: diagnosed.HeadSHA,
+		Limits: store.DefaultLimits(), Now: time.Now(),
+	}, store.NewActivity{Kind: store.KindDiagnosisStarted, RepoID: repoID, Summary: "started"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed, err := e.store.ClaimNext(ctx); err != nil || claimed == nil || claimed.ID != r.ID {
+		t.Fatalf("ClaimNext = %+v, %v", claimed, err)
+	}
+	if err := e.store.FinishRun(ctx, r.ID, run.Outcome{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.store.CompleteDiagnosis(ctx, r.ID, []byte(`{"summary":"s"}`), store.NewActivity{Kind: store.KindDiagnosisFinished, RepoID: repoID, Summary: "done"}); err != nil {
+		t.Fatal(err)
+	}
+
+	code, body := e.call(t, http.MethodGet, "/api/incidents", "")
+	if code != http.StatusOK {
+		t.Fatalf("GET /api/incidents = %d %s", code, body)
+	}
+	var list []map[string]any
+	if err := json.Unmarshal([]byte(body), &list); err != nil {
+		t.Fatal(err)
+	}
+	byID := map[int64]map[string]any{}
+	for _, m := range list {
+		byID[int64(m["id"].(float64))] = m
+	}
+	checkDiagnosed := func(where string, m map[string]any) {
+		t.Helper()
+		s, ok := m["diagnosedAt"].(string)
+		if !ok {
+			t.Fatalf("%s: diagnosedAt missing in %v", where, m)
+		}
+		at, err := time.Parse(time.RFC3339Nano, s)
+		if err != nil || time.Since(at) > time.Minute || time.Until(at) > time.Minute {
+			t.Errorf("%s: diagnosedAt = %q (%v), want about now in RFC 3339", where, s, err)
+		}
+	}
+	checkDiagnosed("list", byID[diagnosed.ID])
+	if _, has := byID[plain.ID]["diagnosedAt"]; has {
+		t.Errorf("list: an incident without a diagnosis has diagnosedAt: %v", byID[plain.ID])
+	}
+
+	for id, want := range map[int64]bool{diagnosed.ID: true, plain.ID: false} {
+		code, body := e.call(t, http.MethodGet, "/api/incidents/"+strconv.FormatInt(id, 10), "")
+		if code != http.StatusOK {
+			t.Fatalf("GET = %d %s", code, body)
+		}
+		var got struct {
+			Incident map[string]any `json:"incident"`
+		}
+		if err := json.Unmarshal([]byte(body), &got); err != nil {
+			t.Fatal(err)
+		}
+		if want {
+			checkDiagnosed("single", got.Incident)
+		} else if _, has := got.Incident["diagnosedAt"]; has {
+			t.Errorf("single: an incident without a diagnosis has diagnosedAt: %v", got.Incident)
+		}
 	}
 }

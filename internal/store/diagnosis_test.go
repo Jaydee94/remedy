@@ -367,6 +367,79 @@ func TestFailDiagnosisReopensTheIncidentOrFallsBackToItsOldDiagnosis(t *testing.
 	}
 }
 
+// DiagnosedAt is when the stored diagnosis was written. Starting a diagnosis and failing one move LastDiagnosisAt only, so a
+// failed repeat leaves the old diagnosis with its old time; a new diagnosis moves it.
+func TestDiagnosedAtFollowsTheStoredDiagnosisNotTheAttempts(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	repo := seedRepo(t, s)
+	in := open(t, s, repo, "pr:7", "go", "aaa", "failure")
+	diag := func(summary string) []byte { return []byte(`{"summary":"` + summary + `"}`) }
+	done := store.NewActivity{Kind: store.KindDiagnosisFinished, RepoID: repo.ID, Summary: "diagnosed"}
+	get := func() store.Incident {
+		t.Helper()
+		got, err := s.GetIncident(ctx, in.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	if got := get(); got.DiagnosedAt != nil {
+		t.Fatalf("a new incident has DiagnosedAt = %v, want nil", got.DiagnosedAt)
+	}
+
+	// The first diagnosis. Starting does not set it, completing does, to about now.
+	r1, _ := start(s, in, false, limits, t0)
+	if got := get(); got.DiagnosedAt != nil {
+		t.Fatalf("a started diagnosis set DiagnosedAt = %v", got.DiagnosedAt)
+	}
+	finishRun(t, s, r1.ID, run.Outcome{})
+	before := time.Now().Add(-time.Second)
+	if err := s.CompleteDiagnosis(ctx, r1.ID, diag("first"), done); err != nil {
+		t.Fatal(err)
+	}
+	first := get()
+	if first.DiagnosedAt == nil || first.DiagnosedAt.Before(before) || first.DiagnosedAt.After(time.Now().Add(time.Second)) {
+		t.Fatalf("DiagnosedAt = %v after CompleteDiagnosis, want about now", first.DiagnosedAt)
+	}
+	if first.LastDiagnosisAt == nil || !first.LastDiagnosisAt.Equal(t0) {
+		t.Fatalf("LastDiagnosisAt = %v, want the start %v", first.LastDiagnosisAt, t0)
+	}
+
+	// A repeat that is started: diagnosing, the old DiagnosedAt, a newer LastDiagnosisAt. One that fails changes neither.
+	later := time.Now().Add(time.Hour)
+	r2, err := start(s, in, false, limits, later)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := get()
+	if got.State != store.IncDiagnosing || got.DiagnosedAt == nil || !got.DiagnosedAt.Equal(*first.DiagnosedAt) ||
+		got.LastDiagnosisAt == nil || !got.LastDiagnosisAt.Equal(later) {
+		t.Fatalf("after a second start: %+v, want diagnosing, the old DiagnosedAt %v, LastDiagnosisAt %v", got, first.DiagnosedAt, later)
+	}
+	failRun(t, s, r2)
+	got = get()
+	if got.State != store.IncDiagnosed || got.DiagnosedAt == nil || !got.DiagnosedAt.Equal(*first.DiagnosedAt) ||
+		got.LastDiagnosisAt == nil || !got.LastDiagnosisAt.Equal(later) || string(got.Diagnosis) != string(diag("first")) {
+		t.Fatalf("after a failed repeat: %+v, want diagnosed with the old diagnosis and the old DiagnosedAt %v", got, first.DiagnosedAt)
+	}
+
+	// A repeat that succeeds moves DiagnosedAt forward. Timestamps have nine digits, so a short wait is enough.
+	time.Sleep(5 * time.Millisecond)
+	r3, err := start(s, in, false, limits, later.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishRun(t, s, r3.ID, run.Outcome{})
+	if err := s.CompleteDiagnosis(ctx, r3.ID, diag("second"), done); err != nil {
+		t.Fatal(err)
+	}
+	got = get()
+	if got.DiagnosedAt == nil || !got.DiagnosedAt.After(*first.DiagnosedAt) || string(got.Diagnosis) != string(diag("second")) {
+		t.Fatalf("after a second diagnosis: DiagnosedAt = %v, want after %v", got.DiagnosedAt, first.DiagnosedAt)
+	}
+}
+
 func TestListAutoCandidates(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	repo := seedRepo(t, s)
