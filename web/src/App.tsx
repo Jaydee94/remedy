@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router'
-import { api } from './api.ts'
+import { api, setUnauthorizedHandler } from './api.ts'
 import AppLayout from './components/AppLayout.tsx'
 import AskPage from './AskPage.tsx'
 import ConversationsPage from './ConversationsPage.tsx'
@@ -36,13 +36,35 @@ function NotFoundPage() {
 
 export default function App() {
   const [auth, setAuth] = useState<'loading' | 'in' | 'out'>('loading')
+  /** The session ended on the server (a 401 while signed in), as opposed to a deliberate sign out. */
+  const [expired, setExpired] = useState(false)
 
   useEffect(() => {
     api.me().then(() => setAuth('in')).catch(() => setAuth('out'))
   }, [])
 
+  // Many polls may answer 401 at once: setting the same state again is harmless.
+  useEffect(() => {
+    if (auth !== 'in') return
+    setUnauthorizedHandler(() => {
+      setExpired(true)
+      setAuth('out')
+    })
+    return () => setUnauthorizedHandler(null)
+  }, [auth])
+
   if (auth === 'loading') return null
-  if (auth === 'out') return <Login onLoggedIn={() => setAuth('in')} />
+  if (auth === 'out') {
+    return (
+      <Login
+        notice={expired ? 'Your session ended. Please sign in again.' : undefined}
+        onLoggedIn={() => {
+          setExpired(false)
+          setAuth('in')
+        }}
+      />
+    )
+  }
 
   async function signOut() {
     await api.logout()

@@ -187,6 +187,13 @@ export class ApiError extends Error {
   }
 }
 
+let onUnauthorized: (() => void) | null = null
+
+/** Called when a request answers 401 while the maintainer is signed in. The login and the first `/api/me` do not count. */
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -196,6 +203,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   })
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
+    if (res.status === 401 && path !== '/api/login' && path !== '/api/me') onUnauthorized?.()
     throw new ApiError(res.status, data.error ?? res.statusText)
   }
   if (res.status === 204) return undefined as T

@@ -7,7 +7,13 @@ import RemedyMark from '@/components/RemedyMark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
+interface Props {
+  onLoggedIn: () => void
+  /** A muted line above the form, for example that the session ended. Not an error. */
+  notice?: string
+}
+
+export default function Login({ onLoggedIn, notice }: Props) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -43,6 +49,11 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
           <h1 className="font-serif text-4xl leading-tight font-normal tracking-tight">{hello}.</h1>
           <p className="text-muted-foreground">Sign in with the admin password and I'll walk you through what happened.</p>
         </div>
+        {notice && (
+          <p role="status" className="text-muted-foreground">
+            {notice}
+          </p>
+        )}
         <form onSubmit={submit} className="flex flex-col gap-2.5">
           <Input
             type="password"
