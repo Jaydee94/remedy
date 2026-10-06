@@ -77,3 +77,11 @@ export function kindDotClass(kind: string): string {
 export function timeOfDay(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
+
+/** A time for a message: just the time of day when it is from today, else the day and the month first. */
+export function dayTimeLabel(iso: string, now: number = Date.now()): string {
+  const at = new Date(iso)
+  const today = new Date(now)
+  const sameDay = at.getFullYear() === today.getFullYear() && at.getMonth() === today.getMonth() && at.getDate() === today.getDate()
+  return sameDay ? timeOfDay(iso) : `${at.toLocaleDateString([], { day: 'numeric', month: 'short' })}, ${timeOfDay(iso)}`
+}

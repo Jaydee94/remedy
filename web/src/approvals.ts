@@ -35,3 +35,18 @@ export function outcomeText(call: ToolCall): string {
       return call.decision === 'approved' ? 'Approved, not run yet.' : 'Waiting for a decision.'
   }
 }
+
+/** `text` cut to at most `max` UTF-8 bytes, on a character boundary (the server limits some fields in bytes, not characters). */
+export function limitBytes(text: string, max: number): string {
+  const encoder = new TextEncoder()
+  if (encoder.encode(text).length <= max) return text
+  let out = ''
+  let bytes = 0
+  for (const ch of text) {
+    const n = encoder.encode(ch).length
+    if (bytes + n > max) break
+    out += ch
+    bytes += n
+  }
+  return out
+}

@@ -249,6 +249,22 @@ describe('incidentPreview', () => {
       "I don't diagnose this kind of result automatically. Ask me if you want.",
     )
   })
+
+  it('says that the last diagnosis did not finish, whether or not it runs automatically', () => {
+    const at = '2026-10-05T12:00:00.000000000Z'
+    assert.equal(incidentPreview(inc({ state: 'open', lastDiagnosisAt: at })), "My last diagnosis didn't finish.")
+    assert.equal(incidentPreview(inc({ state: 'open', autoDiagnose: false, lastDiagnosisAt: at })), "My last diagnosis didn't finish.")
+    assert.equal(incidentPreview(inc({ state: 'open' })), "I haven't looked yet.")
+  })
+
+  it('keeps the stored diagnosis, a waiting ask, diagnosing, ignored and resolved ahead of a failed diagnosis', () => {
+    const at = '2026-10-05T12:00:00.000000000Z'
+    assert.equal(incidentPreview(inc({ state: 'open', diagnosis, lastDiagnosisAt: at })), 'The Renovate bump renamed a key.')
+    assert.equal(incidentPreview(inc({ state: 'open', lastDiagnosisAt: at }), call()), 'May I restart guestbook-ui in guestbook?')
+    assert.equal(incidentPreview(inc({ state: 'diagnosing', lastDiagnosisAt: at })), "I'm looking into it…")
+    assert.equal(incidentPreview(inc({ state: 'ignored', lastDiagnosisAt: at })), 'You ignored this incident.')
+    assert.equal(incidentPreview(inc({ state: 'resolved', lastDiagnosisAt: at })), 'Resolved.')
+  })
 })
 
 describe('digestText', () => {
