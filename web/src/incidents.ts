@@ -1,4 +1,4 @@
-import type { Incident, IncidentSource, IncidentState } from './api.ts'
+import type { IncidentSource, IncidentState } from './api.ts'
 
 export const incidentStateColor: Record<IncidentState, string> = {
   open: 'bg-destructive',
@@ -55,11 +55,6 @@ export const sourceLabels: Record<IncidentSource, string> = {
 
 export function sourceLabel(source: IncidentSource): string {
   return sourceLabels[source] ?? source
-}
-
-/** The text of a severity, or nothing for the severity of an incident that has none. */
-export function severityText(severity: Incident['severity']): string {
-  return severity === 'none' ? '' : severity
 }
 
 export function conclusionText(conclusion: string): string {
