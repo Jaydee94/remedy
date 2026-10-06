@@ -94,9 +94,8 @@ export default function IncidentThreadPage({ id }: { id: number }) {
     setDiagnoseFailure(null)
     try {
       await api.diagnoseIncident(id)
-      const back = restore() // before the reload: it remembers the focused button, which the reload may remove
+      void restore() // before the reload: it remembers the focused button, which the reload may remove (not awaited: the busy state must not wait for it)
       await reload()
-      await back
     } catch (e) {
       setDiagnoseFailure({ state: incident?.state ?? '', message: e instanceof ApiError ? e.message : 'Could not start the diagnosis' })
     } finally {
