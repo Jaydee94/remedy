@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="Remedy" width="96" height="96">
+</p>
+
 # Remedy
 
 AI operator for a homelab GitOps setup. Remedy reacts to alerts, logs, failed pipelines
