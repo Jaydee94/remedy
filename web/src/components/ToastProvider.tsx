@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ToastContext } from '@/toast.ts'
+import { isUndoKey } from '@/undokey.ts'
 
 const SHOWN_MS = 4200
 
@@ -55,6 +56,22 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => () => clearTimeout(timer.current), [])
 
+  // Undo is the last control in the tab order, so Ctrl+Z or Cmd+Z undoes too while the toast shows, unless a text field has the key.
+  const undo = toast?.undo
+  useEffect(() => {
+    if (!undo) return
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target instanceof HTMLElement ? e.target : null
+      const editing = el !== null && (el.isContentEditable || el.matches('input, textarea, select'))
+      if (!isUndoKey({ key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, shiftKey: e.shiftKey, defaultPrevented: e.defaultPrevented, editing })) return
+      e.preventDefault()
+      undo()
+      dismiss()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [undo, dismiss])
+
   const value = useMemo(() => ({ show }), [show])
 
   return (
@@ -83,6 +100,7 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
             {toast.undo && (
               <button
                 type="button"
+                aria-keyshortcuts="Control+Z Meta+Z"
                 onClick={() => {
                   toast.undo?.()
                   dismiss()
