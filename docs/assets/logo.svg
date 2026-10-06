@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="Remedy">
+  <rect width="96" height="96" rx="24" fill="#1a1612"/>
+  <g transform="translate(12 12) scale(3)">
+    <path d="M12 2.6c-.3.4-7 8.3-7 12.9a7 7 0 0 0 14 0c0-4.6-6.7-12.5-7-12.9z" fill="#f2c14e"/>
+    <path d="M8.7 15.4a3.3 3.3 0 0 0 3.3 3.3" stroke="#1a1612" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>
