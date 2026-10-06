@@ -252,6 +252,8 @@ export default function IncidentThreadPage({ id }: { id: number }) {
       </div>
 
       {incident && (
+        // Beside the thread from 1180 px on, below it before: the sidebar is 300 px (w-75), the thread needs its basis of 520 px, the panel is
+        // 280 px and has margins of 28 px (md:m-7) on both sides, which is 1156 px, rounded up. Recompute 1180 if one of them changes.
         <aside className="m-4 flex min-w-65 flex-[1_1_100%] flex-col min-[1180px]:flex-[0_1_280px] gap-3.5 rounded-[20px] border border-border bg-sidebar p-5 md:m-7">
           <span className="text-xs font-semibold text-muted-foreground">About this incident</span>
           <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-[13px]">

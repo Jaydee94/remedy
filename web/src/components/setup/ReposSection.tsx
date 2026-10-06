@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from '@/api.ts'
 import type { Repo } from '@/api.ts'
@@ -21,6 +21,7 @@ export default function ReposSection({ connected }: { connected: boolean }) {
   const [formError, setFormError] = useState('')
   const now = useClock()
   const formErrorId = useId()
+  const nameRef = useRef<HTMLInputElement>(null)
 
   const reload = useCallback(
     () =>
@@ -64,6 +65,8 @@ export default function ReposSection({ connected }: { connected: boolean }) {
     void act(async () => {
       await api.addRepo(name.trim())
       setName('')
+      // The Add button is disabled again with the empty field and would drop the focus: keep it in the field for the next repository.
+      requestAnimationFrame(() => nameRef.current?.focus())
     })
   }
 
@@ -78,6 +81,7 @@ export default function ReposSection({ connected }: { connected: boolean }) {
             <form onSubmit={add} className="flex flex-col gap-2">
               <div className="flex gap-2">
                 <Input
+                  ref={nameRef}
                   value={name}
                   onChange={(e) => {
                     setName(e.target.value)

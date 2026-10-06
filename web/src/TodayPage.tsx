@@ -6,7 +6,7 @@ import { digestText, lastDiagnosed } from './conversation.ts'
 import { useShellState } from './shellContext.ts'
 import { dayLabel, groupByDay, kindDotClass, mergeEntries, timeOfDay } from './timeline.ts'
 import { useIncidents } from './useIncidents.ts'
-import { useNow } from './useNow.ts'
+import { useClock } from './useClock.ts'
 import EmptyState from '@/components/EmptyState'
 import Digest from '@/components/today/Digest'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -22,7 +22,8 @@ const linkClass = 'whitespace-nowrap text-primary outline-none hover:text-primar
 export default function TodayPage() {
   const { incidents, error: incidentsError } = useIncidents()
   const { pending, loaded } = useShellState()
-  const now = useNow(60_000)
+  const clock = useClock()
+  const now = new Date(clock)
   const [entries, setEntries] = useState<TimelineEntry[] | null>(null)
   const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set())
   const [hasMore, setHasMore] = useState(false)

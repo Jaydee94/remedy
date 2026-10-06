@@ -187,7 +187,7 @@ export default function RunPage({ id }: { id: string }) {
         <ol className="mt-2 flex flex-col gap-1.5 font-mono text-xs">
           {events.map((e) => (
             <li key={e.seq} className="rounded-xl border border-border bg-card/50 p-2">
-              <span className="mr-2 rounded-full bg-secondary px-2 py-0.5 text-subtle">{e.kind}</span>
+              <span className="mr-2 rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">{e.kind}</span>
               <span className="break-words whitespace-pre-wrap text-muted-foreground">{summarizeEvent(e)}</span>
             </li>
           ))}

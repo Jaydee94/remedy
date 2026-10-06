@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from './api.ts'
 import { greeting } from './greeting.ts'
@@ -18,6 +18,7 @@ export default function Login({ onLoggedIn, notice }: Props) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [hello] = useState(() => greeting(new Date().getHours()))
+  const noticeId = useId()
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -50,7 +51,7 @@ export default function Login({ onLoggedIn, notice }: Props) {
           <p className="text-muted-foreground">Sign in with the admin password and I'll walk you through what happened.</p>
         </div>
         {notice && (
-          <p role="status" className="text-muted-foreground">
+          <p id={noticeId} role="status" className="text-muted-foreground">
             {notice}
           </p>
         )}
@@ -64,6 +65,7 @@ export default function Login({ onLoggedIn, notice }: Props) {
             placeholder="Admin password"
             aria-label="Admin password"
             aria-invalid={error !== ''}
+            aria-describedby={notice ? noticeId : undefined}
             className="h-13 text-[15px]"
           />
           {error && (

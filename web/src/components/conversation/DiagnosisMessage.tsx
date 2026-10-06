@@ -59,7 +59,7 @@ export default function DiagnosisMessage({ diagnosis: d, outdatedSha, headSha, r
         </Section>
         {d.affected_files.length > 0 && (
           <Section title="Where">
-            <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">
+            <ul role="list" className="m-0 flex list-none flex-wrap gap-1.5 p-0">
               {d.affected_files.map((f) => (
                 <li key={f} className="rounded-lg bg-background px-2.5 py-1 font-mono text-[12.5px] break-all">
                   {f}

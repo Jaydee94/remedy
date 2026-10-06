@@ -169,7 +169,10 @@ export default function GitHubSection({ connection, onChange }: Props) {
 
       {connection.connected && !editing && (
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" className="h-10 aria-disabled:pointer-events-none aria-disabled:opacity-50"
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-10 aria-disabled:pointer-events-none aria-disabled:opacity-50"
             aria-disabled={busy}
             onClick={() => void check()}
           >

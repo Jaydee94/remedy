@@ -19,7 +19,7 @@ const empty: Record<StateFilter, { title: string; text: string }> = {
 }
 
 const selectClass =
-  'h-8.5 rounded-full border border-input bg-transparent px-3.5 text-[13px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50'
+  'h-8.5 rounded-full border border-field bg-transparent px-3.5 text-[13px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50'
 
 /** The conversations: one card per incident, with the state filters of the prototype. */
 export default function ConversationsPage() {

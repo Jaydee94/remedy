@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api, ApiError } from '@/api.ts'
 import type { ToolCall } from '@/api.ts'
-import { argumentList, limitBytes } from '@/approvals.ts'
+import { argumentList, byteLength, limitBytes } from '@/approvals.ts'
 import { askText } from '@/ask.ts'
 import { useToast } from '@/toast.ts'
 import { Button } from '@/components/ui/button'
@@ -74,7 +74,12 @@ function AskBody({ call, variant = 'compact', onChanged, disabled = false }: Pro
                 maxLength={500}
                 autoFocus={!large}
                 value={reason}
-                onChange={(e) => setReason(limitBytes(e.target.value, 500))}
+                onChange={(e) => {
+                  const v = e.target.value
+                  // Typing in a full field keeps the old value, so the caret stays; a paste is cut to the limit.
+                  if (byteLength(v) > 500 && byteLength(reason) >= 500) return
+                  setReason(limitBytes(v, 500))
+                }}
                 className="h-11 bg-background text-base md:text-sm"
               />
             )}
