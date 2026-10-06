@@ -22,7 +22,7 @@ export const incidentStateText: Record<IncidentState, string> = {
   diagnosing: 'text-primary',
   diagnosed: 'text-info',
   resolved: 'text-success',
-  ignored: 'text-neutral',
+  ignored: 'text-muted-foreground',
 }
 
 /** Links that leave Remedy are underlined, so that they do not read as plain text. */

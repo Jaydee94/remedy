@@ -42,7 +42,8 @@
   --success: #7fcf8f;
   --info: #8cc4ef;
   --violet: #c3a5f2;
-  --subtle: #74695d;
+  --subtle: #93877a;
+  --field: #7a6f62;
   --neutral: #8a7f73;
   --soft-open: #3a1f1a;
   --soft-diagnosing: #3a2f17;
@@ -89,6 +90,7 @@
   --color-info: var(--info);
   --color-violet: var(--violet);
   --color-subtle: var(--subtle);
+  --color-field: var(--field);
   --color-neutral: var(--neutral);
   --color-soft-open: var(--soft-open);
   --color-soft-diagnosing: var(--soft-diagnosing);

@@ -250,7 +250,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
       </div>
 
       {incident && (
-        <aside className="m-4 flex min-w-65 flex-[0_1_280px] flex-col gap-3.5 rounded-[20px] border border-border bg-sidebar p-5 md:m-7">
+        <aside className="m-4 flex min-w-65 flex-[1_1_100%] flex-col min-[1180px]:flex-[0_1_280px] gap-3.5 rounded-[20px] border border-border bg-sidebar p-5 md:m-7">
           <span className="text-xs font-semibold text-muted-foreground">About this incident</span>
           <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-[13px]">
             <dt className="text-subtle">State</dt>
