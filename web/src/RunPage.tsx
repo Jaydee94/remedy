@@ -36,8 +36,9 @@ export default function RunPage({ id }: { id: string }) {
 
   // After a decision the ask is gone and the focus falls to the page: bring it back once the page shows the new state.
   async function decided() {
+    const back = restore() // before the refresh: it remembers the focused control, which the refresh may remove
     await refresh()
-    await restore()
+    await back
   }
 
   async function cancel() {

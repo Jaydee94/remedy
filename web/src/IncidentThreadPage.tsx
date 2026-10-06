@@ -94,8 +94,9 @@ export default function IncidentThreadPage({ id }: { id: number }) {
     setDiagnoseFailure(null)
     try {
       await api.diagnoseIncident(id)
+      const back = restore() // before the reload: it remembers the focused button, which the reload may remove
       await reload()
-      void restore()
+      await back
     } catch (e) {
       setDiagnoseFailure({ state: incident?.state ?? '', message: e instanceof ApiError ? e.message : 'Could not start the diagnosis' })
     } finally {
@@ -219,7 +220,10 @@ export default function IncidentThreadPage({ id }: { id: number }) {
       case 'ask':
         return (
           <RemedyMessage key={item.key} kind="ask" meta={`Remedy · asked ${timeAgo(item.call.requestedAt, now)}`}>
-            <ApprovalAsk call={item.call} onChanged={() => void reload().then(restore)} />
+            <ApprovalAsk call={item.call} onChanged={() => {
+                const back = restore() // before the reload: it remembers the focused button, which the reload removes
+                void reload().then(() => back)
+              }} />
           </RemedyMessage>
         )
       case 'question':

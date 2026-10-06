@@ -26,8 +26,9 @@ export default function NeedsYouPage() {
 
   // After a decision the control that had the focus is gone and the focus falls to the page: bring it back to the top of the page.
   async function changed() {
+    const back = restore() // before the reload: it remembers the focused control, which the reload may remove
     await reload()
-    await restore()
+    await back
   }
 
   return (

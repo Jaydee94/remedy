@@ -11,6 +11,9 @@ const nowhere = (el: Element | null) => el === null || el === document.body
  * (`aria-disabled`), so the origin stays until the page has really replaced it. `restore` waits for that (up to three seconds) and then
  * moves the focus to the element behind `target` (the page heading), but only when it has fallen to the page: a user who has moved
  * on, or typed into a field, keeps the focus, and so does a control that stays.
+ *
+ * Call `restore` BEFORE the reload that removes the control: it captures the focused element when it is called, and once the control
+ * has gone that is the page. Await the returned promise after the reload.
  */
 export function useFocusRestore<T extends HTMLElement>() {
   const target = useRef<T>(null)
