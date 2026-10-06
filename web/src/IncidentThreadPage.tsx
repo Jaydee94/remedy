@@ -16,7 +16,7 @@ import {
 } from './incidents.ts'
 import { runFailure } from './runview.ts'
 import { useShellHeader, useShellState } from './shellContext.ts'
-import { buildThread, latestAnnouncement } from './thread.ts'
+import { allAnnouncements, buildThread } from './thread.ts'
 import type { ThreadItem } from './thread.ts'
 import { dayTimeLabel } from './timeline.ts'
 import { useAnnouncement } from './useAnnouncement.ts'
@@ -48,7 +48,7 @@ const undiagnosedText = {
 /** The incident as a conversation: its history, Remedy's diagnosis, what the maintainer asked, what waits for a decision. */
 export default function IncidentThreadPage({ id }: { id: number }) {
   const { detail, runs, error, missing, reload } = useIncidentThread(id)
-  const { asks } = useShellState()
+  const { asks, loaded } = useShellState()
   const toast = useToast()
   const now = useClock()
   const incident = detail?.incident
@@ -72,7 +72,9 @@ export default function IncidentThreadPage({ id }: { id: number }) {
         : [],
     [incident, detail, runs, asks],
   )
-  const announcement = useAnnouncement(latestAnnouncement(items), incident !== undefined)
+  // The asks come from the shell: until it has answered once, an ask that is already pending would look like news.
+  const history = useMemo(() => allAnnouncements(items), [items])
+  const announcement = useAnnouncement(history.at(-1) ?? null, history, incident !== undefined && loaded)
   const { target: heading, restore } = useFocusRestore<HTMLHeadingElement>()
 
   if (missing) {

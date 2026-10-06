@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { ActivityEntry, Diagnosis, Incident, Run, ToolCall } from './api.ts'
-import { buildThread, latestAnnouncement } from './thread.ts'
+import { allAnnouncements, buildThread, latestAnnouncement } from './thread.ts'
 import type { ThreadItem } from './thread.ts'
 
 const inc = (over: Partial<Incident> = {}): Incident => ({
@@ -276,6 +276,24 @@ describe('latestAnnouncement', () => {
 
   it('announces that it is looking into the incident', () => {
     assert.equal(say([ev(), working()]), 'Remedy is looking into this incident.')
+  })
+
+  it('lists every announce-worthy item, oldest first, and skips a running answer', () => {
+    const all = allAnnouncements([ev(), dia(), q(), ans({ status: 'running' }), working('run-1'), ask({ arguments: {} }), undiag()])
+    assert.deepEqual(
+      all.map((a) => a.text),
+      [
+        'Remedy diagnosed this incident: The chart pins a removed version.',
+        'Remedy is looking into this incident.',
+        'Remedy asks you: May I run cluster_rollout_restart?',
+      ],
+    )
+    assert.deepEqual(allAnnouncements([]), [])
+  })
+
+  it('has latestAnnouncement take the last of them', () => {
+    const items = [dia(), working('run-1'), ask({ arguments: {} })]
+    assert.deepEqual(latestAnnouncement(items), allAnnouncements(items).at(-1))
   })
 
   it('gives the working message of two runs different keys', () => {

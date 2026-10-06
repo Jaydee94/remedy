@@ -98,33 +98,42 @@ export interface Announcement {
   text: string
 }
 
+/** The announcement of one item, or null when it is not worth announcing (or has nothing to say yet). A value from an agent is cut and inserted. */
+function announcementOf(item: ThreadItem): Announcement | null {
+  let text = ''
+  switch (item.type) {
+    case 'ask':
+      text = `Remedy asks you: ${oneLine(askText(item.call).question, 120)}`
+      break
+    case 'diagnosis':
+      // The key is the item and its text: a re-diagnosis with an identical summary is not announced twice (the `working` message
+      // before it was).
+      text = `Remedy diagnosed this incident: ${oneLine(item.diagnosis.summary, 100)}`
+      break
+    case 'answer':
+      if (item.run.status === 'succeeded') text = `Remedy answered your question: ${oneLine(item.run.prompt, 60)}`
+      else if (item.run.status === 'failed') text = `Remedy could not answer your question: ${oneLine(item.run.prompt, 60)}`
+      break
+    case 'working':
+      text = 'Remedy is looking into this incident.'
+      break
+  }
+  if (!text) return null
+  // A second diagnosis of the same incident says the same words: its run tells it from the first.
+  return { key: `${item.key}|${item.type === 'working' ? `${item.runId ?? ''}|` : ''}${text}`, text }
+}
+
+/** Every message of a thread worth announcing, oldest first: what a page has already shown when it has loaded. */
+export function allAnnouncements(items: readonly ThreadItem[]): Announcement[] {
+  return items.flatMap((item) => announcementOf(item) ?? [])
+}
+
 /**
  * What a screen reader should be told about a thread: the newest message of Remedy worth announcing, as a sentence, or null when there is
  * none. The key names the message and its text (a new diagnosis keeps the item key but changes the text). A message leaves the thread when
  * it is dealt with (a decided call), and the newest one that remains is then an older message: the caller shows an announcement only when
- * its key has not been shown before. A value from an agent is cut and inserted.
+ * its key has not been shown before.
  */
 export function latestAnnouncement(items: readonly ThreadItem[]): Announcement | null {
-  for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i]
-    let text = ''
-    switch (item.type) {
-      case 'ask':
-        text = `Remedy asks you: ${oneLine(askText(item.call).question, 120)}`
-        break
-      case 'diagnosis':
-        text = `Remedy diagnosed this incident: ${oneLine(item.diagnosis.summary, 100)}`
-        break
-      case 'answer':
-        if (item.run.status === 'succeeded') text = `Remedy answered your question: ${oneLine(item.run.prompt, 60)}`
-        else if (item.run.status === 'failed') text = `Remedy could not answer your question: ${oneLine(item.run.prompt, 60)}`
-        break
-      case 'working':
-        text = 'Remedy is looking into this incident.'
-        break
-    }
-    // A second diagnosis of the same incident says the same words: its run tells it from the first.
-    if (text) return { key: `${item.key}|${item.type === 'working' ? `${item.runId ?? ''}|` : ''}${text}`, text }
-  }
-  return null
+  return allAnnouncements(items).at(-1) ?? null
 }

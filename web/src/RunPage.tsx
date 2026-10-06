@@ -34,6 +34,12 @@ export default function RunPage({ id }: { id: string }) {
   const steps = useMemo(() => runSteps(events), [events])
   const waitingCall = calls.find((c) => c.decision === 'pending')
 
+  // After a decision the ask is gone and the focus falls to the page: bring it back once the page shows the new state.
+  async function decided() {
+    await refresh()
+    await restore()
+  }
+
   async function cancel() {
     setError('')
     try {
@@ -155,11 +161,7 @@ export default function RunPage({ id }: { id: string }) {
               {run.result.trim() === '' ? 'Done. There is nothing more to say.' : run.result}
             </p>
           ))}
-        {waitingCall && !ended && <ApprovalAsk call={waitingCall} onChanged={() => {
-              refresh()
-              void restore()
-            }}
-          />}
+        {waitingCall && !ended && <ApprovalAsk call={waitingCall} onChanged={() => void decided()} />}
         {!waitingCall && !ended && run.waitingApproval !== undefined && (
           <span className="text-[13px] text-primary">
             This run waits for your decision.{' '}
