@@ -6,6 +6,7 @@ import { useShellHeader } from './shellContext.ts'
 import { phaseView, runPhase } from './status.ts'
 import { dayTimeLabel } from './timeline.ts'
 import { useClock } from './useClock.ts'
+import { useFocusRestore } from './useFocusRestore.ts'
 import { useRun } from './useRun.ts'
 import ToolCallsCard from './ToolCallsCard.tsx'
 import ApprovalAsk from '@/components/conversation/ApprovalAsk'
@@ -26,6 +27,7 @@ export default function RunPage({ id }: { id: string }) {
   const navigate = useNavigate()
   const now = useClock()
   const { run, events, calls, status, ended, missing, error: loadError, refresh } = useRun(id)
+  const { target: heading, restore } = useFocusRestore<HTMLHeadingElement>()
   useShellHeader(run ? { title: 'Run', back: run.incidentId !== undefined ? `/incidents/${run.incidentId}` : '/runs' } : null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -95,7 +97,9 @@ export default function RunPage({ id }: { id: string }) {
 
   return (
     <div className="mx-auto flex max-w-190 flex-col gap-5 px-4 py-5 md:px-10 md:py-12">
-      <h1 className="sr-only">Run</h1>
+      <h1 ref={heading} tabIndex={-1} className="sr-only outline-none">
+        Run
+      </h1>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className={cn('flex items-center gap-2 rounded-2xl px-3 py-1.5 text-[13px] font-semibold', view.soft, view.text)}>
           <span aria-hidden className={cn('size-2 rounded-full', view.dot)} />
@@ -151,7 +155,11 @@ export default function RunPage({ id }: { id: string }) {
               {run.result.trim() === '' ? 'Done. There is nothing more to say.' : run.result}
             </p>
           ))}
-        {waitingCall && !ended && <ApprovalAsk call={waitingCall} onChanged={refresh} />}
+        {waitingCall && !ended && <ApprovalAsk call={waitingCall} onChanged={() => {
+              refresh()
+              void restore()
+            }}
+          />}
         {!waitingCall && !ended && run.waitingApproval !== undefined && (
           <span className="text-[13px] text-primary">
             This run waits for your decision.{' '}

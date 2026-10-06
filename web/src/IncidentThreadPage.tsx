@@ -16,10 +16,12 @@ import {
 } from './incidents.ts'
 import { runFailure } from './runview.ts'
 import { useShellHeader, useShellState } from './shellContext.ts'
-import { buildThread } from './thread.ts'
+import { buildThread, latestAnnouncement } from './thread.ts'
 import type { ThreadItem } from './thread.ts'
 import { dayTimeLabel } from './timeline.ts'
+import { useAnnouncement } from './useAnnouncement.ts'
 import { useClock } from './useClock.ts'
+import { useFocusRestore } from './useFocusRestore.ts'
 import { useIncidentThread } from './useIncidentThread.ts'
 import { useToast } from './toast.ts'
 import RefLink from './RefLink.tsx'
@@ -70,6 +72,8 @@ export default function IncidentThreadPage({ id }: { id: number }) {
         : [],
     [incident, detail, runs, asks],
   )
+  const announcement = useAnnouncement(latestAnnouncement(items), incident !== undefined)
+  const { target: heading, restore } = useFocusRestore<HTMLHeadingElement>()
 
   if (missing) {
     return (
@@ -88,6 +92,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
     try {
       await api.diagnoseIncident(id)
       await reload()
+      void restore()
     } catch (e) {
       setDiagnoseFailure({ state: incident?.state ?? '', message: e instanceof ApiError ? e.message : 'Could not start the diagnosis' })
     } finally {
@@ -211,7 +216,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
       case 'ask':
         return (
           <RemedyMessage key={item.key} kind="ask" meta={`Remedy · asked ${timeAgo(item.call.requestedAt, now)}`}>
-            <ApprovalAsk call={item.call} onChanged={() => void reload()} />
+            <ApprovalAsk call={item.call} onChanged={() => void reload().then(restore)} />
           </RemedyMessage>
         )
       case 'question':
@@ -243,8 +248,13 @@ export default function IncidentThreadPage({ id }: { id: number }) {
               <span className="hidden text-[13px] text-muted-foreground md:block">
                 {incident.source === 'github' ? `${incident.repo} · ${refLabel(incident.ref)}` : sourceLabel(incident.source)} · Incident #{incident.id}
               </span>
-              <h1 className="font-serif text-3xl font-normal break-words max-md:sr-only">{incident.title}</h1>
+              <h1 ref={heading} tabIndex={-1} className="font-serif text-3xl font-normal break-words outline-none max-md:sr-only">
+                {incident.title}
+              </h1>
             </div>
+            <p className="sr-only" aria-live="polite">
+              {announcement}
+            </p>
             {items.map((item) => renderItem(item, incident))}
             <Composer placeholder="Ask Remedy about this incident…" onSend={ask} />
           </>

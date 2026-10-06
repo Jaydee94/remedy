@@ -123,7 +123,8 @@ export function latestAnnouncement(items: readonly ThreadItem[]): Announcement |
         text = 'Remedy is looking into this incident.'
         break
     }
-    if (text) return { key: `${item.key}|${text}`, text }
+    // A second diagnosis of the same incident says the same words: its run tells it from the first.
+    if (text) return { key: `${item.key}|${item.type === 'working' ? `${item.runId ?? ''}|` : ''}${text}`, text }
   }
   return null
 }

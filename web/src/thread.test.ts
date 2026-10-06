@@ -256,7 +256,7 @@ describe('latestAnnouncement', () => {
   const q = (over: Partial<Run> = {}): ThreadItem => ({ type: 'question', key: 'q1', at, run: run(over) })
   const ans = (over: Partial<Run> = {}): ThreadItem => ({ type: 'answer', key: 'r1', at, run: run(over) })
   const dia = (summary = 'The chart pins a removed version.'): ThreadItem => ({ type: 'diagnosis', key: 'diagnosis', at, diagnosis: { ...diagnosis, summary }, outdated: false, sha: '3f9c2ab' })
-  const working = (): ThreadItem => ({ type: 'working', key: 'working', at })
+  const working = (runId?: string): ThreadItem => ({ type: 'working', key: 'working', at, runId })
   const undiag = (): ThreadItem => ({ type: 'undiagnosed', key: 'undiagnosed', at, reason: 'fresh', sourceLabel: 'GitHub' })
   const ask = (over: Partial<ToolCall> = {}): ThreadItem => ({ type: 'ask', key: 'c1', at, call: call(over) })
 
@@ -276,6 +276,15 @@ describe('latestAnnouncement', () => {
 
   it('announces that it is looking into the incident', () => {
     assert.equal(say([ev(), working()]), 'Remedy is looking into this incident.')
+  })
+
+  it('gives the working message of two runs different keys', () => {
+    const a = latestAnnouncement([working('run-1')])
+    const b = latestAnnouncement([working('run-2')])
+    assert.ok(a && b)
+    assert.equal(a.text, b.text)
+    assert.notEqual(a.key, b.key)
+    assert.equal(latestAnnouncement([ev(), working('run-1')])?.key, a.key)
   })
 
   it('takes the newest announce-worthy item', () => {
