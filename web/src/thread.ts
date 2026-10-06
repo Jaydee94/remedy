@@ -1,3 +1,4 @@
+import { askText } from './ask.ts'
 import type { ActivityEntry, Diagnosis, Incident, Run, ToolCall } from './api.ts'
 import { sourceLabel } from './incidents.ts'
 import { kindDotClass } from './timeline.ts'
@@ -84,4 +85,32 @@ export function buildThread({ incident, activity, questionRuns, asks, lastRespon
 
   // Array.prototype.sort is stable: a question stays before its answer when both carry the same time.
   return items.sort((x, y) => time(x.at) - time(y.at))
+}
+
+const oneLine = (text: string, max: number) => {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > max ? `${flat.slice(0, max).trimEnd()}…` : flat
+}
+
+/**
+ * What a screen reader should be told about a thread: the newest message of Remedy worth announcing, as a sentence. The text changes only
+ * when a new such message arrives, so a live region that shows it announces exactly that. A value from an agent is cut and inserted.
+ */
+export function latestAnnouncement(items: readonly ThreadItem[]): string {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]
+    switch (item.type) {
+      case 'ask':
+        return `Remedy asks you: ${askText(item.call).question}`
+      case 'diagnosis':
+        return `Remedy diagnosed this incident: ${oneLine(item.diagnosis.summary, 100)}`
+      case 'answer':
+        if (item.run.status === 'succeeded') return `Remedy answered your question: ${oneLine(item.run.prompt, 60)}`
+        if (item.run.status === 'failed') return `Remedy could not answer your question: ${oneLine(item.run.prompt, 60)}`
+        break
+      case 'working':
+        return 'Remedy is looking into this incident.'
+    }
+  }
+  return ''
 }
