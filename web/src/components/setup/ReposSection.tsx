@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from '@/api.ts'
 import type { Repo } from '@/api.ts'
@@ -7,7 +7,9 @@ import ConfirmButton from '@/components/ConfirmButton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import { useNow } from '@/useNow.ts'
 
 /** The repositories Remedy watches for failed checks. Without a GitHub connection there is nothing to list. */
 export default function ReposSection({ connected }: { connected: boolean }) {
@@ -15,14 +17,20 @@ export default function ReposSection({ connected }: { connected: boolean }) {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [loadError, setLoadError] = useState('')
   const [formError, setFormError] = useState('')
+  const now = useNow(60_000).getTime()
+  const formErrorId = useId()
 
   const reload = useCallback(
     () =>
       api
         .listRepos()
-        .then(setRepos)
-        .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Could not load the repositories')),
+        .then((list) => {
+          setRepos(list)
+          setLoadError('')
+        })
+        .catch((e: unknown) => setLoadError(e instanceof ApiError ? e.message : 'Could not load the repositories')),
     [],
   )
 
@@ -35,16 +43,18 @@ export default function ReposSection({ connected }: { connected: boolean }) {
     setError('')
     try {
       await action()
-      await reload()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Request failed')
     } finally {
+      // Also after a failed action: the page then shows what is really there (a repository another tab removed, a switch that did not flip).
+      await reload()
       setBusy(false)
     }
   }
 
   function add(e: FormEvent) {
     e.preventDefault()
+    if (busy) return
     if (!validRepoName(name)) {
       setFormError('Use owner/name, for example jaydee94/homelab.')
       return
@@ -75,6 +85,7 @@ export default function ReposSection({ connected }: { connected: boolean }) {
                   placeholder="owner/name"
                   aria-label="Repository to add"
                   aria-invalid={formError !== ''}
+                  aria-describedby={formError ? formErrorId : undefined}
                   autoComplete="off"
                   className="h-11 text-base md:text-sm"
                 />
@@ -83,13 +94,15 @@ export default function ReposSection({ connected }: { connected: boolean }) {
                 </Button>
               </div>
               {formError && (
-                <span role="alert" className="text-[13px] text-destructive">
+                <span id={formErrorId} role="alert" className="text-[13px] text-destructive">
                   {formError}
                 </span>
               )}
             </form>
 
-            {repos === null ? null : repos.length === 0 ? (
+            {repos === null ? (
+              loadError ? null : <Skeleton className="h-16" />
+            ) : repos.length === 0 ? (
               <p className="text-[13px] text-muted-foreground">No repositories yet. Add one above and I'll start watching it.</p>
             ) : (
               <ul className="flex flex-col divide-y divide-border">
@@ -97,7 +110,7 @@ export default function ReposSection({ connected }: { connected: boolean }) {
                   <li key={repo.id} className="flex items-center gap-3 py-3.5 first:pt-0 last:pb-0">
                     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span className="font-mono text-[13px] break-all">{repo.fullName}</span>
-                      <span className="text-xs text-muted-foreground">{repoSubline(repo)}</span>
+                      <span className="text-xs text-muted-foreground">{repoSubline(repo, now)}</span>
                       {repo.lastError && <span className="text-xs break-words text-destructive">{repo.lastError}</span>}
                     </div>
                     <Switch
@@ -106,7 +119,13 @@ export default function ReposSection({ connected }: { connected: boolean }) {
                       aria-label={`Watch ${repo.fullName}`}
                       onCheckedChange={(enabled) => void act(() => api.setRepoEnabled(repo.id, enabled))}
                     />
-                    <ConfirmButton label="Remove" confirmLabel="Confirm remove" disabled={busy} onConfirm={() => void act(() => api.deleteRepo(repo.id))} />
+                    <ConfirmButton
+                      label="Remove"
+                      confirmLabel="Confirm remove"
+                      className="h-10"
+                      disabled={busy}
+                      onConfirm={() => void act(() => api.deleteRepo(repo.id))}
+                    />
                   </li>
                 ))}
               </ul>
@@ -114,9 +133,9 @@ export default function ReposSection({ connected }: { connected: boolean }) {
           </>
         )}
 
-        {error && (
+        {(error || loadError) && (
           <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>{error || loadError}</AlertDescription>
           </Alert>
         )}
       </div>

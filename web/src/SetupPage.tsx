@@ -41,11 +41,12 @@ export default function SetupPage() {
             <GitHubSection connection={connection} onChange={setConnection} />
           </section>
           <ReposSection key={String(connection.connected)} connected={connection.connected} />
-          <LimitsSection />
         </>
       ) : (
         !error && <Skeleton className="h-48" />
       )}
+
+      <LimitsSection />
 
       <div className="border-t border-border pt-4 md:hidden">
         <button

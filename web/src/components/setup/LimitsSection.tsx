@@ -43,6 +43,7 @@ export default function LimitsSection() {
                 aria-valuemin={0}
                 aria-valuemax={bar.max}
                 aria-valuenow={Math.min(bar.used, bar.max)}
+                aria-valuetext={`${bar.used} of ${bar.max}`}
                 className="h-2 overflow-hidden rounded-full bg-input"
               >
                 <div className={cn('h-full rounded-full', bar.full ? 'bg-destructive' : 'bg-primary')} style={{ width: `${Math.round(bar.ratio * 100)}%` }} />

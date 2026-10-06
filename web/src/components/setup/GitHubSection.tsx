@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from '@/api.ts'
 import type { GitHubConnection } from '@/api.ts'
 import { timeAgo } from '@/incidents.ts'
-import { connectionView } from '@/setup.ts'
+import { connectionView, readingIntro } from '@/setup.ts'
+import { useNow } from '@/useNow.ts'
 import ConfirmButton from '@/components/ConfirmButton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -15,26 +16,41 @@ interface Props {
   onChange: (c: GitHubConnection) => void
 }
 
-/** How Remedy sees GitHub. The token is write-only: only its hint is ever shown, and the field is cleared after each request. */
+/**
+ * How Remedy sees GitHub. The token is write-only: it is never shown, stored or logged, and only its hint comes back. The field is cleared
+ * after a successful request and on Cancel; after a failed one it keeps the text so that a typo can be corrected.
+ */
 export default function GitHubSection({ connection, onChange }: Props) {
   const [token, setToken] = useState('')
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState('')
+  const now = useNow(60_000).getTime()
+  // Set when the form closes; the next render of "Replace token" takes the focus, so a keyboard user does not lose their place.
+  const returnFocus = useRef(false)
 
   const showForm = !connection.connected || editing
   const view = connection.connected && connection.status ? connectionView(connection.status) : null
 
-  async function run(action: () => Promise<GitHubConnection>) {
+  /** Another tab disconnected GitHub: the connection this page shows is gone, so show that instead of an error. */
+  function gone(e: unknown): boolean {
+    if (!(e instanceof ApiError) || e.status !== 404) return false
+    onChange({ connected: false })
+    setError('')
+    return true
+  }
+
+  async function run(action: () => Promise<GitHubConnection>, notFoundMeansGone = false) {
     setBusy(true)
     setError('')
     try {
       onChange(await action())
       setToken('')
+      if (editing) returnFocus.current = true
       setEditing(false)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Request failed')
+      if (!(notFoundMeansGone && gone(e))) setError(e instanceof ApiError ? e.message : 'Request failed')
     } finally {
       setBusy(false)
     }
@@ -43,13 +59,13 @@ export default function GitHubSection({ connection, onChange }: Props) {
   function save(e: FormEvent) {
     e.preventDefault()
     if (busy || token.trim() === '') return
-    void run(() => api.putConnection(token))
+    void run(() => api.putConnection(token.trim()))
   }
 
   async function check() {
     setChecking(true)
     try {
-      await run(api.checkConnection)
+      await run(api.checkConnection, true)
     } finally {
       setChecking(false)
     }
@@ -62,7 +78,7 @@ export default function GitHubSection({ connection, onChange }: Props) {
       await api.deleteConnection()
       onChange({ connected: false })
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Request failed')
+      if (!gone(e)) setError(e instanceof ApiError ? e.message : 'Request failed')
     } finally {
       setBusy(false)
     }
@@ -79,14 +95,14 @@ export default function GitHubSection({ connection, onChange }: Props) {
                 {view.label}
               </span>
             )}
-            {connection.checkedAt && <span className="text-[13px] text-muted-foreground">checked {timeAgo(connection.checkedAt)}</span>}
+            {connection.checkedAt && <span className="text-[13px] text-muted-foreground">checked {timeAgo(connection.checkedAt, now)}</span>}
           </div>
           <p className="font-serif text-[17px] leading-relaxed text-pretty break-words">
-            I read pull requests and check runs as <strong className="font-semibold">@{connection.login}</strong> with token …{connection.tokenHint}. It's
-            stored encrypted and never shown again.
+            {readingIntro(connection.status)} <strong className="font-semibold">@{connection.login}</strong> with token {connection.tokenHint}. It's stored
+            encrypted and never shown again.
           </p>
           {connection.statusDetail && (
-            <Alert variant="destructive">
+            <Alert variant="destructive" role="note">
               <AlertDescription>{connection.statusDetail}</AlertDescription>
             </Alert>
           )}
@@ -99,7 +115,11 @@ export default function GitHubSection({ connection, onChange }: Props) {
         <form onSubmit={save} className="flex flex-col gap-3">
           <Input
             type="password"
-            autoComplete="off"
+            autoComplete="new-password"
+            data-1p-ignore
+            data-lpignore="true"
+            data-bwignore
+            autoFocus={connection.connected}
             value={token}
             onChange={(e) => setToken(e.target.value)}
             placeholder="github_pat_…"
@@ -119,6 +139,7 @@ export default function GitHubSection({ connection, onChange }: Props) {
                 variant="ghost"
                 className="h-11"
                 onClick={() => {
+                  returnFocus.current = true
                   setEditing(false)
                   setToken('')
                   setError('')
@@ -133,13 +154,34 @@ export default function GitHubSection({ connection, onChange }: Props) {
 
       {connection.connected && !editing && (
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => void check()}>
+          <Button variant="outline" size="sm" className="h-10" disabled={busy} onClick={() => void check()}>
             {checking ? 'Checking…' : 'Check connection'}
           </Button>
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => setEditing(true)}>
+          <Button
+            ref={(el) => {
+              if (el && returnFocus.current) {
+                returnFocus.current = false
+                el.focus()
+              }
+            }}
+            variant="outline"
+            size="sm"
+            className="h-10"
+            disabled={busy}
+            onClick={() => {
+              setError('')
+              setEditing(true)
+            }}
+          >
             Replace token
           </Button>
-          <ConfirmButton label="Disconnect" confirmLabel="Confirm: also removes the repositories" disabled={busy} onConfirm={() => void disconnect()} />
+          <ConfirmButton
+            label="Disconnect"
+            confirmLabel="Confirm: also removes the repositories"
+            className="h-10"
+            disabled={busy}
+            onConfirm={() => void disconnect()}
+          />
         </div>
       )}
 
