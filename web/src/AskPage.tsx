@@ -114,7 +114,7 @@ export default function AskPage() {
           )}
           <button
             type="submit"
-            disabled={!ready}
+            aria-disabled={!ready}
             aria-label="Send"
             className={cn(
               'ml-auto flex size-11 shrink-0 items-center justify-center rounded-full text-primary-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
