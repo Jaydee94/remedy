@@ -74,7 +74,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
   )
   // The asks come from the shell: until it has answered once, an ask that is already pending would look like news.
   const history = useMemo(() => allAnnouncements(items), [items])
-  const announcement = useAnnouncement(history.at(-1) ?? null, history, incident !== undefined && loaded)
+  const announcement = useAnnouncement(history, incident !== undefined && loaded)
   const { target: heading, restore } = useFocusRestore<HTMLHeadingElement>()
 
   if (missing) {
@@ -255,8 +255,9 @@ export default function IncidentThreadPage({ id }: { id: number }) {
                 {incident.title}
               </h1>
             </div>
-            <p className="sr-only" aria-live="polite">
-              {announcement}
+            {/* The span is keyed by the message: a new message with the same words still replaces the node and is announced. */}
+            <p className="sr-only" aria-live="polite" aria-atomic="true">
+              {announcement && <span key={announcement.key}>{announcement.text}</span>}
             </p>
             {items.map((item) => renderItem(item, incident))}
             <Composer placeholder="Ask Remedy about this incident…" onSend={ask} />

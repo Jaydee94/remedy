@@ -89,7 +89,9 @@ export function buildThread({ incident, activity, questionRuns, asks, lastRespon
 
 const oneLine = (text: string, max: number) => {
   const flat = text.replace(/\s+/g, ' ').trim()
-  return flat.length > max ? `${flat.slice(0, max).trimEnd()}…` : flat
+  // Cut by code points: a UTF-16 cut could leave half of an emoji.
+  const points = Array.from(flat)
+  return points.length > max ? `${points.slice(0, max).join('').trimEnd()}…` : flat
 }
 
 /** An announcement of a thread: the sentence, and the identity of the message it describes. */
@@ -126,14 +128,4 @@ function announcementOf(item: ThreadItem): Announcement | null {
 /** Every message of a thread worth announcing, oldest first: what a page has already shown when it has loaded. */
 export function allAnnouncements(items: readonly ThreadItem[]): Announcement[] {
   return items.flatMap((item) => announcementOf(item) ?? [])
-}
-
-/**
- * What a screen reader should be told about a thread: the newest message of Remedy worth announcing, as a sentence, or null when there is
- * none. The key names the message and its text (a new diagnosis keeps the item key but changes the text). A message leaves the thread when
- * it is dealt with (a decided call), and the newest one that remains is then an older message: the caller shows an announcement only when
- * its key has not been shown before.
- */
-export function latestAnnouncement(items: readonly ThreadItem[]): Announcement | null {
-  return allAnnouncements(items).at(-1) ?? null
 }

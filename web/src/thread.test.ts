@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { ActivityEntry, Diagnosis, Incident, Run, ToolCall } from './api.ts'
-import { allAnnouncements, buildThread, latestAnnouncement } from './thread.ts'
+import { allAnnouncements, buildThread } from './thread.ts'
 import type { ThreadItem } from './thread.ts'
 
 const inc = (over: Partial<Incident> = {}): Incident => ({
@@ -249,8 +249,9 @@ describe('buildThread: questions, answers and approvals', () => {
   })
 })
 
-describe('latestAnnouncement', () => {
+describe('announcements', () => {
   const at = '2026-10-05T10:00:00Z'
+  const latestAnnouncement = (items: readonly ThreadItem[]) => allAnnouncements(items).at(-1) ?? null
   const say = (items: readonly ThreadItem[]) => latestAnnouncement(items)?.text ?? ''
   const ev = (): ThreadItem => ({ type: 'event', key: 'a1', at, dot: 'bg-muted', text: 'opened' })
   const q = (over: Partial<Run> = {}): ThreadItem => ({ type: 'question', key: 'q1', at, run: run(over) })
@@ -289,11 +290,6 @@ describe('latestAnnouncement', () => {
       ],
     )
     assert.deepEqual(allAnnouncements([]), [])
-  })
-
-  it('has latestAnnouncement take the last of them', () => {
-    const items = [dia(), working('run-1'), ask({ arguments: {} })]
-    assert.deepEqual(latestAnnouncement(items), allAnnouncements(items).at(-1))
   })
 
   it('gives the working message of two runs different keys', () => {
@@ -369,6 +365,22 @@ describe('latestAnnouncement', () => {
     assert.equal(a.key, 'diagnosis|Remedy diagnosed this incident: Same.')
     assert.equal(a.key, b.key)
     assert.equal(a.text, 'Remedy diagnosed this incident: Same.')
+  })
+
+  it('gives two asks with the same sentence but different call ids different keys', () => {
+    const a = allAnnouncements([{ ...ask({ id: 1, arguments: {} }), key: 'c1' }])[0]
+    const b = allAnnouncements([{ ...ask({ id: 2, arguments: {} }), key: 'c2' }])[0]
+    assert.equal(a.text, b.text)
+    assert.ok(a.key.startsWith('c1|'))
+    assert.ok(b.key.startsWith('c2|'))
+    assert.notEqual(a.key, b.key)
+  })
+
+  it('cuts by code points, not in the middle of an emoji', () => {
+    const text = say([ans({ prompt: `${'a'.repeat(59)}😀 and more` })])
+    const question = text.slice('Remedy answered your question: '.length)
+    assert.equal(question, `${'a'.repeat(59)}😀…`)
+    assert.ok(!/[\ud800-\udfff]$/.test(question.slice(0, -1)) || question.slice(0, -1).endsWith('😀'))
   })
 
   it('gives two diagnoses with different summaries different keys', () => {
