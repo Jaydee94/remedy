@@ -43,7 +43,7 @@ Seeding the SQLite database by hand: timestamps need nine fractional digits (`20
 
 An incident row also needs `source`, `key` and `title` (since migration 008). A GitHub row's key is `repo_id || char(31) || ref || char(31) || check_name` in SQL; an `alertmanager` or `argocd` row takes its own key and has no `repo_id`. The table refuses a row that has a repository and is not GitHub's, or the reverse.
 
-Admin sessions are in memory: restarting the server signs everyone out, and Today's live feed then shows "Live updates stopped." with a Reload button, while the other requests of the page answer 401, until the page is reloaded and signed in again.
+Admin sessions are in memory: restarting the server signs everyone out. The next request that answers 401 (the shell polls every two seconds) shows the login page with "Your session ended. Please sign in again."; until then Today's live feed shows "Live updates stopped." with a Reload button.
 
 The Playwright MCP tools save relative screenshot paths and `.playwright-mcp/` in the checkout that launched the browser, not in the current worktree: look for stray `*.png` files there and delete them. Checking `ConfirmButton` (arms on the first click, disarms on blur) needs real Playwright clicks, not `element.click()` in `evaluate`; its ref changes when it re-renders, so confirm with the focused button via `browser_press_key Enter` instead of a second click on the old ref.
 

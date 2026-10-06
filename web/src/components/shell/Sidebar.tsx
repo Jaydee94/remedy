@@ -2,6 +2,8 @@ import { Link } from 'react-router'
 import { askFor, filterIncidents, incidentPreview } from '@/conversation.ts'
 import { incidentStateColor, timeAgo } from '@/incidents.ts'
 import { navItems } from '@/shell.ts'
+import { useSignOut } from '@/shellContext.ts'
+import { useClock } from '@/useClock.ts'
 import type { Section, ShellState } from '@/shell.ts'
 import RemedyMark from '@/components/RemedyMark'
 import { navIcons } from '@/components/shell/navIcons.ts'
@@ -12,13 +14,14 @@ interface Props {
   section: Section | null
   pathname: string
   shell: ShellState
-  onSignOut: () => void
 }
 
 const focus = 'outline-none focus-visible:ring-3 focus-visible:ring-ring/50'
 
 /** The desktop sidebar: the navigation, the open conversations, what is coming later. Hidden below the md breakpoint. */
-export default function Sidebar({ section, pathname, shell, onSignOut }: Props) {
+export default function Sidebar({ section, pathname, shell }: Props) {
+  const signOut = useSignOut()
+  const now = useClock()
   return (
     <aside className="hidden w-75 shrink-0 flex-col border-r border-border bg-sidebar md:flex">
       <Link to="/" className={cn('flex items-center gap-2.5 rounded-full px-5.5 pt-5 pb-4 text-foreground', focus)}>
@@ -71,7 +74,7 @@ export default function Sidebar({ section, pathname, shell, onSignOut }: Props) 
                     <span className="sr-only">{incident.state}: </span>
                     {incident.title}
                   </span>
-                  <span className="shrink-0 text-xs text-subtle">{timeAgo(incident.lastSeen)}</span>
+                  <span className="shrink-0 text-xs text-subtle">{timeAgo(incident.lastSeen, now)}</span>
                 </span>
                 <span className="truncate text-[13px] text-muted-foreground">
                   {incidentPreview(incident, askFor(shell.asks, incident.id))}
@@ -96,7 +99,7 @@ export default function Sidebar({ section, pathname, shell, onSignOut }: Props) 
         </span>
         <button
           type="button"
-          onClick={onSignOut}
+          onClick={signOut}
           className={cn('mt-1 self-start rounded-full text-[13px] text-subtle transition-colors hover:text-foreground', focus)}
         >
           Sign out

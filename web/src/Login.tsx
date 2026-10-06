@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from './api.ts'
 import { greeting } from './greeting.ts'
@@ -7,11 +7,18 @@ import RemedyMark from '@/components/RemedyMark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
+interface Props {
+  onLoggedIn: () => void
+  /** A muted line above the form, for example that the session ended. Not an error. */
+  notice?: string
+}
+
+export default function Login({ onLoggedIn, notice }: Props) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [hello] = useState(() => greeting(new Date().getHours()))
+  const noticeId = useId()
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -43,6 +50,11 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
           <h1 className="font-serif text-4xl leading-tight font-normal tracking-tight">{hello}.</h1>
           <p className="text-muted-foreground">Sign in with the admin password and I'll walk you through what happened.</p>
         </div>
+        {notice && (
+          <p id={noticeId} role="status" className="text-muted-foreground">
+            {notice}
+          </p>
+        )}
         <form onSubmit={submit} className="flex flex-col gap-2.5">
           <Input
             type="password"
@@ -53,6 +65,7 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
             placeholder="Admin password"
             aria-label="Admin password"
             aria-invalid={error !== ''}
+            aria-describedby={notice ? noticeId : undefined}
             className="h-13 text-[15px]"
           />
           {error && (

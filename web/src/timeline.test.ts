@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { kindDotClass } from './timeline.ts'
+import { dayTimeLabel, kindDotClass, timeOfDay } from './timeline.ts'
 
 describe('kindDotClass', () => {
   const expected: Record<string, string> = {
@@ -34,5 +34,30 @@ describe('kindDotClass', () => {
 
   it('falls back to neutral for a kind it does not know', () => {
     assert.equal(kindDotClass('something_new'), 'bg-neutral')
+  })
+})
+
+describe('dayTimeLabel', () => {
+  const now = new Date(2026, 9, 5, 15, 0).getTime()
+
+  it('is just the time of day for a time from the same local day', () => {
+    const iso = new Date(2026, 9, 5, 8, 30).toISOString()
+    assert.equal(dayTimeLabel(iso, now), timeOfDay(iso))
+  })
+
+  it('puts the day and the month before the time of another day', () => {
+    const iso = new Date(2026, 9, 4, 23, 45).toISOString()
+    const label = dayTimeLabel(iso, now)
+    assert.notEqual(label, timeOfDay(iso))
+    assert.ok(label.includes(timeOfDay(iso)))
+    assert.ok(label.includes(','))
+  })
+
+  it('dates a time in the future of another day too', () => {
+    const iso = new Date(2026, 9, 6, 9, 0).toISOString()
+    const label = dayTimeLabel(iso, now)
+    assert.notEqual(label, timeOfDay(iso))
+    assert.ok(label.includes(timeOfDay(iso)))
+    assert.ok(label.includes(','))
   })
 })

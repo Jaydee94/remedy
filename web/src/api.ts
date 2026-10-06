@@ -187,7 +187,23 @@ export class ApiError extends Error {
   }
 }
 
+let onUnauthorized: (() => void) | null = null
+/** Counts the calls of `setUnauthorizedHandler`: one number per session (and per stretch without one). */
+let handlerEpoch = 0
+
+/**
+ * Called when a request answers 401 while the maintainer is signed in. The login, the first `/api/me` and the logout (which treats a 401
+ * as "already signed out" itself) do not count. Every call of this
+ * function (also with null) starts a new epoch: the 401 of a request that began under an older epoch (an earlier session, or while signed
+ * out) is not reported, because it says nothing about the current session.
+ */
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  handlerEpoch++
+  onUnauthorized = handler
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const epoch = handlerEpoch
   const res = await fetch(path, {
     method,
     headers: { 'Content-Type': 'application/json', 'X-Remedy-CSRF': '1' },
@@ -196,6 +212,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   })
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
+    if (res.status === 401 && path !== '/api/login' && path !== '/api/me' && path !== '/api/logout' && epoch === handlerEpoch) onUnauthorized?.()
     throw new ApiError(res.status, data.error ?? res.statusText)
   }
   if (res.status === 204) return undefined as T

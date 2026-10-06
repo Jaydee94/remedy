@@ -34,7 +34,7 @@ export default function Composer({ placeholder, onSend }: Props) {
 
   return (
     <div className="mt-auto flex flex-col gap-2">
-      <form onSubmit={(e) => void submit(e)} className="flex items-center gap-2.5 rounded-[28px] border border-input bg-card py-1.5 pr-1.5 pl-5 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+      <form onSubmit={(e) => void submit(e)} className="flex items-center gap-2.5 rounded-[28px] border border-field bg-card py-1.5 pr-1.5 pl-5 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}

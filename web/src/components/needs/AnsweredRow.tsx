@@ -3,10 +3,12 @@ import type { ToolCall } from '@/api.ts'
 import { argumentList, callStatusColor, outcomeText } from '@/approvals.ts'
 import { timeAgo } from '@/incidents.ts'
 import { answeredAt, decisionView } from '@/needs.ts'
+import { useClock } from '@/useClock.ts'
 import { cn } from '@/lib/utils'
 
 /** A call that was answered: the tool, the decision in colour, the age, what was asked, the reason and what came of it. All text. */
 export default function AnsweredRow({ call }: { call: ToolCall }) {
+  const now = useClock()
   const at = answeredAt(call)
   const view = decisionView(call)
   const outcome = outcomeText(call)
@@ -18,7 +20,7 @@ export default function AnsweredRow({ call }: { call: ToolCall }) {
           <span className="font-mono text-[13px] break-all">{call.tool}</span>
           <span className={cn('text-[13px] font-semibold', view.text)}>{view.label}</span>
           <span className="text-xs text-subtle" title={new Date(at).toLocaleString()}>
-            {timeAgo(at)}
+            {timeAgo(at, now)}
           </span>
         </span>
         <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 text-[13px]">

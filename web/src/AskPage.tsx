@@ -92,7 +92,7 @@ export default function AskPage() {
 
       <form
         onSubmit={submit}
-        className="flex flex-col gap-3 rounded-3xl border border-input bg-card p-4 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50"
+        className="flex flex-col gap-3 rounded-3xl border border-field bg-card p-4 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50"
       >
         <textarea
           value={prompt}

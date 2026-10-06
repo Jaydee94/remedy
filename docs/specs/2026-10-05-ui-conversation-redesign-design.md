@@ -100,8 +100,9 @@ for 3.3.
 ### 4.1 Theme
 
 The semantic tokens of shadcn (`--background`, `--card`, `--primary`, ...) take the palette of the prototype: background `#1a1612`, card `#231e19`, sidebar
-`#16130f`, border `#2c2620`, input border `#3a322a`, text `#f1ebe3`, muted text `#a99e91`, subtle text `#74695d`, primary (amber) `#f2c14e` with dark text,
-destructive `#ef6f5e`. New tokens: `success` `#7fcf8f`, `info` `#8cc4ef`, `violet` `#c3a5f2`, and a soft background per state (`soft-open`, `soft-diagnosing`,
+`#16130f`, border `#2c2620`, input border `#3a322a`, text `#f1ebe3`, muted text `#a99e91`, subtle text `#93877a` (at least 4.5:1 on the background, the card and the sidebar), primary (amber) `#f2c14e` with dark text,
+destructive `#ef6f5e`. New tokens: `field` `#7a6f62` (the border of a text field, at least 3:1 on the background and the card; chips, buttons, cards and
+rows keep `input`), `success` `#7fcf8f`, `info` `#8cc4ef`, `violet` `#c3a5f2`, and a soft background per state (`soft-open`, `soft-diagnosing`,
 `soft-diagnosed`, `soft-resolved`, `soft-ignored`). The font tokens are `--font-sans` (Schibsted Grotesk), `--font-serif` (Literata) and `--font-mono`.
 
 Four keyframes (`rmIn`, `rmBlink`, `rmBreath`, `rmPulse`) become utilities and are switched off by `prefers-reduced-motion`. Button, input, badge and card

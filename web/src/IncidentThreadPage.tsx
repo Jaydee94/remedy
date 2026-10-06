@@ -18,7 +18,8 @@ import { runFailure } from './runview.ts'
 import { useShellHeader, useShellState } from './shellContext.ts'
 import { buildThread } from './thread.ts'
 import type { ThreadItem } from './thread.ts'
-import { timeOfDay } from './timeline.ts'
+import { dayTimeLabel } from './timeline.ts'
+import { useClock } from './useClock.ts'
 import { useIncidentThread } from './useIncidentThread.ts'
 import { useToast } from './toast.ts'
 import RefLink from './RefLink.tsx'
@@ -47,6 +48,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
   const { detail, runs, error, missing, reload } = useIncidentThread(id)
   const { asks } = useShellState()
   const toast = useToast()
+  const now = useClock()
   const incident = detail?.incident
   useShellHeader(incident ? { title: incident.title, back: '/incidents' } : null)
   const [diagnoseBusy, setDiagnoseBusy] = useState(false)
@@ -142,13 +144,13 @@ export default function IncidentThreadPage({ id }: { id: number }) {
     switch (item.type) {
       case 'event':
         return (
-          <EventPill key={item.key} dot={item.dot}>
+          <EventPill key={item.key} dot={item.dot} title={new Date(item.at).toLocaleString()}>
             {item.text}
           </EventPill>
         )
       case 'working':
         return (
-          <RemedyMessage key={item.key} kind="working" meta={`Remedy · ${timeOfDay(item.at)}`}>
+          <RemedyMessage key={item.key} kind="working" meta={`Remedy · ${dayTimeLabel(item.at, now)}`}>
             <span className="text-[13px] text-muted-foreground">
               Reading the failure log and the repository. I can only read; I can't change anything.
             </span>
@@ -163,7 +165,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
         )
       case 'diagnosis':
         return (
-          <RemedyMessage key={item.key} meta={`Remedy · ${timeOfDay(item.at)} · read the failure log and the repository at ${shortSha(item.sha)}`}>
+          <RemedyMessage key={item.key} meta={`Remedy · ${dayTimeLabel(item.at, now)} · read the failure log and the repository at ${shortSha(item.sha)}`}>
             <DiagnosisMessage
               diagnosis={item.diagnosis}
               outdatedSha={item.outdated ? item.sha : undefined}
@@ -181,7 +183,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
         )
       case 'undiagnosed':
         return (
-          <RemedyMessage key={item.key} meta={`Remedy · ${timeOfDay(item.at)}`}>
+          <RemedyMessage key={item.key} meta={`Remedy · ${dayTimeLabel(item.at, now)}`}>
             {item.reason === 'source' ? (
               <p className="font-serif text-[17px] leading-normal text-pretty">I can't diagnose incidents from {item.sourceLabel} yet.</p>
             ) : (
@@ -208,7 +210,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
         )
       case 'ask':
         return (
-          <RemedyMessage key={item.key} kind="ask" meta={`Remedy · asked ${timeAgo(item.call.requestedAt)}`}>
+          <RemedyMessage key={item.key} kind="ask" meta={`Remedy · asked ${timeAgo(item.call.requestedAt, now)}`}>
             <ApprovalAsk call={item.call} onChanged={() => void reload()} />
           </RemedyMessage>
         )
@@ -250,7 +252,9 @@ export default function IncidentThreadPage({ id }: { id: number }) {
       </div>
 
       {incident && (
-        <aside className="m-4 flex min-w-65 flex-[0_1_280px] flex-col gap-3.5 rounded-[20px] border border-border bg-sidebar p-5 md:m-7">
+        // Beside the thread from 1180 px on, below it before: the sidebar is 300 px (w-75), the thread needs its basis of 520 px, the panel is
+        // 280 px and has margins of 28 px (md:m-7) on both sides, which is 1156 px, rounded up. Recompute 1180 if one of them changes.
+        <aside className="m-4 flex min-w-65 flex-[1_1_100%] flex-col min-[1180px]:flex-[0_1_280px] gap-3.5 rounded-[20px] border border-border bg-sidebar p-5 md:m-7">
           <span className="text-xs font-semibold text-muted-foreground">About this incident</span>
           <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-[13px]">
             <dt className="text-subtle">State</dt>
@@ -327,10 +331,11 @@ export default function IncidentThreadPage({ id }: { id: number }) {
 
 /** Remedy's answer to a question: working, the text, or why it failed. The steps are on the run page. */
 function AnswerMessage({ run }: { run: Run }) {
+  const now = useClock()
   const failure = runFailure(run)
   const phase = run.status
   return (
-    <RemedyMessage kind={phase === 'queued' || phase === 'running' ? 'working' : 'idle'} meta={`Remedy · ${timeOfDay(run.finishedAt ?? run.startedAt ?? run.createdAt)}`}>
+    <RemedyMessage kind={phase === 'queued' || phase === 'running' ? 'working' : 'idle'} meta={`Remedy · ${dayTimeLabel(run.finishedAt ?? run.startedAt ?? run.createdAt, now)}`}>
       {phase === 'queued' && <span className="text-[13px] text-muted-foreground">Waiting for the runner…</span>}
       {phase === 'running' && <span className="text-[13px] text-muted-foreground">Working…</span>}
       {phase === 'succeeded' && (

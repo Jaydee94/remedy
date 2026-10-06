@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from '@/api.ts'
 import type { Repo } from '@/api.ts'
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import { useNow } from '@/useNow.ts'
+import { useClock } from '@/useClock.ts'
 
 /** The repositories Remedy watches for failed checks. Without a GitHub connection there is nothing to list. */
 export default function ReposSection({ connected }: { connected: boolean }) {
@@ -19,8 +19,9 @@ export default function ReposSection({ connected }: { connected: boolean }) {
   const [error, setError] = useState('')
   const [loadError, setLoadError] = useState('')
   const [formError, setFormError] = useState('')
-  const now = useNow(60_000).getTime()
+  const now = useClock()
   const formErrorId = useId()
+  const nameRef = useRef<HTMLInputElement>(null)
 
   const reload = useCallback(
     () =>
@@ -39,6 +40,7 @@ export default function ReposSection({ connected }: { connected: boolean }) {
   }, [connected, reload])
 
   async function act(action: () => Promise<unknown>) {
+    if (busy) return
     setBusy(true)
     setError('')
     try {
@@ -63,6 +65,8 @@ export default function ReposSection({ connected }: { connected: boolean }) {
     void act(async () => {
       await api.addRepo(name.trim())
       setName('')
+      // The Add button is disabled again with the empty field and would drop the focus: keep it in the field for the next repository.
+      requestAnimationFrame(() => nameRef.current?.focus())
     })
   }
 
@@ -77,6 +81,7 @@ export default function ReposSection({ connected }: { connected: boolean }) {
             <form onSubmit={add} className="flex flex-col gap-2">
               <div className="flex gap-2">
                 <Input
+                  ref={nameRef}
                   value={name}
                   onChange={(e) => {
                     setName(e.target.value)
@@ -89,7 +94,12 @@ export default function ReposSection({ connected }: { connected: boolean }) {
                   autoComplete="off"
                   className="h-11 text-base md:text-sm"
                 />
-                <Button type="submit" disabled={busy || name.trim() === ''} className="h-11">
+                <Button
+                  type="submit"
+                  disabled={name.trim() === ''}
+                  aria-disabled={busy}
+                  className="h-11 aria-disabled:pointer-events-none aria-disabled:opacity-50"
+                >
                   Add
                 </Button>
               </div>
@@ -115,9 +125,13 @@ export default function ReposSection({ connected }: { connected: boolean }) {
                     </div>
                     <Switch
                       checked={repo.enabled}
-                      disabled={busy}
+                      aria-disabled={busy}
+                      className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
                       aria-label={`Watch ${repo.fullName}`}
-                      onCheckedChange={(enabled) => void act(() => api.setRepoEnabled(repo.id, enabled))}
+                      onCheckedChange={(enabled) => {
+                        if (busy) return
+                        void act(() => api.setRepoEnabled(repo.id, enabled))
+                      }}
                     />
                     <ConfirmButton
                       label="Remove"

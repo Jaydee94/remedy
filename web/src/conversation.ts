@@ -72,6 +72,8 @@ export function incidentPreview(incident: Incident, ask?: ToolCall): string {
   if (ask) return askText(ask).question
   if (incident.state === 'diagnosing') return "I'm looking into it…"
   if (incident.diagnosis) return incident.diagnosis.summary
+  // lastDiagnosisAt is set when any diagnosis starts; an open incident without a diagnosis that has one failed it.
+  if (incident.state === 'open' && incident.lastDiagnosisAt !== undefined) return "My last diagnosis didn't finish."
   if (!incident.autoDiagnose) return "I don't diagnose this kind of result automatically. Ask me if you want."
   return "I haven't looked yet."
 }

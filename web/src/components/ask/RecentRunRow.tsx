@@ -2,11 +2,13 @@ import { Link } from 'react-router'
 import { timeAgo } from '@/incidents.ts'
 import { phaseView } from '@/status.ts'
 import type { RecentRun } from '@/askpage.ts'
+import { useClock } from '@/useClock.ts'
 import { cn } from '@/lib/utils'
 
 /** A run in "Earlier conversations": the dot of its phase, what was asked, the phase in words and the age. */
 export default function RecentRunRow({ run }: { run: RecentRun }) {
   const view = phaseView[run.phase]
+  const now = useClock()
   return (
     <Link
       to={`/runs/${encodeURIComponent(run.id)}`}
@@ -18,7 +20,7 @@ export default function RecentRunRow({ run }: { run: RecentRun }) {
       {run.tools && <span className="hidden text-xs text-subtle sm:inline">{run.cluster ? 'cluster' : 'tools'}</span>}
       <span className={cn('shrink-0 text-xs font-semibold', view.text)}>{view.label}</span>
       <span className="shrink-0 text-xs text-subtle" title={new Date(run.at).toLocaleString()}>
-        {timeAgo(run.at)}
+        {timeAgo(run.at, now)}
       </span>
     </Link>
   )

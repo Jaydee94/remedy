@@ -11,7 +11,7 @@ import TabBar from '@/components/shell/TabBar'
 import ToastProvider from '@/components/ToastProvider'
 
 /** The shell: sidebar on a desktop, top bar and tab bar on a phone, an offline banner, and the toast. Only the content scrolls. */
-export default function AppLayout({ onSignOut }: { onSignOut: () => void }) {
+export default function AppLayout({ onSignOut }: { onSignOut: () => void | Promise<void> }) {
   const { pathname } = useLocation()
   const shell = useShell()
   const [custom, setCustom] = useState<Header | null>(null)
@@ -26,7 +26,7 @@ export default function AppLayout({ onSignOut }: { onSignOut: () => void }) {
           <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
             {!shell.online && <OfflineBanner />}
             <div className="flex min-h-0 flex-1">
-              <Sidebar section={section} pathname={pathname} shell={shell} onSignOut={onSignOut} />
+              <Sidebar section={section} pathname={pathname} shell={shell} />
               <main className="flex min-w-0 flex-1 flex-col">
                 <MobileBar header={header} online={shell.online} />
                 <div className="min-h-0 flex-1 overflow-auto">
