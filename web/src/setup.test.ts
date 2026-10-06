@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Limits, Repo } from './api.ts'
-import { connectionView, diagnosisBar, duration, everyText, limitsText, repoSubline, validRepoName } from './setup.ts'
+import { connectionView, diagnosisBar, duration, everyText, limitsText, readingIntro, repoSubline, validRepoName } from './setup.ts'
 
 const limits = (over: Partial<Limits> = {}): Limits => ({
   pollIntervalSeconds: 60,
@@ -44,6 +44,11 @@ describe('limitsText', () => {
     assert.ok(text.includes("I don't diagnose on my own; you can start it by hand."))
     assert.ok(!text.includes('per incident'))
   })
+  it('reads a negative daily limit like 0, as the bar does', () => {
+    const text = limitsText(limits({ diagnoseMaxPerDay: -1 }))
+    assert.ok(text.includes("I don't diagnose on my own; you can start it by hand."))
+    assert.ok(!text.includes('per incident'))
+  })
   it('uses the singular for a limit of 1', () => {
     const text = limitsText(limits({ diagnoseMaxPerIncident: 1, diagnoseMaxPerDay: 1, staleRunMinutes: 1 }))
     assert.ok(text.includes('up to 1 time per incident and 1 time per 24 hours'))
@@ -77,6 +82,12 @@ describe('validRepoName', () => {
       assert.equal(validRepoName(bad), false, bad)
     }
   })
+  it('refuses a part that is . or .., as the server does', () => {
+    for (const bad of ['./..', '../x', 'a/.', 'a/..', './x', '../..']) assert.equal(validRepoName(bad), false, bad)
+  })
+  it('accepts dots inside a part', () => {
+    for (const ok of ['a/.github', 'a/b..c', '.github/x', 'a/..b']) assert.equal(validRepoName(ok), true, ok)
+  })
 })
 
 describe('repoSubline', () => {
@@ -91,6 +102,9 @@ describe('repoSubline', () => {
     assert.equal(repoSubline(repo({ enabled: false, lastPolledAt: '2026-10-05T09:57:00Z' }), now), 'main, polled 3 min ago · paused')
     assert.equal(repoSubline(repo({ enabled: false }), now), 'main, never polled · paused')
   })
+  it('says never polled when the time cannot be read', () => {
+    assert.equal(repoSubline(repo({ lastPolledAt: 'yesterday' }), now), 'main, never polled')
+  })
 })
 
 describe('connectionView', () => {
@@ -98,11 +112,28 @@ describe('connectionView', () => {
     assert.equal(connectionView('ok').label, 'Connected')
     assert.equal(connectionView('error').label, 'Error')
     assert.equal(connectionView('undecryptable').label, 'Cannot decrypt')
-    for (const s of ['ok', 'error', 'undecryptable'] as const) {
+  })
+  it('colours a working connection as success', () => {
+    assert.deepEqual(connectionView('ok'), { label: 'Connected', dot: 'bg-success', soft: 'bg-soft-resolved', text: 'text-success' })
+  })
+  it('colours error and undecryptable as destructive', () => {
+    for (const s of ['error', 'undecryptable'] as const) {
       const v = connectionView(s)
-      assert.match(v.dot, /^bg-(success|destructive)$/)
-      assert.match(v.soft, /^bg-soft-(resolved|open)$/)
-      assert.match(v.text, /^text-(success|destructive)$/)
+      assert.equal(v.dot, 'bg-destructive')
+      assert.equal(v.soft, 'bg-soft-open')
+      assert.equal(v.text, 'text-destructive')
     }
+    assert.notEqual(connectionView('error').label, connectionView('undecryptable').label)
+  })
+})
+
+describe('readingIntro', () => {
+  it('says what Remedy does when the connection works', () => {
+    assert.equal(readingIntro('ok'), 'I read pull requests and check runs as')
+    assert.equal(readingIntro(undefined), 'I read pull requests and check runs as')
+  })
+  it('says what Remedy is set up to do when it cannot', () => {
+    assert.equal(readingIntro('error'), "I'm set up to read pull requests and check runs as")
+    assert.equal(readingIntro('undecryptable'), "I'm set up to read pull requests and check runs as")
   })
 })

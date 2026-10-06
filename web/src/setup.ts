@@ -28,7 +28,7 @@ const times = (n: number) => (n === 1 ? '1 time' : `${n} times`)
 export function limitsText(l: Limits): string {
   const poll = `I check every ${everyText(l.pollIntervalSeconds)}.`
   const diagnose =
-    l.diagnoseMaxPerDay === 0
+    l.diagnoseMaxPerDay <= 0
       ? "I don't diagnose on my own; you can start it by hand."
       : `I diagnose up to ${times(l.diagnoseMaxPerIncident)} per incident and ${times(l.diagnoseMaxPerDay)} per 24 hours, at least ${duration(l.diagnoseCooldownSeconds)} apart, one run at a time.`
   const stale = `A run that stays running for ${unit(l.staleRunMinutes, 'minute')} is failed.`
@@ -42,14 +42,16 @@ export function diagnosisBar(l: Limits): { used: number; max: number; ratio: num
   return { used, max: l.diagnoseMaxPerDay, ratio: Math.min(1, used / l.diagnoseMaxPerDay), full: used >= l.diagnoseMaxPerDay }
 }
 
-/** "owner/name": one slash, two parts of letters, digits, dot, dash and underscore. The API still has the last word. */
+/** "owner/name": one slash, two parts of letters, digits, dot, dash and underscore, neither of them "." or "..". The API still has the last word. */
 export function validRepoName(name: string): boolean {
-  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(name.trim())
+  const trimmed = name.trim()
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(trimmed)) return false
+  return trimmed.split('/').every((part) => part !== '.' && part !== '..')
 }
 
 /** The line under a repository's name: its branch, the last poll, and "paused" when it is off. */
-export function repoSubline(repo: Repo, now: number = Date.now()): string {
-  const polled = repo.lastPolledAt ? `polled ${timeAgo(repo.lastPolledAt, now)}` : 'never polled'
+export function repoSubline(repo: Repo, now: number): string {
+  const polled = repo.lastPolledAt && !Number.isNaN(Date.parse(repo.lastPolledAt)) ? `polled ${timeAgo(repo.lastPolledAt, now)}` : 'never polled'
   return `${repo.defaultBranch}, ${polled}${repo.enabled ? '' : ' · paused'}`
 }
 
@@ -63,4 +65,9 @@ export function connectionView(status: NonNullable<GitHubConnection['status']>):
     case 'undecryptable':
       return { label: 'Cannot decrypt', dot: 'bg-destructive', soft: 'bg-soft-open', text: 'text-destructive' }
   }
+}
+
+/** The opening of the sentence about the token: what Remedy does, or what it is set up to do when the connection does not work. */
+export function readingIntro(status: GitHubConnection['status']): string {
+  return status === 'error' || status === 'undecryptable' ? "I'm set up to read pull requests and check runs as" : 'I read pull requests and check runs as'
 }
