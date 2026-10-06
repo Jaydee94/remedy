@@ -92,25 +92,38 @@ const oneLine = (text: string, max: number) => {
   return flat.length > max ? `${flat.slice(0, max).trimEnd()}…` : flat
 }
 
+/** An announcement of a thread: the sentence, and the identity of the message it describes. */
+export interface Announcement {
+  key: string
+  text: string
+}
+
 /**
- * What a screen reader should be told about a thread: the newest message of Remedy worth announcing, as a sentence. The text changes only
- * when a new such message arrives, so a live region that shows it announces exactly that. A value from an agent is cut and inserted.
+ * What a screen reader should be told about a thread: the newest message of Remedy worth announcing, as a sentence, or null when there is
+ * none. The key names the message and its text (a new diagnosis keeps the item key but changes the text). A message leaves the thread when
+ * it is dealt with (a decided call), and the newest one that remains is then an older message: the caller shows an announcement only when
+ * its key has not been shown before. A value from an agent is cut and inserted.
  */
-export function latestAnnouncement(items: readonly ThreadItem[]): string {
+export function latestAnnouncement(items: readonly ThreadItem[]): Announcement | null {
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i]
+    let text = ''
     switch (item.type) {
       case 'ask':
-        return `Remedy asks you: ${askText(item.call).question}`
+        text = `Remedy asks you: ${oneLine(askText(item.call).question, 120)}`
+        break
       case 'diagnosis':
-        return `Remedy diagnosed this incident: ${oneLine(item.diagnosis.summary, 100)}`
+        text = `Remedy diagnosed this incident: ${oneLine(item.diagnosis.summary, 100)}`
+        break
       case 'answer':
-        if (item.run.status === 'succeeded') return `Remedy answered your question: ${oneLine(item.run.prompt, 60)}`
-        if (item.run.status === 'failed') return `Remedy could not answer your question: ${oneLine(item.run.prompt, 60)}`
+        if (item.run.status === 'succeeded') text = `Remedy answered your question: ${oneLine(item.run.prompt, 60)}`
+        else if (item.run.status === 'failed') text = `Remedy could not answer your question: ${oneLine(item.run.prompt, 60)}`
         break
       case 'working':
-        return 'Remedy is looking into this incident.'
+        text = 'Remedy is looking into this incident.'
+        break
     }
+    if (text) return { key: `${item.key}|${text}`, text }
   }
-  return ''
+  return null
 }
