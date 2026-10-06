@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
+const BUSY_CLASS = 'aria-disabled:pointer-events-none aria-disabled:opacity-50'
+
 interface Props {
   call: ToolCall
   /** compact: in a thread or a run, the reason opens on demand. large: on Needs you, the reason field is always there. */
@@ -32,13 +34,14 @@ function AskBody({ call, variant = 'compact', onChanged, disabled = false }: Pro
   const large = variant === 'large'
 
   async function decide(approve: boolean) {
-    if (busy) return
+    // The buttons are aria-disabled, not disabled (they keep the focus while the request runs): a click or a key while busy or locked does nothing.
+    if (busy || disabled) return
     setBusy(true)
     setError('')
     try {
       await api.decideApproval(call.id, approve, reason.trim() || undefined)
       toast.show(approve ? 'Approved. Running…' : 'Denied. I told the agent.')
-      // The buttons stay disabled on success until the parent has refreshed the call: a second click would be a 409.
+      // The buttons stay busy on success until the parent has refreshed the call: a second click would be a 409.
     } catch (e) {
       const message = e instanceof ApiError ? e.message : 'Could not record the decision'
       setError(message)
@@ -89,10 +92,10 @@ function AskBody({ call, variant = 'compact', onChanged, disabled = false }: Pro
               </span>
             )}
             <div className="flex flex-wrap items-center gap-2">
-              <Button disabled={busy || disabled} onClick={() => void decide(true)} className={large ? 'h-11 flex-1' : undefined}>
+              <Button aria-disabled={busy || disabled} onClick={() => void decide(true)} className={cn(BUSY_CLASS, large && 'h-11 flex-1')}>
                 {ask.yes}
               </Button>
-              <Button variant="outline" disabled={busy || disabled} onClick={() => void decide(false)} className={large ? 'h-11 flex-1' : undefined}>
+              <Button variant="outline" aria-disabled={busy || disabled} onClick={() => void decide(false)} className={cn(BUSY_CLASS, large && 'h-11 flex-1')}>
                 No
               </Button>
               {!large && !reasonOpen && (
