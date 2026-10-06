@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api, ApiError } from '@/api.ts'
 import type { ToolCall } from '@/api.ts'
-import { argumentList } from '@/approvals.ts'
+import { argumentList, limitBytes } from '@/approvals.ts'
 import { askText } from '@/ask.ts'
 import { useToast } from '@/toast.ts'
 import { Button } from '@/components/ui/button'
@@ -74,7 +74,7 @@ function AskBody({ call, variant = 'compact', onChanged, disabled = false }: Pro
                 maxLength={500}
                 autoFocus={!large}
                 value={reason}
-                onChange={(e) => setReason(e.target.value)}
+                onChange={(e) => setReason(limitBytes(e.target.value, 500))}
                 className="h-11 bg-background text-base md:text-sm"
               />
             )}

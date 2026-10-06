@@ -21,7 +21,9 @@ interface Props {
  * after a successful request and on Cancel; after a failed one it keeps the text so that a typo can be corrected.
  */
 export default function GitHubSection({ connection, onChange }: Props) {
-  const [token, setToken] = useState('')
+  // The token field is uncontrolled: React never mirrors the token into the DOM `value` attribute. `hasText` only drives the submit button.
+  const tokenRef = useRef<HTMLInputElement>(null)
+  const [hasText, setHasText] = useState(false)
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(false)
@@ -41,12 +43,18 @@ export default function GitHubSection({ connection, onChange }: Props) {
     return true
   }
 
+  function clearToken() {
+    if (tokenRef.current) tokenRef.current.value = ''
+    setHasText(false)
+  }
+
   async function run(action: () => Promise<GitHubConnection>, notFoundMeansGone = false) {
+    if (busy) return
     setBusy(true)
     setError('')
     try {
       onChange(await action())
-      setToken('')
+      clearToken()
       if (editing) returnFocus.current = true
       setEditing(false)
     } catch (e) {
@@ -58,11 +66,13 @@ export default function GitHubSection({ connection, onChange }: Props) {
 
   function save(e: FormEvent) {
     e.preventDefault()
-    if (busy || token.trim() === '') return
-    void run(() => api.putConnection(token.trim()))
+    const token = tokenRef.current?.value.trim() ?? ''
+    if (busy || token === '') return
+    void run(() => api.putConnection(token))
   }
 
   async function check() {
+    if (busy) return
     setChecking(true)
     try {
       await run(api.checkConnection, true)
@@ -120,8 +130,8 @@ export default function GitHubSection({ connection, onChange }: Props) {
             data-lpignore="true"
             data-bwignore
             autoFocus={connection.connected}
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
+            ref={tokenRef}
+            onInput={(e) => setHasText(e.currentTarget.value.trim() !== '')}
             placeholder="github_pat_…"
             aria-label="GitHub token"
             className="h-11 text-base md:text-sm"
@@ -130,7 +140,12 @@ export default function GitHubSection({ connection, onChange }: Props) {
             Use a fine-grained personal access token with read-only access to the repositories: Metadata, Contents, Pull requests, Actions and Checks.
           </p>
           <div className="flex gap-2">
-            <Button type="submit" disabled={busy || token.trim() === ''} className="h-11">
+            <Button
+              type="submit"
+              disabled={!hasText}
+              aria-disabled={busy}
+              className="h-11 aria-disabled:pointer-events-none aria-disabled:opacity-50"
+            >
               {connection.connected ? 'Replace token' : 'Connect'}
             </Button>
             {editing && (
@@ -141,7 +156,7 @@ export default function GitHubSection({ connection, onChange }: Props) {
                 onClick={() => {
                   returnFocus.current = true
                   setEditing(false)
-                  setToken('')
+                  clearToken()
                   setError('')
                 }}
               >
@@ -154,7 +169,10 @@ export default function GitHubSection({ connection, onChange }: Props) {
 
       {connection.connected && !editing && (
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" className="h-10" disabled={busy} onClick={() => void check()}>
+          <Button variant="outline" size="sm" className="h-10 aria-disabled:pointer-events-none aria-disabled:opacity-50"
+            aria-disabled={busy}
+            onClick={() => void check()}
+          >
             {checking ? 'Checking…' : 'Check connection'}
           </Button>
           <Button
@@ -166,9 +184,10 @@ export default function GitHubSection({ connection, onChange }: Props) {
             }}
             variant="outline"
             size="sm"
-            className="h-10"
-            disabled={busy}
+            className="h-10 aria-disabled:pointer-events-none aria-disabled:opacity-50"
+            aria-disabled={busy}
             onClick={() => {
+              if (busy) return
               setError('')
               setEditing(true)
             }}

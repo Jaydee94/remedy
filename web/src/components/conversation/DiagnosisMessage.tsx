@@ -27,7 +27,7 @@ interface Props {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-semibold text-muted-foreground">{title}</span>
+      <h2 className="text-xs font-semibold text-muted-foreground">{title}</h2>
       {children}
     </div>
   )
@@ -59,13 +59,13 @@ export default function DiagnosisMessage({ diagnosis: d, outdatedSha, headSha, r
         </Section>
         {d.affected_files.length > 0 && (
           <Section title="Where">
-            <span className="flex flex-wrap gap-1.5">
+            <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">
               {d.affected_files.map((f) => (
-                <span key={f} className="rounded-lg bg-background px-2.5 py-1 font-mono text-[12.5px] break-all">
+                <li key={f} className="rounded-lg bg-background px-2.5 py-1 font-mono text-[12.5px] break-all">
                   {f}
-                </span>
+                </li>
               ))}
-            </span>
+            </ul>
           </Section>
         )}
         <Section title="What I'd do">

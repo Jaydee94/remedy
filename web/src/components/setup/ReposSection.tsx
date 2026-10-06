@@ -39,6 +39,7 @@ export default function ReposSection({ connected }: { connected: boolean }) {
   }, [connected, reload])
 
   async function act(action: () => Promise<unknown>) {
+    if (busy) return
     setBusy(true)
     setError('')
     try {
@@ -89,7 +90,12 @@ export default function ReposSection({ connected }: { connected: boolean }) {
                   autoComplete="off"
                   className="h-11 text-base md:text-sm"
                 />
-                <Button type="submit" disabled={busy || name.trim() === ''} className="h-11">
+                <Button
+                  type="submit"
+                  disabled={name.trim() === ''}
+                  aria-disabled={busy}
+                  className="h-11 aria-disabled:pointer-events-none aria-disabled:opacity-50"
+                >
                   Add
                 </Button>
               </div>
@@ -115,9 +121,13 @@ export default function ReposSection({ connected }: { connected: boolean }) {
                     </div>
                     <Switch
                       checked={repo.enabled}
-                      disabled={busy}
+                      aria-disabled={busy}
+                      className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
                       aria-label={`Watch ${repo.fullName}`}
-                      onCheckedChange={(enabled) => void act(() => api.setRepoEnabled(repo.id, enabled))}
+                      onCheckedChange={(enabled) => {
+                        if (busy) return
+                        void act(() => api.setRepoEnabled(repo.id, enabled))
+                      }}
                     />
                     <ConfirmButton
                       label="Remove"

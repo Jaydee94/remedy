@@ -4,7 +4,7 @@ import { timeAgo } from './incidents.ts'
 import { decisionView } from './needs.ts'
 import { useClock } from './useClock.ts'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 
 /** The audit of a run: every call the agent made to a gatekeeper tool. Nothing here is interpreted: it is all text. */
 export default function ToolCallsCard({ calls }: { calls: ToolCall[] }) {
@@ -12,9 +12,6 @@ export default function ToolCallsCard({ calls }: { calls: ToolCall[] }) {
   if (calls.length === 0) return null
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Tool calls</CardTitle>
-      </CardHeader>
       <CardContent>
         <ol className="flex flex-col divide-y divide-border">
           {calls.map((c) => (
