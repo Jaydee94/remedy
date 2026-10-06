@@ -120,6 +120,8 @@ export interface Incident {
   /** Automatic diagnoses started for this incident. */
   diagnoses: number
   lastDiagnosisAt?: string
+  /** When the stored diagnosis was written. A new diagnosis moves it, a failed one does not. */
+  diagnosedAt?: string
   diagnosis?: Diagnosis
   /** The commit the diagnosis is about. It differs from headSha when a newer commit failed since. */
   diagnosedSha?: string
