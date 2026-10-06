@@ -2,11 +2,13 @@ import type { ToolCall } from './api.ts'
 import { argumentList, callStatusColor, outcomeText } from './approvals.ts'
 import { timeAgo } from './incidents.ts'
 import { decisionView } from './needs.ts'
+import { useClock } from './useClock.ts'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 /** The audit of a run: every call the agent made to a gatekeeper tool. Nothing here is interpreted: it is all text. */
 export default function ToolCallsCard({ calls }: { calls: ToolCall[] }) {
+  const now = useClock()
   if (calls.length === 0) return null
   return (
     <Card>
@@ -26,7 +28,7 @@ export default function ToolCallsCard({ calls }: { calls: ToolCall[] }) {
                     {c.kind === 'mutating' ? decisionView(c).label : c.status}
                   </span>
                   <span className="text-xs text-muted-foreground" title={new Date(c.requestedAt).toLocaleString()}>
-                    {timeAgo(c.requestedAt)}
+                    {timeAgo(c.requestedAt, now)}
                   </span>
                 </summary>
                 <div className="mt-2 flex flex-col gap-2 pl-4 text-sm">

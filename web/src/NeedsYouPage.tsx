@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { splitApprovals } from './needs.ts'
 import { timeAgo } from './incidents.ts'
 import { useApprovals } from './useApprovals.ts'
+import { useClock } from './useClock.ts'
 import { useNow } from './useNow.ts'
 import AnsweredRow from '@/components/needs/AnsweredRow'
 import ApprovalAsk from '@/components/conversation/ApprovalAsk'
@@ -20,6 +21,7 @@ export default function NeedsYouPage() {
   const { calls, error, reload, lockedUntil } = useApprovals()
   const { pending, answered } = splitApprovals(calls ?? [])
   const locked = useNow(LOCK_TICK_MS).getTime() < lockedUntil
+  const now = useClock()
   const heading = useRef<HTMLHeadingElement>(null)
 
   // After a decision the control that had the focus is gone and the focus falls to the page: bring it back to the top of the page.
@@ -61,7 +63,7 @@ export default function NeedsYouPage() {
             <EmptyState title="Nothing waits for you.">A run with tools asks here before it changes anything.</EmptyState>
           ) : (
             pending.map((call) => (
-              <RemedyMessage key={call.id} kind="ask" meta={`Remedy · asked ${timeAgo(call.requestedAt)}`}>
+              <RemedyMessage key={call.id} kind="ask" meta={`Remedy · asked ${timeAgo(call.requestedAt, now)}`}>
                 <span className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
                   {call.incidentId !== undefined && (
                     <Link to={`/incidents/${call.incidentId}`} className={linkClass}>

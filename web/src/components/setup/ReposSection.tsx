@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import { useNow } from '@/useNow.ts'
+import { useClock } from '@/useClock.ts'
 
 /** The repositories Remedy watches for failed checks. Without a GitHub connection there is nothing to list. */
 export default function ReposSection({ connected }: { connected: boolean }) {
@@ -19,7 +19,7 @@ export default function ReposSection({ connected }: { connected: boolean }) {
   const [error, setError] = useState('')
   const [loadError, setLoadError] = useState('')
   const [formError, setFormError] = useState('')
-  const now = useNow(60_000).getTime()
+  const now = useClock()
   const formErrorId = useId()
 
   const reload = useCallback(

@@ -4,7 +4,7 @@ import { api, ApiError } from '@/api.ts'
 import type { GitHubConnection } from '@/api.ts'
 import { timeAgo } from '@/incidents.ts'
 import { connectionView, readingIntro } from '@/setup.ts'
-import { useNow } from '@/useNow.ts'
+import { useClock } from '@/useClock.ts'
 import ConfirmButton from '@/components/ConfirmButton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -26,7 +26,7 @@ export default function GitHubSection({ connection, onChange }: Props) {
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState('')
-  const now = useNow(60_000).getTime()
+  const now = useClock()
   // Set when the form closes; the next render of "Replace token" takes the focus, so a keyboard user does not lose their place.
   const returnFocus = useRef(false)
 

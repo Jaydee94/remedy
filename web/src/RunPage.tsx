@@ -4,7 +4,8 @@ import { api, ApiError } from './api.ts'
 import { canCancel, runFailure, runMeta, runSteps, summarizeEvent } from './runview.ts'
 import { useShellHeader } from './shellContext.ts'
 import { phaseView, runPhase } from './status.ts'
-import { timeOfDay } from './timeline.ts'
+import { dayTimeLabel } from './timeline.ts'
+import { useClock } from './useClock.ts'
 import { useRun } from './useRun.ts'
 import ToolCallsCard from './ToolCallsCard.tsx'
 import ApprovalAsk from '@/components/conversation/ApprovalAsk'
@@ -23,6 +24,7 @@ const summaryClass = 'cursor-pointer rounded-sm text-[13px] text-muted-foregroun
 /** One run as a conversation: what was asked, what the agent did, what it answered, and what waits for a decision. */
 export default function RunPage({ id }: { id: string }) {
   const navigate = useNavigate()
+  const now = useClock()
   const { run, events, calls, status, ended, missing, error: loadError, refresh } = useRun(id)
   useShellHeader(run ? { title: 'Run', back: run.incidentId !== undefined ? `/incidents/${run.incidentId}` : '/runs' } : null)
   const [error, setError] = useState('')
@@ -89,7 +91,7 @@ export default function RunPage({ id }: { id: string }) {
   const view = phaseView[phase]
   const failure = runFailure(run)
   const responder = run.role === 'responder'
-  const time = timeOfDay(run.startedAt ?? run.createdAt)
+  const time = dayTimeLabel(run.startedAt ?? run.createdAt, now)
 
   return (
     <div className="mx-auto flex max-w-190 flex-col gap-5 px-4 py-5 md:px-10 md:py-12">
