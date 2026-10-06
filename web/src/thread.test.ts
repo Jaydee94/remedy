@@ -189,6 +189,16 @@ describe('buildThread: the diagnosis', () => {
     assert.equal(at({}, []), '2026-10-05T07:00:00Z')
   })
 
+  it('times a diagnosis by when it was written, not by the start of a later attempt that failed', () => {
+    const at = buildThread({
+      incident: inc({ state: 'diagnosed', diagnosis, diagnosedAt: '2026-10-05T08:00:00Z', lastDiagnosisAt: '2026-10-05T09:30:00Z' }),
+      activity: [],
+      questionRuns: [],
+      asks: [],
+    }).find((i) => i.type === 'diagnosis')?.at
+    assert.equal(at, '2026-10-05T08:00:00Z')
+  })
+
   it('names the head commit when the diagnosed commit is empty', () => {
     const d = buildThread({ incident: inc({ state: 'diagnosed', diagnosis, diagnosedSha: '' }), activity: [], questionRuns: [], asks: [] }).find((i) => i.type === 'diagnosis')
     assert.ok(d && d.type === 'diagnosis')

@@ -41,7 +41,7 @@ A fresh git worktree has no `web/node_modules`: run `make web-install` first, ot
 
 Seeding the SQLite database by hand: timestamps need nine fractional digits (`2026-10-04T12:00:00.000000000Z`, in SQL `strftime('%Y-%m-%dT%H:%M:%S','now') || '.000000000Z'`), otherwise the API answers 500. Today's feed is ordered by activity id, so insert seed rows oldest first.
 
-An incident row also needs `source`, `key` and `title` (since migration 008). A GitHub row's key is `repo_id || char(31) || ref || char(31) || check_name` in SQL; an `alertmanager` or `argocd` row takes its own key and has no `repo_id`. The table refuses a row that has a repository and is not GitHub's, or the reverse.
+An incident row also needs `source`, `key` and `title` (since migration 008). A GitHub row's key is `repo_id || char(31) || ref || char(31) || check_name` in SQL; an `alertmanager` or `argocd` row takes its own key and has no `repo_id`. The table refuses a row that has a repository and is not GitHub's, or the reverse. A diagnosed row also needs `diagnosed_at` (since migration 009) for Today's digest and its "Read the diagnosis" link.
 
 Admin sessions are in memory: restarting the server signs everyone out. The next request that answers 401 (the shell polls every two seconds) shows the login page with "Your session ended. Please sign in again."; until then Today's live feed shows "Live updates stopped." with a Reload button.
 

@@ -308,7 +308,7 @@ describe('digestText', () => {
   })
 
   it('does not count an old diagnosis whose re-diagnosis failed recently', () => {
-    const list = [inc({ firstSeen: hoursAgo(40), state: 'open', diagnosis, lastDiagnosisAt: hoursAgo(1), diagnosedAt: hoursAgo(30) })]
+    const list = [inc({ firstSeen: hoursAgo(40), state: 'diagnosed', diagnosis, lastDiagnosisAt: hoursAgo(1), diagnosedAt: hoursAgo(30) })]
     assert.equal(digestText(now, list, 0), "All quiet. Nothing opened in the last 24 hours, and I'm still watching.")
   })
 

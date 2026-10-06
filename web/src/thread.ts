@@ -49,7 +49,7 @@ export function buildThread({ incident, activity, questionRuns, asks, lastRespon
     items.push({
       type: 'diagnosis',
       key: 'diagnosis',
-      at: finished?.at ?? incident.lastDiagnosisAt ?? incident.lastSeen,
+      at: finished?.at ?? incident.diagnosedAt ?? incident.lastDiagnosisAt ?? incident.lastSeen,
       diagnosis: incident.diagnosis,
       outdated: !!incident.diagnosedSha && incident.diagnosedSha !== incident.headSha,
       sha: incident.diagnosedSha || incident.headSha,
