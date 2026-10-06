@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef } from 'react'
 import { emptyShell } from './shell.ts'
 import type { Header, ShellState } from './shell.ts'
 import { useToast } from './toast.ts'
@@ -18,12 +18,20 @@ export function useShellState(): ShellState {
   return useContext(ShellStateContext)
 }
 
-/** The way to sign out, for a page or the sidebar. A failed request keeps the session and says so; it never rejects. */
+/** The way to sign out, for a page or the sidebar. A failed request keeps the session and says so; it never rejects. A second call while one runs is ignored. */
 export function useSignOut(): () => void {
   const { signOut } = useContext(ShellContext)
   const toast = useToast()
+  const running = useRef(false)
   return useCallback(() => {
-    void Promise.resolve(signOut()).catch(() => toast.show('Could not sign out. Check the connection and try again.'))
+    if (running.current) return
+    running.current = true
+    void Promise.resolve()
+      .then(signOut)
+      .catch(() => toast.show('Could not sign out. Check the connection and try again.'))
+      .finally(() => {
+        running.current = false
+      })
   }, [signOut, toast])
 }
 

@@ -131,6 +131,32 @@ describe('buildThread: the diagnosis', () => {
     assert.ok(u && u.type === 'undiagnosed' && u.reason === 'source')
   })
 
+  it('shows a failure when a diagnosis was started and nothing came of it, even without a failed run in the list', () => {
+    const at = '2026-10-05T07:50:00Z'
+    const mk = (over: Partial<Incident>, lastResponder?: Run) =>
+      buildThread({ incident: inc(over), activity: [], questionRuns: [], asks: [], lastResponder }).find((i) => i.type === 'undiagnosed')
+    for (const last of [undefined, run({ role: 'responder', status: 'succeeded' })]) {
+      const u = mk({ lastDiagnosisAt: at }, last)
+      assert.ok(u && u.type === 'undiagnosed')
+      assert.equal(u.reason, 'failed')
+      assert.equal(u.runId, undefined)
+    }
+    const withRun = mk({ lastDiagnosisAt: at }, run({ id: 'rf', role: 'responder', status: 'failed' }))
+    assert.ok(withRun && withRun.type === 'undiagnosed' && withRun.reason === 'failed' && withRun.runId === 'rf')
+    const none = mk({})
+    assert.ok(none && none.type === 'undiagnosed' && none.reason === 'fresh' && none.runId === undefined)
+    const manual = mk({ autoDiagnose: false })
+    assert.ok(manual && manual.type === 'undiagnosed' && manual.reason === 'manual')
+    const other = mk({ source: 'alertmanager', repoId: 0, repo: '', ref: '', lastDiagnosisAt: at })
+    assert.ok(other && other.type === 'undiagnosed' && other.reason === 'source')
+  })
+
+  it('does not change a stored diagnosis because a diagnosis was started', () => {
+    const items = buildThread({ incident: inc({ state: 'diagnosed', diagnosis, lastDiagnosisAt: '2026-10-05T07:50:00Z' }), activity: [], questionRuns: [], asks: [] })
+    assert.ok(!types(items).includes('undiagnosed'))
+    assert.ok(types(items).includes('diagnosis'))
+  })
+
   it('does not change a stored diagnosis because the last responder run failed', () => {
     const items = buildThread({ incident: inc({ state: 'diagnosed', diagnosis }), activity: [], questionRuns: [], asks: [], lastResponder: run({ role: 'responder', status: 'failed' }) })
     assert.ok(!types(items).includes('undiagnosed'))

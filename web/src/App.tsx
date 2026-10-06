@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router'
-import { api, setUnauthorizedHandler } from './api.ts'
+import { ApiError, api, setUnauthorizedHandler } from './api.ts'
 import AppLayout from './components/AppLayout.tsx'
 import AskPage from './AskPage.tsx'
 import ConversationsPage from './ConversationsPage.tsx'
@@ -43,8 +43,9 @@ export default function App() {
     api.me().then(() => setAuth('in')).catch(() => setAuth('out'))
   }, [])
 
-  // Many polls may answer 401 at once: setting the same state again is harmless.
-  useEffect(() => {
+  // Many polls may answer 401 at once: setting the same state again is harmless. A layout effect, because the passive effects of the pages
+  // start their first requests only after it: a request that began before the handler was set (a new epoch) would not report its 401.
+  useLayoutEffect(() => {
     if (auth !== 'in') return
     setUnauthorizedHandler(() => {
       setExpired(true)
@@ -67,7 +68,14 @@ export default function App() {
   }
 
   async function signOut() {
-    await api.logout()
+    try {
+      await api.logout()
+    } catch (err) {
+      // A 401 means the session was already gone, which is what signing out wants. Anything else keeps the session.
+      if (!(err instanceof ApiError && err.status === 401)) throw err
+    }
+    // No handler from here on: a late 401 of a poll must not turn a deliberate sign out into "Your session ended".
+    setUnauthorizedHandler(null)
     setAuth('out')
   }
 

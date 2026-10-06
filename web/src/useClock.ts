@@ -22,5 +22,11 @@ function subscribe(listener: () => void) {
 
 /** The current time in milliseconds, refreshed every 30 seconds for every component that asks: for "N min ago", never for logic. */
 export function useClock(): number {
-  return useSyncExternalStore(subscribe, () => now, () => now)
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+}
+
+/** Without a subscriber nothing ticks, so a stale value is renewed here; the stored value keeps two calls in a row equal. */
+function getSnapshot(): number {
+  if (listeners.size === 0 && Date.now() - now > TICK_MS) now = Date.now()
+  return now
 }

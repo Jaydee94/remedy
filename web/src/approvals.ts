@@ -36,6 +36,11 @@ export function outcomeText(call: ToolCall): string {
   }
 }
 
+/** The size of `text` in UTF-8 bytes. */
+export function byteLength(text: string): number {
+  return new TextEncoder().encode(text).length
+}
+
 /** `text` cut to at most `max` UTF-8 bytes, on a character boundary (the server limits some fields in bytes, not characters). */
 export function limitBytes(text: string, max: number): string {
   const encoder = new TextEncoder()

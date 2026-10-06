@@ -55,7 +55,8 @@ export function buildThread({ incident, activity, questionRuns, asks, lastRespon
       runId: diagnosisRun?.id ?? incident.runId,
     })
   } else if (incident.state === 'open') {
-    const failed = lastResponder?.status === 'failed'
+    // A diagnosis that was started (lastDiagnosisAt) and left no diagnosis failed, even when its run is not in the list.
+    const failed = lastResponder?.status === 'failed' || incident.lastDiagnosisAt !== undefined
     const reason = incident.source !== 'github' ? 'source' : failed ? 'failed' : !incident.autoDiagnose ? 'manual' : 'fresh'
     items.push({
       type: 'undiagnosed',
@@ -63,7 +64,7 @@ export function buildThread({ incident, activity, questionRuns, asks, lastRespon
       at: incident.lastSeen,
       reason,
       sourceLabel: sourceLabel(incident.source),
-      runId: reason === 'failed' ? lastResponder?.id : undefined,
+      runId: reason === 'failed' && lastResponder?.status === 'failed' ? lastResponder.id : undefined,
     })
   }
   if (incident.state === 'diagnosing') {

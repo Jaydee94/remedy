@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { limitBytes } from './approvals.ts'
+import { byteLength, limitBytes } from './approvals.ts'
 
 const size = (text: string) => new TextEncoder().encode(text).length
 
@@ -40,5 +40,15 @@ describe('limitBytes', () => {
   it('always fits the limit', () => {
     const text = 'aä€😀'.repeat(50)
     for (let max = 0; max <= 120; max++) assert.ok(size(limitBytes(text, max)) <= max)
+  })
+})
+
+describe('byteLength', () => {
+  it('counts UTF-8 bytes, not characters', () => {
+    assert.equal(byteLength(''), 0)
+    assert.equal(byteLength('abc'), 3)
+    assert.equal(byteLength('ä'), 2)
+    assert.equal(byteLength('😀'), 4)
+    assert.equal(byteLength('aä😀'), 7)
   })
 })
