@@ -10,7 +10,7 @@ CLIs (Claude Code, Antigravity CLI), without API tokens.
 > under **Setup**, and see failed checks of their pull requests and default branches as
 > **incidents**. For a real failure a read-only agent reads the failure log and a copy of the repository
 > and stores a **diagnosis** on the incident (cause, confidence, affected files, proposed fix), on its own
-> within limits or by a click. Everything Remedy does shows up in a live **timeline**, and the GitHub
+> within limits or by a click. Everything Remedy does shows up in a live feed on **Today**, and the GitHub
 > client is read-only down to its HTTP transport. Agents get tools through an MCP gatekeeper whose mutating tools wait for your
 > approval. The fixer, cluster access and the learning graph come next (see
 > [`docs/design.md`](docs/design.md), [`docs/specs/`](docs/specs/) and [`docs/plans/`](docs/plans/)).
@@ -69,20 +69,20 @@ token) and add repositories. `REMEDY_GITHUB_API_URL` (default `https://api.githu
 
 Remedy polls the enabled repositories with that token every 60 seconds (`REMEDY_POLL_INTERVAL`, a Go
 duration of at least `10s`) and never writes to GitHub. A failed check becomes an incident under
-**Incidents**, and it resolves when the check is green again or the pull request is closed. The runner stops a
+**Conversations**, and it resolves when the check is green again or the pull request is closed. The runner stops a
 run that takes longer than 10 minutes (`REMEDY_RUN_TIMEOUT`, set on the runner); the server fails runs that
 stay `running` for more than 15 minutes, for example because the runner died.
 
 For a failed check (`failure`, `timed_out`, `startup_failure`) Remedy starts a read-only diagnosis on its own,
 within limits: at most 3 per incident (`REMEDY_DIAGNOSE_MAX_PER_INCIDENT`), 15 minutes apart
 (`REMEDY_DIAGNOSE_COOLDOWN`), 20 per 24 hours (`REMEDY_DIAGNOSE_MAX_PER_DAY`, `0` turns it off), one run at a time.
-**Diagnose** on an incident starts one by hand and ignores the limits. The agent runs on your subscription login
+**Diagnose now** or **Diagnose again** in an incident's thread starts one by hand and ignores the limits. The agent runs on your subscription login
 through the runner. It gets the job log, the pull request and a copy of the repository at the failing commit, can
 only read, and its answer is checked before it is stored. Secret-looking text is removed from what it is sent, and
 files named `.env*`, `*.pem`, `*.key` and `id_rsa*` are not part of the copy; a secret in any other file would be
 readable by the agent. The runner never receives a GitHub token: the control plane fetches the copy.
 
-Open <http://localhost:8080> and sign in. The home page is the **Timeline**, a live feed of everything Remedy
+Open <http://localhost:8080> and sign in. The home page is **Today**, a live feed of everything Remedy
 does: incidents, diagnoses, polling problems, changes to the settings. Under **Ask Remedy** you can start an agent run by
 hand, with or without the gatekeeper tools: a run with tools can read incidents and ask to add a note to one, and every note waits
 for your decision under **Needs you** (the run waits with it, as long as it takes; **Cancel run** ends it). A first run against the

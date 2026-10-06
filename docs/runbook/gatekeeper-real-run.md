@@ -49,9 +49,9 @@ On **Ask Remedy**, switch on the chip **Use gatekeeper tools** and start a run w
 
 > Use your tools to look at incident 1, then add a short note to it that says what you found. Reply with "finished" when the note is added.
 
-Expected: the run page shows the badge **tools**, the **Tool calls** card gets a read call (`incident_get` or
-`incident_list`) and then an `incident_add_note` call "waiting for you", the banner "This run is waiting for your approval"
-appears, and **Needs you** in the sidebar shows 1. The card shows the note the agent wants to add.
+Expected: the run page's meta line reads "Ad-hoc · tools · <time>", the **Tool calls** list gets a read call (`incident_get` or
+`incident_list`) and then an `incident_add_note` call, the status chip says "Waiting for you" and the run shows the question
+"May I add a note to incident #1?", and **Needs you** in the sidebar shows 1. The question shows the note the agent wants to add.
 
 Now wait **more than 11 minutes** without deciding. Every minute check that the run is still `running`:
 `curl -s -b cookies http://localhost:8080/api/runs/<id> | jq .status`, and that `runner.log` has no "run timed out" and no "heartbeat failed".
@@ -65,7 +65,7 @@ ls -l "$WS"/*-mcp-*/mcp.json     # -rw------- and a directory of its own, next t
 ```
 
 Then **Yes, add it** with a reason. Expected: the agent receives "note added" and finishes, the run ends `succeeded`, the incident's
-history (`/incidents/1`) shows "Note added to incident #1 by an agent: ...", the Timeline shows `approval_requested`,
+history (`/incidents/1`) shows "Note added to incident #1 by an agent: ...", Today shows `approval_requested`,
 `approval_decided` and `note_added`, and the config file and its directory are gone from the workspace root.
 
 ## 3. Scenario B: a denial
@@ -76,7 +76,7 @@ Start the same run again and **No** with the reason "not now". Expected: the age
 ## 4. Scenario C: cancelling a waiting run
 
 Start the run again and, while it waits, click **Cancel run** and confirm. Expected: "Cancelling: the runner is stopping the agent." for
-a few seconds, then the run is `failed` with the badge **cancelled**, the approval is abandoned (it leaves the waiting list), no `claude`
+a few seconds, then the run is `failed` with a failure card titled **Cancelled**, the approval is abandoned (it leaves the waiting list), no `claude`
 process of that run is left (`pgrep -fl -- '--mcp-config .*-mcp-[0-9]+/mcp.json'` shows nothing), and the runner takes the next run at once: start a short plain
 run and see it finish.
 
@@ -97,7 +97,7 @@ The CLI replays its in-flight call while it shuts down (see the [spike](../resea
 ## 6. Scenario E: the runner dies
 
 Start the run again, wait for the approval, and kill the runner hard (`kill -9` its process); then `pkill -f -- '--mcp-config .*-mcp-[0-9]+/mcp.json'` for the orphaned CLI.
-Wait about three minutes. Expected: the reaper fails the run with the badge **runner lost** and the result text about the runner, and the
+Wait about three minutes. Expected: the reaper fails the run with a failure card titled **The runner was lost** and the result text about the runner, and the
 approval is abandoned. Start the runner again; it works as before.
 
 ## 7. The audit

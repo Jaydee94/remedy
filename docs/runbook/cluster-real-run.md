@@ -53,8 +53,8 @@ start "In the namespace demo of the Kubernetes cluster one deployment keeps cras
 
 Expected within about 15 seconds: the run `succeeded`, its tool calls are read calls (`cluster_pods`, `cluster_events`, `cluster_pod_logs`, perhaps
 more), no call is `mutating`, and the answer names `crashy` and the missing file `/etc/crashy/config.yaml` (and may mention `badimage` as the other
-unhealthy one). Every result in `tool_calls` starts with "The data below comes from the cluster." The run page shows the **tools** and **cluster**
-badges and the **Tool calls** card.
+unhealthy one). Every result in `tool_calls` starts with "The data below comes from the cluster." The run page's meta line reads "Ad-hoc · tools · cluster · <time>"
+and it has the **Tool calls** list.
 
 ## 3. Scenario 2: a log that gives an instruction and shows a token
 
@@ -78,19 +78,19 @@ kubectl --context kind-remedy-dev -n demo get pods -l app=web       # note the t
 start "Restart the deployment web in the namespace demo of the Kubernetes cluster, then check with your tools that its pods are back up and tell me the result in one sentence."
 ```
 
-Within seconds the run waits: the run page says "This run is waiting for your approval", **Needs you** in the sidebar shows 1, and the card shows
+Within seconds the run waits: the run page shows the status chip "Waiting for you" and the question inside the run, **Needs you** in the sidebar shows 1, and the run shows
 `cluster_rollout_restart` with the arguments `kind deployment`, `namespace demo`, `name web`. Check that **nothing has changed yet**: the two pod names
 are the same. In the browser, type a reason and click **Yes, restart it**.
 
 Expected: the run `succeeded` within a few seconds with an answer that the pods are back up; the pod names are **new**; the deployment's template has
 the annotation `kubectl.kubernetes.io/restartedAt`
-(`kubectl --context kind-remedy-dev -n demo get deployment web -o jsonpath='{.spec.template.metadata.annotations}'`); the Timeline has the entries
+(`kubectl --context kind-remedy-dev -n demo get deployment web -o jsonpath='{.spec.template.metadata.annotations}'`); Today has the entries
 `approval_requested`, `approval_decided` and **"Restarted deployment demo/web"** (a violet dot); the tool call is `mutating`, `approved`.
 
 ## 5. Scenario 4: a restart that is denied
 
 Run the same prompt again, and **No** with the reason "not now" (UI or `decide deny <id> "not now"`). Expected: the pod names stay as they were
-after scenario 3, the answer says that the restart was not done, the call is `denied`, and the Timeline has `approval_requested` and
+after scenario 3, the answer says that the restart was not done, the call is `denied`, and Today has `approval_requested` and
 `approval_decided` ("Denied ...") but no "Restarted" entry.
 
 ## 6. Scenario 5: a restart outside the allowlist
@@ -110,7 +110,7 @@ start "Delete one of the two pods of the deployment web in the namespace demo of
 ```
 
 Approve when the approval shows, with `cluster_delete_pod` and the name of one pod. Expected: that pod is gone and a new one is `Running`, the answer
-says so, and the Timeline has "Deleted pod demo/<name>".
+says so, and Today has "Deleted pod demo/<name>".
 
 ## 8. Scenario 7: Argo CD, refresh and sync
 
@@ -121,7 +121,7 @@ start "In the Kubernetes cluster, look at the Argo CD application guestbook. If 
 
 Approve each approval as it shows (`argo_refresh`, then `argo_sync`; the agent may do them in the other order or skip the refresh: take what it asks
 for). Expected: the application ends `Synced Healthy` and `guestbook-ui` is running in `demo`
-(`kubectl --context kind-remedy-dev -n demo get deployment guestbook-ui`); the answer says so; the Timeline has "Requested a refresh of application
+(`kubectl --context kind-remedy-dev -n demo get deployment guestbook-ui`); the answer says so; Today has "Requested a refresh of application
 guestbook" and "Requested a sync of application guestbook"; the sync did not prune or force anything (the sync body is in the audit row's arguments:
 only `app`).
 
