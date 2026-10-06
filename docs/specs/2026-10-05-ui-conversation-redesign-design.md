@@ -1,6 +1,6 @@
 # UI redesign: Remedy speaks
 
-Status: draft for the maintainer's review, 2026-10-05. Implementation plans: [`ui-0-backend`](../plans/ui-0-backend.md), implemented; ui-1 to ui-5 are not written yet (see 11).
+Status: draft for the maintainer's review, 2026-10-05. Implementation plans: `ui-0` to `ui-5` in [`docs/plans/`](../plans/), all implemented (see 11).
 Parent documents: [`../design.md`](../design.md) (section 2.8, the roadmap),
 [`2026-10-02-phase-1-detect-and-diagnose-design.md`](2026-10-02-phase-1-detect-and-diagnose-design.md) (incidents, the timeline, the diagnosis),
 [`2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md`](2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md) (approvals, the run view) and
@@ -256,7 +256,7 @@ Replaces `SettingsPage`, `GitHubConnectionCard`, `ReposCard` and `LimitsCard`. O
   jaydee94/homelab."), then the API answers. Without a connection: "Connect GitHub first."
 - **My limits.** A Literata paragraph built from `GET /api/limits` ("I check every minute. I diagnose up to 3 times per incident and 20 times per 24 hours, at
   least 15 minutes apart, one run at a time. A run that stays running for 15 minutes is failed.") or, when `diagnoseMaxPerDay` is 0, "I don't diagnose on my own;
-  you can start it by hand." With a limit above 0, a bar "Automatic diagnoses today: `diagnosesLast24h` of N" and the note that the server's environment sets the
+  you can start it by hand." With a limit above 0, a bar "Automatic diagnoses in the last 24 hours: `diagnosesLast24h` of N" and the note that the server's environment sets the
   limits. The paragraph is `limitsText` in `setup.ts`.
 - On a phone "Sign out" is the last element of the page.
 

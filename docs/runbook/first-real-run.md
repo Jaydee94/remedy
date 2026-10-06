@@ -38,13 +38,13 @@ anyway.
 
 ## 3. Connect and register
 
-Open <http://localhost:8080>, sign in, go to **Settings**, paste the token into the GitHub connection field and
-save, then add the repository `Jaydee94/remedy`. The **Timeline** (home) shows "connected" and "added" entries.
+Open <http://localhost:8080>, sign in, go to **Setup**, paste the token into the GitHub connection field and
+save, then add the repository `Jaydee94/remedy`. **Today** (home) shows "connected" and "added" entries.
 
 ## 4. A real red check: the Renovate pull request
 
 Pull request 20 (the TypeScript 7 update) fails `npm ci` while it is open; if it has been closed or fixed since, skip to section 5. Within about a minute of adding the
-repository the Timeline shows an **incident opened** entry for it, then **diagnosing**, and a few minutes later
+repository Today shows an **incident opened** entry for it, then **diagnosing**, and a few minutes later
 **diagnosis finished**. Open the incident: the diagnosis should name the lock file mismatch in `web/`.
 
 ## 5. A deliberately red pull request, fixed again
@@ -67,7 +67,7 @@ gh pr create --title "do not merge: deliberately red check for the Remedy real r
   --body "Opened on purpose to see Remedy detect, diagnose and resolve a red check. Closed without merging."
 ```
 
-When CI has failed, the Timeline shows an incident for the new pull request and, shortly after, its diagnosis;
+When CI has failed, Today shows an incident for the new pull request and, shortly after, its diagnosis;
 the diagnosis should name `internal/store/zz_real_run_test.go`. Then fix it:
 
 ```sh
@@ -76,7 +76,7 @@ git commit -m "test: remove the deliberately red check"
 git push
 ```
 
-When CI is green, the incident resolves with the reason "the check turned green", and the Timeline shows it.
+When CI is green, the incident resolves with the reason "the check turned green", and Today shows it.
 Finally close the pull request without merging and delete the branch:
 
 ```sh

@@ -3,14 +3,13 @@ import { Navigate, Route, Routes, useParams } from 'react-router'
 import { api } from './api.ts'
 import AppLayout from './components/AppLayout.tsx'
 import AskPage from './AskPage.tsx'
-import LegacyPage from './components/LegacyPage.tsx'
 import ConversationsPage from './ConversationsPage.tsx'
 import IncidentThreadPage from './IncidentThreadPage.tsx'
 import Login from './Login.tsx'
 import NeedsYouPage from './NeedsYouPage.tsx'
 import NotFound from './NotFound.tsx'
 import RunPage from './RunPage.tsx'
-import SettingsPage from './SettingsPage.tsx'
+import SetupPage from './SetupPage.tsx'
 import TodayPage from './TodayPage.tsx'
 
 /** Mounts RunPage with key={id} so that switching runs resets its state. */
@@ -23,6 +22,11 @@ function RunRoute() {
 function IncidentRoute() {
   const id = Number(useParams().id)
   if (Number.isInteger(id) && id > 0) return <IncidentThreadPage key={id} id={id} />
+  return <NotFoundPage />
+}
+
+/** A page that does not exist, in the same column as the others. */
+function NotFoundPage() {
   return (
     <div className="mx-auto max-w-190 px-4 py-10 md:px-10">
       <NotFound />
@@ -54,10 +58,8 @@ export default function App() {
         <Route path="approvals" element={<NeedsYouPage />} />
         <Route path="runs" element={<AskPage />} />
         <Route path="runs/:id" element={<RunRoute />} />
-        <Route element={<LegacyPage />}>
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="*" element={<NotFound />} />
-        </Route>
+        <Route path="settings" element={<SetupPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   )

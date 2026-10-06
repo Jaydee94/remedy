@@ -6,10 +6,11 @@ interface Props {
   confirmLabel: string
   onConfirm: () => void
   disabled?: boolean
+  className?: string
 }
 
 /** A destructive action that needs a second click. It disarms itself when it loses focus. */
-export default function ConfirmButton({ label, confirmLabel, onConfirm, disabled }: Props) {
+export default function ConfirmButton({ label, confirmLabel, onConfirm, disabled, className }: Props) {
   const [armed, setArmed] = useState(false)
 
   return (
@@ -18,6 +19,7 @@ export default function ConfirmButton({ label, confirmLabel, onConfirm, disabled
       size="sm"
       variant={armed ? 'destructive' : 'outline'}
       disabled={disabled}
+      className={className}
       onBlur={() => setArmed(false)}
       onClick={() => {
         if (!armed) {
