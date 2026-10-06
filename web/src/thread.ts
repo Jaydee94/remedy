@@ -1,3 +1,4 @@
+import { askText } from './ask.ts'
 import type { ActivityEntry, Diagnosis, Incident, Run, ToolCall } from './api.ts'
 import { sourceLabel } from './incidents.ts'
 import { kindDotClass } from './timeline.ts'
@@ -84,4 +85,47 @@ export function buildThread({ incident, activity, questionRuns, asks, lastRespon
 
   // Array.prototype.sort is stable: a question stays before its answer when both carry the same time.
   return items.sort((x, y) => time(x.at) - time(y.at))
+}
+
+const oneLine = (text: string, max: number) => {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  // Cut by code points: a UTF-16 cut could leave half of an emoji.
+  const points = Array.from(flat)
+  return points.length > max ? `${points.slice(0, max).join('').trimEnd()}…` : flat
+}
+
+/** An announcement of a thread: the sentence, and the identity of the message it describes. */
+export interface Announcement {
+  key: string
+  text: string
+}
+
+/** The announcement of one item, or null when it is not worth announcing (or has nothing to say yet). A value from an agent is cut and inserted. */
+function announcementOf(item: ThreadItem): Announcement | null {
+  let text = ''
+  switch (item.type) {
+    case 'ask':
+      text = `Remedy asks you: ${oneLine(askText(item.call).question, 120)}`
+      break
+    case 'diagnosis':
+      // The key is the item and its text: a re-diagnosis with an identical summary is not announced twice (the `working` message
+      // before it was).
+      text = `Remedy diagnosed this incident: ${oneLine(item.diagnosis.summary, 100)}`
+      break
+    case 'answer':
+      if (item.run.status === 'succeeded') text = `Remedy answered your question: ${oneLine(item.run.prompt, 60)}`
+      else if (item.run.status === 'failed') text = `Remedy could not answer your question: ${oneLine(item.run.prompt, 60)}`
+      break
+    case 'working':
+      text = 'Remedy is looking into this incident.'
+      break
+  }
+  if (!text) return null
+  // A second diagnosis of the same incident says the same words: its run tells it from the first.
+  return { key: `${item.key}|${item.type === 'working' ? `${item.runId ?? ''}|` : ''}${text}`, text }
+}
+
+/** Every message of a thread worth announcing, oldest first: what a page has already shown when it has loaded. */
+export function allAnnouncements(items: readonly ThreadItem[]): Announcement[] {
+  return items.flatMap((item) => announcementOf(item) ?? [])
 }

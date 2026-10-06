@@ -16,10 +16,12 @@ import {
 } from './incidents.ts'
 import { runFailure } from './runview.ts'
 import { useShellHeader, useShellState } from './shellContext.ts'
-import { buildThread } from './thread.ts'
+import { allAnnouncements, buildThread } from './thread.ts'
 import type { ThreadItem } from './thread.ts'
 import { dayTimeLabel } from './timeline.ts'
+import { useAnnouncement } from './useAnnouncement.ts'
 import { useClock } from './useClock.ts'
+import { useFocusRestore } from './useFocusRestore.ts'
 import { useIncidentThread } from './useIncidentThread.ts'
 import { useToast } from './toast.ts'
 import RefLink from './RefLink.tsx'
@@ -46,7 +48,7 @@ const undiagnosedText = {
 /** The incident as a conversation: its history, Remedy's diagnosis, what the maintainer asked, what waits for a decision. */
 export default function IncidentThreadPage({ id }: { id: number }) {
   const { detail, runs, error, missing, reload } = useIncidentThread(id)
-  const { asks } = useShellState()
+  const { asks, asksLoaded } = useShellState()
   const toast = useToast()
   const now = useClock()
   const incident = detail?.incident
@@ -70,6 +72,10 @@ export default function IncidentThreadPage({ id }: { id: number }) {
         : [],
     [incident, detail, runs, asks],
   )
+  // The asks come from the shell: until it has answered once, an ask that is already pending would look like news.
+  const history = useMemo(() => allAnnouncements(items), [items])
+  const announcement = useAnnouncement(history, incident !== undefined && asksLoaded)
+  const { target: heading, restore } = useFocusRestore<HTMLHeadingElement>()
 
   if (missing) {
     return (
@@ -83,10 +89,12 @@ export default function IncidentThreadPage({ id }: { id: number }) {
   }
 
   async function diagnose() {
+    if (diagnoseBusy) return
     setDiagnoseBusy(true)
     setDiagnoseFailure(null)
     try {
       await api.diagnoseIncident(id)
+      void restore() // before the reload: it remembers the focused button, which the reload may remove (not awaited: the busy state must not wait for it)
       await reload()
     } catch (e) {
       setDiagnoseFailure({ state: incident?.state ?? '', message: e instanceof ApiError ? e.message : 'Could not start the diagnosis' })
@@ -195,7 +203,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
                   </span>
                 )}
                 <div>
-                  <Button disabled={diagnoseBusy} onClick={() => void diagnose()}>
+                  <Button aria-disabled={diagnoseBusy} className="aria-disabled:pointer-events-none aria-disabled:opacity-50" onClick={() => void diagnose()}>
                     {item.reason === 'manual' ? 'Diagnose' : item.reason === 'failed' ? 'Diagnose again' : 'Diagnose now'}
                   </Button>
                   {item.reason === 'failed' && item.runId && (
@@ -211,7 +219,10 @@ export default function IncidentThreadPage({ id }: { id: number }) {
       case 'ask':
         return (
           <RemedyMessage key={item.key} kind="ask" meta={`Remedy · asked ${timeAgo(item.call.requestedAt, now)}`}>
-            <ApprovalAsk call={item.call} onChanged={() => void reload()} />
+            <ApprovalAsk call={item.call} onChanged={() => {
+                const back = restore() // before the reload: it remembers the focused button, which the reload removes
+                void reload().then(() => back)
+              }} />
           </RemedyMessage>
         )
       case 'question':
@@ -243,8 +254,14 @@ export default function IncidentThreadPage({ id }: { id: number }) {
               <span className="hidden text-[13px] text-muted-foreground md:block">
                 {incident.source === 'github' ? `${incident.repo} · ${refLabel(incident.ref)}` : sourceLabel(incident.source)} · Incident #{incident.id}
               </span>
-              <h1 className="font-serif text-3xl font-normal break-words max-md:sr-only">{incident.title}</h1>
+              <h1 ref={heading} tabIndex={-1} className="font-serif text-3xl font-normal break-words outline-none max-md:sr-only">
+                {incident.title}
+              </h1>
             </div>
+            {/* The span is keyed by the message: a new message with the same words still replaces the node and is announced. */}
+            <p className="sr-only" aria-live="polite" aria-atomic="true">
+              {announcement && <span key={announcement.key}>{announcement.text}</span>}
+            </p>
             {items.map((item) => renderItem(item, incident))}
             <Composer placeholder="Ask Remedy about this incident…" onSend={ask} />
           </>
@@ -313,12 +330,12 @@ export default function IncidentThreadPage({ id }: { id: number }) {
             </span>
           )}
           {incident.state === 'ignored' ? (
-            <Button variant="outline" size="sm" className="self-start" disabled={panelBusy} onClick={() => void unignore()}>
+            <Button variant="outline" size="sm" className="self-start aria-disabled:pointer-events-none aria-disabled:opacity-50" aria-disabled={panelBusy} onClick={() => void unignore()}>
               Stop ignoring
             </Button>
           ) : (
             (incident.state === 'open' || incident.state === 'diagnosing' || incident.state === 'diagnosed') && (
-              <Button variant="outline" size="sm" className="self-start" disabled={panelBusy} onClick={() => void ignore()}>
+              <Button variant="outline" size="sm" className="self-start aria-disabled:pointer-events-none aria-disabled:opacity-50" aria-disabled={panelBusy} onClick={() => void ignore()}>
                 Ignore
               </Button>
             )

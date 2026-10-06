@@ -91,6 +91,7 @@ Trust boundaries that span several files and are easy to break:
 - Everything in the repo is English: docs, plans, code, comments, commit messages, UI copy. Conversation with the maintainer may be in German.
 - Go: stdlib-first (`net/http` method patterns, `log/slog`). A new dependency needs a reason; today there are only `modernc.org/sqlite` (pure Go, no cgo) and `golang.org/x/crypto`.
 - `web/tsconfig.app.json` sets `erasableSyntaxOnly` and `verbatimModuleSyntax`: no enums or constructor parameter properties, and `import type` for types.
+- UI: a button that starts a request keeps the keyboard focus (`aria-disabled` plus a guard in the handler, not `disabled`); when a control unmounts after an action, `useFocusRestore` returns the focus to the page heading; the thread's live region announces by key (`useAnnouncement`) so an old message is never repeated.
 - Test first for logic with behaviour (incident correlation, redaction, gatekeeper). Runner tests use a fake `claude` shell script from `internal/testutil` instead of the real CLI.
 - A migration that changes existing data gets a test on a database built from the earlier migration files, with a row in every table that points at the changed one (`internal/store/migrate008_test.go` is the model: it builds a 007 database from `migrations/*.sql`).
 - Fake `claude` scripts and other shell in tests run on macOS locally but on Linux in CI: no BSD-only flags (`stat -f`, `sed -i ''`, `date -j`); try the GNU form first (`stat -c %a ... || stat -f %Lp ...`).

@@ -50,9 +50,11 @@ export interface ShellState {
   incidents: Incident[]
   online: boolean
   loaded: boolean
+  /** The approvals have answered once: `asks` is then what the server said, not just empty. */
+  asksLoaded: boolean
 }
 
-export const emptyShell: ShellState = { pending: 0, asks: [], incidents: [], online: true, loaded: false }
+export const emptyShell: ShellState = { pending: 0, asks: [], incidents: [], online: true, loaded: false, asksLoaded: false }
 
 /** The statuses a reverse proxy answers when it cannot reach the server. Remedy's own routes that the shell polls never answer them. */
 export function isGatewayStatus(status: number): boolean {
@@ -62,7 +64,7 @@ export function isGatewayStatus(status: number): boolean {
 /**
  * The state after one poll. A rejection that is an HTTP answer (the route may not exist on this server, or it failed once) leaves
  * the shell online and keeps what it had for that part; any other rejection means the server cannot be reached: the shell goes
- * offline and also keeps what it had. `loaded` turns true when the incidents have answered once.
+ * offline and also keeps what it had. `loaded` turns true when the incidents have answered once, `asksLoaded` when the approvals have.
  */
 export function nextShell(
   prev: ShellState,
@@ -78,5 +80,6 @@ export function nextShell(
     incidents: incidents.status === 'fulfilled' ? incidents.value : prev.incidents,
     online: !unreachable,
     loaded: prev.loaded || incidents.status === 'fulfilled',
+    asksLoaded: prev.asksLoaded || approvals.status === 'fulfilled',
   }
 }

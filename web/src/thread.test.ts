@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { ActivityEntry, Diagnosis, Incident, Run, ToolCall } from './api.ts'
-import { buildThread } from './thread.ts'
+import { allAnnouncements, buildThread } from './thread.ts'
+import type { ThreadItem } from './thread.ts'
 
 const inc = (over: Partial<Incident> = {}): Incident => ({
   id: 27,
@@ -245,5 +246,147 @@ describe('buildThread: questions, answers and approvals', () => {
     const at = items.map((i) => Date.parse(i.at))
     assert.deepEqual([...at].sort((a, b) => a - b), at)
     assert.equal(items[items.length - 1].type, 'ask')
+  })
+})
+
+describe('announcements', () => {
+  const at = '2026-10-05T10:00:00Z'
+  const latestAnnouncement = (items: readonly ThreadItem[]) => allAnnouncements(items).at(-1) ?? null
+  const say = (items: readonly ThreadItem[]) => latestAnnouncement(items)?.text ?? ''
+  const ev = (): ThreadItem => ({ type: 'event', key: 'a1', at, dot: 'bg-muted', text: 'opened' })
+  const q = (over: Partial<Run> = {}): ThreadItem => ({ type: 'question', key: 'q1', at, run: run(over) })
+  const ans = (over: Partial<Run> = {}): ThreadItem => ({ type: 'answer', key: 'r1', at, run: run(over) })
+  const dia = (summary = 'The chart pins a removed version.'): ThreadItem => ({ type: 'diagnosis', key: 'diagnosis', at, diagnosis: { ...diagnosis, summary }, outdated: false, sha: '3f9c2ab' })
+  const working = (runId?: string): ThreadItem => ({ type: 'working', key: 'working', at, runId })
+  const undiag = (): ThreadItem => ({ type: 'undiagnosed', key: 'undiagnosed', at, reason: 'fresh', sourceLabel: 'GitHub' })
+  const ask = (over: Partial<ToolCall> = {}): ThreadItem => ({ type: 'ask', key: 'c1', at, call: call(over) })
+
+  it('is empty without items and with nothing worth announcing', () => {
+    assert.equal(say([]), '')
+    assert.equal(say([ev(), q(), undiag(), ev()]), '')
+  })
+
+  it('announces a call that waits with the question of the table', () => {
+    const a = ask({ tool: 'cluster_rollout_restart', arguments: { name: 'web', namespace: 'prod' } })
+    assert.equal(say([ev(), a]), 'Remedy asks you: May I restart web in prod?')
+  })
+
+  it('announces a diagnosis with its summary', () => {
+    assert.equal(say([ev(), dia()]), 'Remedy diagnosed this incident: The chart pins a removed version.')
+  })
+
+  it('announces that it is looking into the incident', () => {
+    assert.equal(say([ev(), working()]), 'Remedy is looking into this incident.')
+  })
+
+  it('lists every announce-worthy item, oldest first, and skips a running answer', () => {
+    const all = allAnnouncements([ev(), dia(), q(), ans({ status: 'running' }), working('run-1'), ask({ arguments: {} }), undiag()])
+    assert.deepEqual(
+      all.map((a) => a.text),
+      [
+        'Remedy diagnosed this incident: The chart pins a removed version.',
+        'Remedy is looking into this incident.',
+        'Remedy asks you: May I run cluster_rollout_restart?',
+      ],
+    )
+    assert.deepEqual(allAnnouncements([]), [])
+  })
+
+  it('gives the working message of two runs different keys', () => {
+    const a = latestAnnouncement([working('run-1')])
+    const b = latestAnnouncement([working('run-2')])
+    assert.ok(a && b)
+    assert.equal(a.text, b.text)
+    assert.notEqual(a.key, b.key)
+    assert.equal(latestAnnouncement([ev(), working('run-1')])?.key, a.key)
+  })
+
+  it('takes the newest announce-worthy item', () => {
+    assert.equal(say([dia(), ev(), working(), ev()]), 'Remedy is looking into this incident.')
+    assert.equal(say([working(), dia('Newer.'), q(), ev()]), 'Remedy diagnosed this incident: Newer.')
+    assert.equal(say([dia(), ask({ arguments: {} })]), 'Remedy asks you: May I run cluster_rollout_restart?')
+  })
+
+  it('announces an answer, and a failed one, with the question', () => {
+    assert.equal(say([q(), ans({ status: 'succeeded', prompt: 'why did it fail?' })]), 'Remedy answered your question: why did it fail?')
+    assert.equal(say([q(), ans({ status: 'failed', prompt: 'why did it fail?' })]), 'Remedy could not answer your question: why did it fail?')
+  })
+
+  it('says nothing while an answer is queued or running, and falls back to the item before it', () => {
+    for (const status of ['queued', 'running'] as const) {
+      assert.equal(say([dia(), q({ status }), ans({ status })]), 'Remedy diagnosed this incident: The chart pins a removed version.')
+      assert.equal(say([q({ status }), ans({ status })]), '')
+    }
+  })
+
+  it('gives two answers to different questions different texts', () => {
+    const a = say([ans({ id: 'a', prompt: 'first question' })])
+    const b = say([ans({ id: 'b', prompt: 'second question' })])
+    assert.notEqual(a, b)
+  })
+
+  it('cuts a long summary at 100 characters with an ellipsis and puts it on one line', () => {
+    const long = `${'word '.repeat(10)}\n\n\t${'x'.repeat(200)}`
+    const text = say([dia(long)])
+    const summary = text.slice('Remedy diagnosed this incident: '.length)
+    assert.ok(!/[\n\t]/.test(summary))
+    assert.ok(summary.endsWith('…'))
+    assert.ok(summary.length <= 101)
+    assert.ok(summary.startsWith('word word word'))
+  })
+
+  it('cuts a long question at 60 characters and leaves a short one whole', () => {
+    const long = `why\n${'y'.repeat(100)}`
+    const text = say([ans({ prompt: long })])
+    const question = text.slice('Remedy answered your question: '.length)
+    assert.ok(question.startsWith('why y'))
+    assert.ok(question.endsWith('…'))
+    assert.ok(question.length <= 61)
+    assert.equal(say([ans({ prompt: '  short   one \n' })]), 'Remedy answered your question: short one')
+  })
+
+  it('cuts the sentence of a call at 120 characters too', () => {
+    const text = say([ask({ tool: 'cluster_delete_pod', arguments: { name: 'p'.repeat(300), namespace: 'prod' } })])
+    const question = text.slice('Remedy asks you: '.length)
+    assert.ok(question.startsWith('May I delete the pod ppp'))
+    assert.ok(question.endsWith('…'))
+    assert.ok(question.length <= 121)
+  })
+
+  it('is null without items and with nothing worth announcing', () => {
+    assert.equal(latestAnnouncement([]), null)
+    assert.equal(latestAnnouncement([ev(), q(), undiag(), ans({ status: 'running' })]), null)
+  })
+
+  it('carries the key of the item and the text, stable for the same item', () => {
+    const a = latestAnnouncement([ev(), dia('Same.')])
+    const b = latestAnnouncement([ev(), ev(), dia('Same.')])
+    assert.ok(a && b)
+    assert.equal(a.key, 'diagnosis|Remedy diagnosed this incident: Same.')
+    assert.equal(a.key, b.key)
+    assert.equal(a.text, 'Remedy diagnosed this incident: Same.')
+  })
+
+  it('gives two asks with the same sentence but different call ids different keys', () => {
+    const a = allAnnouncements([{ ...ask({ id: 1, arguments: {} }), key: 'c1' }])[0]
+    const b = allAnnouncements([{ ...ask({ id: 2, arguments: {} }), key: 'c2' }])[0]
+    assert.equal(a.text, b.text)
+    assert.ok(a.key.startsWith('c1|'))
+    assert.ok(b.key.startsWith('c2|'))
+    assert.notEqual(a.key, b.key)
+  })
+
+  it('cuts by code points, not in the middle of an emoji', () => {
+    const text = say([ans({ prompt: `${'a'.repeat(59)}😀 and more` })])
+    const question = text.slice('Remedy answered your question: '.length)
+    assert.equal(question, `${'a'.repeat(59)}😀…`)
+    assert.ok(!/[\ud800-\udfff]$/.test(question.slice(0, -1)) || question.slice(0, -1).endsWith('😀'))
+  })
+
+  it('gives two diagnoses with different summaries different keys', () => {
+    const a = latestAnnouncement([dia('First.')])
+    const b = latestAnnouncement([dia('Second.')])
+    assert.ok(a && b)
+    assert.notEqual(a.key, b.key)
   })
 })

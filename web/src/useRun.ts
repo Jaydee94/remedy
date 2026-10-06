@@ -17,8 +17,8 @@ export function useRun(id: string) {
   const loaded = useRef(false)
   const seen = useRef<{ id: string; seqs: Set<number> }>({ id, seqs: new Set() })
 
-  const refresh = useCallback(() => {
-    api
+  const refresh = useCallback((): Promise<unknown> => {
+    const getRun = api
       .getRun(id)
       .then((r) => {
         loaded.current = true
@@ -29,7 +29,9 @@ export function useRun(id: string) {
         if (e instanceof ApiError && e.status === 404) setMissing(true)
         else if (!loaded.current) setError(e instanceof ApiError ? e.message : 'Could not load the run')
       })
-    api.listToolCalls(id).then(setCalls).catch(() => undefined)
+    const getCalls = api.listToolCalls(id).then(setCalls).catch(() => undefined)
+    // Both requests, so that a caller can wait until the page shows what the server says; a failure was handled above.
+    return Promise.all([getRun, getCalls])
   }, [id])
 
   const ended = run?.status === 'succeeded' || run?.status === 'failed'

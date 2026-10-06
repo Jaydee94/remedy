@@ -1,9 +1,9 @@
-import { useRef } from 'react'
 import { Link } from 'react-router'
 import { splitApprovals } from './needs.ts'
 import { timeAgo } from './incidents.ts'
 import { useApprovals } from './useApprovals.ts'
 import { useClock } from './useClock.ts'
+import { useFocusRestore } from './useFocusRestore.ts'
 import { useNow } from './useNow.ts'
 import AnsweredRow from '@/components/needs/AnsweredRow'
 import ApprovalAsk from '@/components/conversation/ApprovalAsk'
@@ -22,14 +22,13 @@ export default function NeedsYouPage() {
   const { pending, answered } = splitApprovals(calls ?? [])
   const locked = useNow(LOCK_TICK_MS).getTime() < lockedUntil
   const now = useClock()
-  const heading = useRef<HTMLHeadingElement>(null)
+  const { target: heading, restore } = useFocusRestore<HTMLHeadingElement>()
 
   // After a decision the control that had the focus is gone and the focus falls to the page: bring it back to the top of the page.
   async function changed() {
+    const back = restore() // before the reload: it remembers the focused control, which the reload may remove
     await reload()
-    await new Promise((resolve) => setTimeout(resolve, 50)) // let the list render without the decided ask
-    const active = document.activeElement
-    if (active === null || active === document.body) heading.current?.focus({ preventScroll: true })
+    await back
   }
 
   return (
