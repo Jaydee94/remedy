@@ -48,7 +48,7 @@ const undiagnosedText = {
 /** The incident as a conversation: its history, Remedy's diagnosis, what the maintainer asked, what waits for a decision. */
 export default function IncidentThreadPage({ id }: { id: number }) {
   const { detail, runs, error, missing, reload } = useIncidentThread(id)
-  const { asks, loaded } = useShellState()
+  const { asks, asksLoaded } = useShellState()
   const toast = useToast()
   const now = useClock()
   const incident = detail?.incident
@@ -74,7 +74,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
   )
   // The asks come from the shell: until it has answered once, an ask that is already pending would look like news.
   const history = useMemo(() => allAnnouncements(items), [items])
-  const announcement = useAnnouncement(history, incident !== undefined && loaded)
+  const announcement = useAnnouncement(history, incident !== undefined && asksLoaded)
   const { target: heading, restore } = useFocusRestore<HTMLHeadingElement>()
 
   if (missing) {

@@ -55,12 +55,12 @@ const isHttpError = (e: unknown) => e instanceof HttpError
 
 describe('nextShell', () => {
   it('starts not loaded, online, with nothing', () => {
-    assert.deepEqual(emptyShell, { pending: 0, asks: [], incidents: [], online: true, loaded: false })
+    assert.deepEqual(emptyShell, { pending: 0, asks: [], incidents: [], online: true, loaded: false, asksLoaded: false })
   })
 
   it('takes both answers and is loaded', () => {
     const got = nextShell(emptyShell, ok([call(1), call(2)]), ok([incident(7)]), isHttpError)
-    assert.deepEqual(got, { pending: 2, asks: [call(1), call(2)], incidents: [incident(7)], online: true, loaded: true })
+    assert.deepEqual(got, { pending: 2, asks: [call(1), call(2)], incidents: [incident(7)], online: true, loaded: true, asksLoaded: true })
   })
 
   it('stays online when a route answers with an HTTP error (the route may not exist)', () => {
@@ -108,6 +108,21 @@ describe('nextShell', () => {
     assert.deepEqual(got.incidents, [incident(7)])
     assert.equal(got.loaded, true)
     assert.equal(got.online, true)
+  })
+})
+
+describe('nextShell asksLoaded', () => {
+  it('stays false while the approvals have never answered (an HTTP error, or unreachable)', () => {
+    assert.equal(nextShell(emptyShell, failed(new HttpError('500')), ok([incident(1)]), isHttpError).asksLoaded, false)
+    assert.equal(nextShell(emptyShell, failed(new TypeError('x')), ok([]), isHttpError).asksLoaded, false)
+  })
+
+  it('turns true with the first answer, even an empty one, and stays true', () => {
+    const first = nextShell(emptyShell, ok([]), failed(new HttpError('500')), isHttpError)
+    assert.equal(first.asksLoaded, true)
+    assert.equal(first.loaded, false)
+    const later = nextShell(first, failed(new HttpError('500')), ok([]), isHttpError)
+    assert.equal(later.asksLoaded, true)
   })
 })
 
