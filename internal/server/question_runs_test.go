@@ -240,3 +240,49 @@ func TestAResponderRunIsClaimedWithItsStoredPromptAndNotFramed(t *testing.T) {
 		}
 	}
 }
+
+// A responder run's prompt holds the cleaned data from GitHub and can be large: the thread of an incident needs the question runs'
+// prompts (they are the user's bubbles) but only the status of the responder runs, so the list leaves their text out. The run page
+// reads the whole run.
+func TestTheRunsOfAnIncidentCarryNoResponderPromptOrOutput(t *testing.T) {
+	e, c, in := questionEnv(t, server.Cluster{})
+	ctx := context.Background()
+	started, err := e.store.StartDiagnosis(ctx, store.StartParams{
+		IncidentID: in.ID, Provider: "claude", Prompt: "diagnose: DATA from GitHub", HeadSHA: in.HeadSHA,
+		Limits: store.DefaultLimits(), Now: time.Now(),
+	}, store.NewActivity{Kind: store.KindDiagnosisStarted, RepoID: in.RepoID, Summary: "started"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err := e.store.CreateQuestionRun(ctx, "claude", "why?", in.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := strconv.FormatInt(in.ID, 10)
+
+	got := decode[[]run.Run](t, e.do(t, c, http.MethodGet, "/api/runs?incident="+id, "", false))
+	if len(got) != 2 {
+		t.Fatalf("runs = %+v, want the question and the responder run", got)
+	}
+	for _, r := range got {
+		switch r.ID {
+		case q.ID:
+			if r.Prompt != "why?" {
+				t.Errorf("question prompt = %q, want it kept", r.Prompt)
+			}
+		case started.ID:
+			if r.Prompt != "" || r.Result != "" || len(r.Output) != 0 {
+				t.Errorf("responder run carries text: prompt %q result %q output %s", r.Prompt, r.Result, r.Output)
+			}
+			if r.Role != run.RoleResponder || r.Status != started.Status {
+				t.Errorf("responder run = %+v, want its role and status kept", r)
+			}
+		default:
+			t.Errorf("unexpected run %s", r.ID)
+		}
+	}
+	whole := decode[run.Run](t, e.do(t, c, http.MethodGet, "/api/runs/"+started.ID, "", false))
+	if whole.Prompt != "diagnose: DATA from GitHub" {
+		t.Errorf("the run itself has prompt %q, want the stored one", whole.Prompt)
+	}
+}

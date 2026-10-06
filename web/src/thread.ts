@@ -119,10 +119,15 @@ function announcementOf(item: ThreadItem): Announcement | null {
     case 'working':
       text = 'Remedy is looking into this incident.'
       break
+    case 'undiagnosed':
+      // The other reasons are states the incident starts in, not something that happened while the page was open.
+      if (item.reason === 'failed') text = 'Remedy could not diagnose this incident.'
+      break
   }
   if (!text) return null
   // A second diagnosis of the same incident says the same words: its run tells it from the first.
-  return { key: `${item.key}|${item.type === 'working' ? `${item.runId ?? ''}|` : ''}${text}`, text }
+  const run = item.type === 'working' || item.type === 'undiagnosed' ? `${item.runId ?? ''}|` : ''
+  return { key: `${item.key}|${run}${text}`, text }
 }
 
 /** Every message of a thread worth announcing, oldest first: what a page has already shown when it has loaded. */
