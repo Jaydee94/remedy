@@ -22,7 +22,10 @@
 | How often the login is checked | regularly | At start, then every 10 minutes while logged in and every minute while not, so that the page turns green within a minute of `make dummy-login`. |
 | Probes | liveness and readiness | `/livez` answers 200 whenever the process serves HTTP. `/readyz` answers 200 once the runner has reached the control plane and 503 after a failed claim or report, and never depends on the login (an unattended cluster without a login must still become ready). A hung claim loop is not detected by liveness: runs have their own time limit and the reaper. |
 | Where the route lives | not mentioned | `POST /runner/v1/status` is a runner route like the others, so it is on the internal port when `REMEDY_INTERNAL_ADDR` is set. `GET /api/runner` is an admin route behind the session. |
-| Command of the check | from S2 | `provider.loginCheckArgs` is set from S2's record (the plan writes `auth status`, the command the spike was meant to confirm); the tests use a fake `claude` and do not depend on the command. |
+| Command of the check | from S2 | `provider.loginCheckArgs` is `{"auth", "status", "--text"}` (S2's record). The text form matters: the default output is JSON, which has `"loggedIn": false` but not the phrase "Not logged in", so a check without `--text` would class a logged-out CLI as `unknown`. The fake `claude` of the tests behaves like the real one in this respect (it prints the phrase only for `auth status --text`), so a missing `--text` fails a test. |
+| What means "not logged in" | the CLI's text | Exit 1 with the sentence `Not logged in. Run claude auth login to authenticate.` (S2's record; the interactive CLI's `/login` wording is a different text and is not matched). `notLoggedIn` is `(?i)not logged in`. Exit 0 is logged in. Anything else (the binary does not start, another exit code, a timeout) is `unknown`. |
+| Time limit of one check | 30 s | 10 s (`loginCheckTimeout`). The measured time is 0.06 to 0.10 s, so 10 s is a wide margin and far below a hang. A timeout is `unknown`, never `missing`: the runner reports "could not tell", checks again within the minute, and never asks the UI to show a login hint because of a slow or hung check. |
+| Does the check need the network? | not mentioned | Unknown: S2 measured 0.06 to 0.10 s, consistent with a purely local read, but did not cut the network. Task 6 step 5a runs the check with an unreachable proxy once in the real pod; until it has, the plan relies on neither answer (a failing check is `unknown`, which the page already says plainly). A login that has expired on the server side probably still reads as logged in; a failed run, not this check, is the real test of a login. |
 
 ## Global Constraints
 
@@ -72,7 +75,7 @@ A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file.
 **Interfaces:**
 - Produces: `provider.LoginState` (`LoginOK`, `LoginMissing`, `LoginUnknown`; string values `ok`, `missing`, `unknown`), `func (c Claude) LoginCheck(ctx context.Context, parentEnv []string) (LoginState, string)` (the string is a short reason, never output of the CLI), `func (c Claude) Version(ctx context.Context, parentEnv []string) string`, `testutil.FakeClaudeLogin(t, mode string) string` with modes `ok`, `missing`, `broken`, `hang`.
 
-Before this task read `docs/research/k8s-s2-login-check.md`. Its Decision block gives the command (`check command`) and what output means "not logged in" (`not logged in`). If the command is not `auth status`, change `loginCheckArgs`; if the phrase is not `not logged in` or `/login`, change `notLoggedIn`. The tests below do not depend on either.
+Before this task read `docs/research/k8s-s2-login-check.md`. Its Decision block gives the command (`claude auth status --text`, so `loginCheckArgs` is `{"auth", "status", "--text"}`), what means "logged in" (exit 0; the text starts with `Login method: ...` and holds the account's e-mail, which is why the output never leaves the check) and what means "not logged in" (exit 1 and `Not logged in. Run claude auth login to authenticate.`, so `notLoggedIn` is `(?i)not logged in`). The default JSON form has the same exit codes but `"loggedIn": false` and no such phrase: with it a logged-out CLI would be `unknown`. The fake `claude` below mimics both forms for that reason. If the record is re-measured and a value changes, change `loginCheckArgs`, `notLoggedIn` and the fake together.
 
 - [ ] **Step 1: A fake `claude` for the login commands**
 
@@ -91,8 +94,11 @@ import (
 // FakeClaudeLogin writes an executable script that mimics the login commands of `claude` and returns its path.
 // `--version` prints a version line. Any other call is the status command, and mode says what it does:
 //
-//	ok      exits 0 and prints a line that names an account (the output must never go anywhere)
-//	missing exits 1 and prints "Not logged in" to stderr
+//	ok      exits 0 and prints the shape of the real text form, with a line that names an account (the output must
+//	        never go anywhere)
+//	missing exits 1; called as `auth status --text` it prints the real sentence "Not logged in. Run claude auth login
+//	        to authenticate." to stderr, called any other way it prints the JSON form (`"loggedIn": false`, no such
+//	        phrase), as the real CLI does (spike S2)
 //	broken  exits 3 and prints something nobody expects
 //	hang    sleeps far longer than any test waits
 func FakeClaudeLogin(t testing.TB, mode string) string {
@@ -100,9 +106,9 @@ func FakeClaudeLogin(t testing.TB, mode string) string {
 	var status string
 	switch mode {
 	case "ok":
-		status = `echo "Logged in as someone@example.invalid"; exit 0`
+		status = `echo "Login method: Claude Max Account"; echo "Email: someone@example.invalid"; exit 0`
 	case "missing":
-		status = `echo "Not logged in · Please run /login" >&2; exit 1`
+		status = `if [ "$*" = "auth status --text" ]; then echo "Not logged in. Run claude auth login to authenticate." >&2; else echo '{"loggedIn": false, "authMethod": "none"}'; fi; exit 1`
 	case "broken":
 		status = `echo "unexpected failure of the status command" >&2; exit 3`
 	case "hang":
@@ -160,7 +166,7 @@ func TestLoginCheck(t *testing.T) {
 		if got != c.want {
 			t.Errorf("%s: state = %q, want %q (reason %q)", c.mode, got, c.want, reason)
 		}
-		for _, leak := range []string{"someone@example.invalid", "Not logged in", "unexpected failure"} {
+		for _, leak := range []string{"someone@example.invalid", "Login method", "Not logged in", "loggedIn", "unexpected failure"} {
 			if strings.Contains(reason, leak) {
 				t.Errorf("%s: the reason %q contains the CLI's output %q: it must never leave the check", c.mode, reason, leak)
 			}
@@ -252,11 +258,13 @@ const (
 )
 
 // loginCheckArgs is the CLI's own command for "am I logged in" (the record of spike S2,
-// docs/research/k8s-s2-login-check.md).
-var loginCheckArgs = []string{"auth", "status"}
+// docs/research/k8s-s2-login-check.md). --text matters: the default output is JSON, which says "loggedIn": false and
+// never "Not logged in".
+var loginCheckArgs = []string{"auth", "status", "--text"}
 
-// notLoggedIn matches the CLI's text for a missing login. It is matched against output that is never kept.
-var notLoggedIn = regexp.MustCompile(`(?i)not logged in|/login`)
+// notLoggedIn matches the CLI's sentence for a missing login ("Not logged in. Run claude auth login to authenticate.").
+// It is matched against output that is never kept.
+var notLoggedIn = regexp.MustCompile(`(?i)not logged in`)
 
 // maxCheckOutput bounds what the check reads of the CLI's output.
 const maxCheckOutput = 8 << 10
@@ -733,7 +741,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `Status`, `Report` (task 2), `provider.Claude.LoginCheck`, `Version` (task 1).
-- Produces: `Client.ReportStatus(ctx, Report) error`; `runner.Reporter{Client *Client; Status *Status; Interval time.Duration; Log *slog.Logger}` with `Run(ctx)`; `runner.LoginChecker{Check func(context.Context) (provider.LoginState, string); Version func(context.Context) string; Status *Status; OKEvery, ElseEvery time.Duration; Log *slog.Logger}` with `Run(ctx)`; the constants `DefaultReportInterval` (15 s), `DefaultLoginCheckOK` (10 min), `DefaultLoginCheckElse` (1 min), `loginCheckTimeout` (30 s); `NextCheck(state, okEvery, elseEvery) time.Duration`.
+- Produces: `Client.ReportStatus(ctx, Report) error`; `runner.Reporter{Client *Client; Status *Status; Interval time.Duration; Log *slog.Logger}` with `Run(ctx)`; `runner.LoginChecker{Check func(context.Context) (provider.LoginState, string); Version func(context.Context) string; Status *Status; OKEvery, ElseEvery time.Duration; Log *slog.Logger}` with `Run(ctx)`; the constants `DefaultReportInterval` (15 s), `DefaultLoginCheckOK` (10 min), `DefaultLoginCheckElse` (1 min), `loginCheckTimeout` (10 s); `NextCheck(state, okEvery, elseEvery) time.Duration`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -950,7 +958,9 @@ const (
 	DefaultLoginCheckOK   = 10 * time.Minute
 	DefaultLoginCheckElse = time.Minute
 
-	loginCheckTimeout = 30 * time.Second
+	// loginCheckTimeout bounds one check: it takes 0.06 to 0.10 s (spike S2), so 10 s only ever ends a hang. A timeout is
+	// "unknown", never "not logged in".
+	loginCheckTimeout = 10 * time.Second
 )
 
 // NextCheck is how long to wait before the next login check.
@@ -2072,9 +2082,19 @@ Open `http://127.0.0.1:18080`, sign in (password in `~/remedy-kind/dummy.env`), 
 5. `kubectl --context kind-remedy-dev -n remedy-system rollout restart deployment/remedy-server`: the control plane forgets the runner; the page (after signing in again, sessions are in memory) says `Not connected` or `Never seen` for at most 15 seconds, then `Connected` with the login, because the runner reports every 15 seconds.
 6. `make dummy-smoke`: `all ok`.
 
+- [ ] **Step 5a: The check without a network (the follow-up of the S2 record)**
+
+S2 did not measure whether `claude auth status --text` needs the network, and its record asks for one run in the real runner pod with a proxy that cannot be reached, and the same with an empty `CLAUDE_CONFIG_DIR`, with the exit codes and the times. The runner image has no shell and no `env`, and `kubectl exec` cannot set a variable for one command, so the variable has to come from somewhere else. This is a throwaway debug step, not part of the product, and it is **not verified here**: the way below is the intended one, and if it does not run, write that in the record instead of guessing a result.
+
+1. Start an ephemeral debug container that shares the runner container's process namespace: `kubectl --context kind-remedy-dev -n remedy-system debug -it remedy-runner-0 --image=busybox:1.37 --target=runner -- sh`.
+2. In it, find the runner's process (`ps`) and run the CLI through that process's root, with the unreachable proxy and then with an empty config directory: `HTTPS_PROXY=http://127.0.0.1:1 CLAUDE_CONFIG_DIR=/state/claude /proc/<pid>/root/opt/claude/claude auth status --text; echo "exit=$?"` and the same with `CLAUDE_CONFIG_DIR=/tmp/empty`. Look at the exit code and at the time only; do not copy the output (the logged-in text holds the account's e-mail), and do not open any file under `/state`.
+3. If the ephemeral container cannot reach the runner's files (a different user, `--profile` refused by the Pod Security Standard), do not loosen the pod. Run the same two commands from a one-off pod that mounts the same claim and the CLI, or leave the question open and say so.
+
+Expected: exit 0 with the unreachable proxy when logged in and exit 1 with the empty directory, in well under a second, means the check is local; a long wait or another exit code means it needs the network, and then `loginCheckTimeout` and the `unknown` state are doing real work. Either answer is recorded; neither changes the code of tasks 1 to 3.
+
 - [ ] **Step 6: The record and the documents**
 
-Create `docs/research/k8s-runner-status-real-run.md`: the date, the commands of steps 4 and 5 with the output that matters (the `dummy-status` lines, what the page showed in each state with the time it took to change, the smoke test's early stop and its final `all ok`), whether the probe worked under the network policy and what was changed if not, the CLI command of the login check from the S2 record and how long it takes in the pod, and a "Result" paragraph naming which parts of D8 this proves.
+Create `docs/research/k8s-runner-status-real-run.md`: the date, the commands of steps 4 and 5 with the output that matters (the `dummy-status` lines, what the page showed in each state with the time it took to change, the smoke test's early stop and its final `all ok`), whether the probe worked under the network policy and what was changed if not, the CLI command of the login check from the S2 record (`claude auth status --text`) and how long it takes in the pod, the exit codes and times of step 5a (or that it could not be run, and why), and a "Result" paragraph naming which parts of D8 this proves.
 
 In `docs/runbook/dummy-setup.md`, in the table of commands and the section "For an agent", add that `make dummy-up` ends with the runner's login state, that `make dummy-status` has a `runner:` line (`connected, login ok|missing|unknown`) and that `make dummy-smoke` stops before its first run when the login is missing. In `docs/runbook/homelab-deploy.md`, replace the sentence `(After plan K-6, Setup shows whether the runner is logged in.)` with `Setup shows whether my runner is connected and logged in, and turns to "Not logged in" within a minute of the login expiring.`
 

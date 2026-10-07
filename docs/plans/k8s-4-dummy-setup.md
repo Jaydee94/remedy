@@ -25,6 +25,11 @@
 | `kind.yaml` | gets `extraMounts` | It becomes a template (`__CLAUDE_DIR__`): kind needs an absolute host path and does not expand `~` or variables. `lib.sh` renders it into `~/remedy-kind/kind-rendered.yaml`. |
 | Password rotation | not mentioned | `dummy.env` is made once and reused until `down.sh` removes it with the cluster, so the master key always matches the database it sealed. |
 | Run-ending assertion for the restart | "pods created after the approval" | The deployment's `restartedAt` annotation is at or after the moment of the approval (minus the one-second resolution) and the rollout completed. Pod creation times of a rolling restart overlap with the old pods' deletion and would make the check flaky. |
+| The host directory's mode (spike S1) | "`0700`" | Confirmed by S1's record: mode `700` works with the PV of `s1-storage.yaml` unchanged (no `777`, no `chown`), the pod writes as uid 65532 into a directory owned by the host user, and the file survives `kind delete cluster`. The result holds for **Docker Desktop on macOS only**: on a Linux Docker host a bind mount keeps the real owner, so the directory would need a `chown` to 65532 or a world-writable mode. That was not measured and the dummy setup does not claim to run there. |
+| A pod made right after its namespace (spike S1) | not mentioned | The namespace's `default` ServiceAccount appears a moment after the namespace, and a pod created before it is refused (`serviceaccount "default" not found`). `lib.sh` has `wait_default_serviceaccount` (up to 60 s), and `dummy-up.sh` calls it after applying the namespace. |
+| Network policies in the dummy (spike S3, kind half) | "as the spike S3 allows" | `networkPolicy.enabled: true`: kind's default CNI enforces policies, and the rule `ipBlock <endpoint>/32` on the endpoint port (6443) lets the control plane reach the API server. `deploy_release` already fills `apiServer.cidrs` from `endpoints/kubernetes` at install time, which S3 requires because the node's Docker address (`172.18.0.2` in the record) differs between machines. The k3s half of S3 is a maintainer step and says nothing about this plan. |
+| The CLI pin (spike S4) | values from the record | `deploy/cli-pin.yaml` shows the record's values: version `2.1.292`, `archive: none`, `linux-x64` and `linux-arm64`, and the two SHA-256 values. The vendor publishes them in a signed `manifest.json`, so step 2 of task 2 checks that each value is present instead of only checking that no marker is left. |
+| Does an update write under `$HOME/.local/share/claude`? (spike S4) | not mentioned | S4 could not measure it: with `HOME=/state` the native installer's directory would be on the writable state volume, so the read-only `/opt/claude` does not by itself keep an update out. Task 6 step 4a checks after the login and the smoke test that `/state/.local/share/claude` is absent. The runner image has no shell, so the check looks at the host side of the volume, by name only. |
 
 ## Global Constraints
 
@@ -75,7 +80,7 @@ A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file.
 **Interfaces:**
 - Produces (for every later script; names are fixed): variables `CLUSTER` (`remedy-dev`), `CTX` (`kind-remedy-dev`), `ARGOCD_VERSION`, `KIND_DIR`, `REPO_ROOT`, `OUT` (`${REMEDY_KIND_DIR:-$HOME/remedy-kind}`), `CLAUDE_DIR` (`$OUT/claude`), `CLAUDE_DIR_MODE`, `DUMMY_ENV` (`$OUT/dummy.env`), `NS` (`remedy-system`), `RELEASE` (`remedy`); functions `need`, `k`, `ensure_out_dir`, `ensure_claude_dir`, `ensure_cluster`, `cluster_has_claude_mount`, `install_demo`, `install_argocd`.
 
-Before this task read `docs/research/k8s-s1-hostpath-login.md`. Its decision block gives the mode that works for the host directory: put it in `CLAUDE_DIR_MODE` below if it is not `700`, and if it says an extra step is needed after the pod writes (a `chown`, a different mode), add that step to `dummy-login.sh` in task 3 and say so in the runbook.
+Before this task read `docs/research/k8s-s1-hostpath-login.md`. Its decision block gives the mode that works for the host directory: `700`, on Docker Desktop for Mac, with nothing to `chown` and the PV spec of its `s1-storage.yaml` unchanged. `CLAUDE_DIR_MODE` below is therefore `700`. If the record is ever re-measured and says an extra step is needed after the pod writes (a `chown`, a different mode), change `CLAUDE_DIR_MODE` and add that step to `dummy-login.sh` in task 3. The result is for Docker Desktop on macOS only; the runbook says so (task 6 step 7).
 
 - [ ] **Step 1: The shared library**
 
@@ -283,27 +288,29 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: The CLI pin**
 
-Create `deploy/cli-pin.yaml`. Every value comes from the Decision block of `docs/research/k8s-s4-cli-install.md`; the keys and the structure are fixed here:
+Create `deploy/cli-pin.yaml`. Every value comes from the Decision block of `docs/research/k8s-s4-cli-install.md` (version `2.1.292`, downloaded for both platforms on 2026-10-07; the checksums equal the ones the vendor publishes in the signed `manifest.json` of that release). Check the file against the record's Decision block before you commit it; if the record has been re-measured with another version, use its values and keep the structure:
 
 ```yaml
 # The pinned claude CLI, as a values file. The dummy setup (dev/kind/dummy-up.sh) and the homelab (an Argo CD values file)
 # both use it, so there is one place to bump. No image contains the CLI: the runner pod's init container installs this
-# version and verifies the SHA-256. scripts/cli-checksums.sh (plan K-5) prints the checksums for a new version.
+# version and verifies the SHA-256. The vendor publishes the checksums in
+# https://downloads.claude.ai/claude-code-releases/<version>/manifest.json (platforms.<platform>.checksum, signed by
+# manifest.json.sig). scripts/cli-checksums.sh (plan K-5) computes and compares them for a new version.
 runner:
   cli:
-    version: "<pinned version from the record>"
-    urlTemplate: "<urlTemplate from the record>"
-    archive: <none | tar.gz, from the record>
-    member: "<member from the record, or empty>"
+    version: "2.1.292"
+    urlTemplate: "https://downloads.claude.ai/claude-code-releases/{version}/{platform}/claude"
+    archive: none
+    member: ""
     platforms:
-      amd64: {name: "<amd64 platform name>", sha256: "<64 hex digits>"}
-      arm64: {name: "<arm64 platform name>", sha256: "<64 hex digits>"}
+      amd64: {name: "linux-x64", sha256: "a967e7b1d8b4e47ee421d5433027880347952b0c0857abf880e2c942a4ec93b3"}
+      arm64: {name: "linux-arm64", sha256: "24caa9e6ff13bf227049a2626f1c816fc895023050f0ec3b12dbf14d897367e0"}
 ```
 
-- [ ] **Step 2: Check that no template marker is left and that the chart accepts it**
+- [ ] **Step 2: Check that every value of the record is in the file and that the chart accepts it**
 
-Run: `grep -n '<' deploy/cli-pin.yaml; helm template remedy deploy/chart -n remedy-system -f deploy/cli-pin.yaml --set existingSecret.name=x > /dev/null && echo chart accepts the pin`
-Expected: the `grep` prints nothing (every `<…>` was replaced) and the second command prints `chart accepts the pin`. If `helm template` complains about `runner.cli.platforms.<arch>.sha256 is required`, a checksum is missing.
+Run: `for want in '2.1.292' 'https://downloads.claude.ai/claude-code-releases/{version}/{platform}/claude' 'linux-x64' 'linux-arm64' 'a967e7b1d8b4e47ee421d5433027880347952b0c0857abf880e2c942a4ec93b3' '24caa9e6ff13bf227049a2626f1c816fc895023050f0ec3b12dbf14d897367e0'; do grep -qF "$want" deploy/cli-pin.yaml || echo "MISSING: $want"; done; helm template remedy deploy/chart -n remedy-system -f deploy/cli-pin.yaml --set existingSecret.name=x > /dev/null && echo chart accepts the pin`
+Expected: no `MISSING` line and `chart accepts the pin`. A `MISSING` line means a value of the record was mistyped or dropped (compare the 64 hex digits character by character with the record: a wrong checksum fails the pod's init container, not the render). If `helm template` complains about `runner.cli.platforms.<arch>.sha256 is required`, a checksum is missing.
 
 - [ ] **Step 3: The namespace and the login volume**
 
@@ -353,7 +360,7 @@ If S1's record says a different PV spec worked, use that one instead and keep th
 
 - [ ] **Step 4: The values**
 
-Create `dev/kind/dummy-values.yaml`. Set `networkPolicy.enabled` to what the S3 record's `chart default networkPolicy` / `dummy values` line says (`true` if kind enforces policies and the API rule works, otherwise `false`); the public peer is the whole world because the NodePort's traffic comes from outside the cluster:
+Create `dev/kind/dummy-values.yaml`. `networkPolicy.enabled` is `true`: the S3 record's `chart default networkPolicy` / `dummy values` line says kind enforces policies and the API rule by endpoint address and port works (measured on kind, 2026-10-07; the file is only wrong if that record is re-measured). The public peer is the whole world because the NodePort's traffic comes from outside the cluster:
 
 ```yaml
 # The chart's values for the dummy setup. dummy-up.sh adds the image tags and the API server's address
@@ -385,7 +392,7 @@ cluster:
     namespaces: [demo]
 
 networkPolicy:
-  enabled: true         # set to false if the S3 record says kind does not enforce policies
+  enabled: true         # kind enforces policies (spike S3); dummy-up.sh adds the API server's address and its port 6443
   public:
     from:
       - ipBlock: {cidr: 0.0.0.0/0}
@@ -416,7 +423,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: task 1's library, task 2's files, `make images IMAGE_TAG=...` of plan K-1.
-- Produces: functions `write_dummy_env`, `load_dummy_env` (sets `REMEDY_URL`, `REMEDY_ADMIN_PASSWORD`, `REMEDY_RUNNER_TOKEN`, `REMEDY_MASTER_KEY`), `new_tag` (sets `TAG`), `build_and_load_images`, `apply_secret`, `deploy_release`, `require_dummy`; the targets `dummy-up`, `dummy-down`, `dummy-login`, `dummy-logout`, `dummy-redeploy`, `dummy-reset`, `dummy-status`, `dummy-logs`.
+- Produces: functions `write_dummy_env`, `load_dummy_env` (sets `REMEDY_URL`, `REMEDY_ADMIN_PASSWORD`, `REMEDY_RUNNER_TOKEN`, `REMEDY_MASTER_KEY`), `new_tag` (sets `TAG`), `build_and_load_images`, `apply_secret`, `deploy_release`, `wait_default_serviceaccount`, `require_dummy`; the targets `dummy-up`, `dummy-down`, `dummy-login`, `dummy-logout`, `dummy-redeploy`, `dummy-reset`, `dummy-status`, `dummy-logs`.
 
 - [ ] **Step 1: The deployment functions**
 
@@ -483,6 +490,17 @@ deploy_release() {
     --set "networkPolicy.apiServer.cidrs={$api_ip/32}" \
     --wait --timeout 10m
 }
+
+# wait_default_serviceaccount waits until the namespace's default ServiceAccount exists. A controller makes it a moment
+# after the namespace, and a pod created before then is refused ("serviceaccount default not found"; spike S1).
+wait_default_serviceaccount() {
+  i=0
+  until k -n "$NS" get serviceaccount default > /dev/null 2>&1; do
+    i=$((i + 1))
+    [ "$i" -le 60 ] || { echo "the default service account of $NS did not appear within 60 s" >&2; exit 1; }
+    sleep 1
+  done
+}
 ```
 
 - [ ] **Step 2: `dummy-up.sh`**
@@ -515,6 +533,7 @@ fi
 install_demo
 install_argocd
 k apply -f "$KIND_DIR/dummy-namespace.yaml"
+wait_default_serviceaccount
 k apply -f "$KIND_DIR/dummy-storage.yaml"
 write_dummy_env
 new_tag
@@ -1246,6 +1265,16 @@ Type `/login`, open the URL, paste the code, `/exit`. The agent does not see the
 Run: `make dummy-smoke; echo "exit=$?"`
 Expected: `smoke: run 1 ok: N tool calls`, an `approve cluster_rollout_restart (call N)` line, `smoke: run 2 ok: demo/web restarted at <time>`, `smoke: all ok`, and `exit=0`. Time it. If a run fails, read `make dummy-logs` and the run in the UI (`http://127.0.0.1:18080`, password in `~/remedy-kind/dummy.env`), and decide whether the cause is the setup (fix it) or the agent's behaviour (run again once; two failures in a row are a finding for the record).
 
+- [ ] **Step 4a: The CLI did not write into the state volume's `.local`**
+
+Spike S4 could not tell whether the CLI, started as `/opt/claude/claude` (not installed by its own `install`), writes an update under `$HOME/.local/share/claude`; with `HOME=/state` that is on the writable state volume. The runner image has no shell and `kubectl exec` cannot run `ls` in it, so look at the host side of the volume, by name only (never its contents, which hold the login):
+
+```sh
+command ls -d ~/remedy-kind/claude/.local/share/claude
+```
+
+Expected: `No such file or directory` (the directory is absent after the login of step 3 and the two runs of step 4). Put the answer in the record of step 8. If the directory exists, that is a finding, not a failure of this task: the options are `DISABLE_UPDATES=1` in the runner pod's environment together with an entry in `provider.FilterEnv`'s allowlist (a spec change: the spec says nothing is added to it), or mounting nothing writable under `$HOME/.local`. Record it, stop, and ask the maintainer.
+
 - [ ] **Step 5: The login survives, and the other targets work**
 
 ```sh
@@ -1271,11 +1300,11 @@ Expected: `git status` shows only files you meant to add; the password is in no 
 
 - [ ] **Step 7: The runbook**
 
-Create `docs/runbook/dummy-setup.md` with these sections, each short and in this order: **What it is** (a throwaway kind cluster that runs Remedy from the Helm chart with the real agent; what is in it: the demo workloads, Argo CD, the chart; what is not: GitHub, a fake agent); **You need** (`docker`, `kind`, `kubectl`, `helm`, `jq`, `curl`, `openssl`, `make`, and a logged-in-able Claude subscription); **The commands** (the table of the nine targets from the spec, with what each prints or changes); **The first time** (`make dummy-up`, `make dummy-login`, `make dummy-smoke`, the URL `http://127.0.0.1:18080`, where the password is); **Where things are** (`~/remedy-kind/dummy.env`, `~/remedy-kind/claude`, why they are outside the repository, which survive `dummy-down`); **For an agent** (every target is non-interactive except `dummy-login` and `dummy-logout`; `dummy-status` output format; `dummy.env` has URL and password; the smoke test's exit codes: 0 all ok, 1 a failed assertion or a missing login; the quota each run spends: two short runs); **Trying it by hand** (sign in, Ask Remedy with "Read the cluster", the prompts of `docs/runbook/cluster-real-run.md`); **Troubleshooting** (one line each, from what happened in steps 1 to 5 of this task and from the failures named in task 3 step 6: the install stuck, a pod rejected by Pod Security, the CLI download failing, the policy blocking something, a cluster from `up.sh`, a cluster without the mount).
+Create `docs/runbook/dummy-setup.md` with these sections, each short and in this order: **What it is** (a throwaway kind cluster that runs Remedy from the Helm chart with the real agent; what is in it: the demo workloads, Argo CD, the chart; what is not: GitHub, a fake agent); **You need** (`docker`, `kind`, `kubectl`, `helm`, `jq`, `curl`, `openssl`, `make`, and a logged-in-able Claude subscription); **The commands** (the table of the nine targets from the spec, with what each prints or changes); **The first time** (`make dummy-up`, `make dummy-login`, `make dummy-smoke`, the URL `http://127.0.0.1:18080`, where the password is); **Where things are** (`~/remedy-kind/dummy.env`, `~/remedy-kind/claude`, why they are outside the repository, which survive `dummy-down`; that the login directory is `0700` and that this was measured on Docker Desktop for Mac only: on a Linux Docker host the directory would need a `chown` to 65532 or a world-writable mode, which no script does); **For an agent** (every target is non-interactive except `dummy-login` and `dummy-logout`; `dummy-status` output format; `dummy.env` has URL and password; the smoke test's exit codes: 0 all ok, 1 a failed assertion or a missing login; the quota each run spends: two short runs); **Trying it by hand** (sign in, Ask Remedy with "Read the cluster", the prompts of `docs/runbook/cluster-real-run.md`); **Troubleshooting** (one line each, from what happened in steps 1 to 5 of this task and from the failures named in task 3 step 6: the install stuck, a pod rejected by Pod Security, the CLI download failing, the policy blocking something, a cluster from `up.sh`, a cluster without the mount).
 
 - [ ] **Step 8: The record**
 
-Create `docs/research/k8s-dummy-real-run.md` with: the date, the versions (Docker Desktop, kind, kubectl, helm, the CLI version of `deploy/cli-pin.yaml`), the five steps above with the commands and the output that matters (the `dummy-status` lines, the smoke test's lines, the exit codes, the durations of the cold start and of the smoke test, the quota cost the CLI printed if any), no secret and no login content, and a "Result" paragraph that says which of the spec's success criteria 1, 2 and 3 this proves and what it does not.
+Create `docs/research/k8s-dummy-real-run.md` with: the date, the versions (Docker Desktop, kind, kubectl, helm, the CLI version of `deploy/cli-pin.yaml`), the steps above with the commands and the output that matters (the `dummy-status` lines, the smoke test's lines, the exit codes, the durations of the cold start and of the smoke test, the quota cost the CLI printed if any, and whether `~/remedy-kind/claude/.local/share/claude` exists, step 4a), no secret and no login content, and a "Result" paragraph that says which of the spec's success criteria 1, 2 and 3 this proves and what it does not.
 
 - [ ] **Step 9: Update the documents**
 

@@ -19,7 +19,8 @@
 | Tags of the images | `sha-<short>` and `vX.Y.Z` | `sha-<short>` on every push to `main`, `edge` on `main`, and `X.Y.Z` (no `v`) on a tag. The chart's `appVersion` is the default image tag, so it must be `X.Y.Z` too, and `check-release.sh` enforces that. |
 | Pull requests | not mentioned | A pull request that touches the Dockerfiles, the Go sources or the web sources builds both images for `linux/amd64` without pushing, so a broken Dockerfile fails in review, not on the tag. |
 | Keeping the CLI pin honest | Renovate bumps the version | Renovate can bump the version but cannot compute the artifacts' checksums (that needs a self-hosted post-upgrade task). `cli-pin.yml` fails such a pull request until `scripts/cli-checksums.sh <version>` has written the right checksums; the maintainer runs it and pushes. |
-| Where the checksum comes from | "published at … or pinned by us" (spike S4) | `cli-checksums.sh` computes the SHA-256 of what the HTTPS download returns (trust on first use). If S4's record says the vendor publishes checksums, `--expect <arch>=<sha>` compares against the published value before anything is written. |
+| Where the checksum comes from | "published at … or pinned by us" (spike S4) | S4's record shows that the vendor publishes them: `https://downloads.claude.ai/claude-code-releases/<version>/manifest.json` has `platforms.<platform>.checksum` for `linux-x64` and `linux-arm64`, signed by `manifest.json.sig` (key fingerprint `31DD DE24 DDFA B679 F42D 7BD2 BAA9 29FF 1A7E CACE`). `cli-checksums.sh` still computes the SHA-256 of what the HTTPS download returns, and the maintainer feeds `--expect amd64=<sha> --expect arm64=<sha>` from that manifest, so that nothing is written unless the download equals the published value. `--check` in CI recomputes the download only: it is a consistency check against the file, not against the vendor. The manifest comes from the same host as the binary, so it is an independent proof only when its signature is verified; the runbook says how, once per bump, and the script does not run `gpg`. |
+| Where the CLI's versions come from (Renovate) | "the npm package" | S4's record names `https://downloads.claude.ai/claude-code-releases/latest` (a plain-text file holding one version number; `stable` is the slower channel and was older than the measured 2.1.288) as the version source for a Renovate manager. It does not say that the npm package `@anthropic-ai/claude-code` carries the same version numbers, so task 4 uses a custom datasource over `latest` and not npm. The Renovate configuration is **not verified against a Renovate run**: the first pull request it opens, or a dry run, is the check. |
 | Package visibility | public images | GHCR makes a first-time package from an Actions push private. Making both packages public is a manual step in GitHub's UI, once; the runbook and task 6 say so. |
 | Argo CD hooks | PostSync | The chart's Helm hook annotations are `post-install,post-upgrade`, which Argo CD runs as `PostSync`; the Application example in the runbook does not set anything for that. |
 | Action versions | not mentioned | Task 3 looks up the latest major of each action with `gh` and uses it. Renovate keeps them current afterwards. |
@@ -286,8 +287,9 @@ Create `scripts/cli-checksums.sh`:
 #
 #   scripts/cli-checksums.sh <version> [--pin FILE] [--expect ARCH=SHA]...
 #       downloads the artifact of that version for both platforms, and rewrites the version and the two sha256 fields.
-#       With --expect it first compares the computed checksum with a checksum the vendor published (trust is otherwise
-#       "what the HTTPS download returned"), and writes nothing on a difference.
+#       With --expect it first compares the computed checksum with a checksum the vendor published (in the release's
+#       manifest.json, platforms.<platform>.checksum; trust is otherwise "what the HTTPS download returned"), and writes
+#       nothing on a difference.
 #   scripts/cli-checksums.sh --check [--pin FILE]
 #       recomputes the checksums for the version in the file and exits 1 on any difference. CI runs this when the pin
 #       changes, because Renovate can bump the version but cannot compute the checksums.
@@ -583,14 +585,20 @@ Overwrite `renovate.json`:
   "extends": [
     "config:recommended"
   ],
+  "customDatasources": {
+    "claude-cli": {
+      "defaultRegistryUrlTemplate": "https://downloads.claude.ai/claude-code-releases/latest",
+      "format": "plain"
+    }
+  },
   "customManagers": [
     {
       "customType": "regex",
       "description": "The pinned claude CLI. Renovate bumps the version only; the cli-pin workflow fails until scripts/cli-checksums.sh has written the checksums.",
       "managerFilePatterns": ["/^deploy/cli-pin\\.yaml$/"],
       "matchStrings": ["cli:\\n\\s+version: \"(?<currentValue>[0-9][0-9.]*)\""],
-      "datasourceTemplate": "npm",
-      "depNameTemplate": "@anthropic-ai/claude-code"
+      "datasourceTemplate": "custom.claude-cli",
+      "depNameTemplate": "claude-code-cli"
     },
     {
       "customType": "regex",
@@ -604,7 +612,7 @@ Overwrite `renovate.json`:
   "packageRules": [
     {
       "description": "A new CLI version needs its checksums: the maintainer runs scripts/cli-checksums.sh. Do not merge it by itself.",
-      "matchDepNames": ["@anthropic-ai/claude-code"],
+      "matchDepNames": ["claude-code-cli"],
       "automerge": false,
       "labels": ["cli-pin"]
     }
@@ -612,7 +620,7 @@ Overwrite `renovate.json`:
 }
 ```
 
-If S4's record says the CLI is versioned by something other than the npm package (a separate release feed), change `datasourceTemplate` and `depNameTemplate` of the first manager to that source; the `matchStrings` stays.
+The version source is the one S4's record names: the plain-text file `latest` of the vendor's download host, read through Renovate's custom datasource with the format `plain` (one version per file). The npm package `@anthropic-ai/claude-code` is not used, because the record does not show that its versions equal the download host's. The `latest` channel can move to a version that has not been run through Remedy: the pull request is labelled `cli-pin`, is never merged by itself, and the maintainer reads the record's "Which version" checks (the flags of Remedy's invocation exist in `--help`) before merging. If Renovate rejects the `customDatasources` block or never opens a pull request, say so in `docs/research/k8s-first-release.md` (task 6) and fall back to the manual bump of the runbook; do not guess a second source.
 
 - [ ] **Step 2: Check the JSON and the patterns**
 
@@ -782,7 +790,7 @@ Type `/login`, open the URL in a browser, paste the code, `/exit`. The login is 
 
 **8. First use.** Open the host name, sign in as `admin` with the password of step 4, Setup: connect GitHub (the token is write-only), add repositories. Ask Remedy with "Read the cluster" to see the cluster tools work; each change waits for your approval.
 
-**9. Upgrading.** Bump `targetRevision` of both sources of the Application to the new tag. A new CLI version comes with a Renovate pull request on `deploy/cli-pin.yaml`: run `scripts/cli-checksums.sh <version>` on that branch (and, if the vendor publishes checksums, add `--expect amd64=… --expect arm64=…`), push, and merge when the `cli-pin` check is green. The control plane restarts with `Recreate`: a minute without UI, runs in flight end as lost, sessions end.
+**9. Upgrading.** Bump `targetRevision` of both sources of the Application to the new tag. A new CLI version comes with a Renovate pull request on `deploy/cli-pin.yaml`: run `scripts/cli-checksums.sh <version>` on that branch with the checksums the vendor publishes (`B=https://downloads.claude.ai/claude-code-releases; curl -fsSL $B/<version>/manifest.json | jq -r '.platforms["linux-x64"].checksum, .platforms["linux-arm64"].checksum'` prints amd64 then arm64; pass them as `--expect amd64=… --expect arm64=…`; to trust the manifest itself, download `manifest.json.sig` next to it and check it with `gpg --verify` against the key at `https://downloads.claude.ai/keys/claude-code.asc`, fingerprint `31DD DE24 DDFA B679 F42D 7BD2 BAA9 29FF 1A7E CACE`), push, and merge when the `cli-pin` check is green. The control plane restarts with `Recreate`: a minute without UI, runs in flight end as lost, sessions end.
 
 **10. The release process (for the maintainer).** Change `version` and `appVersion` of `deploy/chart/Chart.yaml` to `X.Y.Z` in a pull request and merge it; tag `vX.Y.Z` on the merge commit and push the tag; `images.yml` checks the tag against the chart and pushes `X.Y.Z`; after the first release make both packages public once in GitHub (profile → Packages → `remedy-server` and `remedy-runner` → Package settings → Change visibility → Public), otherwise the cluster cannot pull them.
 

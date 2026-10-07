@@ -24,6 +24,7 @@
 | Runner `TERM` | not mentioned | `TERM=xterm-256color` in the runner container, so that `kubectl exec -it … claude` for the one-time login has a usable terminal. |
 | Skipping when `helm` is missing | CI has helm | The Go test skips without `helm`, and fails instead when `REMEDY_REQUIRE_HELM` is set; `make chart-check` and the CI job set it. |
 | `kubeconform` | in `make check` | `make chart-check` runs it when it is installed and says it skipped it otherwise; CI installs it. |
+| What the API server rule can and cannot protect (spike S3, kind half) | `apiServer.cidrs` and `port: 6443` | Kept as planned: kind enforces policies, and a rule by endpoint address and port (`172.18.0.2/32:6443` in the record) lets the server reach the API, also through the service address `kubernetes.default.svc`. The record adds two consequences that the values comment and the chart's README now state. (1) The runner's rule is by address **and port**: with the API on 6443 (k3s and kind), a runner rule that allows only 443 to the public range blocks the API by port whatever the address; an API on 443 with a public address is **not** protected by the `except` list (inferred from the record's control run, not measured), while the usual homelab node ranges (`192.168.0.0/16`, `10.0.0.0/8`) are in the excepted ranges and are blocked by address. (2) Cluster pods have addresses in `10.0.0.0/8`, which the runner rule excepts, so traffic to a pod needs a pod or namespace selector rule, never an address. The k3s half of S3 is a maintainer step; nothing here assumes its result. |
 
 ## Global Constraints
 
@@ -411,7 +412,10 @@ networkPolicy:
           matchLabels:
             kubernetes.io/metadata.name: kube-system
   # The address and port behind kubernetes.default.svc, as the cluster shows them (kubectl get endpoints kubernetes).
-  # Required when cluster.enabled is true.
+  # Required when cluster.enabled is true. The rule is by endpoint address and port (6443 on k3s and kind), not by the
+  # service address. The runner's egress to the public range is 443 only, which keeps it from an API server on 6443 by
+  # port; an API server on 443 with a public address is not protected by the except list. To let a pod reach a pod in
+  # the cluster use a pod or namespace selector: pod addresses are in 10.0.0.0/8, which the runner's rule excepts.
   apiServer:
     cidrs: []
     port: 6443
@@ -1417,7 +1421,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - Consumes: the pod labels of the server and the runner; `networkPolicy.*` values.
 - Produces: NetworkPolicies `remedy-server` and `remedy-runner` (plan K-3 adds one for the refresher).
 
-The defaults follow the S3 record. Before this task, read `docs/research/k8s-s3-networkpolicy.md` and, if its decision block says that the API rule must look different on k3s or kind (for example an extra peer), change the server's API-server egress rule below and the test that pins it to match.
+The defaults follow the S3 record. Before this task, read `docs/research/k8s-s3-networkpolicy.md` and, if its decision block says that the API rule must look different on k3s or kind (for example an extra peer), change the server's API-server egress rule below and the test that pins it to match. For kind the record says it does not: the rule below (`ipBlock <endpoint>/32` on the endpoint port) is the one that worked, and policies are on by default. The k3s lines of the record are not measured yet; when the maintainer fills them in, re-read this paragraph.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1705,6 +1709,15 @@ Spec: [`docs/specs/2026-10-06-kubernetes-deployment-design.md`](../../docs/specs
 | NetworkPolicies | `remedy-server`, `remedy-runner` | on by default; `networkPolicy.*` |
 
 The cluster tools (`cluster.*`) and their identities are added by plan K-3.
+
+## NetworkPolicies: what the address rules mean
+
+The rules are by address **and port**. The control plane reaches the API server through `networkPolicy.apiServer.cidrs`
+and `port` (6443 on k3s and kind; fill them from `kubectl get endpoints kubernetes`, not from the service address). The
+runner may reach TCP 443 on public addresses only, so an API server on 6443 is out of its reach by port. An API server on
+443 with a public address would not be protected by the excepted private ranges; the usual homelab node addresses
+(`192.168.0.0/16`, `10.0.0.0/8`) are inside them. Pods in the cluster have addresses in `10.0.0.0/8` too: allow traffic to a
+pod with a pod or namespace selector, never with an address.
 
 ## Checking it
 
