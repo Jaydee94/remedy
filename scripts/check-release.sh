@@ -22,7 +22,6 @@ printf '%s' "$want" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]
 
 field() {
   # Try double-quoted value
-  local val
   val=$(sed -n "s/^$1: *\"\([^\"]*\)\".*/\1/p" "$chart" | head -1)
   [ -n "$val" ] && { echo "$val"; return; }
   # Try single-quoted value
