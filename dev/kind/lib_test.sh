@@ -86,5 +86,43 @@ left=$(cd "$T/clean" && find . -mindepth 1 | sort | tr '\n' ' ')
 if [ "$left" = "./.remedy-kind-dir ./claude ./claude/login " ] && [ -f "$T/outside/decoy" ]; then pass "cleanup keeps claude and the marker only"; else fail "cleanup keeps claude and the marker only (left: $left)"; fi
 (OUT=$T/clean; check_out_dir) && pass "a second down.sh passes the guard" || fail "a second down.sh passes the guard"
 
+# A symlink as the directory: the guard looks at the target, not at the link.
+mkdir "$T/pop"
+touch "$T/pop/decoy"
+ln -s "$T/pop" "$T/linkpop"
+refuses "symlink to a populated directory without the marker" "$T/linkpop"
+(OUT=$T/linkpop; ensure_out_dir) > /dev/null 2>&1
+mode=$(stat -c %a "$T/pop" 2> /dev/null || stat -f %Lp "$T/pop")
+if [ ! -e "$T/pop/.remedy-kind-dir" ] && [ "$mode" != 700 ]; then pass "ensure_out_dir leaves the target of a refused symlink alone"; else fail "ensure_out_dir leaves the target of a refused symlink alone (mode $mode)"; fi
+mkdir "$T/realmarked"
+touch "$T/realmarked/.remedy-kind-dir" "$T/realmarked/junk"
+ln -s "$T/realmarked" "$T/linkmarked"
+(OUT=$T/linkmarked; cleanup_out_dir)
+if [ ! -e "$T/realmarked/junk" ] && [ -e "$T/realmarked/.remedy-kind-dir" ]; then pass "cleanup follows a symlink to a marked directory"; else fail "cleanup follows a symlink to a marked directory"; fi
+
+# A relative path that starts with a dash: refused when populated, never read as an option.
+mkdir "$T/rel"
+mkdir "$T/rel/-dash"
+touch "$T/rel/-dash/decoy"
+err=$(cd "$T/rel" && OUT=-dash && check_out_dir 2>&1 > /dev/null)
+status=$?
+if [ "$status" -eq 1 ] && echo "$err" | grep -q 'refusing'; then pass "relative path starting with a dash"; else fail "relative path starting with a dash (status $status: $err)"; fi
+
+# The home directory, in the cases the no-marker rule would not catch: HOME is empty, holds a marker, or is reached
+# through a symlink.
+mkdir "$T/fakehome"
+ln -s "$T/fakehome" "$T/homelink"
+for form in "$T/fakehome" "$T/fakehome/" "$T/homelink" "$T/homelink/"; do
+  err=$( (HOME=$T/fakehome; OUT=$form; check_out_dir) 2>&1 > /dev/null)
+  status=$?
+  if [ "$status" -eq 1 ] && echo "$err" | grep -q 'home directory'; then pass "empty home as $form"; else fail "empty home as $form (status $status: $err)"; fi
+done
+touch "$T/fakehome/.remedy-kind-dir"
+for form in "$T/fakehome" "$T/homelink/"; do
+  err=$( (HOME=$T/fakehome; OUT=$form; check_out_dir) 2>&1 > /dev/null)
+  status=$?
+  if [ "$status" -eq 1 ] && echo "$err" | grep -q 'home directory'; then pass "marked home as $form"; else fail "marked home as $form (status $status: $err)"; fi
+done
+
 [ "$failed" -eq 0 ] && echo "all passed"
 exit "$failed"

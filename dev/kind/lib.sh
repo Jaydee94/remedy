@@ -40,19 +40,22 @@ check_out_dir() {
     echo "refusing to use '$OUT' as the output directory (empty or /): give a directory of its own, e.g. ~/remedy-kind" >&2
     exit 1
   fi
-  if [ -d "$OUT" ] && [ "$(cd "$OUT" && pwd -P)" = "$(cd "$HOME" && pwd -P)" ]; then
-    echo "refusing to use '$OUT' as the output directory (it is your home directory): give a directory of its own, e.g. ~/remedy-kind" >&2
-    exit 1
-  fi
   if [ -e "$OUT" ] && [ ! -d "$OUT" ]; then
     echo "refusing to use '$OUT' as the output directory (it is not a directory)" >&2
     exit 1
   fi
   [ -d "$OUT" ] || return 0
-  [ -z "$(find "$OUT" -mindepth 1 -maxdepth 1 | head -n 1)" ] && return 0
-  [ -e "$OUT/$OUT_MARKER" ] && return 0
-  { [ -e "$OUT/env.sh" ] && [ -e "$OUT/ca.crt" ]; } && return 0
-  [ -z "$(find "$OUT" -mindepth 1 -maxdepth 1 ! -name claude | head -n 1)" ] && return 0
+  # The physical path: find does not descend into a symlink given as its root, so a link to a populated directory
+  # would look empty. cd -- also takes a relative path that starts with a dash.
+  real=$(cd -- "$OUT" && pwd -P) || { echo "refusing to use '$OUT' as the output directory (cannot enter it)" >&2; exit 1; }
+  if [ "$real" = "$(cd "$HOME" && pwd -P)" ]; then
+    echo "refusing to use '$OUT' as the output directory (it is your home directory): give a directory of its own, e.g. ~/remedy-kind" >&2
+    exit 1
+  fi
+  [ -z "$(find "$real" -mindepth 1 -maxdepth 1 | head -n 1)" ] && return 0
+  [ -e "$real/$OUT_MARKER" ] && return 0
+  { [ -e "$real/env.sh" ] && [ -e "$real/ca.crt" ]; } && return 0
+  [ -z "$(find "$real" -mindepth 1 -maxdepth 1 ! -name claude | head -n 1)" ] && return 0
   echo "refusing to touch '$OUT': this is not a directory these scripts made (it has no $OUT_MARKER). Use an empty or new directory, or the default ~/remedy-kind." >&2
   exit 1
 }
@@ -67,7 +70,8 @@ ensure_out_dir() {
 # second run still passes the guard.
 cleanup_out_dir() {
   [ -d "$OUT" ] || return 0
-  find "$OUT" -mindepth 1 -maxdepth 1 ! -name claude ! -name "$OUT_MARKER" -exec rm -rf {} +
+  real=$(cd -- "$OUT" && pwd -P) || return 1
+  find "$real" -mindepth 1 -maxdepth 1 ! -name claude ! -name "$OUT_MARKER" -exec rm -rf {} +
 }
 
 # The login directory must exist before the cluster does: kind mounts it into the node, and a directory that Docker
