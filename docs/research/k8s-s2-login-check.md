@@ -73,7 +73,9 @@ Not measured directly (the pod's network was not cut, by instruction). The evide
 - The logged-out calls take 0.06 to 0.07 s and the logged-in ones 0.09 to 0.10 s. The difference is about 25 ms and is the only trace of extra work when logged in; it is small, and this record does not claim what it is (reading a larger config, or a local check).
 - The help text of `auth status` is only `Show authentication status`; it does not say that it contacts a server.
 
-So: it answers from the local configuration, no network needed, for what it reports. The consequence worth knowing for K-6: a login that exists but has been revoked or has expired on the server side is probably still reported as logged in by this command. Whether that is so was not tested (the login must not be revoked by this spike); the first real run that fails with an authentication error shows it. Remedy's run result is the real test of a login; this command tells whether there is one.
+So: the timings and the help text are consistent with a purely local read of the configuration, but network use is NOT measured, and this record does not claim that the command needs no network. A login that exists but has been revoked or has expired on the server side is probably still reported as logged in by this command. Whether that is so was not tested (the login must not be revoked by this spike); the first real run that fails with an authentication error shows it. Remedy's run result is the real test of a login; this command tells whether there is one.
+
+Follow-up for K-6 task 1 (not done here, and it needs no cut of the pod's network): in the real runner pod, run the check once with a proxy that cannot be reached, for example `HTTPS_PROXY=http://127.0.0.1:1 claude auth status --text` (and the same with an empty `CLAUDE_CONFIG_DIR`), and record the exit codes and the time. Until then K-6 must not rely on "needs no network": it must not assume the check works in an air-gapped pod, and it must not treat the check as free of network failures. The one-minute re-check while the runner is not logged in is a design choice that does not depend on the answer.
 
 ### Does it cost quota?
 
@@ -105,7 +107,9 @@ check command:         claude auth status --text     (K-6 sets loginCheckArgs to
 logged in:             exit 0, output matches "Login method: ..." first line (JSON form: "loggedIn": true); output holds account data
 not logged in:         exit 1, output matches "Not logged in. Run claude auth login to authenticate." (JSON form: "loggedIn": false, "authMethod": "none")
 no config at all:      exit 1     (an empty CLAUDE_CONFIG_DIR answers exactly like a never-logged-in one)
-calls the network:     no (inferred from timing and the help text, not measured; a revoked login probably still reads as logged in)     takes: 0.06 to 0.10 s
+calls the network:     unknown (not measured: timings and help text are consistent with a purely local read; K-6 task 1 tests it with an unreachable HTTPS_PROXY; a revoked login probably still reads as logged in)     takes: 0.06 to 0.10 s
 costs quota:           no (no model call, no usage printed; usage page not checked)
 K-6 parses:            the exit code (0 logged in, 1 with output starting "Not logged in" is not logged in; any other result is unknown); never store or log the output, it holds the account's e-mail, organization and subscription
 ```
+
+Recommendation for K-6 (a recommendation, not a measurement): run the check with a timeout of 10 s. The measured 0.06 to 0.10 s leaves a wide margin, and a timeout of 10 s is well under the 30 s upper bound that plan K-6 gives the runner's `LoginChecker`. A timeout means `unknown`, never `missing` (not logged in): the runner reports "could not tell" and checks again, and it must not tell the UI to ask for a login because of a slow or hung check.
