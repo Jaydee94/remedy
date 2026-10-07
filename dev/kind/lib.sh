@@ -122,12 +122,17 @@ install_argocd() {
 # down.sh removes it together with the cluster, so the master key always matches the database it sealed.
 write_dummy_env() {
   [ -f "$DUMMY_ENV" ] && return 0
+  # The values first: a failing openssl stops the script here (set -e), before a file with an empty value exists.
+  admin_password=$(openssl rand -hex 12)
+  runner_token=$(openssl rand -hex 24)
+  master_key=$(openssl rand -base64 32)
+  [ -n "$admin_password" ] && [ -n "$runner_token" ] && [ -n "$master_key" ] || { echo "openssl made an empty secret" >&2; exit 1; }
   (umask 077
    {
      echo "REMEDY_URL=http://127.0.0.1:18080"
-     echo "REMEDY_ADMIN_PASSWORD=$(openssl rand -hex 12)"
-     echo "REMEDY_RUNNER_TOKEN=$(openssl rand -hex 24)"
-     echo "REMEDY_MASTER_KEY=$(openssl rand -base64 32)"
+     echo "REMEDY_ADMIN_PASSWORD=$admin_password"
+     echo "REMEDY_RUNNER_TOKEN=$runner_token"
+     echo "REMEDY_MASTER_KEY=$master_key"
    } > "$DUMMY_ENV")
 }
 
@@ -158,6 +163,7 @@ build_and_load_images() {
 apply_secret() {
   load_dummy_env
   tmp=$(umask 077; mktemp)
+  trap 'rm -f "$tmp"' EXIT
   {
     echo "admin-password=$REMEDY_ADMIN_PASSWORD"
     echo "runner-token=$REMEDY_RUNNER_TOKEN"
@@ -165,12 +171,14 @@ apply_secret() {
   } > "$tmp"
   k -n "$NS" create secret generic remedy-secrets --from-env-file="$tmp" --dry-run=client -o yaml | k apply -f -
   rm -f "$tmp"
+  trap - EXIT
 }
 
 # deploy_release installs or upgrades the chart with the pinned CLI, the dummy's values, the image tags and the address of
 # the API server (the network policy needs it). It waits for the control plane, the runner and the token hook.
 deploy_release() {
   api_ip=$(k get endpoints kubernetes -o jsonpath='{.subsets[0].addresses[0].ip}')
+  [ -n "$api_ip" ] || { echo "cannot read the address of the API server from the endpoints of the kubernetes service" >&2; exit 1; }
   helm --kube-context "$CTX" upgrade --install "$RELEASE" "$REPO_ROOT/deploy/chart" -n "$NS" \
     -f "$REPO_ROOT/deploy/cli-pin.yaml" -f "$KIND_DIR/dummy-values.yaml" \
     --set "image.server.tag=$TAG" --set "image.runner.tag=$TAG" \

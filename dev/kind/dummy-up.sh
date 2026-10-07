@@ -31,9 +31,10 @@ build_and_load_images
 apply_secret
 deploy_release
 
+load_dummy_env
 echo
 echo "Ready."
-echo "  url:       http://127.0.0.1:18080"
+echo "  url:       $REMEDY_URL"
 echo "  password:  REMEDY_ADMIN_PASSWORD in $DUMMY_ENV"
 echo "  login:     make dummy-login   (once; the login survives make dummy-down)"
 echo "  then:      make dummy-smoke   (two real runs on your subscription)"

@@ -6,7 +6,7 @@ IMAGE_TAG ?= dev
 	dummy-up dummy-down dummy-login dummy-logout dummy-redeploy dummy-reset dummy-smoke dummy-status dummy-logs
 
 help: ## Show targets
-	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
 build-go: ## Build both Go binaries into ./bin (no UI embedded)
 	go build -o bin/remedy-server ./cmd/remedy-server

@@ -2,7 +2,7 @@
 # make dummy-status: the state of the dummy setup as plain `key: value` lines, for a person or an agent.
 set -eu
 . "$(dirname "$0")/lib.sh"
-need kubectl helm curl jq
+need kind kubectl helm curl jq
 if ! kind get clusters 2> /dev/null | grep -qx "$CLUSTER"; then
   echo "cluster: none"
   exit 1
@@ -13,8 +13,15 @@ if ! helm --kube-context "$CTX" -n "$NS" status "$RELEASE" > /dev/null 2>&1; the
   exit 1
 fi
 echo "release: $(helm --kube-context "$CTX" -n "$NS" status "$RELEASE" -o json | jq -r '.info.status + " (revision " + (.version|tostring) + ")"')"
-echo "server: $(k -n "$NS" get deployment remedy-server -o jsonpath='{.status.readyReplicas}/{.spec.replicas} ready, image {.spec.template.spec.containers[0].image}')"
-echo "runner: $(k -n "$NS" get pod remedy-runner-0 -o jsonpath='{.status.phase}, restarts {.status.containerStatuses[0].restartCount}' 2>/dev/null || echo 'no pod')"
+ready=$(k -n "$NS" get deployment remedy-server -o jsonpath='{.status.readyReplicas}' 2> /dev/null || true)
+echo "server: ${ready:-0}/$(k -n "$NS" get deployment remedy-server -o jsonpath='{.spec.replicas}' 2> /dev/null) ready, image $(k -n "$NS" get deployment remedy-server -o jsonpath='{.spec.template.spec.containers[0].image}' 2> /dev/null)"
+phase=$(k -n "$NS" get pod remedy-runner-0 -o jsonpath='{.status.phase}' 2> /dev/null || true)
+if [ -z "$phase" ]; then
+  echo "runner: no pod"
+else
+  restarts=$(k -n "$NS" get pod remedy-runner-0 -o jsonpath='{.status.containerStatuses[0].restartCount}' 2> /dev/null || true)
+  echo "runner: $phase, restarts ${restarts:-0}"
+fi
 # The hook Job deletes itself when it succeeds, so the proof of a working refresher is the token and the CronJob's clock.
 if [ "$(k -n "$NS" get secret remedy-write-token -o jsonpath='{.data.token}' 2> /dev/null | wc -c)" -gt 0 ]; then
   echo "write token: present"

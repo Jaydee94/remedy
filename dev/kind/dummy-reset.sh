@@ -7,11 +7,16 @@ need kind kubectl helm jq
 require_dummy
 # The release keeps its image tags: only the database is reset.
 TAG=$(helm --kube-context "$CTX" -n "$NS" get values "$RELEASE" -o json | jq -r '.image.server.tag')
+case "$TAG" in
+  "" | null) echo "cannot read the image tag of release $RELEASE" >&2; exit 1 ;;
+esac
 k -n "$NS" scale deployment/remedy-server --replicas=0
 k -n "$NS" wait --for=delete pod -l app.kubernetes.io/component=server --timeout=120s || true
 k -n "$NS" delete pvc remedy-data --wait=true
-# Helm makes the missing claim again. A scaled-down Deployment stays scaled down on an upgrade, so scale it up by hand.
-deploy_release
+# Scale up before the upgrade, not after it: the claim waits for its first consumer (WaitForFirstConsumer), so an upgrade
+# that waits while no pod exists could wait for a claim that is never bound. The pod stays Pending until Helm has made
+# the claim again, then starts. (Measured: an upgrade of a scaled-down Deployment leaves it at 0 replicas.)
 k -n "$NS" scale deployment/remedy-server --replicas=1
+deploy_release
 k -n "$NS" rollout status deployment/remedy-server --timeout=300s
 echo "the database is empty again"
