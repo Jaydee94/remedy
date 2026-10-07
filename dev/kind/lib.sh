@@ -25,9 +25,49 @@ need() {
 # k runs kubectl against the testbed's cluster.
 k() { kubectl --context "$CTX" "$@"; }
 
+# The marker says that a directory was made by these scripts. check_out_dir refuses anything else before the scripts
+# chmod it or delete in it: the output directory is an argument (or REMEDY_KIND_DIR) and a typo such as `down.sh ~`
+# must not reach the home directory.
+OUT_MARKER=.remedy-kind-dir
+
+# check_out_dir stops (exit 1, a message on stderr) unless $OUT is a path the scripts may chmod and clean: not empty,
+# not /, not $HOME, and either missing, empty, marked, made by an earlier version (env.sh and ca.crt, no marker yet) or
+# holding nothing but claude (what that version's down.sh left). It creates nothing.
+check_out_dir() {
+  out=$OUT
+  while [ "${out%/}" != "$out" ]; do out=${out%/}; done
+  if [ -z "$out" ]; then
+    echo "refusing to use '$OUT' as the output directory (empty or /): give a directory of its own, e.g. ~/remedy-kind" >&2
+    exit 1
+  fi
+  if [ -d "$OUT" ] && [ "$(cd "$OUT" && pwd -P)" = "$(cd "$HOME" && pwd -P)" ]; then
+    echo "refusing to use '$OUT' as the output directory (it is your home directory): give a directory of its own, e.g. ~/remedy-kind" >&2
+    exit 1
+  fi
+  if [ -e "$OUT" ] && [ ! -d "$OUT" ]; then
+    echo "refusing to use '$OUT' as the output directory (it is not a directory)" >&2
+    exit 1
+  fi
+  [ -d "$OUT" ] || return 0
+  [ -z "$(find "$OUT" -mindepth 1 -maxdepth 1 | head -n 1)" ] && return 0
+  [ -e "$OUT/$OUT_MARKER" ] && return 0
+  { [ -e "$OUT/env.sh" ] && [ -e "$OUT/ca.crt" ]; } && return 0
+  [ -z "$(find "$OUT" -mindepth 1 -maxdepth 1 ! -name claude | head -n 1)" ] && return 0
+  echo "refusing to touch '$OUT': this is not a directory these scripts made (it has no $OUT_MARKER). Use an empty or new directory, or the default ~/remedy-kind." >&2
+  exit 1
+}
+
 ensure_out_dir() {
-  (umask 077; mkdir -p "$OUT")
+  check_out_dir
+  (umask 077; mkdir -p "$OUT"; touch "$OUT/$OUT_MARKER")
   chmod 700 "$OUT"
+}
+
+# cleanup_out_dir removes what the scripts generated in $OUT and keeps the login (claude) and the marker, so that a
+# second run still passes the guard.
+cleanup_out_dir() {
+  [ -d "$OUT" ] || return 0
+  find "$OUT" -mindepth 1 -maxdepth 1 ! -name claude ! -name "$OUT_MARKER" -exec rm -rf {} +
 }
 
 # The login directory must exist before the cluster does: kind mounts it into the node, and a directory that Docker

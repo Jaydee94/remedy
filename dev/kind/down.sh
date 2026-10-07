@@ -6,9 +6,8 @@ set -eu
 [ $# -gt 0 ] && REMEDY_KIND_DIR=$1
 . "$(dirname "$0")/lib.sh"
 need kind
+check_out_dir
 
 kind delete cluster --name "$CLUSTER"
-if [ -d "$OUT" ]; then
-  find "$OUT" -mindepth 1 -maxdepth 1 ! -name claude -exec rm -rf {} +
-fi
+cleanup_out_dir
 echo "removed the cluster and what the scripts generated in $OUT; the login in $CLAUDE_DIR stays"
