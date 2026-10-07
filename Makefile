@@ -2,7 +2,7 @@
 
 IMAGE_TAG ?= dev
 
-.PHONY: help build build-go images test vet fmt web-install web-build web-lint web-test dev-server dev-web chart-check check \
+.PHONY: help build build-go images test vet fmt web-install web-build web-lint web-test dev-server dev-web chart-check shell-test check \
 	dummy-up dummy-down dummy-login dummy-logout dummy-redeploy dummy-reset dummy-smoke dummy-status dummy-logs
 
 help: ## Show targets
@@ -56,7 +56,11 @@ chart-check: ## Lint and render the Helm chart (needs helm; kubeconform when ins
 	else echo "kubeconform is not installed: skipping the schema check (CI runs it)"; fi
 	REMEDY_REQUIRE_HELM=1 go test ./deploy -count=1
 
-check: fmt vet test chart-check web-lint web-test web-build ## Everything CI checks
+shell-test: ## Run the shell tests: the dummy's smoke decisions (needs jq)
+	@command -v jq > /dev/null || { echo "jq is needed" >&2; exit 1; }
+	sh dev/kind/smoke-lib_test.sh
+
+check: fmt vet test chart-check shell-test web-lint web-test web-build ## Everything CI checks
 
 dummy-up: ## Build up the kind dummy setup: cluster, demo workloads, Argo CD, images, the chart (real agent; login: dummy-login)
 	dev/kind/dummy-up.sh
