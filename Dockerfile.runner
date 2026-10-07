@@ -1,0 +1,17 @@
+# The runner image. It does NOT contain the claude CLI: the images are public and the binary is proprietary. The
+# runner pod's init container runs `/remedy-runner install-cli` to install the pinned CLI into a volume.
+# BASE is the smallest image the CLI runs on (the record of spike S4, docs/research/k8s-s4-cli-install.md).
+ARG BASE=gcr.io/distroless/base-debian12:nonroot
+
+FROM --platform=$BUILDPLATFORM golang:1.27 AS build
+ARG TARGETOS TARGETARCH
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/remedy-runner ./cmd/remedy-runner
+
+FROM ${BASE}
+COPY --from=build /out/remedy-runner /remedy-runner
+USER 65532:65532
+ENTRYPOINT ["/remedy-runner"]

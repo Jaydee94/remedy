@@ -1,6 +1,8 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help build build-go test vet fmt web-install web-build web-lint web-test dev-server dev-web check
+IMAGE_TAG ?= dev
+
+.PHONY: help build build-go images test vet fmt web-install web-build web-lint web-test dev-server dev-web check
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -12,6 +14,10 @@ build-go: ## Build both Go binaries into ./bin (no UI embedded)
 build: web-build ## Build the UI, then both Go binaries with the UI embedded
 	go build -tags webui -o bin/remedy-server ./cmd/remedy-server
 	go build -o bin/remedy-runner ./cmd/remedy-runner
+
+images: ## Build the control plane and runner images for this machine (tag $(IMAGE_TAG), default dev)
+	docker build -t remedy-server:$(IMAGE_TAG) .
+	docker build -f Dockerfile.runner -t remedy-runner:$(IMAGE_TAG) .
 
 test: ## Run Go tests
 	go test ./...
