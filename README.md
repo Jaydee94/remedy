@@ -168,5 +168,7 @@ docker run -p 8080:8080 -v remedy-data:/data \
 ```
 
 The image runs as a non-root user; `/data` holds the SQLite database. Use a named volume
-or a directory writable by uid 65532. Only the control plane is containerised so far; the
-runner needs the CLI login and runs on the host in this phase.
+or a directory writable by uid 65532. The runner has its own image (`Dockerfile.runner`;
+`make images` builds both). It does not contain the `claude` CLI: the Helm chart's init
+container installs the pinned CLI, and the login is done once with `kubectl exec`. Until
+the chart exists (plan K-2) the runner runs on the host.
