@@ -1,0 +1,21 @@
+# THROWAWAY (spike S2). A pod to install the CLI into and log in to, to try login checks. Not the runner.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: s2
+  namespace: default
+spec:
+  restartPolicy: Never
+  securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+  containers:
+    - name: s2
+      image: debian:bookworm-slim   # S4's runner base is distroless base-debian12; this one has a shell for the probes
+      command: [sleep, "7200"]
+      env:
+        - {name: HOME, value: /tmp/home}
+        - {name: CLAUDE_CONFIG_DIR, value: /tmp/home/claude}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {}
