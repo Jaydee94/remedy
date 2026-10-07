@@ -106,7 +106,7 @@ deploy/chart/
     write-token-secret.yaml     empty Secret the refresher fills
     cronjob-token-refresh.yaml  plus a post-install and post-upgrade hook Job
     NOTES.txt
-  tests/                        render assertions (D13)
+  (render assertions live outside the chart, in deploy/chart_test.go, D13)
 ```
 
 ### 3.2 Values (the parts that carry decisions)
@@ -129,7 +129,12 @@ runner:
   persistence: {size: 1Gi, storageClass: "", existingClaim: ""}   # the dummy passes its hostPath claim
   cli:
     version: ""                                # required, pinned
-    sha256: {amd64: "", arm64: ""}
+    urlTemplate: ""                            # {version} and {platform}; fixed by spike S4
+    archive: none                              # none, or tar.gz with `member` the file to take out of it
+    member: ""
+    platforms:                                 # the vendor's name for the platform and the SHA-256 of the artifact
+      amd64: {name: "", sha256: ""}
+      arm64: {name: "", sha256: ""}
 cluster:
   enabled: false                               # read side; turns REMEDY_K8S_READ_TOKEN_FILE on
   api: https://kubernetes.default.svc
@@ -140,7 +145,8 @@ cluster:
     tokenRefresh: {schedule: "*/30 * * * *", lifetime: 2h}
 networkPolicy:
   enabled: true
-  ingressControllerNamespace: kube-system      # k3s: Traefik
+  dnsNamespace: kube-system
+  public: {from: [namespaceSelector kube-system]}   # who may reach the public port; k3s: Traefik
   apiServer: {cidrs: [], port: 6443}           # the node address(es) behind kubernetes.default.svc
 ```
 
@@ -149,8 +155,9 @@ networkPolicy:
 Image: a small glibc-based base (to be fixed by spike S4), `remedy-runner` as the only Remedy file, user 65532. It does not
 contain `claude`.
 
-Init container: installs the CLI at `runner.cli.version` into an emptyDir at `/opt/claude`, verifies the SHA-256 against
-`runner.cli.sha256` for the node's architecture and fails the pod if it differs. The main container mounts that volume read-only
+Init container: the runner image itself, running `remedy-runner install-cli` (a subcommand written in Go on the standard
+library: the image has no shell and no curl). It downloads the CLI at `runner.cli.version` over HTTPS into an emptyDir at
+`/opt/claude`, verifies the SHA-256 for the node's architecture (`runner.cli.platforms`) and fails the pod if it differs. The main container mounts that volume read-only
 (a CLI that tries to update itself finds nothing writable). The install mechanism (native binary or the npm package) and whether
 to cache it on the state volume are decided by spike S4.
 
@@ -175,7 +182,7 @@ must still reach `Ready`, otherwise no unattended check is possible).
 |---|---|
 | Runner identity | No ServiceAccount token, no Kubernetes API, no private networks: `automountServiceAccountToken: false` plus the egress policy. A render assertion pins the first. |
 | Read and write identity | Two ServiceAccounts, two RBAC sets, as in 2c. The pod runs as the read account. The write token reaches the pod only as a file from the refresher's Secret. |
-| Refresher | Own ServiceAccount. RBAC: `create` on `serviceaccounts/token` of `remedy-write` only, `get` and `update` on the one Secret only (the chart creates the empty Secret, because `create` cannot be limited by name). It never reads another Secret. |
+| Refresher | Own ServiceAccount. RBAC: `create` on `serviceaccounts/token` of `remedy-write` only, `patch` on the one Secret only (the chart creates the empty Secret, because `create` cannot be limited by name). It never reads another Secret. |
 | Write token lifetime | `lifetime` 2 h, refreshed every 30 min; at most 2 h of validity remain after the job fails. It sits in a Secret that anyone with `get secrets` in the namespace can read (accepted, R3). |
 | Self-protection | The release namespace is never in `cluster.write.namespaces` (render fails). |
 | Public surface | Only the public port is exposed: `/api`, `/healthz`, the UI. `/runner/v1` and `/mcp` are on the internal port and reachable only from runner pods (NetworkPolicy) and in-cluster. |
@@ -186,7 +193,7 @@ must still reach `Ready`, otherwise no unattended check is possible).
 
 NetworkPolicies:
 
-- Server: ingress on the public port from `ingressControllerNamespace`; on the internal port from the runner pods only. Egress:
+- Server: ingress on the public port from `networkPolicy.public.from` (a list of peers: the Ingress controller, or the node for a NodePort); on the internal port from the runner pods only. Egress:
   DNS, the API server (`apiServer.cidrs:port`), TCP 443 to public addresses (GitHub).
 - Runner: no ingress. Egress: DNS, the internal server port, TCP 443 except `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
   `169.254.0.0/16`.
@@ -194,7 +201,7 @@ NetworkPolicies:
 
 ## 6. The server changes
 
-Two small changes, both in K-1 and both test-first:
+Three small changes, all test-first. The first two are in K-1, the third in K-3:
 
 1. **Two listeners.** `REMEDY_INTERNAL_ADDR` (default empty). Empty keeps today's behaviour: one port serves everything (local
    `make dev-server`, the existing Docker command). When set, the main port stops serving `/runner/v1/*` and `/mcp`, and a
@@ -204,7 +211,13 @@ Two small changes, both in K-1 and both test-first:
    Secret. It has no other behaviour, uses `internal/kube`'s transport rules (HTTPS, CA file, no redirect) and is tested against
    `kubetest`'s fake API server. The image runs it as `command` of the CronJob; no kubectl image and no shell are needed.
 
-Neither touches the gatekeeper, the store or the runner protocol.
+3. **A write token that is not there yet is a warning.** `kube.Config.Validate` today refuses to start when the write token
+   file is missing or empty. In the cluster the file is filled by the refresher after the first start (the Secret is empty at
+   install, and an install that waits for the server to be ready would otherwise never reach the job that fills it). A missing
+   or empty write token file is now a warning at start-up, and every action fails closed until the file holds a token (the file
+   is read again at every request, as before). The read token stays strict.
+
+None of them touches the gatekeeper, the store or the runner protocol.
 
 ## 7. The dummy setup
 
@@ -228,7 +241,7 @@ cluster matches; `dummy-down` removes the cluster and this file, never `claude/`
 
 | Target | Does |
 |---|---|
-| `make dummy-up` | prerequisites check; directory; cluster; demo workloads; Argo CD; images build and load; Secret; `helm upgrade --install`; waits for the server; prints URL and password and whether a login exists (it cannot read it; it asks the runner: after K-6, before that it prints how to run `dummy-login`) |
+| `make dummy-up` | prerequisites check; directory; cluster; demo workloads; Argo CD; images build and load; Secret; `helm upgrade --install`; waits for the server; prints the URL and the path of `dummy.env` (not the password) and whether the runner is logged in (it cannot read the login; it asks the runner: after K-6, before that it says how to run `dummy-login`) |
 | `make dummy-down` | deletes the cluster and `dummy.env`; keeps the login |
 | `make dummy-login` | `kubectl exec -it` into the runner with its environment, starts `claude` |
 | `make dummy-logout` | deletes the host login directory after a confirmation |
@@ -240,10 +253,10 @@ cluster matches; `dummy-down` removes the cluster and this file, never `claude/`
 
 `dummy-smoke` (`sh`, `curl`, `jq`): signs in with the password of `dummy.env` and the CSRF header; waits until `capabilities`
 shows the cluster tools; starts an ad-hoc run with cluster tools asking why `demo/crashy` crashes; waits for the run to end
-(`REMEDY_RUN_TIMEOUT` applies) and asserts: status `done`, at least one `cluster_*` read tool call recorded, no refused call. It
+(`REMEDY_RUN_TIMEOUT` applies) and asserts: status `succeeded`, at least one `cluster_*` read tool call succeeded, no denied call. It
 then starts a second run asking for a restart of `demo/web`, waits for the approval, approves **only** a restart of
-`demo/web` (any other approval is denied and fails the test), and asserts that the pods of `demo/web` were created after the
-approval. A run that ends with "Not logged in" prints "run `make dummy-login`" and exits non-zero. The script reads no
+`demo/web` (any other approval is denied and fails the test), and asserts that the deployment's `restartedAt` annotation is
+at or after the approval and that the rollout completed. A run that ends with "Not logged in" prints "run `make dummy-login`" and exits non-zero. The script reads no
 credentials and sends the password only to the dummy URL.
 
 Agents: every target is non-interactive except `dummy-login` and `dummy-logout`. All of them exit non-zero on failure and print
@@ -282,9 +295,9 @@ Each spike writes `docs/research/<name>.md` with the command, the output and the
 | Plan | Content | Needs |
 |---|---|---|
 | spikes S1 to S4 | as above | this spec |
-| **K-1** | Amends `design.md` §2.7 and the README; the internal listener; `remedy-tokenrefresh`; `Dockerfile` and `Dockerfile.runner`; `make images` | S4 |
+| **K-1** | Amends `design.md` §2.7 and the README; the internal listener; `remedy-tokenrefresh`; `remedy-runner install-cli`; `Dockerfile` and `Dockerfile.runner`; `make images` | S4 |
 | **K-2** | The chart's core: server, runner with init container, Services, PVCs, Ingress, NetworkPolicies, `existingSecret`, `make chart-check` with the render tests | K-1, S3 |
-| **K-3** | The cluster identities: ServiceAccounts, RBAC read and write, the refresher CronJob and hook, tests against `kubetest` and render tests | K-2 |
+| **K-3** | The cluster identities: the tolerant write token (server change 3), ServiceAccounts, RBAC read and write, the refresher CronJob and hook, render tests, a proof on a real kind cluster | K-2 |
 | **K-4** | The dummy setup: `kind.yaml`, scripts, values, targets, `smoke.sh`, the login check script, the runbook `docs/runbook/dummy-setup.md`, a real run recorded in `docs/research/` | K-3, S1 |
 | **K-5** | Image pipeline, Renovate, release checks, `docs/runbook/homelab-deploy.md` | K-2 |
 | **K-6** | Runner status: the status listener and probes, the report to the server, an API field, the Setup page, `dummy-up` reports the login | K-4, S2 |
