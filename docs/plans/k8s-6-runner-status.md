@@ -25,7 +25,7 @@
 | Command of the check | from S2 | `provider.loginCheckArgs` is `{"auth", "status", "--text"}` (S2's record). The text form matters: the default output is JSON, which has `"loggedIn": false` but not the phrase "Not logged in", so a check without `--text` would class a logged-out CLI as `unknown`. The fake `claude` of the tests behaves like the real one in this respect (it prints the phrase only for `auth status --text`), so a missing `--text` fails a test. |
 | What means "not logged in" | the CLI's text | Exit 1 with the sentence `Not logged in. Run claude auth login to authenticate.` (S2's record; the interactive CLI's `/login` wording is a different text and is not matched). `notLoggedIn` is `(?i)not logged in`. Exit 0 is logged in. Anything else (the binary does not start, another exit code, a timeout) is `unknown`. |
 | Time limit of one check | 30 s | 10 s (`loginCheckTimeout`). The measured time is 0.06 to 0.10 s, so 10 s is a wide margin and far below a hang. A timeout is `unknown`, never `missing`: the runner reports "could not tell", checks again within the minute, and never asks the UI to show a login hint because of a slow or hung check. |
-| Does the check need the network? | not mentioned | Unknown: S2 measured 0.06 to 0.10 s, consistent with a purely local read, but did not cut the network. Task 6 step 5a runs the check with an unreachable proxy once in the real pod; until it has, the plan relies on neither answer (a failing check is `unknown`, which the page already says plainly). A login that has expired on the server side probably still reads as logged in; a failed run, not this check, is the real test of a login. |
+| Does the check need the network? | not mentioned | Unknown: S2 measured 0.06 to 0.10 s, consistent with a purely local read, but did not cut the network. Task 6 step 5a runs the check once with an unreachable proxy, in a throwaway pod built like the runner pod; until it has, the plan relies on neither answer (a failing check is `unknown`, which the page already says plainly). A login that has expired on the server side probably still reads as logged in; a failed run, not this check, is the real test of a login. |
 
 ## Global Constraints
 
@@ -2084,13 +2084,53 @@ Open `http://127.0.0.1:18080`, sign in (password in `~/remedy-kind/dummy.env`), 
 
 - [ ] **Step 5a: The check without a network (the follow-up of the S2 record)**
 
-S2 did not measure whether `claude auth status --text` needs the network, and its record asks for one run in the real runner pod with a proxy that cannot be reached, and the same with an empty `CLAUDE_CONFIG_DIR`, with the exit codes and the times. The runner image has no shell and no `env`, and `kubectl exec` cannot set a variable for one command, so the variable has to come from somewhere else. This is a throwaway debug step, not part of the product, and it is **not verified here**: the way below is the intended one, and if it does not run, write that in the record instead of guessing a result.
+S2 did not measure whether `claude auth status --text` needs the network, and its record asks for one run in the real runner pod's setting with a proxy that cannot be reached, and the same with an empty `CLAUDE_CONFIG_DIR`, with the exit codes and the times. The runner image has no shell and no `env`, and `kubectl exec` cannot set a variable for one command, so the variable has to be in a pod spec. The way is a throwaway pod in `remedy-system` that is built like the runner pod, only with a different command and environment. This is a throwaway step, not part of the product, and it is **not verified here**: it has not been run, so if it does not run, write that in the record instead of guessing a result.
 
-1. Start an ephemeral debug container that shares the runner container's process namespace: `kubectl --context kind-remedy-dev -n remedy-system debug -it remedy-runner-0 --image=busybox:1.37 --target=runner -- sh`.
-2. In it, find the runner's process (`ps`) and run the CLI through that process's root, with the unreachable proxy and then with an empty config directory: `HTTPS_PROXY=http://127.0.0.1:1 CLAUDE_CONFIG_DIR=/state/claude /proc/<pid>/root/opt/claude/claude auth status --text; echo "exit=$?"` and the same with `CLAUDE_CONFIG_DIR=/tmp/empty`. Look at the exit code and at the time only; do not copy the output (the logged-in text holds the account's e-mail), and do not open any file under `/state`.
-3. If the ephemeral container cannot reach the runner's files (a different user, `--profile` refused by the Pod Security Standard), do not loosen the pod. Run the same two commands from a one-off pod that mounts the same claim and the CLI, or leave the question open and say so.
+The throwaway pod uses the runner's own image (a distroless base that has the loader the CLI needs). It cannot mount the runner pod's `claude-bin` volume (an `emptyDir` belongs to one pod), so it installs the CLI itself the same way, with an init container that runs `install-cli` with the arguments of the runner pod's init container, so the pinned version and checksums come from one place. It mounts the runner's state claim `claude-state`, because the login is there. The claim is `ReadWriteOnce` and the runner pod uses it: on the testbed's single-node cluster a second pod on the same node can mount it. If the pod stays `Pending` on the claim (another node), run `kubectl --context kind-remedy-dev -n remedy-system scale statefulset remedy-runner --replicas=0` first, wait for the pod to go, and scale back to `1` at the end. The pod has the same hardening as the runner (the namespace enforces the `restricted` standard). Its environment is `HTTPS_PROXY=http://127.0.0.1:1`, `HOME=/state`, `CLAUDE_CONFIG_DIR` and `TMPDIR=/tmp`, and its command is `/opt/claude/claude auth status --text`.
 
-Expected: exit 0 with the unreachable proxy when logged in and exit 1 with the empty directory, in well under a second, means the check is local; a long wait or another exit code means it needs the network, and then `loginCheckTimeout` and the `unknown` state are doing real work. Either answer is recorded; neither changes the code of tasks 1 to 3.
+```sh
+K="kubectl --context kind-remedy-dev -n remedy-system"
+IMG=$($K get pod remedy-runner-0 -o jsonpath='{.spec.containers[0].image}')
+ARGS=$($K get pod remedy-runner-0 -o json | jq -c '.spec.initContainers[0].args')
+SEC='{"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}}'
+
+# check <pod name> <CLAUDE_CONFIG_DIR>: runs the status command once with an unreachable proxy and prints
+# "<exit code> <started> <finished>". The output of the command is account data: it is never read (no `kubectl logs`).
+check() {
+  jq -n --arg name "$1" --arg img "$IMG" --argjson args "$ARGS" --arg cfg "$2" --argjson sec "$SEC" '{
+    apiVersion: "v1", kind: "Pod", metadata: {name: $name},
+    spec: {
+      restartPolicy: "Never", automountServiceAccountToken: false,
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: "RuntimeDefault"}},
+      initContainers: [{name: "install-cli", image: $img, imagePullPolicy: "IfNotPresent", args: $args, securityContext: $sec,
+        volumeMounts: [{name: "claude-bin", mountPath: "/opt/claude"}]}],
+      containers: [{name: "check", image: $img, imagePullPolicy: "IfNotPresent",
+        command: ["/opt/claude/claude"], args: ["auth", "status", "--text"],
+        env: [{name: "HTTPS_PROXY", value: "http://127.0.0.1:1"}, {name: "HOME", value: "/state"},
+              {name: "CLAUDE_CONFIG_DIR", value: $cfg}, {name: "TMPDIR", value: "/tmp"}],
+        securityContext: $sec,
+        volumeMounts: [{name: "state", mountPath: "/state"}, {name: "claude-bin", mountPath: "/opt/claude", readOnly: true},
+                       {name: "tmp", mountPath: "/tmp"}, {name: "empty", mountPath: "/empty"}]}],
+      volumes: [{name: "claude-bin", emptyDir: {}}, {name: "tmp", emptyDir: {}}, {name: "empty", emptyDir: {}},
+                {name: "state", persistentVolumeClaim: {claimName: "claude-state"}}]
+    }}' | $K apply -f -
+  i=0
+  while [ "$i" -lt 150 ]; do
+    phase=$($K get pod "$1" -o jsonpath='{.status.phase}')
+    case $phase in Succeeded|Failed) break ;; esac
+    i=$((i + 1)); sleep 2
+  done
+  $K get pod "$1" -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode} {.status.containerStatuses[0].state.terminated.startedAt} {.status.containerStatuses[0].state.terminated.finishedAt}{"\n"}'
+  $K delete pod "$1" --wait=true
+}
+
+check s2-proxy-login /state/claude     # the login, and a proxy that cannot be reached
+check s2-proxy-empty /empty            # an existing empty directory (the case S2 measured), same proxy
+```
+
+Look at the exit code and at the time between `startedAt` and `finishedAt` (one-second resolution) only; do not open any file under `/state`.
+
+Expected: exit `0` for the first call and `1` for the second, both within a second or two, means the check is local (the install init container takes the time, not the check); a long wait or another exit code means it needs the network, and then `loginCheckTimeout` and the `unknown` state are doing real work. Either answer is recorded; neither changes the code of tasks 1 to 3. A pod that never starts (the claim, the image, the Pod Security Standard) is not an answer: say so in the record and do not loosen the namespace.
 
 - [ ] **Step 6: The record and the documents**
 

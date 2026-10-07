@@ -28,7 +28,7 @@
 | The host directory's mode (spike S1) | "`0700`" | Confirmed by S1's record: mode `700` works with the PV of `s1-storage.yaml` unchanged (no `777`, no `chown`), the pod writes as uid 65532 into a directory owned by the host user, and the file survives `kind delete cluster`. The result holds for **Docker Desktop on macOS only**: on a Linux Docker host a bind mount keeps the real owner, so the directory would need a `chown` to 65532 or a world-writable mode. That was not measured and the dummy setup does not claim to run there. |
 | A pod made right after its namespace (spike S1) | not mentioned | The namespace's `default` ServiceAccount appears a moment after the namespace, and a pod created before it is refused (`serviceaccount "default" not found`). `lib.sh` has `wait_default_serviceaccount` (up to 60 s), and `dummy-up.sh` calls it after applying the namespace. |
 | Network policies in the dummy (spike S3, kind half) | "as the spike S3 allows" | `networkPolicy.enabled: true`: kind's default CNI enforces policies, and the rule `ipBlock <endpoint>/32` on the endpoint port (6443) lets the control plane reach the API server. `deploy_release` already fills `apiServer.cidrs` from `endpoints/kubernetes` at install time, which S3 requires because the node's Docker address (`172.18.0.2` in the record) differs between machines. The k3s half of S3 is a maintainer step and says nothing about this plan. |
-| The CLI pin (spike S4) | values from the record | `deploy/cli-pin.yaml` shows the record's values: version `2.1.292`, `archive: none`, `linux-x64` and `linux-arm64`, and the two SHA-256 values. The vendor publishes them in a signed `manifest.json`, so step 2 of task 2 checks that each value is present instead of only checking that no marker is left. |
+| The CLI pin (spike S4) | values from the record | `deploy/cli-pin.yaml` shows the record's values: version `2.1.292`, `archive: none`, `linux-x64` and `linux-arm64`, and the two SHA-256 values. The vendor publishes them in a signed `manifest.json`, so step 2 of task 2 checks that each of the six values (version, URL template, both platform names, both checksums) is present in the file: the block prints `MISSING: <value>`, skips the render and exits non-zero if one is not, instead of only checking that no marker is left. It compares the file with the record, not with the vendor. |
 | Does an update write under `$HOME/.local/share/claude`? (spike S4) | not mentioned | S4 could not measure it: with `HOME=/state` the native installer's directory would be on the writable state volume, so the read-only `/opt/claude` does not by itself keep an update out. Task 6 step 4a checks after the login and the smoke test that `/state/.local/share/claude` is absent. The runner image has no shell, so the check looks at the host side of the volume, by name only. |
 
 ## Global Constraints
@@ -309,8 +309,16 @@ runner:
 
 - [ ] **Step 2: Check that every value of the record is in the file and that the chart accepts it**
 
-Run: `for want in '2.1.292' 'https://downloads.claude.ai/claude-code-releases/{version}/{platform}/claude' 'linux-x64' 'linux-arm64' 'a967e7b1d8b4e47ee421d5433027880347952b0c0857abf880e2c942a4ec93b3' '24caa9e6ff13bf227049a2626f1c816fc895023050f0ec3b12dbf14d897367e0'; do grep -qF "$want" deploy/cli-pin.yaml || echo "MISSING: $want"; done; helm template remedy deploy/chart -n remedy-system -f deploy/cli-pin.yaml --set existingSecret.name=x > /dev/null && echo chart accepts the pin`
-Expected: no `MISSING` line and `chart accepts the pin`. A `MISSING` line means a value of the record was mistyped or dropped (compare the 64 hex digits character by character with the record: a wrong checksum fails the pod's init container, not the render). If `helm template` complains about `runner.cli.platforms.<arch>.sha256 is required`, a checksum is missing.
+```sh
+missing=0
+for want in '2.1.292' 'https://downloads.claude.ai/claude-code-releases/{version}/{platform}/claude' 'linux-x64' 'linux-arm64' \
+            'a967e7b1d8b4e47ee421d5433027880347952b0c0857abf880e2c942a4ec93b3' '24caa9e6ff13bf227049a2626f1c816fc895023050f0ec3b12dbf14d897367e0'; do
+  grep -qF -- "$want" deploy/cli-pin.yaml || { echo "MISSING: $want"; missing=1; }
+done
+[ "$missing" -eq 0 ] && helm template remedy deploy/chart -n remedy-system -f deploy/cli-pin.yaml --set existingSecret.name=x > /dev/null && echo chart accepts the pin
+```
+
+Expected: no `MISSING` line and the last line `chart accepts the pin`. If any value is absent the block prints `MISSING: <value>` for it, does not run `helm template`, does not print `chart accepts the pin`, and exits non-zero (the exit status of the last line). A `MISSING` line means a value of the record was mistyped or dropped (compare the 64 hex digits character by character with the record: a wrong checksum fails the pod's init container, not the render). If `helm template` complains about `runner.cli.platforms.<arch>.sha256 is required`, a checksum is missing.
 
 - [ ] **Step 3: The namespace and the login volume**
 
