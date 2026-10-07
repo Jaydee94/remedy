@@ -18,6 +18,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "install-cli" {
+		os.Exit(installCLI(os.Args[2:]))
+	}
+
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	cfg, err := config.RunnerFromEnv(os.Getenv)
