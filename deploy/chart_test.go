@@ -318,3 +318,55 @@ func TestTheRunnerCanBeLeftOut(t *testing.T) {
 		t.Fatal("nothing of the runner may be rendered when runner.enabled is false")
 	}
 }
+
+func TestThereIsNoIngressByDefault(t *testing.T) {
+	if got := mustRender(t, baseValues()).all("Ingress"); len(got) != 0 {
+		t.Fatalf("%d Ingress objects rendered, want none", len(got))
+	}
+}
+
+func TestTheIngressPointsAtThePublicServiceOnly(t *testing.T) {
+	values := baseValues()
+	set(values, "ingress.enabled", true)
+	set(values, "ingress.host", "remedy.example.invalid")
+	set(values, "ingress.className", "traefik")
+	set(values, "ingress.tls.secretName", "remedy-tls")
+	set(values, "ingress.annotations", map[string]any{"cert-manager.io/cluster-issuer": "letsencrypt"})
+	ing := mustRender(t, values).find("Ingress", "remedy")
+	if ing == nil {
+		t.Fatal("no Ingress remedy")
+	}
+	if dig(t, ing, "spec", "ingressClassName") != "traefik" {
+		t.Errorf("ingressClassName = %v", dig(t, ing, "spec", "ingressClassName"))
+	}
+	rules, _ := dig(t, ing, "spec", "rules").([]any)
+	if len(rules) != 1 || dig(t, rules[0], "host") != "remedy.example.invalid" {
+		t.Fatalf("rules = %v", rules)
+	}
+	paths, _ := dig(t, rules[0], "http", "paths").([]any)
+	if len(paths) != 1 || dig(t, paths[0], "path") != "/" || dig(t, paths[0], "backend", "service", "name") != "remedy-server" ||
+		dig(t, paths[0], "backend", "service", "port", "number") != 8080 {
+		t.Fatalf("paths = %v, want one path / to remedy-server:8080 (never the internal Service)", paths)
+	}
+	if dig(t, ing, "spec", "tls", 0, "secretName") != "remedy-tls" || dig(t, ing, "spec", "tls", 0, "hosts", 0) != "remedy.example.invalid" {
+		t.Errorf("tls = %v", dig(t, ing, "spec", "tls"))
+	}
+	if dig(t, ing, "metadata", "annotations", "cert-manager.io/cluster-issuer") != "letsencrypt" {
+		t.Errorf("annotations = %v", dig(t, ing, "metadata", "annotations"))
+	}
+}
+
+func TestTheIngressNeedsAHostAndHasNoTLSBlockWithoutASecret(t *testing.T) {
+	values := baseValues()
+	set(values, "ingress.enabled", true)
+	mustFail(t, values, "ingress.host")
+
+	set(values, "ingress.host", "remedy.example.invalid")
+	ing := mustRender(t, values).find("Ingress", "remedy")
+	if dig(t, ing, "spec", "tls") != nil {
+		t.Fatalf("tls = %v, want none without ingress.tls.secretName", dig(t, ing, "spec", "tls"))
+	}
+	if dig(t, ing, "spec", "ingressClassName") != nil {
+		t.Fatalf("ingressClassName = %v, want none when className is empty (the cluster's default applies)", dig(t, ing, "spec", "ingressClassName"))
+	}
+}
