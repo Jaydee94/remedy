@@ -370,3 +370,99 @@ func TestTheIngressNeedsAHostAndHasNoTLSBlockWithoutASecret(t *testing.T) {
 		t.Fatalf("ingressClassName = %v, want none when className is empty (the cluster's default applies)", dig(t, ing, "spec", "ingressClassName"))
 	}
 }
+
+func policy(t *testing.T, d docs, name string) map[string]any {
+	t.Helper()
+	p := d.find("NetworkPolicy", name)
+	if p == nil {
+		t.Fatalf("no NetworkPolicy %s", name)
+	}
+	return p
+}
+
+// rulesText is a policy's ingress or egress rules as YAML text, for substring checks.
+func rulesText(p map[string]any, which string) string { return toString(dig(nil, p, "spec", which)) }
+
+func TestTheServerPolicyLetsOnlyRunnersReachTheInternalPort(t *testing.T) {
+	p := policy(t, mustRender(t, baseValues()), "remedy-server")
+	ingress, _ := dig(t, p, "spec", "ingress").([]any)
+	if len(ingress) != 2 {
+		t.Fatalf("%d ingress rules, want 2 (public, internal): %v", len(ingress), ingress)
+	}
+	public, internal := toString(ingress[0]), toString(ingress[1])
+	if !strings.Contains(public, "port: 8080") || strings.Contains(public, "8081") {
+		t.Errorf("the public rule must list only 8080:\n%s", public)
+	}
+	if !strings.Contains(public, "kubernetes.io/metadata.name: kube-system") {
+		t.Errorf("the public rule must name the configured peers:\n%s", public)
+	}
+	if !strings.Contains(internal, "port: 8081") || strings.Contains(internal, "8080") ||
+		!strings.Contains(internal, "app.kubernetes.io/component: runner") || strings.Contains(internal, "namespaceSelector") {
+		t.Errorf("the internal rule must list only runner pods and 8081:\n%s", internal)
+	}
+}
+
+func TestThePublicPeersAreConfigurable(t *testing.T) {
+	values := baseValues()
+	set(values, "networkPolicy.public.from", []any{map[string]any{"ipBlock": map[string]any{"cidr": "0.0.0.0/0"}}})
+	p := policy(t, mustRender(t, values), "remedy-server")
+	if got := rulesText(p, "ingress"); !strings.Contains(got, "cidr: 0.0.0.0/0") || strings.Contains(got, "kube-system") {
+		t.Fatalf("ingress = %s", got)
+	}
+}
+
+func TestTheRunnerPolicyAllowsNoIngressAndOnlyServerDNSAndTheInternet(t *testing.T) {
+	p := policy(t, mustRender(t, baseValues()), "remedy-runner")
+	types := toString(dig(t, p, "spec", "policyTypes"))
+	if !strings.Contains(types, "Ingress") || !strings.Contains(types, "Egress") {
+		t.Fatalf("policyTypes = %s, want both: the runner takes no connection", types)
+	}
+	if dig(t, p, "spec", "ingress") != nil {
+		t.Fatalf("ingress = %v, want no rule at all", dig(t, p, "spec", "ingress"))
+	}
+	egress := rulesText(p, "egress")
+	for _, want := range []string{
+		"k8s-app: kube-dns", "app.kubernetes.io/component: server", "port: 8081", "port: 443",
+		"cidr: 0.0.0.0/0", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16",
+	} {
+		if !strings.Contains(egress, want) {
+			t.Errorf("the runner's egress lacks %q:\n%s", want, egress)
+		}
+	}
+	if strings.Contains(egress, "6443") {
+		t.Errorf("the runner must not be allowed to reach the API server:\n%s", egress)
+	}
+}
+
+func TestTheServerPolicyNamesTheAPIServerOnlyWhenTheClusterIsOn(t *testing.T) {
+	p := policy(t, mustRender(t, baseValues()), "remedy-server")
+	if strings.Contains(rulesText(p, "egress"), "6443") {
+		t.Fatalf("the cluster is off: no API server rule expected:\n%s", rulesText(p, "egress"))
+	}
+
+	values := baseValues()
+	set(values, "cluster.enabled", true)
+	mustFail(t, values, "networkPolicy.apiServer.cidrs")
+
+	set(values, "networkPolicy.apiServer.cidrs", []any{"172.18.0.2/32"})
+	p = policy(t, mustRender(t, values), "remedy-server")
+	egress := rulesText(p, "egress")
+	if !strings.Contains(egress, "cidr: 172.18.0.2/32") || !strings.Contains(egress, "port: 6443") {
+		t.Fatalf("the API server rule is missing:\n%s", egress)
+	}
+}
+
+func TestPoliciesCanBeTurnedOff(t *testing.T) {
+	values := baseValues()
+	set(values, "networkPolicy.enabled", false)
+	if got := mustRender(t, values).all("NetworkPolicy"); len(got) != 0 {
+		t.Fatalf("%d policies rendered, want none", len(got))
+	}
+}
+
+func TestClusterOnWithoutPoliciesNeedsNoAPIServerAddress(t *testing.T) {
+	values := baseValues()
+	set(values, "networkPolicy.enabled", false)
+	set(values, "cluster.enabled", true)
+	mustRender(t, values)
+}
