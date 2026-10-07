@@ -113,3 +113,55 @@ func TestWarnings(t *testing.T) {
 		t.Fatalf("warnings = %v", w)
 	}
 }
+
+func TestValidateAcceptsAWriteTokenThatIsNotThereYet(t *testing.T) {
+	read := writeFile(t, "read", "read-token\n")
+	api := "https://k8s.example:6443"
+	for name, file := range map[string]string{
+		"missing": filepath.Join(t.TempDir(), "not-yet"),
+		"empty":   writeFile(t, "empty", "\n"),
+	} {
+		c := Config{API: api, ReadTokenFile: read, WriteTokenFile: file, WriteNamespaces: []string{"demo"}}
+		if err := c.Validate(); err != nil {
+			t.Errorf("a %s write token file must be accepted at start-up, got %v", name, err)
+		}
+	}
+
+	// What is there but wrong stays a mistake: two lines, or a path that is a directory.
+	for name, file := range map[string]string{
+		"two lines": writeFile(t, "two", "a\nb\n"),
+		"directory": t.TempDir(),
+	} {
+		c := Config{API: api, ReadTokenFile: read, WriteTokenFile: file, WriteNamespaces: []string{"demo"}}
+		if err := c.Validate(); err == nil {
+			t.Errorf("a write token file that is a %s must still be refused", name)
+		}
+	}
+
+	// The read token is as strict as before.
+	c := Config{API: api, ReadTokenFile: filepath.Join(t.TempDir(), "not-yet")}
+	if err := c.Validate(); err == nil {
+		t.Error("a missing read token file must still be refused")
+	}
+}
+
+func TestWarningsSayWhenTheWriteTokenIsNotThereYet(t *testing.T) {
+	read := writeFile(t, "read", "r")
+	base := Config{ReadTokenFile: read, WriteNamespaces: []string{"demo"}}
+	for name, file := range map[string]string{
+		"missing": filepath.Join(t.TempDir(), "not-yet"),
+		"empty":   writeFile(t, "empty", " \n"),
+	} {
+		c := base
+		c.WriteTokenFile = file
+		w := c.Warnings()
+		if len(w) != 1 || !strings.Contains(w[0], "REMEDY_K8S_WRITE_TOKEN_FILE") || !strings.Contains(w[0], "fail") {
+			t.Errorf("%s: warnings = %v, want one that says actions fail until the file holds a token", name, w)
+		}
+	}
+	c := base
+	c.WriteTokenFile = writeFile(t, "write", "write-token\n")
+	if w := c.Warnings(); len(w) != 0 {
+		t.Errorf("a write token that is there: warnings = %v, want none", w)
+	}
+}

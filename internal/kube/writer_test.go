@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -186,5 +188,35 @@ func TestANewWriterNeedsTheWriteSideToBeConfigured(t *testing.T) {
 	}
 	if _, err := NewReader(Config{API: "http://k8s"}); err == nil {
 		t.Fatal("a reader without a read token")
+	}
+}
+
+func TestAnActionFailsClosedUntilTheWriteTokenExists(t *testing.T) {
+	api := newFakeAPI(t, okReply())
+	file := filepath.Join(t.TempDir(), "token")
+	w, err := NewWriter(Config{
+		API: api.URL, ReadTokenFile: writeFile(t, "read", "read-token"),
+		WriteTokenFile: file, WriteNamespaces: []string{"demo"},
+	})
+	if err != nil {
+		t.Fatalf("a writer must be built while the token file is not there yet: %v", err)
+	}
+
+	if err := w.DeletePod(context.Background(), "demo", "web-1"); err == nil {
+		t.Fatal("an action must fail while there is no write token")
+	}
+	if n := len(api.requests()); n != 0 {
+		t.Fatalf("%d requests were sent without a write token, want none", n)
+	}
+
+	if err := os.WriteFile(file, []byte("write-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.DeletePod(context.Background(), "demo", "web-1"); err != nil {
+		t.Fatalf("the same writer must work once the file holds a token: %v", err)
+	}
+	got := api.requests()
+	if len(got) != 1 || got[0].Method != "DELETE" || got[0].Auth != "Bearer write-token" {
+		t.Fatalf("requests = %+v", got)
 	}
 }
