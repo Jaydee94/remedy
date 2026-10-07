@@ -87,6 +87,32 @@ drwxr-xr-x 3 0 0 96 Oct  7 06:30 claude
 written by 65532 at Wed Oct  7 06:30:35 UTC 2026
 ```
 
+## Cleanup check
+
+`s1.sh` ends with a check of its own (added after review): it prints `kind get clusters` and lists the host paths that
+are left. One more end-to-end run with mode 700 (same result as above: both pods wrote as uid 65532) printed this at
+its tail:
+
+```text
+== cleanup
+Deleting cluster "remedy-spike" ...
+Deleted nodes: ["remedy-spike-control-plane"]
+left: claude    (the directory /Users/jaydee/remedy-kind-spike stays so that you can inspect it; remove it by hand)
+cleanup check: kind clusters left: No kind clusters found. 
+cleanup check: host paths left:
+/Users/jaydee/remedy-kind-spike
+```
+
+The script keeps the directory for inspection, so it was removed by hand afterwards
+(`rm -rf ~/remedy-kind-spike ~/remedy-kind-spike.yaml`), and the same two checks were run again:
+
+```text
+$ kind get clusters
+No kind clusters found.
+$ command ls -d ~/remedy-kind-spike*
+zsh: no matches found: /Users/jaydee/remedy-kind-spike*
+```
+
 ## Findings
 
 - Both modes work, including the stricter 700 (owner only). The pod wrote as uid 65532 into a host directory owned by

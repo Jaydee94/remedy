@@ -42,3 +42,6 @@ echo "== cleanup"
 kind delete cluster --name remedy-spike
 rm -f "$DIR/../remedy-kind-spike.yaml"
 echo "left: $(ls -A "$DIR" | tr '\n' ' ')   (the directory $DIR stays so that you can inspect it; remove it by hand)"
+echo "cleanup check: kind clusters left: $(kind get clusters 2>&1 | tr '\n' ' ')"
+echo "cleanup check: host paths left:"
+command ls -d "$HOME"/remedy-kind-spike* 2>&1 || true
