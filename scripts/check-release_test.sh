@@ -28,6 +28,33 @@ chart 0.10.0 0.10.0
 ok  "two-digit minor"                       v0.10.0
 bad "0.1.0 is not 0.10.0"                   v0.1.0
 
+# Prerelease guard: even if chart has the same prerelease, reject it
+chart 0.2.0-rc1 0.2.0-rc1
+bad "a prerelease tag whose chart says the same" v0.2.0-rc1
+
+# Strict shape X.Y.Z enforcement (no leading zeros, no extra dots)
+chart 1.2.3.4 1.2.3.4
+bad "four-part version v1.2.3.4"                 v1.2.3.4
+chart 01.2.3 01.2.3
+bad "leading zero in version v01.2.3"            v01.2.3
+chart 1.2.3. 1.2.3.
+bad "trailing dot in version v1.2.3."            v1.2.3.
+chart 1..3 1..3
+bad "double dot in version v1..3"                v1..3
+
+# Field function robustness: trailing comments, CRLF, single quotes
+chart 1.2.3 1.2.3
+printf 'apiVersion: v2\nname: remedy\nversion: 1.2.3 # release\nappVersion: "1.2.3"\n' > "$WORK/Chart.yaml"
+ok  "version with trailing comment"         v1.2.3
+printf 'apiVersion: v2\nname: remedy\nversion: 1.2.3\r\nappVersion: "1.2.3"\r\n' > "$WORK/Chart.yaml"
+ok  "CRLF line endings"                     v1.2.3
+printf 'apiVersion: v2\nname: remedy\nversion: 1.2.3\nappVersion: '"'"'1.2.3'"'"'\n' > "$WORK/Chart.yaml"
+ok  "single-quoted appVersion"              v1.2.3
+printf 'apiVersion: v2\nname: remedy\n# version: 0.9.9\nversion: 1.2.3\nappVersion: "1.2.3"\n' > "$WORK/Chart.yaml"
+ok  "comment line with version ignored"     v1.2.3
+printf 'apiVersion: v2\nname: remedy\nsome_key:\n  version: 0.9.9\nversion: 1.2.3\nappVersion: "1.2.3"\n' > "$WORK/Chart.yaml"
+ok  "indented version ignored"              v1.2.3
+
 printf 'apiVersion: v2\nname: remedy\n' > "$WORK/Chart.yaml"
 bad "a chart without versions"              v0.1.0
 rm -f "$WORK/Chart.yaml"
