@@ -2,7 +2,7 @@
 
 Date: 2026-10-07. Kubernetes server v1.37.0 (kubectl client v1.37.1), kind v0.33.0 (one control-plane node, Docker Desktop on arm64),
 Helm v4.3.0. The images are `remedy-server:dev` and `remedy-runner:dev` from `make images`, loaded with `kind load docker-image`.
-The cluster `remedy-k3` was created for this run and deleted afterwards. No token and no password appears below: lengths and
+The cluster `remedy-k3` was created for this run and deleted afterwards (see Cleanup). No token and no password appears below: lengths and
 12-character SHA-256 prefixes only.
 
 ## Setup
@@ -84,14 +84,14 @@ ok    remedy-token-refresher no  patch secrets/remedy-secrets -n remedy-system
 ok    remedy-token-refresher no  get secrets/remedy-write-token -n remedy-system
 ok    remedy-token-refresher no  create secrets -n remedy-system
 ok    remedy-token-refresher no  list secrets -n remedy-system
--- remedy-server (no cluster) or remedy-runner: no rights at all
+-- no rights granted to the name remedy-runner (the runner is not installed in this proof, so this only shows that no role binds that name)
 ok    remedy-runner          no  list pods --all-namespaces
 ok    remedy-runner          no  get secrets -n remedy-system
 all as expected
 ```
 
-(The runner account does not exist in this install because the runner is off; `can-i` evaluates RBAC for any name, and an
-account nobody bound has no rights.) The case that matters most, the refresher minting a token for another account:
+(The runner account does not exist in this install because the runner is off; `can-i` evaluates RBAC for any name, so these two
+lines would pass for any unbound name: they show only that no role binds `remedy-runner`.) The case that matters most, the refresher minting a token for another account:
 
 ```
 kubectl --context kind-remedy-k3 -n remedy-system auth can-i create serviceaccounts/default --subresource=token --as=system:serviceaccount:remedy-system:remedy-token-refresher
@@ -122,8 +122,8 @@ waited for it.
   The log line `the cluster answers version=v1.37.0 actions=true` therefore came from that token and that CA file.
 - **The refresher's NetworkPolicy selects its pods:** the manual job's pod carries `app.kubernetes.io/component=token-refresh`,
   `app.kubernetes.io/instance=remedy`, `app.kubernetes.io/name=remedy`, which is the policy's `PodSelector`; egress is DNS
-  (kube-dns, port 53) and `172.18.0.2/32` port 6443 only. A throwaway busybox pod with those labels could open `172.18.0.2:6443`
-  (`nc`: open) and could not fetch `http://1.1.1.1` (`wget`: timed out, blocked). The same image without the labels fetched
+  (kube-dns, port 53) and `172.18.0.2/32` port 6443 only. A throwaway busybox pod in `remedy-system` with those labels could open `172.18.0.2:6443`
+  (`nc`: open) and could not fetch `http://1.1.1.1` (`wget`: timed out, blocked). The same image in the same namespace without the labels fetched
   it (reached), so the block comes from the policy.
 
 ## Helm 4 (v4.3.0) against what the plan assumed from Helm 3
@@ -145,12 +145,26 @@ waited for it.
 
 ## Result
 
-This proves, on a real cluster with enforced NetworkPolicies and Helm 4: the three identities have exactly the rights the script lists
-(and nothing it forbids); the hook fills `remedy-write-token` at install and upgrade; the CronJob's job refreshes it with a new
-two-hour token; an upgrade without hooks keeps the token; the control plane starts with an empty write token, warns, and picks
-the token up without a restart; the control plane reaches the API server with its projected read token and the cluster CA; the
-refresher runs with a read-only root file system and cannot mint a token for any account but `remedy-write`.
+This proves, on a real cluster with enforced NetworkPolicies and Helm 4: the sampled `can-i` answers of the script match the chart's RBAC
+(the script is a finite sample; that the roles grant nothing more follows from reading their rules, which name `resourceNames`
+for every refresher rule, and the unit tests that compare each role to its exact expected set). Of the accounts the refresher could be
+asked to mint a token for, `default` and `remedy-read` were probed and refused. The hook fills `remedy-write-token` at install and
+upgrade; the CronJob's job refreshes it with a new two-hour token; an upgrade without hooks keeps the token; the control plane starts
+with an empty write token, warns, and picks the token up without a restart; the control plane reaches the API server with its projected
+read token and the cluster CA; the refresher runs with a read-only root file system.
 
 It does not prove: an action failing closed live (the unit test of the `Writer` pins that), a cluster action approved and executed with the
 mounted write token (no agent run here), Argo CD's handling of the Secret and of the hook as `PostSync` (plan K-5), the runner
 (plan K-4), or the behaviour when the token expires with a stopped refresher.
+
+## Cleanup
+
+```
+$ kind delete cluster --name remedy-k3
+Deleting cluster "remedy-k3" ...
+Deleted nodes: ["remedy-k3-control-plane"]
+$ kind get clusters
+No kind clusters found.
+```
+
+The values file with the throwaway settings was removed from the scratchpad; the context `kind-forgedeck` of another project was never touched.

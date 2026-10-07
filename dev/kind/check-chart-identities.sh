@@ -57,10 +57,8 @@ can no  remedy-token-refresher get secrets/remedy-write-token -n "$NS"
 can no  remedy-token-refresher create secrets -n "$NS"
 can no  remedy-token-refresher list secrets -n "$NS"
 
-echo "-- remedy-server (no cluster) or remedy-runner: no rights at all"
-for who in remedy-runner; do
-  can no "$who" list pods --all-namespaces
-  can no "$who" get secrets -n "$NS"
-done
+echo "-- no rights granted to the name remedy-runner (the runner is not installed in this proof, so this only shows that no role binds that name)"
+can no remedy-runner list pods --all-namespaces
+can no remedy-runner get secrets -n "$NS"
 
 [ "$fail" -eq 0 ] && echo "all as expected" || { echo "some answers are not as expected" >&2; exit 1; }
