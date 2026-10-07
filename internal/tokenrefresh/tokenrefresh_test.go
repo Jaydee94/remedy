@@ -283,3 +283,56 @@ func TestRunDoesNotFollowARedirect(t *testing.T) {
 		t.Fatalf("the refresher followed a redirect: %d requests reached the other host (its token went with them)", n)
 	}
 }
+
+// A real service account token is a JWT of about 900 characters, longer than the message limit of an error text. An
+// API server that echoes one near the start of its message must not leave a prefix of it behind when the text is cut.
+func TestAnEchoedTokenLongerThanTheMessageLimitLeavesNoPrefix(t *testing.T) {
+	jwt := func(seed string) string { return "eyJ" + strings.Repeat(seed, 300) } // 903 characters
+	long := map[string]string{"own": jwt("a1B"), "minted": jwt("z9Y")}
+	forms := map[string]string{
+		"own": long["own"], "minted": long["minted"],
+		"minted in base64": base64.StdEncoding.EncodeToString([]byte(long["minted"])),
+	}
+	for name, failing := range map[string]string{"the mint fails": "mint", "the patch fails": "patch"} {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			io.Copy(io.Discard, r.Body)
+			echo := func(status int, text string) {
+				w.WriteHeader(status)
+				msg, _ := json.Marshal(map[string]string{"message": text})
+				w.Write(msg)
+			}
+			if strings.HasSuffix(r.URL.Path, "/token") {
+				if failing == "mint" {
+					echo(http.StatusForbidden, long["own"]+" is not allowed")
+					return
+				}
+				w.WriteHeader(http.StatusCreated)
+				fmt.Fprintf(w, `{"status":{"token":%q}}`, long["minted"])
+				return
+			}
+			echo(http.StatusInternalServerError, long["own"]+" "+forms["minted"]+" "+forms["minted in base64"])
+		}))
+		tokenFile := filepath.Join(t.TempDir(), "token")
+		if err := os.WriteFile(tokenFile, []byte(long["own"]+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg := tokenrefresh.Config{
+			API: ts.URL, TokenFile: tokenFile, Namespace: "remedy-system", Account: "remedy-write",
+			Secret: "remedy-write-token", Key: "token", Lifetime: 2 * time.Hour,
+		}
+		logs := &bytes.Buffer{}
+		err := tokenrefresh.Run(context.Background(), cfg, logTo(logs))
+		ts.Close()
+		if err == nil {
+			t.Fatalf("%s: expected an error", name)
+		}
+		logTo(logs).Error("the token was not refreshed", "err", err)
+		for _, text := range []string{err.Error(), logs.String()} {
+			for form, tok := range forms {
+				if strings.Contains(text, tok[:40]) {
+					t.Errorf("%s: the first 40 characters of the %s token survive in %.200q", name, form, text)
+				}
+			}
+		}
+	}
+}

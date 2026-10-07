@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Jaydee94/remedy/internal/kube"
 	"github.com/Jaydee94/remedy/internal/secret"
@@ -204,7 +205,7 @@ func (cl *client) do(ctx context.Context, method, path, contentType string, body
 		return nil, cl.scrub(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, cl.scrub(fmt.Errorf("%s %s: HTTP %d: %s", method, path, resp.StatusCode, apiMessage(raw)))
+		return nil, cl.scrub(fmt.Errorf("%s %s: HTTP %d: %s", method, path, resp.StatusCode, cl.apiMessage(raw)))
 	}
 	return raw, nil
 }
@@ -224,25 +225,35 @@ func (cl *client) scrub(err error) error {
 	if err == nil {
 		return nil
 	}
-	msg := err.Error()
-	for _, k := range cl.known {
-		msg = strings.ReplaceAll(msg, k, "***")
-	}
-	return errors.New(msg)
+	return errors.New(cl.scrubText(err.Error()))
 }
 
-// apiMessage is the message of an API server's Status answer, shortened, or a fixed text when there is none.
-func apiMessage(raw []byte) string {
+// scrubText takes every known token out of text.
+func (cl *client) scrubText(text string) string {
+	for _, k := range cl.known {
+		text = strings.ReplaceAll(text, k, "***")
+	}
+	return text
+}
+
+// apiMessage is the message of an API server's Status answer, scrubbed and then shortened, or a fixed text when there is
+// none. The order matters: a token is longer than the limit, and a token cut in two no longer matches what is scrubbed.
+func (cl *client) apiMessage(raw []byte) string {
 	var s struct {
 		Message string `json:"message"`
 	}
 	if json.Unmarshal(raw, &s) != nil || s.Message == "" {
 		return "no message"
 	}
-	if len(s.Message) > maxMessage {
-		return s.Message[:maxMessage] + "..."
+	msg := cl.scrubText(s.Message)
+	if len(msg) <= maxMessage {
+		return msg
 	}
-	return s.Message
+	cut := maxMessage
+	for cut > 0 && !utf8.RuneStart(msg[cut]) { // never end inside a multi-byte character
+		cut--
+	}
+	return msg[:cut] + "..."
 }
 
 // Run mints a token for the account and stores it in the Secret. It returns an error for anything that went wrong; the
