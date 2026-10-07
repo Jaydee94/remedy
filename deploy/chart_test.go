@@ -1,6 +1,9 @@
 package deploy_test
 
 import (
+	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -464,5 +467,254 @@ func TestClusterOnWithoutPoliciesNeedsNoAPIServerAddress(t *testing.T) {
 	values := baseValues()
 	set(values, "networkPolicy.enabled", false)
 	set(values, "cluster.enabled", true)
+	mustRender(t, values)
+}
+
+// The tests below decode the rendered policies and check their structure: a substring check would pass if a rule
+// were widened or split.
+
+var privateRanges = []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"}
+
+func listOf(v any) []any {
+	l, _ := v.([]any)
+	return l
+}
+
+func egressRules(t *testing.T, p map[string]any) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for _, r := range listOf(dig(t, p, "spec", "egress")) {
+		m, ok := r.(map[string]any)
+		if !ok {
+			t.Fatalf("egress rule %v is not an object", r)
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// ports of a rule as sorted "PROTOCOL/port" strings.
+func rulePorts(rule map[string]any) []string {
+	var out []string
+	for _, p := range listOf(rule["ports"]) {
+		out = append(out, fmt.Sprintf("%v/%v", dig(nil, p, "protocol"), dig(nil, p, "port")))
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ipBlocks lists the ipBlock of every peer of the rules, as cidr plus the except list.
+type block struct {
+	cidr   string
+	except []string
+}
+
+func ipBlocks(rules []map[string]any) []block {
+	var out []block
+	for _, r := range rules {
+		for _, peer := range listOf(r["to"]) {
+			ib, ok := dig(nil, peer, "ipBlock").(map[string]any)
+			if !ok {
+				continue
+			}
+			b := block{cidr: fmt.Sprint(ib["cidr"])}
+			for _, e := range listOf(ib["except"]) {
+				b.except = append(b.except, fmt.Sprint(e))
+			}
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// checkInternetRule pins the one rule that opens the public internet: TCP 443 to 0.0.0.0/0 except the private ranges,
+// in a rule of its own.
+func checkInternetRule(t *testing.T, name string, p map[string]any) {
+	t.Helper()
+	var found []map[string]any
+	for _, r := range egressRules(t, p) {
+		for _, b := range ipBlocks([]map[string]any{r}) {
+			if b.cidr == "0.0.0.0/0" {
+				found = append(found, r)
+			}
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("%s: %d egress rules open 0.0.0.0/0, want exactly 1", name, len(found))
+	}
+	rule := found[0]
+	if n := len(listOf(rule["to"])); n != 1 {
+		t.Errorf("%s: the internet rule has %d peers, want only the ipBlock: %v", name, n, rule["to"])
+	}
+	if got := ipBlocks(found)[0].except; !equalStrings(got, privateRanges) {
+		t.Errorf("%s: except = %v, want exactly %v", name, got, privateRanges)
+	}
+	if got := rulePorts(rule); !equalStrings(got, []string{"TCP/443"}) {
+		t.Errorf("%s: the internet rule's ports = %v, want only TCP/443", name, got)
+	}
+}
+
+// checkDNSRule pins the DNS rule: one peer that is the kube-dns pods of the DNS namespace (both selectors in the same
+// peer, otherwise it would be every pod of that namespace or every kube-dns pod), on port 53 only.
+func checkDNSRule(t *testing.T, name string, p map[string]any, namespace string) {
+	t.Helper()
+	var found []map[string]any
+	for _, r := range egressRules(t, p) {
+		for _, peer := range listOf(r["to"]) {
+			if dig(nil, peer, "podSelector", "matchLabels", "k8s-app") == "kube-dns" {
+				found = append(found, r)
+			}
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("%s: %d egress rules name kube-dns, want exactly 1", name, len(found))
+	}
+	rule := found[0]
+	peers := listOf(rule["to"])
+	if len(peers) != 1 {
+		t.Fatalf("%s: the DNS rule has %d peers, want 1 peer that holds both selectors: %v", name, len(peers), peers)
+	}
+	if got := dig(nil, peers[0], "namespaceSelector", "matchLabels"); !reflect.DeepEqual(got, map[string]any{"kubernetes.io/metadata.name": namespace}) {
+		t.Errorf("%s: the DNS peer's namespaceSelector = %v, want the namespace %s", name, got, namespace)
+	}
+	if got := dig(nil, peers[0], "podSelector", "matchLabels"); !reflect.DeepEqual(got, map[string]any{"k8s-app": "kube-dns"}) {
+		t.Errorf("%s: the DNS peer's podSelector = %v, want k8s-app: kube-dns", name, got)
+	}
+	if got := rulePorts(rule); !equalStrings(got, []string{"TCP/53", "UDP/53"}) {
+		t.Errorf("%s: the DNS rule's ports = %v, want TCP/53 and UDP/53 only", name, got)
+	}
+}
+
+func TestTheEgressStructureOfTheServerPolicyIsPinned(t *testing.T) {
+	for _, ns := range []string{"kube-system", "dns-system"} {
+		values := baseValues()
+		set(values, "networkPolicy.dnsNamespace", ns)
+		p := policy(t, mustRender(t, values), "remedy-server")
+		checkDNSRule(t, "server", p, ns)
+		checkInternetRule(t, "server", p)
+		rules := egressRules(t, p)
+		if len(rules) != 2 {
+			t.Errorf("server, cluster off: %d egress rules, want 2 (DNS, internet): %v", len(rules), rules)
+		}
+		if blocks := ipBlocks(rules); len(blocks) != 1 || blocks[0].cidr != "0.0.0.0/0" {
+			t.Errorf("server, cluster off: ipBlocks = %v, want only 0.0.0.0/0", blocks)
+		}
+	}
+}
+
+func TestTheServerPolicyWithTheClusterOnHasExactlyTheConfiguredAPIAddresses(t *testing.T) {
+	values := baseValues()
+	set(values, "cluster.enabled", true)
+	set(values, "networkPolicy.apiServer.cidrs", []any{"172.18.0.2/32", "172.18.0.3/32"})
+	set(values, "networkPolicy.apiServer.port", 8443)
+	p := policy(t, mustRender(t, values), "remedy-server")
+	checkDNSRule(t, "server", p, "kube-system")
+	checkInternetRule(t, "server", p)
+	rules := egressRules(t, p)
+	if len(rules) != 3 {
+		t.Fatalf("%d egress rules, want 3 (DNS, API server, internet): %v", len(rules), rules)
+	}
+	var api []map[string]any
+	for _, r := range rules {
+		for _, b := range ipBlocks([]map[string]any{r}) {
+			if b.cidr != "0.0.0.0/0" {
+				api = append(api, r)
+				break
+			}
+		}
+	}
+	if len(api) != 1 {
+		t.Fatalf("%d rules with an address of their own, want 1 (the API server)", len(api))
+	}
+	var cidrs []string
+	for _, b := range ipBlocks(api) {
+		if len(b.except) != 0 {
+			t.Errorf("the API server ipBlock %s has an except list %v", b.cidr, b.except)
+		}
+		cidrs = append(cidrs, b.cidr)
+	}
+	if !equalStrings(cidrs, []string{"172.18.0.2/32", "172.18.0.3/32"}) || len(listOf(api[0]["to"])) != 2 {
+		t.Errorf("API server peers = %v, want exactly the two configured /32 addresses", cidrs)
+	}
+	if got := rulePorts(api[0]); !equalStrings(got, []string{"TCP/8443"}) {
+		t.Errorf("API server ports = %v, want only the configured port TCP/8443", got)
+	}
+}
+
+func TestTheEgressStructureOfTheRunnerPolicyIsPinned(t *testing.T) {
+	values := baseValues()
+	set(values, "networkPolicy.dnsNamespace", "dns-system")
+	set(values, "cluster.enabled", true)
+	set(values, "networkPolicy.apiServer.cidrs", []any{"172.18.0.2/32"})
+	set(values, "networkPolicy.apiServer.port", 8443)
+	p := policy(t, mustRender(t, values), "remedy-runner")
+	checkDNSRule(t, "runner", p, "dns-system")
+	checkInternetRule(t, "runner", p)
+	rules := egressRules(t, p)
+	if len(rules) != 3 {
+		t.Fatalf("%d egress rules, want 3 (DNS, server, internet): %v", len(rules), rules)
+	}
+	if blocks := ipBlocks(rules); len(blocks) != 1 || blocks[0].cidr != "0.0.0.0/0" {
+		t.Errorf("runner: ipBlocks = %v, want only 0.0.0.0/0 (the API server address must never appear)", blocks)
+	}
+	allowed := map[string]bool{"TCP/53": true, "UDP/53": true, "TCP/8081": true, "TCP/443": true}
+	for _, r := range rules {
+		for _, port := range rulePorts(r) {
+			if !allowed[port] {
+				t.Errorf("runner: port %s is allowed, want only 53, 8081 and 443", port)
+			}
+		}
+	}
+	// The rule to the control plane: the server pods only, on the internal port only.
+	var toServer []map[string]any
+	for _, r := range rules {
+		for _, peer := range listOf(r["to"]) {
+			if dig(nil, peer, "podSelector", "matchLabels", "app.kubernetes.io/component") == "server" {
+				toServer = append(toServer, r)
+			}
+		}
+	}
+	if len(toServer) != 1 || len(listOf(toServer[0]["to"])) != 1 || !equalStrings(rulePorts(toServer[0]), []string{"TCP/8081"}) {
+		t.Errorf("runner: want one rule to one server peer on TCP/8081 only, got %v", toServer)
+	}
+}
+
+func TestTheRunnerPolicyIsLeftOutWithTheRunner(t *testing.T) {
+	values := baseValues()
+	set(values, "runner.enabled", false)
+	d := mustRender(t, values)
+	if d.find("NetworkPolicy", "remedy-runner") != nil {
+		t.Fatal("remedy-runner policy rendered with runner.enabled=false")
+	}
+	if d.find("NetworkPolicy", "remedy-server") == nil {
+		t.Fatal("the server policy must stay")
+	}
+}
+
+func TestAnEmptyPublicPeerListIsRefused(t *testing.T) {
+	// In a NetworkPolicy an empty "from" means every source: the public port would be open to everyone.
+	for name, v := range map[string]any{"empty list": []any{}, "null": nil} {
+		values := baseValues()
+		set(values, "networkPolicy.public.from", v)
+		t.Run(name, func(t *testing.T) { mustFail(t, values, "networkPolicy.public.from") })
+	}
+	values := baseValues()
+	set(values, "networkPolicy.public", nil)
+	mustFail(t, values, "networkPolicy.public.from")
+
+	// With the policies off the value is not used.
+	set(values, "networkPolicy.enabled", false)
 	mustRender(t, values)
 }

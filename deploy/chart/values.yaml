@@ -70,7 +70,8 @@ cluster:
 networkPolicy:
   enabled: true
   dnsNamespace: kube-system
-  # Who may reach the public port (8080). The default is where k3s's Traefik runs.
+  # Who may reach the public port (8080). The default is where k3s's Traefik runs. The list must not be empty: in a
+  # NetworkPolicy an empty list means every source, so the render fails instead.
   public:
     from:
       - namespaceSelector:

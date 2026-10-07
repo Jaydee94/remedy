@@ -1,4 +1,7 @@
 {{- if .Values.networkPolicy.enabled }}
+{{- if not (.Values.networkPolicy.public | default dict).from }}
+{{- fail "networkPolicy.public.from must list at least one peer: an empty list in a NetworkPolicy allows every source, which would open the public port to everyone. Name the Ingress controller's namespace or pod, or an ipBlock." }}
+{{- end }}
 # The control plane. Ingress: the public port from the configured peers (the Ingress controller, the node), the
 # internal port from runner pods only. Egress: DNS, the Kubernetes API when the cluster is on, and HTTPS to the
 # internet (GitHub), never to a private range.
