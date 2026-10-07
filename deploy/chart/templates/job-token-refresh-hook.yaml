@@ -1,0 +1,25 @@
+{{- if .Values.cluster.write.enabled }}
+# Fills the write token right after an install or an upgrade, so that the first action does not wait up to half an hour
+# for the CronJob. A failed hook fails the install, visibly. Argo CD runs post-install and post-upgrade hooks as PostSync.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: remedy-token-refresh-hook
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: token-refresh
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 120
+  template:
+    metadata:
+      labels:
+        {{- include "remedy.labels" . | nindent 8 }}
+        app.kubernetes.io/component: token-refresh
+    spec:
+      {{- include "remedy.refreshPod" . | nindent 6 }}
+{{- end }}

@@ -38,3 +38,32 @@ app.kubernetes.io/component: {{ .component }}
 {{- define "remedy.serverAccount" -}}
 {{- if .Values.cluster.enabled -}}remedy-read{{- else -}}remedy-server{{- end -}}
 {{- end }}
+
+{{/* The pod of the token refresher, for the CronJob and for the hook Job. */}}
+{{- define "remedy.refreshPod" -}}
+restartPolicy: Never
+serviceAccountName: remedy-token-refresher
+automountServiceAccountToken: true
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+containers:
+  - name: refresh
+    image: {{ include "remedy.serverImage" . | quote }}
+    imagePullPolicy: {{ .Values.image.pullPolicy }}
+    command: ["/remedy-tokenrefresh"]
+    args:
+      - --namespace={{ .Release.Namespace }}
+      - --account=remedy-write
+      - --secret=remedy-write-token
+      - --lifetime={{ .Values.cluster.write.tokenRefresh.lifetime }}
+      - --api={{ .Values.cluster.api }}
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+{{- end }}

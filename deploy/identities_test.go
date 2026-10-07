@@ -221,3 +221,194 @@ func TestWriteNeedsTheClusterAndANamespaceAndGoodNames(t *testing.T) {
 		}
 	}
 }
+
+func serverContainer(t *testing.T, d docs) (map[string]any, map[string]any) {
+	t.Helper()
+	pod := podSpec(t, d.find("Deployment", "remedy-server"))
+	return pod, container(t, pod, "server")
+}
+
+func volume(pod map[string]any, name string) map[string]any {
+	vols, _ := pod["volumes"].([]any)
+	for _, v := range vols {
+		if m := v.(map[string]any); m["name"] == name {
+			return m
+		}
+	}
+	return nil
+}
+
+func mounted(c map[string]any, path string) map[string]any {
+	mounts, _ := c["volumeMounts"].([]any)
+	for _, m := range mounts {
+		if mm := m.(map[string]any); mm["mountPath"] == path {
+			return mm
+		}
+	}
+	return nil
+}
+
+func TestWithTheClusterOffTheServerHasNoClusterSettings(t *testing.T) {
+	pod, c := serverContainer(t, mustRender(t, baseValues()))
+	for name := range env(c) {
+		if strings.HasPrefix(name, "REMEDY_K8S_") {
+			t.Errorf("%s is set with the cluster off", name)
+		}
+	}
+	if volume(pod, "cluster-read") != nil || volume(pod, "cluster-write") != nil {
+		t.Error("no cluster volume expected with the cluster off")
+	}
+}
+
+func TestTheServerReadsTheClusterWithAProjectedTokenAndTheClusterCA(t *testing.T) {
+	values := baseValues()
+	set(values, "cluster.enabled", true)
+	set(values, "networkPolicy.apiServer.cidrs", []any{"172.18.0.2/32"})
+	pod, c := serverContainer(t, mustRender(t, values))
+	e := env(c)
+	for name, want := range map[string]string{
+		"REMEDY_K8S_API": "https://kubernetes.default.svc", "REMEDY_K8S_READ_TOKEN_FILE": "/var/run/remedy/read/token",
+		"REMEDY_K8S_CA_FILE": "/var/run/remedy/read/ca.crt", "REMEDY_K8S_ARGO_NAMESPACE": "argocd",
+	} {
+		if e[name]["value"] != want {
+			t.Errorf("%s = %v, want %q", name, e[name]["value"], want)
+		}
+	}
+	for _, name := range []string{"REMEDY_K8S_WRITE_TOKEN_FILE", "REMEDY_K8S_WRITE_NAMESPACES"} {
+		if _, ok := e[name]; ok {
+			t.Errorf("%s is set although write is off", name)
+		}
+	}
+	if pod["automountServiceAccountToken"] != false {
+		t.Errorf("the pod must not mount the default token volume: %v", pod["automountServiceAccountToken"])
+	}
+	v := volume(pod, "cluster-read")
+	if v == nil {
+		t.Fatal("no cluster-read volume")
+	}
+	text := toString(v)
+	for _, want := range []string{"serviceAccountToken:", "path: token", "expirationSeconds: 3600", "name: kube-root-ca.crt", "key: ca.crt", "path: ca.crt"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the cluster-read volume lacks %q:\n%s", want, text)
+		}
+	}
+	if m := mounted(c, "/var/run/remedy/read"); m == nil || m["readOnly"] != true {
+		t.Errorf("cluster-read must be mounted read-only at /var/run/remedy/read: %v", m)
+	}
+}
+
+func TestTheServerTakesTheWriteTokenFromAnOptionalSecretAndTheAllowlistFromValues(t *testing.T) {
+	values := clusterValues()
+	set(values, "cluster.write.namespaces", []any{"demo", "staging"})
+	pod, c := serverContainer(t, mustRender(t, values))
+	e := env(c)
+	if e["REMEDY_K8S_WRITE_TOKEN_FILE"]["value"] != "/var/run/remedy/write/token" {
+		t.Errorf("REMEDY_K8S_WRITE_TOKEN_FILE = %v", e["REMEDY_K8S_WRITE_TOKEN_FILE"]["value"])
+	}
+	if e["REMEDY_K8S_WRITE_NAMESPACES"]["value"] != "demo,staging" {
+		t.Errorf("REMEDY_K8S_WRITE_NAMESPACES = %v", e["REMEDY_K8S_WRITE_NAMESPACES"]["value"])
+	}
+	v := volume(pod, "cluster-write")
+	if v == nil || dig(t, v, "secret", "secretName") != "remedy-write-token" || dig(t, v, "secret", "optional") != true {
+		t.Fatalf("cluster-write = %v, want the optional Secret remedy-write-token (the server must start before it is filled)", v)
+	}
+	if m := mounted(c, "/var/run/remedy/write"); m == nil || m["readOnly"] != true {
+		t.Errorf("cluster-write must be mounted read-only at /var/run/remedy/write: %v", m)
+	}
+	if m := mounted(c, "/var/run/remedy/write"); m != nil && m["subPath"] != nil {
+		t.Error("a subPath mount is never updated by the kubelet: the refreshed token would not arrive")
+	}
+}
+
+func TestTheWriteTokenSecretIsEmptyAndTheRefresherFillsItEveryHalfHour(t *testing.T) {
+	d := mustRender(t, clusterValues())
+	sec := d.find("Secret", "remedy-write-token")
+	if sec == nil {
+		t.Fatal("no Secret remedy-write-token")
+	}
+	if sec["data"] != nil || sec["stringData"] != nil {
+		t.Fatalf("the Secret must carry no data (a value would be reset by an upgrade and live in git): %v", sec)
+	}
+
+	cj := d.find("CronJob", "remedy-token-refresh")
+	if cj == nil {
+		t.Fatal("no CronJob remedy-token-refresh")
+	}
+	if dig(t, cj, "spec", "schedule") != "*/30 * * * *" || dig(t, cj, "spec", "concurrencyPolicy") != "Forbid" {
+		t.Errorf("schedule/concurrency = %v / %v", dig(t, cj, "spec", "schedule"), dig(t, cj, "spec", "concurrencyPolicy"))
+	}
+	pod := dig(t, cj, "spec", "jobTemplate", "spec", "template", "spec").(map[string]any)
+	if pod["serviceAccountName"] != "remedy-token-refresher" || pod["automountServiceAccountToken"] != true || pod["restartPolicy"] != "Never" {
+		t.Errorf("refresher pod = %v", pod)
+	}
+	c := container(t, pod, "refresh")
+	if c["image"] != "ghcr.io/jaydee94/remedy-server:0.1.0" {
+		t.Errorf("image = %v, want the control plane's image (it carries /remedy-tokenrefresh)", c["image"])
+	}
+	if got := toString(c["command"]); !strings.Contains(got, "/remedy-tokenrefresh") {
+		t.Errorf("command = %s", got)
+	}
+	args := toString(c["args"])
+	for _, want := range []string{"--namespace=remedy-system", "--account=remedy-write", "--secret=remedy-write-token", "--lifetime=2h", "--api=https://kubernetes.default.svc"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("the refresher's args lack %q:\n%s", want, args)
+		}
+	}
+	sc := c["securityContext"]
+	if dig(t, sc, "readOnlyRootFilesystem") != true || dig(t, sc, "allowPrivilegeEscalation") != false || dig(t, sc, "capabilities", "drop", 0) != "ALL" {
+		t.Errorf("the refresher's securityContext = %v", sc)
+	}
+	if dig(t, pod, "securityContext", "runAsNonRoot") != true || dig(t, pod, "securityContext", "seccompProfile", "type") != "RuntimeDefault" {
+		t.Errorf("the refresher pod's securityContext = %v", pod["securityContext"])
+	}
+}
+
+func TestAHookFillsTheTokenRightAfterAnInstallOrUpgrade(t *testing.T) {
+	job := mustRender(t, clusterValues()).find("Job", "remedy-token-refresh-hook")
+	if job == nil {
+		t.Fatal("no hook Job remedy-token-refresh-hook")
+	}
+	ann := dig(t, job, "metadata", "annotations")
+	if dig(t, ann, "helm.sh/hook") != "post-install,post-upgrade" {
+		t.Errorf("hook = %v, want post-install,post-upgrade (Argo CD runs those as PostSync)", dig(t, ann, "helm.sh/hook"))
+	}
+	if got := fmt.Sprint(dig(t, ann, "helm.sh/hook-delete-policy")); !strings.Contains(got, "before-hook-creation") || !strings.Contains(got, "hook-succeeded") {
+		t.Errorf("hook-delete-policy = %v", got)
+	}
+	pod := dig(t, job, "spec", "template", "spec").(map[string]any)
+	if pod["serviceAccountName"] != "remedy-token-refresher" || pod["restartPolicy"] != "Never" {
+		t.Errorf("hook pod = %v", pod)
+	}
+	// The same pod as the CronJob's: one definition.
+	cj := mustRender(t, clusterValues()).find("CronJob", "remedy-token-refresh")
+	cronPod := dig(t, cj, "spec", "jobTemplate", "spec", "template", "spec").(map[string]any)
+	if toString(container(t, pod, "refresh")) != toString(container(t, cronPod, "refresh")) {
+		t.Error("the hook and the CronJob must run the same container")
+	}
+}
+
+func TestWithoutWriteThereIsNoRefresher(t *testing.T) {
+	values := baseValues()
+	set(values, "cluster.enabled", true)
+	set(values, "networkPolicy.apiServer.cidrs", []any{"172.18.0.2/32"})
+	d := mustRender(t, values)
+	if d.find("Secret", "remedy-write-token") != nil || len(d.all("CronJob")) != 0 || len(d.all("Job")) != 0 {
+		t.Fatal("no Secret, CronJob or Job expected without write")
+	}
+}
+
+func TestTheRefresherMayOnlyReachDNSAndTheAPIServer(t *testing.T) {
+	p := policy(t, mustRender(t, clusterValues()), "remedy-token-refresher")
+	egress := rulesText(p, "egress")
+	for _, want := range []string{"k8s-app: kube-dns", "cidr: 172.18.0.2/32", "port: 6443"} {
+		if !strings.Contains(egress, want) {
+			t.Errorf("the refresher's egress lacks %q:\n%s", want, egress)
+		}
+	}
+	if strings.Contains(egress, "port: 443\n") || strings.Contains(egress, "port: 443}") || strings.Contains(egress, "0.0.0.0/0") {
+		t.Errorf("the refresher must not reach the internet:\n%s", egress)
+	}
+	if dig(t, p, "spec", "ingress") != nil {
+		t.Errorf("the refresher takes no connection: %v", dig(t, p, "spec", "ingress"))
+	}
+}

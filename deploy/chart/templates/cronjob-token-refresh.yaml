@@ -1,0 +1,28 @@
+{{- if .Values.cluster.write.enabled }}
+# Keeps the write token fresh. If this stops, the token expires after cluster.write.tokenRefresh.lifetime and the
+# actions fail closed. The last three failed jobs stay for `kubectl logs`.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: remedy-token-refresh
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: token-refresh
+spec:
+  schedule: {{ .Values.cluster.write.tokenRefresh.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            {{- include "remedy.labels" . | nindent 12 }}
+            app.kubernetes.io/component: token-refresh
+        spec:
+          {{- include "remedy.refreshPod" . | nindent 10 }}
+{{- end }}
