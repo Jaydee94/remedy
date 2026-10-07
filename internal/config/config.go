@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -32,6 +33,7 @@ const (
 
 type Server struct {
 	Addr                   string        // REMEDY_ADDR, default ":8080"
+	InternalAddr           string        // REMEDY_INTERNAL_ADDR, default empty: one port. Set, it serves /runner/v1 and /mcp and the main port does not
 	DBPath                 string        // REMEDY_DB, default "remedy.db"
 	AdminPassword          string        // REMEDY_ADMIN_PASSWORD, required, min 12 chars
 	RunnerToken            string        // REMEDY_RUNNER_TOKEN, required, min 24 chars
@@ -70,6 +72,17 @@ func ServerFromEnv(get func(string) string) (Server, error) {
 		return Server{}, errors.New("REMEDY_GITHUB_API_URL must be an http or https URL")
 	}
 	c.GitHubAPIURL = strings.TrimRight(c.GitHubAPIURL, "/")
+
+	c.InternalAddr = get("REMEDY_INTERNAL_ADDR")
+	if c.InternalAddr != "" {
+		_, port, err := net.SplitHostPort(c.InternalAddr)
+		if err != nil || port == "" {
+			return Server{}, errors.New("REMEDY_INTERNAL_ADDR must be host:port or :port, for example :8081")
+		}
+		if _, mainPort, err := net.SplitHostPort(c.Addr); err == nil && mainPort == port {
+			return Server{}, errors.New("REMEDY_INTERNAL_ADDR must use another port than REMEDY_ADDR")
+		}
+	}
 
 	c.PollInterval = defaultPollInterval
 	if v := get("REMEDY_POLL_INTERVAL"); v != "" {

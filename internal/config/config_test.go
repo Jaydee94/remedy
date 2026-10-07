@@ -119,3 +119,41 @@ func TestRunnerFromEnvClaudeModel(t *testing.T) {
 		t.Fatalf("ClaudeModel = %q, want opus", set.ClaudeModel)
 	}
 }
+
+func TestServerFromEnvInternalAddr(t *testing.T) {
+	c, err := config.ServerFromEnv(serverEnv(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.InternalAddr != "" {
+		t.Fatalf("the default must be one port, got InternalAddr %q", c.InternalAddr)
+	}
+
+	c, err = config.ServerFromEnv(serverEnv(map[string]string{"REMEDY_INTERNAL_ADDR": ":8081"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.InternalAddr != ":8081" {
+		t.Fatalf("InternalAddr = %q", c.InternalAddr)
+	}
+}
+
+func TestServerFromEnvRefusesABadInternalAddr(t *testing.T) {
+	cases := map[string]map[string]string{
+		"no port":                   {"REMEDY_INTERNAL_ADDR": "8081"},
+		"a host without a port":     {"REMEDY_INTERNAL_ADDR": "localhost"},
+		"an empty port":             {"REMEDY_INTERNAL_ADDR": "localhost:"},
+		"the main port":             {"REMEDY_INTERNAL_ADDR": ":8080"},
+		"the main port, other host": {"REMEDY_INTERNAL_ADDR": "127.0.0.1:9090", "REMEDY_ADDR": "0.0.0.0:9090"},
+	}
+	for name, override := range cases {
+		_, err := config.ServerFromEnv(serverEnv(override))
+		if err == nil {
+			t.Errorf("%s: expected an error", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "REMEDY_INTERNAL_ADDR") {
+			t.Errorf("%s: the error must name the variable, got %q", name, err)
+		}
+	}
+}
