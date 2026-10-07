@@ -19,7 +19,7 @@ spec:
         {{- include "remedy.labels" . | nindent 8 }}
         app.kubernetes.io/component: server
     spec:
-      serviceAccountName: remedy-server
+      serviceAccountName: {{ include "remedy.serverAccount" . }}
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true

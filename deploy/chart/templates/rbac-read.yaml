@@ -1,0 +1,35 @@
+{{- if .Values.cluster.enabled }}
+# The read identity: get and list, and nothing else, on what the read tools show. Nothing here can read a Secret or a
+# ConfigMap. The name carries the namespace because a ClusterRole is cluster-wide.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: remedy-read-{{ .Release.Namespace }}
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, events, nodes]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets, replicasets]
+    verbs: [get, list]
+  - apiGroups: [argoproj.io]
+    resources: [applications]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: remedy-read-{{ .Release.Namespace }}
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: remedy-read-{{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: remedy-read
+    namespace: {{ .Release.Namespace }}
+{{- end }}

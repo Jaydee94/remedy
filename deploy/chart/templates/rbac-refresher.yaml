@@ -1,0 +1,36 @@
+{{- if .Values.cluster.write.enabled }}
+# The refresher mints a token for one account and patches one Secret. Every rule names its object: it cannot mint a token
+# for another account, read a Secret, or create one (the chart creates the empty Secret for it).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: remedy-token-refresher
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [serviceaccounts/token]
+    resourceNames: [remedy-write]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [remedy-write-token]
+    verbs: [patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: remedy-token-refresher
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: remedy-token-refresher
+subjects:
+  - kind: ServiceAccount
+    name: remedy-token-refresher
+    namespace: {{ .Release.Namespace }}
+{{- end }}

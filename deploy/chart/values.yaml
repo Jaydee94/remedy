@@ -65,7 +65,15 @@ runner:
       arm64: {name: "", sha256: ""}
 
 cluster:
-  enabled: false       # the control plane reads the cluster (plan K-3 adds what this needs)
+  enabled: false       # the control plane reads the cluster; it runs as the read account (needs networkPolicy.apiServer.cidrs)
+  api: https://kubernetes.default.svc
+  argoNamespace: argocd   # where Argo CD keeps its Application objects
+  write:
+    enabled: false     # approved actions: restart a workload, delete a pod, refresh and sync an Argo CD application
+    namespaces: []     # where actions may be used. Never the release namespace: Remedy may read itself, never change itself
+    tokenRefresh:
+      schedule: "*/30 * * * *"   # the write token is minted again this often ...
+      lifetime: 2h                # ... and is valid this long, so a stopped job leaves at most this much
 
 networkPolicy:
   enabled: true

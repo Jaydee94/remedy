@@ -33,3 +33,8 @@ app.kubernetes.io/component: {{ .component }}
 - 192.168.0.0/16
 - 169.254.0.0/16
 {{- end }}
+
+{{/* The control plane's account: the read identity when the cluster is on, otherwise one with no rights. */}}
+{{- define "remedy.serverAccount" -}}
+{{- if .Values.cluster.enabled -}}remedy-read{{- else -}}remedy-server{{- end -}}
+{{- end }}

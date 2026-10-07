@@ -1,2 +1,18 @@
-{{- /* Fails the render for a value the chart cannot work without. It renders nothing. */ -}}
+{{- /* Fails the render for a value the chart cannot work without or must never accept. It renders nothing. */ -}}
 {{- $_ := include "remedy.secretName" . -}}
+{{- if .Values.cluster.write.enabled }}
+{{- if not .Values.cluster.enabled }}
+{{- fail "cluster.write.enabled needs cluster.enabled: the actions check their target with the read side" }}
+{{- end }}
+{{- if not .Values.cluster.write.namespaces }}
+{{- fail "cluster.write.namespaces must name at least one namespace when cluster.write.enabled is true" }}
+{{- end }}
+{{- range .Values.cluster.write.namespaces }}
+{{- if eq . $.Release.Namespace }}
+{{- fail (printf "cluster.write.namespaces contains the release namespace %q: Remedy may read itself, never change itself" .) }}
+{{- end }}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" .) }}
+{{- fail (printf "cluster.write.namespaces: %q is not a namespace name (lower case letters, digits and dashes)" .) }}
+{{- end }}
+{{- end }}
+{{- end }}
