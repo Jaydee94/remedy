@@ -1,0 +1,86 @@
+# Remedy. The chart runs the control plane (a Deployment) and the runner (a StatefulSet) in the release's namespace.
+# It supports one release per namespace: the resource names are fixed (remedy-server, remedy-runner, ...).
+#
+# Nothing here is a secret. The admin password, the runner token and the master key come from a Secret that exists
+# already (existingSecret), for example one a SealedSecret creates.
+
+image:
+  pullPolicy: IfNotPresent
+  server:
+    repository: ghcr.io/jaydee94/remedy-server
+    tag: ""            # empty: the chart's appVersion
+  runner:
+    repository: ghcr.io/jaydee94/remedy-runner
+    tag: ""
+
+existingSecret:
+  name: ""             # required
+  keys:
+    adminPassword: admin-password   # 12 or more characters
+    runnerToken: runner-token       # 24 or more characters
+    masterKey: master-key           # openssl rand -base64 32; losing it loses the sealed GitHub token
+
+server:
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 512Mi}
+  persistence:
+    size: 1Gi
+    storageClass: ""   # empty: the cluster's default
+    existingClaim: ""  # set: use this claim, create none
+  service:
+    type: ClusterIP
+    nodePort: null     # only for type NodePort
+  # Extra environment variables for the control plane, for example REMEDY_POLL_INTERVAL or REMEDY_LOG_LEVEL. A name that
+  # contains PASSWORD, TOKEN or KEY is refused: secrets do not belong in values.
+  env: {}
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""             # required when enabled
+  annotations: {}      # nginx: nginx.ingress.kubernetes.io/proxy-buffering: "off" keeps the live streams live
+  tls:
+    secretName: ""     # empty: no TLS block (then the cookie is not Secure, see the runbook)
+
+runner:
+  enabled: true
+  model: ""            # REMEDY_CLAUDE_MODEL; the CLI runs with --restricted, which ignores user settings: pin it
+  runTimeout: ""       # REMEDY_RUN_TIMEOUT, for example 10m
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 1Gi}
+  persistence:
+    size: 1Gi
+    storageClass: ""
+    existingClaim: ""  # set: use this claim for the login and the CLI's state, create none
+  # The init container installs this CLI before the runner starts. No image contains it.
+  cli:
+    version: ""        # required, pinned
+    urlTemplate: ""    # required: an https URL with {version} and {platform}
+    archive: none      # none, or tar.gz with member the file to take out of it
+    member: ""
+    platforms:         # the vendor's name for the platform and the SHA-256 of its artifact, per architecture
+      amd64: {name: "", sha256: ""}
+      arm64: {name: "", sha256: ""}
+
+cluster:
+  enabled: false       # the control plane reads the cluster (plan K-3 adds what this needs)
+
+networkPolicy:
+  enabled: true
+  dnsNamespace: kube-system
+  # Who may reach the public port (8080). The default is where k3s's Traefik runs.
+  public:
+    from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+  # The address and port behind kubernetes.default.svc, as the cluster shows them (kubectl get endpoints kubernetes).
+  # Required when cluster.enabled is true. The rule is by endpoint address and port (6443 on k3s and kind), not by the
+  # service address. The runner's egress to the public range is 443 only, which keeps it from an API server on 6443 by
+  # port; an API server on 443 with a public address is not protected by the except list. To let a pod reach a pod in
+  # the cluster use a pod or namespace selector: pod addresses are in 10.0.0.0/8, which the runner's rule excepts.
+  apiServer:
+    cidrs: []
+    port: 6443

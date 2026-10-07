@@ -2,7 +2,7 @@
 
 IMAGE_TAG ?= dev
 
-.PHONY: help build build-go images test vet fmt web-install web-build web-lint web-test dev-server dev-web check
+.PHONY: help build build-go images test vet fmt web-install web-build web-lint web-test dev-server dev-web chart-check check
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -47,4 +47,12 @@ dev-server: ## Run the control plane on :8080
 dev-web: ## Run the Vite dev server
 	cd web && npm run dev
 
-check: fmt vet test web-lint web-test web-build ## Everything CI checks
+chart-check: ## Lint and render the Helm chart (needs helm; kubeconform when installed), then run its render tests
+	@command -v helm > /dev/null || { echo "helm is needed" >&2; exit 1; }
+	helm lint deploy/chart -f deploy/chart/ci/lint-values.yaml
+	@if command -v kubeconform > /dev/null; then \
+		helm template remedy deploy/chart --namespace remedy-system -f deploy/chart/ci/lint-values.yaml | kubeconform -strict -summary; \
+	else echo "kubeconform is not installed: skipping the schema check (CI runs it)"; fi
+	REMEDY_REQUIRE_HELM=1 go test ./deploy -count=1
+
+check: fmt vet test chart-check web-lint web-test web-build ## Everything CI checks

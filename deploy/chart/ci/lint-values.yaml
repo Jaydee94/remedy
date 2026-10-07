@@ -1,0 +1,11 @@
+# The values helm lint and kubeconform need to render the chart. Not used for an install.
+existingSecret:
+  name: remedy-secrets
+runner:
+  cli:
+    version: 2.1.288
+    urlTemplate: https://downloads.example.invalid/{version}/{platform}/claude
+    archive: none
+    platforms:
+      amd64: {name: linux-x64, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+      arm64: {name: linux-arm64, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}

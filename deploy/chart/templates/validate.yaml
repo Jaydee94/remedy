@@ -1,0 +1,2 @@
+{{- /* Fails the render for a value the chart cannot work without. It renders nothing. */ -}}
+{{- $_ := include "remedy.secretName" . -}}
