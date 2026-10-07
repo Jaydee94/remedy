@@ -56,10 +56,12 @@ chart-check: ## Lint and render the Helm chart (needs helm; kubeconform when ins
 	else echo "kubeconform is not installed: skipping the schema check (CI runs it)"; fi
 	REMEDY_REQUIRE_HELM=1 go test ./deploy -count=1
 
-shell-test: ## Run the shell tests: the dummy's directory guard and its smoke decisions (needs jq)
+shell-test: ## Run the shell tests: the dummy's directory guard, its smoke decisions and the rule that no script reads the CLI login (needs jq)
 	@command -v jq > /dev/null || { echo "jq is needed" >&2; exit 1; }
 	sh dev/kind/lib_test.sh
 	sh dev/kind/smoke-lib_test.sh
+	sh scripts/check-login-dir-untouched_test.sh
+	sh scripts/check-login-dir-untouched.sh
 
 check: fmt vet test chart-check shell-test web-lint web-test web-build ## Everything CI checks
 
