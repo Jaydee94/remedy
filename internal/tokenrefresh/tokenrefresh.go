@@ -119,6 +119,7 @@ type client struct {
 	mintPath   string
 	secretPath string
 	http       *http.Client
+	known      []string // every token held so far, in every form it was sent in; see scrub
 }
 
 func newClient(c Config) (*client, error) {
@@ -185,35 +186,47 @@ func (cl *client) do(ctx context.Context, method, path, contentType string, body
 	if err != nil {
 		return nil, err
 	}
+	cl.know(own.Reveal())
 	req, err := http.NewRequestWithContext(ctx, method, cl.base+path, bytes.NewReader(body))
 	if err != nil {
-		return nil, scrubbed(err, own)
+		return nil, cl.scrub(err)
 	}
 	req.Header.Set("Authorization", "Bearer "+own.Reveal())
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", contentType)
 	resp, err := cl.http.Do(req)
 	if err != nil {
-		return nil, scrubbed(err, own)
+		return nil, cl.scrub(err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
-		return nil, scrubbed(err, own)
+		return nil, cl.scrub(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("%s %s: HTTP %d: %s", method, path, resp.StatusCode, apiMessage(raw))
+		return nil, cl.scrub(fmt.Errorf("%s %s: HTTP %d: %s", method, path, resp.StatusCode, apiMessage(raw)))
 	}
 	return raw, nil
 }
 
-// scrubbed returns an error with the token taken out of its text.
-func scrubbed(err error, tokens ...secret.Value) error {
-	msg := err.Error()
-	for _, t := range tokens {
-		if v := t.Reveal(); v != "" {
-			msg = strings.ReplaceAll(msg, v, "***")
+// know registers a token to be taken out of every error text, in the form given.
+func (cl *client) know(forms ...string) {
+	for _, f := range forms {
+		if f != "" {
+			cl.known = append(cl.known, f)
 		}
+	}
+}
+
+// scrub returns an error with every known token taken out of its text. Every error that leaves this package, and
+// every status text built from an API server's answer, goes through it: an API server may echo what it was sent.
+func (cl *client) scrub(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	for _, k := range cl.known {
+		msg = strings.ReplaceAll(msg, k, "***")
 	}
 	return errors.New(msg)
 }
@@ -253,7 +266,7 @@ func Run(ctx context.Context, c Config, log *slog.Logger) error {
 	}
 	raw, err := cl.do(ctx, http.MethodPost, cl.mintPath, "application/json", request)
 	if err != nil {
-		return fmt.Errorf("cannot mint a token for %s: %w", c.Account, err)
+		return cl.scrub(fmt.Errorf("cannot mint a token for %s: %w", c.Account, err))
 	}
 	var answer struct {
 		Status struct {
@@ -265,18 +278,20 @@ func Run(ctx context.Context, c Config, log *slog.Logger) error {
 		return fmt.Errorf("the token request for %s was answered without a token", c.Account)
 	}
 	minted := secret.NewValue(answer.Status.Token)
+	encoded := base64.StdEncoding.EncodeToString([]byte(minted.Reveal()))
+	cl.know(minted.Reveal(), encoded) // the base64 form is the one that goes over the wire
 
 	patch, err := json.Marshal(map[string]any{
-		"data": map[string]string{c.Key: base64.StdEncoding.EncodeToString([]byte(minted.Reveal()))},
+		"data": map[string]string{c.Key: encoded},
 	})
 	if err != nil {
-		return scrubbed(err, minted)
+		return cl.scrub(err)
 	}
 	if _, err := cl.do(ctx, http.MethodPatch, cl.secretPath, "application/merge-patch+json", patch); err != nil {
 		if strings.Contains(err.Error(), "HTTP 404") {
-			return fmt.Errorf("the Secret %q does not exist in %s: the chart creates it (%w)", c.Secret, c.Namespace, scrubbed(err, minted))
+			return cl.scrub(fmt.Errorf("the Secret %q does not exist in %s: the chart creates it (%w)", c.Secret, c.Namespace, err))
 		}
-		return fmt.Errorf("cannot store the token in the Secret %q: %w", c.Secret, scrubbed(err, minted))
+		return cl.scrub(fmt.Errorf("cannot store the token in the Secret %q: %w", c.Secret, err))
 	}
 	log.Info("stored a new token", "account", c.Account, "secret", c.Secret, "key", c.Key, "expires", answer.Status.ExpirationTimestamp)
 	return nil

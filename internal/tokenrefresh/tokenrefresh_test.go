@@ -34,7 +34,18 @@ type recorded struct {
 type fakeAPI struct {
 	mu                      sync.Mutex
 	reqs                    []recorded
-	mintStatus, patchStatus int // 0 means success
+	mintStatus, patchStatus int  // 0 means success
+	echo                    bool // the error messages repeat every token that was sent, as a hostile or sloppy API server might
+}
+
+// leak is what an echoing API server adds to its message: the refresher's own token, the minted token and the form of
+// the minted token that goes over the wire in the PATCH body.
+func leak(tokens ...string) string {
+	var b strings.Builder
+	for _, t := range tokens {
+		fmt.Fprintf(&b, " [%s]", t)
+	}
+	return b.String()
 }
 
 func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +57,12 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/namespaces/remedy-system/serviceaccounts/remedy-write/token":
 		if f.mintStatus != 0 {
 			w.WriteHeader(f.mintStatus)
-			fmt.Fprint(w, `{"kind":"Status","message":"serviceaccounts \"remedy-write\" is forbidden"}`)
+			msg := `serviceaccounts "remedy-write" is forbidden`
+			if f.echo { // no token has been minted yet, so only the refresher's own can be echoed
+				msg += leak(ownToken)
+			}
+			status, _ := json.Marshal(map[string]string{"kind": "Status", "message": msg})
+			w.Write(status)
 			return
 		}
 		w.WriteHeader(http.StatusCreated)
@@ -54,7 +70,12 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/namespaces/remedy-system/secrets/remedy-write-token":
 		if f.patchStatus != 0 {
 			w.WriteHeader(f.patchStatus)
-			fmt.Fprint(w, `{"kind":"Status","message":"secrets \"remedy-write-token\" not found"}`)
+			msg := `secrets "remedy-write-token" not found`
+			if f.echo {
+				msg += leak(ownToken, mintedToken, base64.StdEncoding.EncodeToString([]byte(mintedToken)))
+			}
+			status, _ := json.Marshal(map[string]string{"kind": "Status", "message": msg})
+			w.Write(status)
 			return
 		}
 		fmt.Fprint(w, `{}`)
@@ -136,6 +157,44 @@ func TestRunNeverLogsOrReturnsATokenInText(t *testing.T) {
 	for _, text := range []string{logs.String(), err.Error()} {
 		if strings.Contains(text, mintedToken) || strings.Contains(text, ownToken) {
 			t.Fatalf("a token is in %q", text)
+		}
+	}
+}
+
+// secretsIn lists which of the known tokens (in any form that was sent) appear in text.
+func secretsIn(text string) []string {
+	var found []string
+	for name, tok := range map[string]string{
+		"own token":        ownToken,
+		"minted token":     mintedToken,
+		"minted in base64": base64.StdEncoding.EncodeToString([]byte(mintedToken)),
+	} {
+		if strings.Contains(text, tok) {
+			found = append(found, name)
+		}
+	}
+	return found
+}
+
+func TestEveryErrorPathScrubsEveryKnownToken(t *testing.T) {
+	cases := map[string]*fakeAPI{
+		"the mint fails":        {mintStatus: http.StatusForbidden, echo: true},
+		"the patch fails":       {patchStatus: http.StatusInternalServerError, echo: true},
+		"the Secret is missing": {patchStatus: http.StatusNotFound, echo: true},
+	}
+	for name, f := range cases {
+		cfg, logs := setup(t, f)
+		err := tokenrefresh.Run(context.Background(), cfg, logTo(logs))
+		if err == nil {
+			t.Fatalf("%s: expected an error", name)
+		}
+		// main logs the error, so the log line is checked the way main writes it.
+		logTo(logs).Error("the token was not refreshed", "err", err)
+		if found := secretsIn(err.Error()); len(found) > 0 {
+			t.Errorf("%s: the error carries %v: %q", name, found, err.Error())
+		}
+		if found := secretsIn(logs.String()); len(found) > 0 {
+			t.Errorf("%s: the log carries %v: %q", name, found, logs.String())
 		}
 	}
 }
