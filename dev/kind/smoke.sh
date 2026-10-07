@@ -25,6 +25,7 @@ say() { echo "smoke: $*"; }
 # api <method> <path> [json body]: the body on stdout; fails on anything but 2xx.
 api() {
   method=$1 path=$2 body=${3:-}
+  : > "$WORK/body" # a curl failure must never show the body of an earlier request
   if [ -n "$body" ]; then
     code=$(curl -sS -o "$WORK/body" -w '%{http_code}' -b "$JAR" -c "$JAR" -X "$method" -H 'X-Remedy-CSRF: 1' \
       -H 'Content-Type: application/json' --data-binary "$body" "$REMEDY_URL$path")
@@ -39,7 +40,8 @@ api() {
 
 # start_run <prompt>: prints the id of a new ad-hoc run with the gatekeeper tools and the cluster tools.
 start_run() {
-  api POST /api/runs "$(jq -cn --arg p "$1" '{prompt:$p,tools:true,cluster:true}')" | jq -r .id
+  out=$(api POST /api/runs "$(jq -cn --arg p "$1" '{prompt:$p,tools:true,cluster:true}')") || return 1
+  printf '%s' "$out" | jq -er .id
 }
 
 # wait_run <run id> <mode>: waits until the run ends, deciding its approvals on the way (see smoke_decisions).
@@ -83,7 +85,8 @@ until curl -sf -o /dev/null "$REMEDY_URL/healthz"; do
   sleep 2
 done
 
-printf '{"password":"%s"}' "$REMEDY_ADMIN_PASSWORD" |
+# The password goes to curl on stdin, as JSON built by jq (a quote or a backslash in it stays valid), never in an argument.
+jq -cn '{password: env.REMEDY_ADMIN_PASSWORD}' |
   curl -sf -o /dev/null -c "$JAR" -H 'X-Remedy-CSRF: 1' --data-binary @- "$REMEDY_URL/api/login" || fail "cannot sign in at $REMEDY_URL"
 api GET /api/capabilities | jq -e '.cluster.read and .cluster.write and (.cluster.namespaces | index("demo") != null)' > /dev/null ||
   fail "the cluster tools are not on for the namespace demo (GET /api/capabilities)"
@@ -99,6 +102,8 @@ say "run 1 ok: $(jq 'length' "$WORK/calls.json") tool calls"
 
 say "run 2: restart demo/web"
 DENIED=0
+RESTART_JSONPATH='{.spec.template.metadata.annotations.kubectl\.kubernetes\.io/restartedAt}'
+before=$(k -n demo get deployment web -o jsonpath="$RESTART_JSONPATH")
 RUN2=$(start_run "Restart the deployment web in the namespace demo of the Kubernetes cluster, then check with your tools that its pods are back up and tell me the result in one sentence.")
 wait_run "$RUN2" restart-web
 finished "$RUN2"
@@ -106,8 +111,9 @@ finished "$RUN2"
 [ "$DENIED" -eq 0 ] || fail "run 2 asked for $DENIED thing(s) other than the restart of demo/web; they were denied"
 smoke_restart_done "$WORK/calls.json" || fail "run 2 has no single approved and succeeded restart"
 [ "$APPROVED_AT" -gt 0 ] || fail "no approval was decided in run 2"
-restarted=$(k -n demo get deployment web -o jsonpath='{.spec.template.metadata.annotations.kubectl\.kubernetes\.io/restartedAt}')
+restarted=$(k -n demo get deployment web -o jsonpath="$RESTART_JSONPATH")
 [ -n "$restarted" ] || fail "demo/web has no restartedAt annotation: the restart did not happen"
+[ "$restarted" != "$before" ] || fail "the restartedAt annotation of demo/web did not change ($restarted): the restart did not happen"
 smoke_restarted_after "$restarted" "$APPROVED_AT" || fail "demo/web was last restarted at $restarted, before the approval"
 k -n demo rollout status deployment/web --timeout=120s > /dev/null || fail "the rollout of demo/web did not complete"
 say "run 2 ok: demo/web restarted at $restarted"

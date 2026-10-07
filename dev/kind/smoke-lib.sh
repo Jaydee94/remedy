@@ -28,9 +28,10 @@ smoke_reads_ok() {
   jq -e '[.[] | select((.tool | startswith("cluster_")) and .kind == "read" and .status == "succeeded")] | length > 0' "$1" > /dev/null
 }
 
-# smoke_restart_done <calls.json>: exactly one restart was approved and succeeded.
+# smoke_restart_done <calls.json>: exactly one restart was approved and succeeded, and it was the restart of demo/web.
 smoke_restart_done() {
-  jq -e '[.[] | select(.tool == "cluster_rollout_restart" and .decision == "approved" and .status == "succeeded")] | length == 1' "$1" > /dev/null
+  jq -e '[.[] | select(.tool == "cluster_rollout_restart" and .decision == "approved" and .status == "succeeded")] as $r
+    | ($r | length == 1) and ($r[0].arguments | type == "object" and .namespace == "demo" and .name == "web")' "$1" > /dev/null
 }
 
 # smoke_no_denied <calls.json>: no call was denied.
