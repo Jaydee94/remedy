@@ -21,7 +21,11 @@ Spec: [`docs/specs/2026-10-06-kubernetes-deployment-design.md`](../../docs/specs
 | Ingress | `remedy` | optional |
 | NetworkPolicies | `remedy-server`, `remedy-runner` | on by default; `networkPolicy.*` |
 
-The cluster tools (`cluster.*`) and their identities are added by plan K-3.
+With `cluster.enabled` the control plane runs as the read account (a projected token) and the chart creates a read-only ClusterRole.
+With `cluster.write.enabled` a CronJob (and a post-install hook) mints a two-hour token of the write account into the Secret
+`remedy-write-token`, which the pod mounts; Roles are created in each of `cluster.write.namespaces` (which must exist) and in
+`cluster.argoNamespace`. `cluster.write.namespaces` can never contain the release namespace. If the refresher stops, actions
+fail closed after the token expires. Under Argo CD add an `ignoreDifferences` for the Secret's `/data`.
 
 ## NetworkPolicies: what the address rules mean
 
