@@ -140,4 +140,60 @@ EOF
 sleep 5
 printf '  %-34s ' "client -> web"; k exec client -- curl -s -m 4 -o /dev/null -w '%{http_code}\n' "http://$WEB_IP:8081/" || echo blocked
 printf '  %-34s ' "other -> web (must be blocked)"; k exec other -- curl -s -m 4 -o /dev/null -w '%{http_code}\n' "http://$WEB_IP:8081/" 2> /dev/null || echo blocked
-echo "== done; the namespace $NS is removed"
+
+# Sections 3 and 4 cannot tell the address from the port apart for the API server: shape 3 allows only TCP 443 and
+# the endpoint is on another port (6443 on kind and usually on k3s). Sections 6 and 7 separate the two.
+echo "== 6. as 3, but also TCP $EP_PORT to the public range (except private ranges): does the except list alone keep the api out?"
+k delete networkpolicy web-ingress
+cat <<EOF | k apply -f -
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: runner-shape-port}
+spec:
+  podSelector: {matchLabels: {app: client}}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to:
+        - podSelector: {matchLabels: {app: web}}
+      ports: [{protocol: TCP, port: 8081}]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: $EP_PORT}]
+EOF
+sleep 5
+probe_all
+
+echo "== 7. control: TCP 443 and $EP_PORT to 0.0.0.0/0 without an except list (the api must be reachable: proves the probe can pass once address and port both match)"
+k delete networkpolicy runner-shape-port
+cat <<EOF | k apply -f -
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: open-ports}
+spec:
+  podSelector: {matchLabels: {app: client}}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to: [{ipBlock: {cidr: 0.0.0.0/0}}]
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: $EP_PORT}]
+EOF
+sleep 5
+probe_all
+
+# Remove the namespace and wait for it, then verify: on a real cluster the end state matters.
+trap - EXIT
+kubectl --context "$CTX" delete namespace "$NS" --wait=true --timeout=180s > /dev/null 2>&1 || true
+if kubectl --context "$CTX" get namespace "$NS" > /dev/null 2>&1; then
+  echo "== done; WARNING: the namespace $NS still exists, remove it by hand: kubectl --context $CTX delete namespace $NS"
+else
+  echo "== done; the namespace $NS is removed (kubectl get namespace: NotFound)"
+fi
