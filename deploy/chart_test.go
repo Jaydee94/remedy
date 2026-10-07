@@ -157,3 +157,164 @@ func TestTheDataVolumeIsKeptAndAnExistingClaimIsUsedAsIs(t *testing.T) {
 		t.Fatalf("the pod does not use my-claim: %v", vols)
 	}
 }
+
+func TestTheRunnerHasNoServiceAccountToken(t *testing.T) {
+	d := mustRender(t, baseValues())
+	sts := d.find("StatefulSet", "remedy-runner")
+	if sts == nil {
+		t.Fatal("no StatefulSet remedy-runner")
+	}
+	pod := podSpec(t, sts)
+	if pod["automountServiceAccountToken"] != false {
+		t.Fatalf("pod automountServiceAccountToken = %v, want false", pod["automountServiceAccountToken"])
+	}
+	sa := d.find("ServiceAccount", "remedy-runner")
+	if sa == nil || sa["automountServiceAccountToken"] != false {
+		t.Fatalf("the runner's ServiceAccount must exist and not mount a token: %v", sa)
+	}
+	if pod["serviceAccountName"] != "remedy-runner" {
+		t.Fatalf("serviceAccountName = %v", pod["serviceAccountName"])
+	}
+	vols, _ := pod["volumes"].([]any)
+	for _, v := range vols {
+		if dig(t, v, "projected") != nil && strings.Contains(toString(v), "serviceAccountToken") {
+			t.Fatalf("the runner pod has a projected service account token: %v", v)
+		}
+	}
+}
+
+func TestTheRunnerIsHardenedAndHasOneReplica(t *testing.T) {
+	sts := mustRender(t, baseValues()).find("StatefulSet", "remedy-runner")
+	if dig(t, sts, "spec", "replicas") != 1 {
+		t.Fatalf("replicas = %v, want 1 (the runner is sequential)", dig(t, sts, "spec", "replicas"))
+	}
+	pod := podSpec(t, sts)
+	if dig(t, pod, "securityContext", "runAsNonRoot") != true || dig(t, pod, "securityContext", "runAsUser") != 65532 ||
+		dig(t, pod, "securityContext", "seccompProfile", "type") != "RuntimeDefault" {
+		t.Fatalf("pod securityContext = %v", pod["securityContext"])
+	}
+	for _, name := range []string{"runner", "install-cli"} {
+		sc := container(t, pod, name)["securityContext"]
+		if dig(t, sc, "readOnlyRootFilesystem") != true || dig(t, sc, "allowPrivilegeEscalation") != false ||
+			dig(t, sc, "capabilities", "drop", 0) != "ALL" {
+			t.Errorf("%s securityContext = %v", name, sc)
+		}
+	}
+}
+
+func TestTheRunnerReachesTheInternalServiceWithItsTokenFromTheSecret(t *testing.T) {
+	values := baseValues()
+	set(values, "runner.model", "sonnet")
+	set(values, "runner.runTimeout", "15m")
+	e := env(container(t, podSpec(t, mustRender(t, values).find("StatefulSet", "remedy-runner")), "runner"))
+	if e["REMEDY_SERVER_URL"]["value"] != "http://remedy-server-internal.remedy-system.svc:8081" {
+		t.Errorf("REMEDY_SERVER_URL = %v", e["REMEDY_SERVER_URL"]["value"])
+	}
+	ref := dig(t, e["REMEDY_RUNNER_TOKEN"], "valueFrom", "secretKeyRef")
+	if dig(t, ref, "name") != "remedy-secrets" || dig(t, ref, "key") != "runner-token" {
+		t.Errorf("REMEDY_RUNNER_TOKEN comes from %v", ref)
+	}
+	for name, want := range map[string]string{
+		"REMEDY_WORKSPACES": "/workspaces", "REMEDY_CLAUDE_BIN": "/opt/claude/claude", "HOME": "/state",
+		"CLAUDE_CONFIG_DIR": "/state/claude", "TMPDIR": "/tmp", "TERM": "xterm-256color",
+		"REMEDY_CLAUDE_MODEL": "sonnet", "REMEDY_RUN_TIMEOUT": "15m",
+	} {
+		if e[name]["value"] != want {
+			t.Errorf("%s = %v, want %q", name, e[name]["value"], want)
+		}
+	}
+	for _, name := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"} {
+		if _, ok := e[name]; ok {
+			t.Errorf("the runner must not have %s: it would bill the API or hold a credential", name)
+		}
+	}
+}
+
+func TestTheInitContainerInstallsThePinnedCLIAndTheRunnerMountsItReadOnly(t *testing.T) {
+	pod := podSpec(t, mustRender(t, baseValues()).find("StatefulSet", "remedy-runner"))
+	init := container(t, pod, "install-cli")
+	if init["image"] != container(t, pod, "runner")["image"] {
+		t.Fatalf("the init container must use the runner image (the image has no shell): %v", init["image"])
+	}
+	args := toString(init["args"])
+	sha := strings.Repeat("a", 64)
+	for _, want := range []string{
+		"install-cli", "--version=2.1.288",
+		"--url-template=https://downloads.example.invalid/{version}/{platform}/claude",
+		"--archive=none", "--dest=/opt/claude",
+		"--platform=amd64=linux-x64@" + sha, "--platform=arm64=linux-arm64@" + sha,
+	} {
+		if !strings.Contains(args, want) {
+			t.Errorf("the init container's args lack %q:\n%s", want, args)
+		}
+	}
+	mounts, _ := container(t, pod, "runner")["volumeMounts"].([]any)
+	readOnly := false
+	for _, m := range mounts {
+		if dig(t, m, "mountPath") == "/opt/claude" && dig(t, m, "readOnly") == true {
+			readOnly = true
+		}
+	}
+	if !readOnly {
+		t.Fatalf("the runner must mount /opt/claude read-only: %v", mounts)
+	}
+}
+
+func TestATarGzArtifactPassesItsMember(t *testing.T) {
+	values := baseValues()
+	set(values, "runner.cli.archive", "tar.gz")
+	set(values, "runner.cli.member", "claude")
+	args := toString(container(t, podSpec(t, mustRender(t, values).find("StatefulSet", "remedy-runner")), "install-cli")["args"])
+	if !strings.Contains(args, "--archive=tar.gz") || !strings.Contains(args, "--member=claude") {
+		t.Fatalf("args = %s", args)
+	}
+}
+
+func TestTheRunnerNeedsThePinnedCLI(t *testing.T) {
+	for path, want := range map[string]string{
+		"runner.cli.version":     "runner.cli.version",
+		"runner.cli.urlTemplate": "runner.cli.urlTemplate",
+	} {
+		values := baseValues()
+		set(values, path, "")
+		mustFail(t, values, want)
+	}
+	values := baseValues()
+	set(values, "runner.cli.platforms.amd64.sha256", "")
+	mustFail(t, values, "runner.cli.platforms.amd64.sha256")
+}
+
+func TestTheRunnerKeepsItsStateOnAClaimThatSurvivesARestart(t *testing.T) {
+	sts := mustRender(t, baseValues()).find("StatefulSet", "remedy-runner")
+	tpls, _ := dig(t, sts, "spec", "volumeClaimTemplates").([]any)
+	if len(tpls) != 1 || dig(t, tpls[0], "metadata", "name") != "state" {
+		t.Fatalf("volumeClaimTemplates = %v, want one named state", tpls)
+	}
+
+	values := baseValues()
+	set(values, "runner.persistence.existingClaim", "claude-state")
+	sts = mustRender(t, values).find("StatefulSet", "remedy-runner")
+	if dig(t, sts, "spec", "volumeClaimTemplates") != nil {
+		t.Fatal("no claim template may be rendered when an existing claim is named")
+	}
+	vols, _ := podSpec(t, sts)["volumes"].([]any)
+	found := false
+	for _, v := range vols {
+		if dig(t, v, "name") == "state" && dig(t, v, "persistentVolumeClaim", "claimName") == "claude-state" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the state volume does not use claude-state: %v", vols)
+	}
+}
+
+func TestTheRunnerCanBeLeftOut(t *testing.T) {
+	values := baseValues()
+	set(values, "runner.enabled", false)
+	set(values, "runner.cli", map[string]any{})
+	d := mustRender(t, values)
+	if d.find("StatefulSet", "remedy-runner") != nil || d.find("ServiceAccount", "remedy-runner") != nil {
+		t.Fatal("nothing of the runner may be rendered when runner.enabled is false")
+	}
+}

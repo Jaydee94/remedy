@@ -1,0 +1,118 @@
+{{- if .Values.runner.enabled }}
+{{- $cli := .Values.runner.cli }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: remedy-runner
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: runner
+spec:
+  serviceName: remedy-runner
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "remedy.selector" (dict "ctx" . "component" "runner") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "remedy.labels" . | nindent 8 }}
+        app.kubernetes.io/component: runner
+    spec:
+      serviceAccountName: remedy-runner
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # No image contains the claude CLI (the images are public, the binary is proprietary). The runner image installs
+        # the pinned one into a volume, after checking its SHA-256.
+        - name: install-cli
+          image: {{ include "remedy.runnerImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - install-cli
+            - --version={{ required "runner.cli.version is required: the CLI is installed at this pinned version" $cli.version }}
+            - --url-template={{ required "runner.cli.urlTemplate is required: an https URL with {version} and {platform}" $cli.urlTemplate }}
+            - --archive={{ $cli.archive }}
+            {{- if $cli.member }}
+            - --member={{ $cli.member }}
+            {{- end }}
+            {{- range $arch, $p := $cli.platforms }}
+            - --platform={{ $arch }}={{ required (printf "runner.cli.platforms.%s.name is required" $arch) $p.name }}@{{ required (printf "runner.cli.platforms.%s.sha256 is required" $arch) $p.sha256 }}
+            {{- end }}
+            - --dest=/opt/claude
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: claude-bin, mountPath: /opt/claude}
+      containers:
+        - name: runner
+          image: {{ include "remedy.runnerImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - {name: REMEDY_SERVER_URL, value: "http://remedy-server-internal.{{ .Release.Namespace }}.svc:8081"}
+            - name: REMEDY_RUNNER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "remedy.secretName" . }}
+                  key: {{ .Values.existingSecret.keys.runnerToken }}
+            - {name: REMEDY_WORKSPACES, value: /workspaces}
+            - {name: REMEDY_CLAUDE_BIN, value: /opt/claude/claude}
+            # The login is in CLAUDE_CONFIG_DIR, on the state volume. `kubectl exec -it ... /opt/claude/claude` for the
+            # one-time login inherits these, and TERM gives that session a usable terminal.
+            - {name: HOME, value: /state}
+            - {name: CLAUDE_CONFIG_DIR, value: /state/claude}
+            - {name: TMPDIR, value: /tmp}
+            - {name: TERM, value: xterm-256color}
+            {{- with .Values.runner.model }}
+            - {name: REMEDY_CLAUDE_MODEL, value: {{ . | quote }}}
+            {{- end }}
+            {{- with .Values.runner.runTimeout }}
+            - {name: REMEDY_RUN_TIMEOUT, value: {{ . | quote }}}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.runner.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: state, mountPath: /state}
+            - {name: workspaces, mountPath: /workspaces}
+            - {name: claude-bin, mountPath: /opt/claude, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: workspaces
+          emptyDir: {}
+        - name: claude-bin
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.runner.persistence.existingClaim }}
+        - name: state
+          persistentVolumeClaim:
+            claimName: {{ .Values.runner.persistence.existingClaim }}
+        {{- end }}
+  {{- if not .Values.runner.persistence.existingClaim }}
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.runner.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.runner.persistence.size }}
+  {{- end }}
+{{- end }}
