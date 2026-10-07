@@ -1,0 +1,20 @@
+{{- if not .Values.server.persistence.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: remedy-data
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+  annotations:
+    # The database is the only state. helm uninstall must not delete it.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.server.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.server.persistence.size }}
+{{- end }}

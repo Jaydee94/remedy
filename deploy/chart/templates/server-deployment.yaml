@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: remedy-server
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: 1
+  # SQLite has one connection and one file: the old pod must be gone before the new one opens it.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "remedy.selector" (dict "ctx" . "component" "server") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "remedy.labels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+    spec:
+      serviceAccountName: remedy-server
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: {{ include "remedy.serverImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - {name: http, containerPort: 8080}
+            - {name: internal, containerPort: 8081}
+          env:
+            - {name: REMEDY_ADDR, value: ":8080"}
+            - {name: REMEDY_INTERNAL_ADDR, value: ":8081"}
+            - {name: REMEDY_DB, value: /data/remedy.db}
+            - name: REMEDY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "remedy.secretName" . }}
+                  key: {{ .Values.existingSecret.keys.adminPassword }}
+            - name: REMEDY_RUNNER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "remedy.secretName" . }}
+                  key: {{ .Values.existingSecret.keys.runnerToken }}
+            - name: REMEDY_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "remedy.secretName" . }}
+                  key: {{ .Values.existingSecret.keys.masterKey }}
+            {{- range $name, $value := .Values.server.env }}
+            {{- if regexMatch "PASSWORD|TOKEN|KEY" $name }}
+            {{- fail (printf "server.env.%s: a name that contains PASSWORD, TOKEN or KEY is refused; secrets belong in the existing Secret, not in values" $name) }}
+            {{- end }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.server.persistence.existingClaim | default "remedy-data" }}
+        - name: tmp
+          emptyDir: {}

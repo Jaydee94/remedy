@@ -1,0 +1,36 @@
+# The public Service: the UI, /api and /healthz. This is the only one an Ingress or a NodePort may point at.
+apiVersion: v1
+kind: Service
+metadata:
+  name: remedy-server
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  type: {{ .Values.server.service.type }}
+  selector:
+    {{- include "remedy.selector" (dict "ctx" . "component" "server") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      {{- if and (eq .Values.server.service.type "NodePort") .Values.server.service.nodePort }}
+      nodePort: {{ .Values.server.service.nodePort }}
+      {{- end }}
+---
+# The internal Service: /runner/v1 and /mcp. Always ClusterIP; the NetworkPolicy lets only runner pods reach it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: remedy-server-internal
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "remedy.selector" (dict "ctx" . "component" "server") | nindent 4 }}
+  ports:
+    - name: internal
+      port: 8081
+      targetPort: internal
