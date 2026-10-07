@@ -117,3 +117,74 @@ install_argocd() {
   k -n argocd rollout status statefulset/argocd-application-controller --timeout=300s
   k apply -f "$KIND_DIR/guestbook.yaml"
 }
+
+# dummy.env holds what the dummy setup generated: the URL and the three application secrets. It is made once and kept until
+# down.sh removes it together with the cluster, so the master key always matches the database it sealed.
+write_dummy_env() {
+  [ -f "$DUMMY_ENV" ] && return 0
+  (umask 077
+   {
+     echo "REMEDY_URL=http://127.0.0.1:18080"
+     echo "REMEDY_ADMIN_PASSWORD=$(openssl rand -hex 12)"
+     echo "REMEDY_RUNNER_TOKEN=$(openssl rand -hex 24)"
+     echo "REMEDY_MASTER_KEY=$(openssl rand -base64 32)"
+   } > "$DUMMY_ENV")
+}
+
+# load_dummy_env puts the values of dummy.env into the environment of the script.
+load_dummy_env() {
+  [ -f "$DUMMY_ENV" ] || { echo "there is no $DUMMY_ENV: run make dummy-up" >&2; exit 1; }
+  set -a
+  . "$DUMMY_ENV"
+  set +a
+}
+
+# require_dummy stops unless the cluster and the release exist.
+require_dummy() {
+  kind get clusters 2> /dev/null | grep -qx "$CLUSTER" || { echo "there is no cluster $CLUSTER: run make dummy-up" >&2; exit 1; }
+  helm --kube-context "$CTX" -n "$NS" status "$RELEASE" > /dev/null 2>&1 || { echo "Remedy is not installed in $NS: run make dummy-up" >&2; exit 1; }
+}
+
+# new_tag sets TAG to a tag that no image has had, so that a rebuilt image always rolls the pods.
+new_tag() { TAG=dev-$(date +%Y%m%d%H%M%S); }
+
+# build_and_load_images builds both images for this machine and loads them into the cluster's node.
+build_and_load_images() {
+  make -C "$REPO_ROOT" images IMAGE_TAG="$TAG"
+  kind load docker-image "remedy-server:$TAG" "remedy-runner:$TAG" --name "$CLUSTER"
+}
+
+# apply_secret makes the Secret the chart references. The values go to kubectl through a 0600 file, never as arguments.
+apply_secret() {
+  load_dummy_env
+  tmp=$(umask 077; mktemp)
+  {
+    echo "admin-password=$REMEDY_ADMIN_PASSWORD"
+    echo "runner-token=$REMEDY_RUNNER_TOKEN"
+    echo "master-key=$REMEDY_MASTER_KEY"
+  } > "$tmp"
+  k -n "$NS" create secret generic remedy-secrets --from-env-file="$tmp" --dry-run=client -o yaml | k apply -f -
+  rm -f "$tmp"
+}
+
+# deploy_release installs or upgrades the chart with the pinned CLI, the dummy's values, the image tags and the address of
+# the API server (the network policy needs it). It waits for the control plane, the runner and the token hook.
+deploy_release() {
+  api_ip=$(k get endpoints kubernetes -o jsonpath='{.subsets[0].addresses[0].ip}')
+  helm --kube-context "$CTX" upgrade --install "$RELEASE" "$REPO_ROOT/deploy/chart" -n "$NS" \
+    -f "$REPO_ROOT/deploy/cli-pin.yaml" -f "$KIND_DIR/dummy-values.yaml" \
+    --set "image.server.tag=$TAG" --set "image.runner.tag=$TAG" \
+    --set "networkPolicy.apiServer.cidrs={$api_ip/32}" \
+    --wait --timeout 10m
+}
+
+# wait_default_serviceaccount waits until the namespace's default ServiceAccount exists. A controller makes it a moment
+# after the namespace, and a pod created before then is refused ("serviceaccount default not found"; spike S1).
+wait_default_serviceaccount() {
+  i=0
+  until k -n "$NS" get serviceaccount default > /dev/null 2>&1; do
+    i=$((i + 1))
+    [ "$i" -le 60 ] || { echo "the default service account of $NS did not appear within 60 s" >&2; exit 1; }
+    sleep 1
+  done
+}

@@ -2,7 +2,8 @@
 
 IMAGE_TAG ?= dev
 
-.PHONY: help build build-go images test vet fmt web-install web-build web-lint web-test dev-server dev-web chart-check check
+.PHONY: help build build-go images test vet fmt web-install web-build web-lint web-test dev-server dev-web chart-check check \
+	dummy-up dummy-down dummy-login dummy-logout dummy-redeploy dummy-reset dummy-smoke dummy-status dummy-logs
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -56,3 +57,30 @@ chart-check: ## Lint and render the Helm chart (needs helm; kubeconform when ins
 	REMEDY_REQUIRE_HELM=1 go test ./deploy -count=1
 
 check: fmt vet test chart-check web-lint web-test web-build ## Everything CI checks
+
+dummy-up: ## Build up the kind dummy setup: cluster, demo workloads, Argo CD, images, the chart (real agent; login: dummy-login)
+	dev/kind/dummy-up.sh
+
+dummy-down: ## Remove the dummy cluster and what was generated; the CLI login in ~/remedy-kind/claude stays
+	dev/kind/down.sh
+
+dummy-login: ## The one-time CLI login in the dummy's runner pod (interactive)
+	dev/kind/dummy-login.sh
+
+dummy-logout: ## Remove the CLI login from the host directory (asks first)
+	dev/kind/dummy-logout.sh
+
+dummy-redeploy: ## Rebuild both images, load them and upgrade the release (the fast loop)
+	dev/kind/dummy-redeploy.sh
+
+dummy-reset: ## Empty the dummy's database; keeps the cluster, the secrets and the login
+	dev/kind/dummy-reset.sh
+
+dummy-smoke: ## Run two real runs against the dummy (a cluster question and an approved restart); costs subscription quota
+	dev/kind/smoke.sh
+
+dummy-status: ## State of the dummy setup as key: value lines
+	dev/kind/dummy-status.sh
+
+dummy-logs: ## Follow the dummy's logs
+	dev/kind/dummy-logs.sh
