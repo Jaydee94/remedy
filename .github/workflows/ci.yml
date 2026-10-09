@@ -54,3 +54,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: make shell-test
+
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: release/.nvmrc
+          cache: npm
+          cache-dependency-path: release/package-lock.json
+      - run: make release-test

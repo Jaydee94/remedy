@@ -2,7 +2,7 @@
 
 IMAGE_TAG ?= dev
 
-.PHONY: help build build-go images test vet fmt web-install web-build web-lint web-test dev-server dev-web chart-check shell-test check \
+.PHONY: help build build-go images test vet fmt web-install web-build web-lint web-test dev-server dev-web chart-check shell-test release-test check \
 	dummy-up dummy-down dummy-login dummy-logout dummy-redeploy dummy-reset dummy-smoke dummy-status dummy-logs
 
 help: ## Show targets
@@ -66,6 +66,11 @@ shell-test: ## Run the shell tests: the dummy's directory guard, its smoke decis
 	sh scripts/cli-checksums_test.sh
 	sh scripts/set-chart-version_test.sh
 	sh scripts/check-pr-title_test.sh
+
+release-test: ## Test the release configuration in a scratch repository and the chart's OCI push (needs node, git, helm, docker)
+	cd release && npm ci --ignore-scripts
+	sh release/test/dry-run.sh
+	sh scripts/chart-oci_test.sh
 
 check: fmt vet test chart-check shell-test web-lint web-test web-build ## Everything CI checks
 
