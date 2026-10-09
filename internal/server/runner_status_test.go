@@ -96,6 +96,8 @@ func TestABadReportIsRefusedAndChangesNothing(t *testing.T) {
 		"a very long version":       `{"login":"ok","cliVersion":"` + strings.Repeat("1", 5000) + `"}`,
 		"an unknown field":          `{"login":"ok","token":"x"}`,
 		"not JSON":                  `login=ok`,
+		"a second object":           `{"login":"ok"}{"login":"missing"}`,
+		"trailing text":             `{"login":"ok"} x`,
 		"a time that is not a time": `{"login":"ok","loginCheckedAt":"yesterday"}`,
 	}
 	for name, body := range bad {
@@ -176,5 +178,53 @@ func TestAVersionLineOfMoreThanSixtyFourCharactersIsRefused(t *testing.T) {
 	}
 	if v := rs.View(now); len(v.CLIVersion) != 64 {
 		t.Fatalf("a refused report changed the version: %q", v.CLIVersion)
+	}
+}
+
+func TestTrailingWhitespaceAfterTheReportIsAccepted(t *testing.T) {
+	e := newRunnerEnv(t)
+	// The runner's JSON encoder ends its output with a newline.
+	if resp := e.runnerDo(t, http.MethodPost, "/runner/v1/status", "{\"login\":\"ok\"}\n", runnerToken); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("report with a trailing newline = %d, want 204", resp.StatusCode)
+	}
+	if v := getRunnerView(t, e, e.adminClient(t, true)); v.Login != "ok" {
+		t.Fatalf("view = %+v", v)
+	}
+}
+
+func TestConnectedExactlyFortyFiveSecondsAfterTheLastRequest(t *testing.T) {
+	rs := server.NewRunnerStatus()
+	t0 := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	rs.Touch(t0)
+	if v := rs.View(t0.Add(45 * time.Second)); !v.Connected {
+		t.Fatalf("at exactly 45 s: %+v, want connected", v)
+	}
+	if v := rs.View(t0.Add(45*time.Second + time.Nanosecond)); v.Connected {
+		t.Fatalf("45 s and 1 ns: %+v, want not connected", v)
+	}
+}
+
+func TestTheCheckedAtClampBoundaries(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	for name, c := range map[string]struct {
+		at   time.Time
+		kept bool
+	}{
+		"1 minute in the future":         {now.Add(time.Minute), true},
+		"1 minute and 1 s in the future": {now.Add(time.Minute + time.Second), false},
+		"exactly 24 hours old":           {now.Add(-24 * time.Hour), true},
+		"24 hours and 1 s old":           {now.Add(-24*time.Hour - time.Second), false},
+	} {
+		rs := server.NewRunnerStatus()
+		if err := rs.Report("ok", c.at, "", now); err != nil {
+			t.Fatal(err)
+		}
+		want := now
+		if c.kept {
+			want = c.at
+		}
+		if v := rs.View(now); v.LoginCheckedAt == nil || !v.LoginCheckedAt.Equal(want) {
+			t.Errorf("%s: loginCheckedAt = %v, want %v", name, v.LoginCheckedAt, want)
+		}
 	}
 }

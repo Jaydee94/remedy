@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -64,7 +65,8 @@ func (r *RunnerStatus) Report(login string, checkedAt time.Time, cliVersion stri
 
 // RunnerView is what GET /api/runner answers.
 type RunnerView struct {
-	Connected      bool       `json:"connected"`
+	Connected bool `json:"connected"`
+	// lastSeenAt, loginCheckedAt and cliVersion are facts about the past: the UI must not present them as current when connected is false.
 	LastSeenAt     *time.Time `json:"lastSeenAt,omitempty"`
 	Login          string     `json:"login"` // ok, missing or unknown; unknown whenever the runner is not connected
 	LoginCheckedAt *time.Time `json:"loginCheckedAt,omitempty"`
@@ -102,6 +104,11 @@ func (s *srv) postRunnerStatus(w http.ResponseWriter, r *http.Request) {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid status")
+		return
+	}
+	// Nothing but whitespace may follow the object (the runner's encoder ends it with a newline).
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		writeErr(w, http.StatusBadRequest, "invalid status")
 		return
 	}
