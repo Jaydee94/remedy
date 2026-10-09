@@ -22,6 +22,7 @@ const (
 	KindPollFailed        = "poll_failed"
 	KindPollRecovered     = "poll_recovered"
 	KindConnectionChanged = "connection_changed"
+	KindHostChanged       = "host_changed"
 	KindRepoAdded         = "repo_added"
 	KindRepoRemoved       = "repo_removed"
 	KindDiagnosisStarted  = "diagnosis_started"
