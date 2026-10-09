@@ -197,7 +197,7 @@ bad "an empty scope"               "feat(): x"
 bad "a scope with a space"         "feat(my scope): x"
 bad "two lines"                    "feat: one
 second line"
-bad "a title that is too long"     "feat: $(printf 'x%.0s' $(seq 1 130))"
+bad "a type inside the title"      "Add a feat: x"
 
 # The title can also come from the environment (the workflow passes it there).
 if PR_TITLE="fix: from the environment" sh "$SCRIPT" > /dev/null 2>&1; then echo "ok    PR_TITLE"; else echo "FAIL  PR_TITLE"; fails=$((fails + 1)); fi
@@ -218,7 +218,8 @@ Create `scripts/check-pr-title.sh`:
 #!/bin/sh
 # A pull request title must be a conventional commit: `type(scope)?!?: subject`. The squash merge uses the title as the
 # commit subject, and semantic-release decides the release from it (feat is minor, fix and perf are patch, the rest
-# releases nothing). The title is untrusted text: it is only matched, never executed or interpolated.
+# releases nothing). The title is untrusted text: it is only matched, never executed or interpolated. There is no length
+# limit: the history has legitimate conventional subjects of 140 characters and nothing needs one.
 # Usage: scripts/check-pr-title.sh "<title>"     or     PR_TITLE="<title>" scripts/check-pr-title.sh
 set -eu
 title=${1:-${PR_TITLE:-}}
@@ -234,7 +235,6 @@ case $title in
   *'
 '*) fail ;;
 esac
-[ "${#title}" -le 120 ] || fail
 printf '%s' "$title" | grep -Eq '^(feat|fix|perf|revert|docs|chore|ci|test|refactor|style|build)(\([a-z0-9._/-]+\))?!?: [^ ]' || fail
 echo "the title is a conventional commit"
 ```
@@ -261,8 +261,11 @@ In `.github/workflows/ci.yml`, in the `chart` job, after its existing steps, add
 
 ```yaml
       - name: Chart version equals appVersion
-        run: sh scripts/check-release.sh "v$(sed -n 's/^version: *//p' deploy/chart/Chart.yaml)"
+        run: |
+          sh scripts/check-release.sh "v$(sed -n 's/^version: *//p' deploy/chart/Chart.yaml)"
 ```
+
+(A block scalar: a plain scalar with `: ` inside would make the whole workflow file invalid YAML.) After every edit of a workflow file, parse all of them: `ruby -ryaml -e 'ARGV.each{|f| YAML.load_file(f); puts "ok #{f}"}' .github/workflows/*.yml` (or python3 with PyYAML), because `make check` does not.
 
 Run: `sh scripts/check-release.sh "v$(sed -n 's/^version: *//p' deploy/chart/Chart.yaml)"` — Expected: `the tag v0.1.0 matches the chart`. Run `make check`; Expected: PASS.
 
@@ -526,6 +529,8 @@ release-test: ## Test the release configuration in a scratch repository and the 
           cache-dependency-path: release/package-lock.json
       - run: make release-test
 ```
+
+Parse all workflow files (see task 1 step 7) before the commit.
 
 - [ ] **Step 7: Commit**
 
