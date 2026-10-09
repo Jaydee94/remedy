@@ -45,6 +45,10 @@ running as a service for other people's homelabs.
   the CLI.
 - **Untrusted input:** logs, alert text, PR descriptions and commit messages are data,
   never instructions (prompt injection). They are marked and passed fenced as such.
+- **Hosts (2026-10-09).** A machine outside the cluster is a second kind of access, through the same
+  gatekeeper: one tool, `host_exec`, with an argv array (no shell string) that the control plane runs over SSH.
+  Default deny: a command that the built-in table does not describe as reading is a change and waits for an
+  approval, and a change runs as `sudo -n`. The credentials stay in the control plane, sealed. See 2.10.
 
 ### 2.3 Signals and incidents (branch 3)
 
@@ -123,6 +127,10 @@ running as a service for other people's homelabs.
 - A throwaway **dummy setup** in kind (`make dummy-up`, `make dummy-down`) runs the real
   chain with the real agent; the login lives in a host directory that survives it.
 - **Deliberately no** self-protection (no heartbeat, no protected paths) in the MVP.
+- **Configuration (2026-10-09).** The bootstrap stays in Helm and the environment: admin password, runner token,
+  master key, the listener addresses and the cluster token files (the write token is short-lived by design and
+  must not go into the database). Everything else is configured in the UI and stored in the database, with the
+  environment as the default, and the UI shows the source of each value.
 
 ### 2.8 Web UI (branch 8)
 
@@ -158,6 +166,23 @@ running as a service for other people's homelabs.
 - Notification via the Home Assistant notify service with a deep link into the UI.
   Approvals happen only in the UI.
 
+### 2.10 Hosts and skills (branch 10)
+
+Decided on 2026-10-09; the specification is
+[`specs/2026-10-09-hosts-and-skills-design.md`](specs/2026-10-09-hosts-and-skills-design.md).
+
+- The UI keeps an **inventory of hosts**: a flat list, each entry with access methods and label matchers that map
+  alerts to it. Services are not entries; what is known about them lives in a host's skills.
+- **Credentials** (a private key or a password) are entered by the maintainer and sealed like the GitHub token.
+  Host keys are pinned after a confirmation. A connection test reports the account's rights and warns about root.
+- **One identity per host.** Safety rests on the classification of an argv (default deny, a table in the code
+  that no skill can extend, a short "never" list) and on the rights of the account on the host. This is an accepted
+  risk (4); the retrofit is two identities per host, and the data model leaves room for it.
+- **Skills** are Markdown per host or global, with an origin. Remedy gets to know a host in a read-only run whose
+  proposals the maintainer confirms; unconfirmed proposals are not used as fact.
+- The Argo CD source of part 2D is postponed; the Alertmanager source and the responder for outages are built
+  after the host tools.
+
 ## 3. Roadmap
 
 | Phase | Content | Result |
@@ -165,6 +190,7 @@ running as a service for other people's homelabs.
 | **0 Foundation** | Monorepo, SQLite, control plane + runner, auth, UI shell, Claude adapter, **billing spike** | A run starts from the UI and streams live |
 | **1 Pipeline fixer** | GitHub (PAT), CI events, responder + fixer, bot PRs automatic, timeline, HA notify | Red CI gets repaired, the human merges |
 | **2 Gatekeeper + cluster** | MCP gatekeeper, approval inbox, cluster actions, Alertmanager/Argo signals, incident model | Reaction to outages |
+| **2.5 Hosts and skills** | Inventory and credentials, host tools in the gatekeeper, settings in the UI, the Alertmanager source and the responder for outages, skills and the learning run, operation on the home server (6 cycles, see 2.10) | Remedy knows and reaches the machines outside the cluster |
 | **3 Learning phase + graph** | Parsers, graph in SQLite, learner, review queue, drift, Loki signals | Fewer tokens, better fixes |
 | **4 Expansion** | `agy` adapter and fallback, ad-hoc chat, graph explorer, hardening | Comfort, hardening |
 
@@ -183,6 +209,7 @@ incident model, an automatic responder for outages whose actions wait for an app
 | PAT on the user's account, no required approval | Identities blur, a leaked PAT has more reach | GitHub App, bot account |
 | No self-protection | Remedy goes down with the cluster; agents can change Remedy's manifests via PR | Heartbeat, protected paths |
 | UI protected by password only | Anyone who reaches the UI can approve cluster actions | TOTP, OIDC |
+| One SSH identity per host; the classification of commands is the barrier Remedy owns | A mistake in it runs a change without an approval, with the account's rights. Reduced by argv, default deny, `sudo -n` and tests | Two identities per host (read-only account and an approved one) |
 | 24/7 operation on a subscription login | Only partly fits "ordinary, individual usage" (see research) | Budget, low parallelism, API-key fallback |
 
 ## 5. Open points
