@@ -84,6 +84,7 @@ spec:
             - {name: status, containerPort: 8082}
           readinessProbe:
             httpGet: {path: /readyz, port: status}
+            initialDelaySeconds: 5   # the first report goes out at once; a probe before it only sees the expected 503
             periodSeconds: 10
             failureThreshold: 3
           livenessProbe:

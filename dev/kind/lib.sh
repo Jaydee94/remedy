@@ -204,12 +204,12 @@ runner_state() {
   load_dummy_env
   jar=$(umask 077; mktemp)
   if ! jq -cn '{password: env.REMEDY_ADMIN_PASSWORD}' |
-       curl -sf -o /dev/null -c "$jar" -H 'X-Remedy-CSRF: 1' --data-binary @- "$REMEDY_URL/api/login"; then
+       curl -sf --max-time 10 -o /dev/null -c "$jar" -H 'X-Remedy-CSRF: 1' --data-binary @- "$REMEDY_URL/api/login"; then
     rm -f "$jar"
     return 1
   fi
   rc=0
-  curl -sf -b "$jar" "$REMEDY_URL/api/runner" || rc=$?
+  curl -sf --max-time 10 -b "$jar" "$REMEDY_URL/api/runner" || rc=$?
   rm -f "$jar"
   return $rc
 }
