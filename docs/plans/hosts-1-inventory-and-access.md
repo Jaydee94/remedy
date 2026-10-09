@@ -155,7 +155,7 @@ func hostFields(name string) store.HostFields {
 	}
 }
 
-func activityKinds(t *testing.T, s *store.Store) []string {
+func activitySummaries(t *testing.T, s *store.Store) []string {
 	t.Helper()
 	log, err := s.ListActivity(context.Background(), store.ActivityQuery{})
 	if err != nil {
@@ -200,7 +200,7 @@ func TestCreateGetListHost(t *testing.T) {
 	if _, err := s.GetHost(ctx, 999); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("unknown host error = %v", err)
 	}
-	if got := activityKinds(t, s); len(got) != 2 || got[1] != "Host nas created" {
+	if got := activitySummaries(t, s); len(got) != 2 || got[1] != "Host nas created" {
 		t.Fatalf("activity = %v", got)
 	}
 }
@@ -360,7 +360,7 @@ func TestHostActivityNamesNoSecrets(t *testing.T) {
 	_ = s.DeleteHost(ctx, h.ID)
 
 	want := []string{"Host nas removed", "Host key of nas pinned", "Credential of nas replaced", "Host nas created"}
-	got := activityKinds(t, s)
+	got := activitySummaries(t, s)
 	if len(got) != len(want) {
 		t.Fatalf("activity = %v", got)
 	}
@@ -2156,13 +2156,14 @@ func TestChecksOfOneHostDoNotOverlap(t *testing.T) {
 	cmds["id -un"] = sshtest.Reply{Out: "remedy\n", Delay: 150 * time.Millisecond}
 	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: cmds})
 	pin := lineOf(t, srv)
+	cred := passwordCred(t, "pw") // made here: t.Fatal must not be called from the goroutines below
 	var svc sshhost.Service
 	var wg sync.WaitGroup
 	for i := 0; i < 3; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := svc.Check(context.Background(), 7, targetOf(srv), passwordCred(t, "pw"), pin); err != nil {
+			if _, err := svc.Check(context.Background(), 7, targetOf(srv), cred, pin); err != nil {
 				t.Errorf("Check: %v", err)
 			}
 		}()
