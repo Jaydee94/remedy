@@ -64,4 +64,8 @@ jobs:
           node-version-file: release/.nvmrc
           cache: npm
           cache-dependency-path: release/package-lock.json
+      - name: Show the Helm version
+        run: helm version
       - run: make release-test
+        env:
+          REMEDY_REQUIRE_DOCKER: "1"
