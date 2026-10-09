@@ -4,3 +4,6 @@ description: Remedy, an AI operator for a homelab GitOps setup. The control plan
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
+home: https://github.com/Jaydee94/remedy
+sources:
+  - https://github.com/Jaydee94/remedy
