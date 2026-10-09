@@ -44,7 +44,7 @@ The part is proven on the kind testbed of part C, extended by an Alertmanager. P
 | Responder for outages | Starts automatically for severity `critical` and `warning` (alerts) and for every counted Argo CD state, under the limits of phase 1. A run with `tools` and `cluster`: the cluster read tools, the incident tools and the four actions, each action after an approval. No snapshot. |
 | Approvals of automatic runs | **Expire after 15 minutes** (`REMEDY_AUTO_APPROVAL_TIMEOUT`), so that an unanswered request does not hold the one runner. Manual runs wait without a limit as before. |
 | Answer format | A second, strict schema for cluster incidents, stored in the same `diagnosis` column. |
-| Configuration | Environment variables, like the cluster. No UI for it. |
+| Configuration | Environment variables, like the cluster. No UI for it. **Superseded 2026-10-09:** the Alertmanager settings are configured in the UI, with the environment as the default ([`2026-10-09-hosts-and-skills-design.md`](2026-10-09-hosts-and-skills-design.md), cycle 3). That spec also postpones the Argo CD source and puts the host tools before the responder for outages. |
 
 ## 3. Components
 
