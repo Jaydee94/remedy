@@ -42,13 +42,13 @@ The Argo CD source of part 2D is **not** in this series. It is postponed, not dr
 | The table | The table of read-only commands is **in the Go code**, versioned and tested. Only a person can add to it for one host, in the UI. A skill, whether written by a person or proposed by an agent, can never extend it. |
 | Never | A short list in the code that runs **even with an approval**: `mkfs`, `dd` onto a device, `rm -r` on `/` or a system path, changes to `authorized_keys`, `sudoers` and passwords, and anything that pipes into a shell. |
 | Approvals | One per command, shown word for word, with the expiry rules of part 2D (15 minutes for an automatic run). |
-| Credentials | The maintainer **enters** a private key or a password. They are sealed like the GitHub token, shown only as their last characters, and never in a log, an error, an API answer or a database column. |
+| Credentials | The maintainer **enters** a private key or a password. They are sealed like the GitHub token, shown only as a hint (a key's fingerprint; a password shows nothing), and never in a log, an error, an API answer or a database column other than the sealed one. |
 | Host keys | **Pinned.** At the first connection Remedy shows the fingerprint, the maintainer confirms it, and from then on a different key is refused. There is no way to switch the check off. |
 | Account rights | The connection test shows what the account can do (`id`, groups, `sudo -n -l`) and **warns clearly** about root and about unrestricted sudo. It does not forbid them. |
 | Sensitive data | **Only the host's file permissions.** Remedy has no path filter. The redaction of secrets stays. |
 | Where SSH runs | In the **control plane**, in the gatekeeper. The runner never holds a credential and never opens a connection to a host. |
 | Which hosts a run sees | Only those assigned to it. The responder gets the host an alert maps to; an ad-hoc run gets the hosts the maintainer selects. A host tool that is not offered answers like a tool that does not exist. |
-| Alert to host | Each host has label matchers. The default matches the host's **name and its address** in the `instance` label (on this lab the NAS is `instance="ugreen-nas"`, not its IP). The matchers can be edited. An alert that matches no host still opens an incident, without a host. |
+| Alert to host | Each host has label matchers (added in cycle 4, where they are first evaluated). The default matches the host's **name and its address** in the `instance` label (on this lab the NAS is `instance="ugreen-nas"`, not its IP). The matchers can be edited. An alert that matches no host still opens an incident, without a host. |
 | Skills | A skill is a Markdown document with a name and a description, bound to a host or global. The prompt lists names and descriptions; `skill_get` loads the content on demand. Every skill records its **origin**: written by the maintainer, proposed by an agent and confirmed, or proposed and not confirmed. |
 | Learning | A button "get to know this host" starts a read-only run over SSH. The agent proposes a host profile and skills; the maintainer confirms or rejects them in a review list. **Unconfirmed proposals are not used as fact.** Learning after each incident is a later cycle. |
 | Configuration | **Bootstrap stays in Helm and the environment:** admin password, runner token, master key, the listener addresses and the cluster token files. **Everything else moves to the database:** hosts, credentials, skills, the Alertmanager URL and token, the limits of diagnosis, the poll interval, the run timeout, the approval expiry, the severities that open an incident, the matcher rules and the namespace allowlist. The environment stays as the **default**; the UI shows where each value comes from. |
@@ -73,13 +73,13 @@ A host whose account may use `docker` through `sudo -n` only for exact commands 
 
 ## 4. Cycle 1: hosts and access
 
-**Data.** A `hosts` table (name, address, port, user, notes, matchers as JSON, `enabled`) and a `host_credentials` row per host (kind `key` or `password`, the sealed secret with the row id bound in as additional data, the last four characters, a pinned host key fingerprint, the time of the last successful test). The exact schema is for the cycle's spec; the rules are these:
+**Data.** A `hosts` table (name, address, port, account, notes, the fields of the onboarding snippet, `enabled`, the pinned host key and the last test) and a `host_credentials` row per host (kind `key` or `password`, the sealed secret with the row id bound in as additional data, a hint). The matchers are not here: cycle 4 adds them. The schema is in [`2026-10-09-hosts-1-inventory-design.md`](2026-10-09-hosts-1-inventory-design.md); the rules are these:
 
 - The sealed value uses `internal/secret`, with the key from `REMEDY_MASTER_KEY`. A value of `secret.Value` has the `***` text form.
-- Reading a credential back out of the API is not possible. `PUT` replaces it; `GET` shows kind, last four characters and the fingerprint.
+- Reading a credential back out of the API is not possible. `PUT` replaces it; `GET` shows the kind and a hint, and the host's pinned fingerprint.
 - Deleting a host deletes its credentials and unbinds it from the incidents and runs that name it (the rows stay, the reference is cleared).
 
-**UI.** A page "Hosts" (a section of Setup or a page of its own, decided in the cycle's spec). A host has a form, the **onboarding snippet**, a **connection test** and the host key confirmation.
+**UI.** A navigation item "Hosts" with a list and a detail page. A host has a form, the **onboarding snippet**, a **connection test** and the host key confirmation.
 
 The onboarding snippet is text for the maintainer to read and run on the host. It names the account to create, the line for `authorized_keys` (the public key derived from the private key the maintainer entered; a password needs no such line), and a `sudoers` file with **exact** lines. For the NAS:
 
@@ -191,7 +191,7 @@ A log line that contains an instruction must not become a skill. The defence is 
 
 ## 13. Open points for the cycle specs
 
-- Cycle 1: whether Hosts is a page of its own; the exact schema; whether a host may have a tag for a group; the kinds of host for the snippet.
+- Cycle 1: decided in [`2026-10-09-hosts-1-inventory-design.md`](2026-10-09-hosts-1-inventory-design.md) (a navigation item, the schema, a snippet generated from three fields, no groups).
 - Cycle 2: the first contents of the table of reads (the set is small and grows by a decision recorded with a test); concurrency and timeouts; whether `host_exec` of a host that is unreachable fails the run or only the call.
 - Cycle 3: the registry's list of keys and which need a restart; where a failed setting is shown.
 - Cycle 4: how a matcher conflict is shown; what an incident without a host gets for tools.
