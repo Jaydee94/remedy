@@ -412,3 +412,22 @@ func TestTheRefresherMayOnlyReachDNSAndTheAPIServer(t *testing.T) {
 		t.Errorf("the refresher takes no connection: %v", dig(t, p, "spec", "ingress"))
 	}
 }
+
+func TestTheArgoNamespaceMustNotBeAWriteNamespaceOrTheReleaseNamespace(t *testing.T) {
+	values := clusterValues()
+	set(values, "cluster.write.namespaces", []any{"demo", "argocd"})
+	mustFail(t, values, "cluster.argoNamespace")
+
+	values = clusterValues()
+	set(values, "cluster.argoNamespace", "gitops")
+	set(values, "cluster.write.namespaces", []any{"gitops"})
+	mustFail(t, values, "cluster.argoNamespace")
+
+	values = clusterValues()
+	set(values, "cluster.argoNamespace", "remedy-system")
+	mustFail(t, values, "cluster.argoNamespace")
+	_, stderr, _ := render(t, values)
+	if !strings.Contains(stderr, "release namespace") {
+		t.Errorf("the message must name the release namespace:\n%s", stderr)
+	}
+}

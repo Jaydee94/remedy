@@ -753,3 +753,15 @@ func TestTheRunnerDisablesTheCLIUpdater(t *testing.T) {
 		t.Errorf("DISABLE_UPDATES = %v, want \"1\"", got)
 	}
 }
+
+func TestServerEnvRefusesTheNamesTheChartSetsItself(t *testing.T) {
+	for _, name := range []string{"REMEDY_ADDR", "REMEDY_INTERNAL_ADDR", "REMEDY_DB", "REMEDY_K8S_API", "REMEDY_K8S_WRITE_NAMESPACES", "REMEDY_K8S_READ_TOKEN_FILE"} {
+		values := baseValues()
+		set(values, "server.env", map[string]any{name: ""})
+		mustFail(t, values, "server.env."+name)
+		_, stderr, _ := render(t, values)
+		if !strings.Contains(stderr, "chart's own values") {
+			t.Errorf("%s: the message must point to the chart's own values:\n%s", name, stderr)
+		}
+	}
+}
