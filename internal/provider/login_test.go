@@ -96,3 +96,53 @@ func TestVersionDoesNotPassTheAPIKeyOn(t *testing.T) {
 		t.Fatalf("version = %q: the API key reached the CLI", got)
 	}
 }
+
+func writeScript(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestVersionIsNothingButAVersion(t *testing.T) {
+	env := []string{"PATH=/usr/bin:/bin"}
+	cases := map[string]string{
+		"an e-mail":                  `echo "someone@example.invalid"`,
+		"a banner":                   `echo "Claude Code v2.1.288"`,
+		"a version with an e-mail":   `echo "2.1.288 someone@example.invalid"`,
+		"a version with a long tail": `echo "2.1.288 (Claude Code) ` + strings.Repeat("x", 80) + `"`,
+	}
+	for name, body := range cases {
+		if got := (provider.Claude{Binary: writeScript(t, body)}).Version(context.Background(), env); got != "" {
+			t.Errorf("%s: version = %q, want empty", name, got)
+		}
+	}
+	if got := (provider.Claude{Binary: writeScript(t, `echo "2.1.288 (Claude Code)"`)}).Version(context.Background(), env); got != "2.1.288 (Claude Code)" {
+		t.Errorf("version = %q", got)
+	}
+}
+
+func TestLoginCheckSurvivesAChildThatHoldsTheOutput(t *testing.T) {
+	env := []string{"PATH=/usr/bin:/bin"}
+	claude := provider.Claude{Binary: testutil.FakeClaudeLogin(t, "lingering")}
+	started := time.Now()
+	state, reason := claude.LoginCheck(context.Background(), env)
+	if state != provider.LoginOK {
+		t.Errorf("state = %q (%q), want ok: the CLI exited 0", state, reason)
+	}
+	if got := claude.Version(context.Background(), env); got != "2.1.288 (Claude Code)" {
+		t.Errorf("version = %q, want the line the CLI printed before it left a child behind", got)
+	}
+	if time.Since(started) > 10*time.Second {
+		t.Errorf("the checks took %s", time.Since(started))
+	}
+}
+
+func TestLoginCheckSaysWhenASignalStoppedTheCLI(t *testing.T) {
+	state, reason := provider.Claude{Binary: testutil.FakeClaudeLogin(t, "killed")}.LoginCheck(context.Background(), []string{"PATH=/usr/bin:/bin"})
+	if state != provider.LoginUnknown || reason != "the login check was stopped by a signal" {
+		t.Errorf("state %q reason %q, want unknown and the signal reason", state, reason)
+	}
+}

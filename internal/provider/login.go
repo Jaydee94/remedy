@@ -30,6 +30,18 @@ var loginCheckArgs = []string{"auth", "status", "--text"}
 // It is matched against output that is never kept.
 var notLoggedIn = regexp.MustCompile(`(?i)not logged in`)
 
+// versionLine is all a version line may look like: digits first, then only characters that cannot spell an e-mail
+// address, a path or a sentence. Anything else is not shown ("2.1.288 (Claude Code)" is the real output).
+var versionLine = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+[ 0-9A-Za-z().+-]*$`)
+
+// binary is the CLI to start: the configured one, or `claude` from the PATH.
+func (c Claude) binary() string {
+	if c.Binary == "" {
+		return "claude"
+	}
+	return c.Binary
+}
+
 // maxCheckOutput bounds what the check reads of the CLI's output.
 const maxCheckOutput = 8 << 10
 
@@ -49,11 +61,7 @@ func (b *capBuffer) Write(p []byte) (int, error) {
 // and the output (which may name an account) is not returned, logged or kept. The reason names an exit code or a
 // timeout, never output. The caller sets the time limit with ctx.
 func (c Claude) LoginCheck(ctx context.Context, parentEnv []string) (LoginState, string) {
-	bin := c.Binary
-	if bin == "" {
-		bin = "claude"
-	}
-	cmd := exec.CommandContext(ctx, bin, loginCheckArgs...)
+	cmd := exec.CommandContext(ctx, c.binary(), loginCheckArgs...)
 	cmd.Env = FilterEnv(parentEnv)
 	cmd.Dir = os.TempDir()
 	cmd.WaitDelay = 2 * time.Second
@@ -67,36 +75,49 @@ func (c Claude) LoginCheck(ctx context.Context, parentEnv []string) (LoginState,
 	case ctx.Err() != nil:
 		return LoginUnknown, "the login check timed out"
 	}
+	// A CLI that exits but leaves a child holding its output makes Run return ErrWaitDelay, with the process's own
+	// outcome in ProcessState: that outcome is the answer.
 	var exit *exec.ExitError
-	if errors.As(err, &exit) {
-		if notLoggedIn.Match(out.Bytes()) {
-			return LoginMissing, ""
+	if errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil {
+		if cmd.ProcessState.Success() {
+			return LoginOK, ""
 		}
-		return LoginUnknown, fmt.Sprintf("the login check exited with code %d", exit.ExitCode())
+		return loginExited(cmd.ProcessState.ExitCode(), &out)
+	}
+	if errors.As(err, &exit) {
+		return loginExited(exit.ExitCode(), &out)
 	}
 	// The binary is missing or cannot be executed. The underlying error may carry a path: the reason stays a fixed text.
 	return LoginUnknown, "the login check could not start"
 }
 
-// Version is the first line of `claude --version`, shortened to what a version line can hold, or "" when the CLI cannot
+// loginExited says what a status command that exited with a failure means. The code is -1 when a signal ended it.
+func loginExited(code int, out *capBuffer) (LoginState, string) {
+	switch {
+	case code < 0:
+		return LoginUnknown, "the login check was stopped by a signal"
+	case notLoggedIn.Match(out.Bytes()):
+		return LoginMissing, ""
+	}
+	return LoginUnknown, fmt.Sprintf("the login check exited with code %d", code)
+}
+
+// Version is the first line of `claude --version`, accepted only if it looks like a version (a number first, no characters that could spell an e-mail address or a path), or "" when the CLI cannot
 // say. It is shown to the maintainer as text.
 func (c Claude) Version(ctx context.Context, parentEnv []string) string {
-	bin := c.Binary
-	if bin == "" {
-		bin = "claude"
-	}
-	cmd := exec.CommandContext(ctx, bin, "--version")
+	cmd := exec.CommandContext(ctx, c.binary(), "--version")
 	cmd.Env = FilterEnv(parentEnv)
 	cmd.Dir = os.TempDir()
 	cmd.WaitDelay = 2 * time.Second
 	var out capBuffer
 	cmd.Stdout = &out
-	if cmd.Run() != nil {
+	// A successful process that left a child holding its output (ErrWaitDelay) has still said its version.
+	if err := cmd.Run(); err != nil && !(errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success()) {
 		return ""
 	}
 	line, _, _ := strings.Cut(strings.TrimSpace(out.String()), "\n")
 	line = strings.TrimSpace(line)
-	if len(line) > 64 || strings.IndexFunc(line, func(r rune) bool { return r < ' ' || r > '~' }) >= 0 {
+	if len(line) > 64 || !versionLine.MatchString(line) {
 		return ""
 	}
 	return line
