@@ -857,6 +857,8 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ### Task 6: The first release
 
+> Replaced by the release automation (`docs/plans/release-1-automation.md`, task 6): the tag is made by the pipeline.
+
 **Files:**
 - Modify: `CLAUDE.md`; `docs/research/k8s-first-release.md` (create)
 

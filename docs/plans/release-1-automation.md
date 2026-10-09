@@ -980,6 +980,8 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ### Task 6: The first release
 
+The pipeline pull request must carry a conventional title, and the squash-title setting and the `v0.0.0` tag come first (spec 8a, point 9).
+
 **Files:**
 - Create: `docs/research/release-first-run.md`
 

@@ -1,6 +1,7 @@
 #!/bin/sh
 # A release tag must match the Helm chart: the images are tagged with the version of the tag, and the chart's default
-# image tag is its appVersion. Used by .github/workflows/images.yml before anything is pushed.
+# image tag is its appVersion. Used by ci.yml (version equals appVersion) and by the final check of the publish job in
+# .github/workflows/release.yml, on the Chart.yaml read from the tag.
 # Usage: scripts/check-release.sh <tag> [chart file]    e.g. scripts/check-release.sh v0.1.0
 set -eu
 tag=${1:-}

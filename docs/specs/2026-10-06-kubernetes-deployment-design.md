@@ -1,8 +1,9 @@
 # Kubernetes deployment and the dummy setup: design
 
 Status: implemented on the branch `feat/kubernetes-deployment` (not merged; first written 2026-10-06 as a draft). Not yet proven:
-success criterion 4 (the homelab run under Argo CD, `docs/runbook/homelab-deploy.md`); the k3s half of S3; the release (K-5 task 6:
-the tag and public GHCR packages); the check by the maintainer that `DISABLE_UPDATES` keeps `.local` from returning; and the
+success criterion 4 (the homelab run under Argo CD, `docs/runbook/homelab-deploy.md`); the k3s half of S3; the release (the automated release of
+`docs/specs/2026-10-09-release-automation-design.md` replaces K-5 task 6; its first run, the public GHCR packages and the OCI chart are
+expected, not seen); the check by the maintainer that `DISABLE_UPDATES` keeps `.local` from returning; and the
 live items of K-6 task 6 that need the maintainer (`docs/research/k8s-runner-status-real-run.md`). The open items are listed
 in `docs/plans/k8s-followups.md`. Implements the decision of `docs/design.md` §2.7 ("everything in the cluster, managed by
 Argo; control plane as a Deployment, runner as a StatefulSet with a PVC") and refines it. Where this document and §2.7
@@ -297,15 +298,16 @@ what they did in plain lines. `dummy.env` and `dummy-status` give an agent URL, 
 
 - `Dockerfile` (server image) builds both server binaries and the UI, as today, plus `remedy-tokenrefresh`. A second
   `Dockerfile.runner` builds `remedy-runner`. `make images` builds both for the local architecture.
-- `.github/workflows/images.yml`: on push to `main` and on tags `v*`, buildx with QEMU for `linux/amd64,linux/arm64`, push to
-  `ghcr.io/jaydee94/remedy-server` and `remedy-runner` with `sha-<short>` and `edge` on a push to `main`, and `X.Y.Z` (without the `v`) on a tag `vX.Y.Z` (a tag also pushes the `sha-<short>` tag of its commit). On a tag the workflow checks
-  that `Chart.yaml`'s `appVersion` equals the tag. The workflow has `packages: write` and nothing more.
+- The release is automated: `docs/specs/2026-10-09-release-automation-design.md`. A merge with a `feat` or `fix` to `main` publishes the
+  images (`X.Y.Z`, `sha-<short>`, `edge`), the chart as `oci://ghcr.io/jaydee94/charts/remedy` and a GitHub release;
+  `images.yml` only builds on pull requests (`linux/amd64`, nothing pushed). Both images are `linux/amd64,linux/arm64` and live at
+  `ghcr.io/jaydee94/remedy-server` and `remedy-runner`. The workflow `release.yml` has `packages: write` only in the jobs that push.
 - `make chart-check` (in `make check` and CI): `helm lint` with `deploy/chart/ci/lint-values.yaml` (the cluster and
   the write side on; it is the only values file the target uses, not the dummy's), and `helm template` of the same values piped into
   `kubeconform` only when kubeconform is installed (the Makefile says CI runs it), and the Go render tests in `deploy/` (D13), which render the chart with many other values.
 - `renovate.json` gets a custom manager for `runner.cli.version` and the Argo CD version in `up.sh`.
-- Homelab: an Argo `Application` with two sources, the chart from this repository at a tag and a values file from the
-  maintainer's GitOps repository (the repository is public: no credentials). Argo hooks map the chart's Helm hook to a `PostSync`
+- Homelab: an Argo `Application` with three sources: the chart (the OCI chart of a release, or `deploy/chart` of this repository at the tag `vX.Y.Z`), the pinned CLI from this repository at the same
+  tag and a values file from the maintainer's GitOps repository (the repository is public: no credentials). Argo hooks map the chart's Helm hook to a `PostSync`
   job, which fills the write token once. The runbook `docs/runbook/homelab-deploy.md` has the Application, a SealedSecret example
   for the three keys, the Ingress values for k3s's Traefik, the one-time login, the `apiServer.cidrs` for k3s and a snapshot
   chapter. The Secret `remedy-write-token` has no `data` in the chart and the Application gets an `ignoreDifferences` for it

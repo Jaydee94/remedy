@@ -37,6 +37,20 @@ runner may reach TCP 443 on public addresses only, so an API server on 6443 is o
 (`192.168.0.0/16`, `10.0.0.0/8`) are inside them. Pods in the cluster have addresses in `10.0.0.0/8` too: allow traffic to a
 pod with a pod or namespace selector, never with an address.
 
+## Install from the OCI registry
+
+A release publishes the chart as an OCI artifact (expected from the first release; none exists yet):
+
+```sh
+helm install remedy oci://ghcr.io/jaydee94/charts/remedy --version X.Y.Z -n remedy-system \
+  -f deploy/cli-pin.yaml -f my-values.yaml
+```
+
+`deploy/cli-pin.yaml` is the pin file of the repository at the tag `vX.Y.Z` (the chart does not contain it). The chart in the
+registry is packaged by the release with `version` and `appVersion` equal to the release, so its default image tag pulls the
+images `X.Y.Z`. The package `charts/remedy` must be public. Under Argo CD see the runbook; the OCI install is not yet proven on a
+cluster. The release is described in [`docs/runbook/release.md`](../../docs/runbook/release.md).
+
 ## Checking it
 
 `make chart-check` lints, renders, validates (kubeconform) and runs the render tests in `deploy/`.

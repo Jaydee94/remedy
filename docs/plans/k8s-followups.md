@@ -8,8 +8,17 @@ A plain backlog, not a plan. Each line says what is open and where it comes from
   `.local/share/claude` does not return. (Spec note on `DISABLE_UPDATES`; `docs/research/k8s-dummy-real-run.md`.)
 - K-6 task 6 items 2, 3 and 6: `make dummy-logout`, then log in again; the change from logged in to not logged in on the Setup
   page; `make dummy-smoke` after it. (`docs/research/k8s-runner-status-real-run.md`, "Not run, on purpose".)
-- K-5 task 6, the release: merge, tag `v0.1.0`, make both GHCR packages (`remedy-server`, `remedy-runner`) public, run the
-  released images in the dummy. (`docs/plans/k8s-5-release-pipeline.md`.)
+- The first release, by the release automation (replaces K-5 task 6; `docs/runbook/release.md`, `docs/plans/release-1-automation.md`
+  task 6): create the tag `v0.0.0` on the first commit; set the repository's squash merge to the pull request title
+  (`gh api -X PATCH repos/Jaydee94/remedy -f squash_merge_commit_title=PR_TITLE -f squash_merge_commit_message=BLANK`); merge the
+  pipeline pull request with a `feat:` title; make the three packages (`remedy-server`, `remedy-runner`, `charts/remedy`) public; run the
+  released images in the dummy once; write `docs/research/release-first-run.md`. The first run is expected to prove three things:
+  the bump commit push by `GITHUB_TOKEN`, the chart package linked to the repository, and the final check of `publish`.
+- The Renovate pull request for the CLI pin: Renovate has opened one on the branch `renovate/claude-code-cli-2.x` (a CLI bump).
+  `cli-pin.yml` fails it until `scripts/cli-checksums.sh <version>` has written the checksums; run it on that branch. A pin bump is a
+  `chore` commit that releases nothing: to ship it, title the pull request `fix: pin the claude CLI X.Y.Z`.
+- The OCI chart install under Argo CD (`chart:` from `ghcr.io/jaydee94/charts` with a `ref` source for `deploy/cli-pin.yaml`) is not
+  proven; the git source at the tag is the alternative. (`docs/runbook/homelab-deploy.md`, section 6.)
 - The S3 run on k3s: `scripts/spike/k8s/s3-netpol.sh <homelab-context>`. It should also answer whether kube-router lets the
   node's traffic (the kubelet's probes on 8080 and 8082) through the default policies. (`docs/research/k8s-s3-networkpolicy.md`;
   `docs/runbook/homelab-deploy.md` section 6.)
@@ -50,5 +59,5 @@ A plain backlog, not a plan. Each line says what is open and where it comes from
   `EXIT` trap; `dummy-logout` on a symlinked `claude` prints "removed" without deleting.
 - Login check: its timeout kills the CLI but not the CLI's descendants.
 - Runner: no test that a 401 from the control plane means "not connected".
-- Release: merging to `main` triggers the first push of the `sha-*` and `edge` images to GHCR; the packages are private until
-  they are made public.
+- Release: merging to `main` triggers the first push of the `sha-*` and `edge` images (and, with a `feat` or `fix`, the release) to GHCR;
+  the packages are expected to be private until they are made public.

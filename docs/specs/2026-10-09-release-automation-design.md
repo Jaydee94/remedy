@@ -1,6 +1,6 @@
 # Release automation: semantic-release, images and the Helm chart as OCI artifacts
 
-Status: draft for review, 2026-10-09. It replaces the manual release of `docs/specs/2026-10-06-kubernetes-deployment-design.md`
+Status: approved 2026-10-09 by the maintainer; implemented on the branch feat/release-automation, not yet run (the first merge to main is the first run: see docs/runbook/release.md). It replaces the manual release of `docs/specs/2026-10-06-kubernetes-deployment-design.md`
 section 8 and of plan K-5 task 6 (a tag pushed by hand). Where the two documents differ, this one wins for the release; the
 changes to the older documents are listed in section 9 and are made by the first plan, before any code.
 
@@ -16,7 +16,7 @@ Success criteria:
 1. A merge of `feat: ...` to `main` produces `ghcr.io/jaydee94/remedy-server:X.Y.Z`, `ghcr.io/jaydee94/remedy-runner:X.Y.Z`
    (both `linux/amd64` and `linux/arm64`), `oci://ghcr.io/jaydee94/charts/remedy` at version `X.Y.Z`, the tag `vX.Y.Z` and a
    GitHub release with the changelog and the chart `.tgz` attached. A merge with only `docs`, `chore`, `ci`, `test`,
-   `refactor` or `style` commits produces none of it and still pushes `sha-<short>` and `edge`.
+   `refactor`, `style` or `build` commits produces none of it and still pushes `sha-<short>` and `edge`.
 2. `Chart.yaml` at the tag says `version: X.Y.Z` and `appVersion: "X.Y.Z"`, so an install from git at the tag and an install from
    the OCI chart agree. `CHANGELOG.md` at the tag has the section for `X.Y.Z`.
 3. No release exists without its images and its chart: the artifacts are pushed before the tag and the release are made.
@@ -33,15 +33,15 @@ other than `main`, and moving past `0.x` (1.0.0 is a decision for the maintainer
 | # | Topic | Decision |
 |---|---|---|
 | R1 | Tool | `semantic-release` with the plugins `commit-analyzer`, `release-notes-generator` (both with the `conventionalcommits` preset), `changelog`, `exec`, `git` and `github`. Versions are pinned by a lockfile in `release/` (not a `package.json` in the repository root; `web/` has its own). |
-| R2 | Version source | semantic-release alone. Its `prepare` step runs `scripts/set-chart-version.sh X.Y.Z`, which writes `version` and `appVersion` of `deploy/chart/Chart.yaml`; the `git` plugin commits `CHANGELOG.md` and `Chart.yaml` as `chore(release): X.Y.Z [skip ci]` to `main` with the workflow's `GITHUB_TOKEN`. This needs `main` to stay unprotected (it is today); a later branch protection needs a GitHub App or a token with a bypass, which is a decision for then. |
-| R3 | Start and 0.x | The tag `v0.0.0` is created once by hand on the first commit of the repository, so the first release is `0.1.0` and its changelog holds the whole history of `feat` and `fix` commits. `releaseRules`: `feat` is minor, `fix` and `perf` are patch, a `BREAKING CHANGE` is **minor** while the major version is 0, `revert` is patch, everything else releases nothing. 1.0.0 is made by the maintainer (a commit with a release rule override, or a manual tag), never by accident. |
+| R2 | Version source | semantic-release alone. Its `prepare` step runs `scripts/set-chart-version.sh X.Y.Z`, which writes `version` and `appVersion` of `deploy/chart/Chart.yaml`; the `git` plugin commits `CHANGELOG.md` and `Chart.yaml` as `chore(release): X.Y.Z [skip ci]` to `main` with the workflow's `GITHUB_TOKEN`, authored and committed by `github-actions[bot]` (`publish` sets `GIT_AUTHOR_*` and `GIT_COMMITTER_*`; the default would be `semantic-release-bot`). This needs `main` to stay unprotected (it is today); a later branch protection needs a GitHub App or a token with a bypass, which is a decision for then. |
+| R3 | Start and 0.x | The tag `v0.0.0` is created once by hand on the first commit of the repository, so the first release is `0.1.0` and its changelog holds the whole history of `feat` and `fix` commits. `releaseRules`: `feat` is minor, `fix` and `perf` are patch, a `BREAKING CHANGE` is **minor** while the major version is 0, `revert` is patch, everything else releases nothing. 1.0.0 is made by the maintainer, never by accident: the `plan` job refuses any planned version whose major is not 0 (without the tag `v0.0.0` semantic-release plans `1.0.0` for a first release), so going to 1.0.0 means changing that guard in `release.yml` and the breaking rule in `release/release.config.js` on purpose. |
 | R4 | Trigger | Every push to `main`. The workflow runs `semantic-release --dry-run` first; with no releasable commit nothing but `sha-<short>` and `edge` happens. |
 | R5 | One workflow | A tag created by `GITHUB_TOKEN` does not start other workflows, so the tag cannot start the image build. `.github/workflows/release.yml` has the whole chain. `images.yml` keeps only what a pull request needs (build `linux/amd64`, push nothing) and `workflow_dispatch`; it loses the `push` and `tags` triggers. |
 | R6 | Order | `plan` (dry run: next version) then `images` and `chart` (build and push the artifacts with the planned version) then `publish` (semantic-release for real: bump commit, tag, GitHub release). Artifacts first: a failure in between leaves unused `X.Y.Z` artifacts, never a release without artifacts. A re-run of the same push recomputes the same version and overwrites the same tags, but only while `main` has not moved (section 8a). |
 | R7 | Serialisation | `concurrency: {group: release, cancel-in-progress: false}`. If `main` moved between `plan` and `publish`, semantic-release does not get a refused push: its `git push --dry-run` is rejected, it checks whether the branch is behind the remote, logs "behind the remote one ... won't be published" and exits 0 without a release. `plan` can print `none` for that reason too. `publish` then fails at its final check (no tag) with an explanatory message, the artifacts of that version stay unused, and the run of the newer push computes the version. |
-| R8 | Chart as OCI | `helm package deploy/chart --version X --app-version X` and `helm push` to `oci://ghcr.io/jaydee94/charts` (the chart is `charts/remedy`). The chart `.tgz` is also attached to the GitHub release. `helm lint` runs before the push. The chart does not contain `cli-pin.yaml` (it stays a values file of the repository, as in the runbook). |
+| R8 | Chart as OCI | `helm package deploy/chart --version X --app-version X` and `helm push` to `oci://ghcr.io/jaydee94/charts` (the chart is `charts/remedy`). The chart `.tgz` is also attached to the GitHub release. `helm lint` runs before the push. The chart does not contain `cli-pin.yaml` (it stays a values file of the repository, as in the runbook). `Chart.yaml` carries `home` and `sources`, so that the pushed manifest has the annotation `org.opencontainers.image.source` (measured against a local registry, Helm 4.3.0 and 3.19.0); that GHCR links the package to the repository because of it is expected from GitHub's documentation, not yet seen. |
 | R9 | Image tags | Unchanged for `main`: `sha-<short>` and `edge`. With a version: `X.Y.Z` as well. No `latest`. |
-| R10 | Release notes | Generated from the conventional commits by the `conventionalcommits` preset: sections Features, Bug Fixes, Performance, Reverts; BREAKING CHANGE notes; `docs`, `chore`, `ci`, `test`, `refactor`, `style` hidden. The same text goes to `CHANGELOG.md` and to the GitHub release. No comments on pull requests or issues (`successComment`, `failComment` and `releasedLabels` off), so the job does not need `issues: write` or `pull-requests: write`. |
+| R10 | Release notes | Generated from the conventional commits by the `conventionalcommits` preset: sections Features, Bug Fixes, Performance, Reverts; BREAKING CHANGE notes; `docs`, `chore`, `ci`, `test`, `refactor`, `style`, `build` hidden. The same text goes to `CHANGELOG.md` and to the GitHub release. No comments on pull requests or issues (`successComment`, `failComment` and `releasedLabels` off), so the job does not need `issues: write` or `pull-requests: write`. |
 | R11 | Pull request titles | `scripts/check-pr-title.sh` (with a shell test in `make shell-test`) checks that a title is `type(scope)?!?: subject` with a known type; `.github/workflows/pr-title.yml` runs it on `pull_request` (`opened`, `edited`, `synchronize`, `reopened`) with the title passed through the environment, never interpolated into a script. Squash merges use the pull request title as the commit subject, so the title decides the release. |
 | R12 | Verification after publish | `publish` ends with three checks (section 4): the tag exists on the remote, `scripts/check-release.sh vX.Y.Z` on the `Chart.yaml` of that tag, and the GitHub release is published with the chart attached. |
 | R13 | Dependencies | The plugins and their dependencies are pinned by `release/package-lock.json`; Renovate's npm manager updates them (a pull request, not an automatic merge). `npm ci` runs with `--ignore-scripts`. |
@@ -83,7 +83,7 @@ and the tag `v0.0.0` on the first commit makes the first `feat` release `0.1.0`.
 
 `images.yml` (pull requests): the existing PR build of both images for `linux/amd64`, no push, no tag trigger, no
 `check-release.sh` step. The `cli-pin.yml` and `ci.yml` workflows are unchanged except that `ci.yml`'s chart job also asserts that
-`Chart.yaml`'s `version` equals its `appVersion` (the invariant the release keeps).
+`Chart.yaml`'s `version` equals its `appVersion` (the invariant the release keeps) and that a `release` job runs `make release-test`.
 
 ## 5. The configuration
 
@@ -104,7 +104,7 @@ and refuses anything that is not `X.Y.Z` or a file with other `version` lines.
   environment. The release notes are commit subjects: a hostile subject can only appear as text in the changelog.
 - The bump commit carries `[skip ci]`, so it starts no workflow loop; a `GITHUB_TOKEN` push does not start workflows anyway.
 - `npm ci --ignore-scripts` and a lockfile bound the supply chain of the release tool; the plugins run only in the release job.
-- The packages are created private by the first push; making `remedy-server`, `remedy-runner` and `charts/remedy` public is a
+- The packages are expected to be created private by the first push (not yet seen); making `remedy-server`, `remedy-runner` and `charts/remedy` public is a
   manual step in GitHub, once (as before).
 
 ## 7. Tests and what is proven where
@@ -114,11 +114,12 @@ and refuses anything that is not `X.Y.Z` or a file with other `version` lines.
 - A semantic-release dry run against a **scratch git repository** with a local bare remote and crafted commits (a script
   `release/test/dry-run.sh` run by `make release-test`): `feat` gives `0.1.0` from the tag `v0.0.0`, `fix` gives a patch, a
   breaking change stays on 0.x, `docs` alone gives no release, the notes contain the sections of R10, `CHANGELOG.md` and
-  `Chart.yaml` are rewritten by the exec step in a real (non-dry) run against the scratch repository with no GitHub plugin.
+  `Chart.yaml` are rewritten by the exec step in a real (non-dry) run against the scratch repository with no GitHub plugin. The
+  `full` mode (the `github` plugin, the release with the chart attached) is only loaded there, never run.
 - The chart push is tried against a local registry (`registry:2` in Docker) with `helm push` and `helm pull`, and the OCI
   manifest annotations are read (`org.opencontainers.image.source` ties a package to the repository on GHCR).
 - `actionlint` is not required; the workflow YAML is parsed and read against the rules of section 6.
-- Not provable before the first real merge: that the first push creates the `charts/remedy` package linked to the repository,
+- Not provable before the first real merge: that the `github` plugin makes the release with the chart attached, that the first push creates the `charts/remedy` package linked to the repository,
   that `GITHUB_TOKEN` may push the bump commit to `main`, and the behaviour when `main` moves during a run. The first release
   is the proof; a record `docs/research/release-first-run.md` is written from it.
 
@@ -155,8 +156,9 @@ section 8 (a pointer to this document, tag and chart version rules) and section 
 the release process is a merge, not a tag; the visibility step for three packages); `docs/plans/k8s-followups.md` (K-5 task 6 is
 replaced; the tag step and the first-release steps); `deploy/chart/README.md` (install from OCI); `README.md`;
 `CLAUDE.md` ("Current state": the release is automated, conventional PR titles; commands: `make release-test`); `.github/workflows/`
-(`release.yml`, `pr-title.yml`, `images.yml`, `ci.yml`); `scripts/check-release.sh` stays; `renovate.json` needs no change
-(the npm manager finds `release/package.json`).
+(`release.yml`, `pr-title.yml`, `images.yml`, `ci.yml`); `scripts/check-release.sh` stays (used by `ci.yml` and the final check of `publish`); `renovate.json` gets rules for `release/package.json`
+(the npm manager finds the file itself): the preset stays below 10, the semantic-release packages are one pull request that is
+never merged by itself, and a version younger than 7 days is not proposed. `docs/runbook/release.md` is the maintainer's runbook.
 
 ## 10. Operating notes
 
