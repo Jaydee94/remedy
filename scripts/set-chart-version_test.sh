@@ -53,6 +53,16 @@ bad "refuses a good version after a first line" sh "$SCRIPT" "x
 1.2.3" "$WORK/Chart.yaml"
 eq  "and the chart is untouched" "$(cat "$WORK/before.yaml")" "$(cat "$WORK/Chart.yaml")"
 
+# A symlinked chart stays a symlink and the target gets the version (the script writes with cat, it does not replace the file).
+chart 0.1.0 0.1.0
+mv "$WORK/Chart.yaml" "$WORK/real.yaml"
+ln -s real.yaml "$WORK/Chart.yaml"
+ok  "a chart that is a symlink" sh "$SCRIPT" 4.5.6 "$WORK/Chart.yaml"
+ok  "the symlink is still a symlink" test -L "$WORK/Chart.yaml"
+eq  "the target has the version" "version: 4.5.6" "$(grep '^version:' "$WORK/real.yaml")"
+eq  "the target has the appVersion" 'appVersion: "4.5.6"' "$(grep '^appVersion:' "$WORK/real.yaml")"
+rm -f "$WORK/Chart.yaml" "$WORK/real.yaml"
+
 bad "a missing file" sh "$SCRIPT" 1.2.3 "$WORK/nope.yaml"
 printf 'apiVersion: v2\nversion: 0.1.0\nversion: 0.2.0\nappVersion: "0.1.0"\n' > "$WORK/two.yaml"
 bad "two version lines" sh "$SCRIPT" 1.2.3 "$WORK/two.yaml"

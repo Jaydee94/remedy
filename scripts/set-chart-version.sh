@@ -1,6 +1,7 @@
 #!/bin/sh
 # Writes the release version into the Helm chart: `version` and `appVersion` of Chart.yaml, nothing else. Called by
 # semantic-release (release/release.config.js, the exec plugin's prepare step) with the version it computed.
+# The two lines are rewritten whole: a trailing comment on either of them is dropped.
 # Usage: scripts/set-chart-version.sh X.Y.Z [chart file]
 set -eu
 version=${1:-}

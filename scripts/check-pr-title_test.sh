@@ -18,7 +18,7 @@ ok  "chore"                        "chore(release): 1.0.0 [skip ci]"
 ok  "ci"                           "ci: build both images on a pull request"
 ok  "perf"                         "perf: read the claim once"
 ok  "revert"                       "revert: feat: add the release pipeline"
-ok  "a title of exactly 120 characters" "feat: $(printf 'x%.0s' $(seq 1 114))"
+ok  "a long title (there is no length limit)" "feat: $(printf 'x%.0s' $(seq 1 130))"
 ok  "a scope with dots and slashes" "fix(deploy/chart.v2): a value"
 
 bad "the title of pull request 130" "Kubernetes deployment: Helm chart, dummy setup with the real agent"
@@ -33,8 +33,7 @@ bad "an empty scope"               "feat(): x"
 bad "a scope with a space"         "feat(my scope): x"
 bad "two lines"                    "feat: one
 second line"
-bad "a title of 121 characters"    "feat: $(printf 'x%.0s' $(seq 1 115))"
-bad "a title that is too long"     "feat: $(printf 'x%.0s' $(seq 1 130))"
+bad "a type inside the title"      "Add a feat: x"
 bad "a bad second line"            "feat: one
  two"
 

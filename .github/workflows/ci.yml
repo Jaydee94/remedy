@@ -46,7 +46,8 @@ jobs:
       - run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7
       - run: make chart-check
       - name: Chart version equals appVersion
-        run: sh scripts/check-release.sh "v$(sed -n 's/^version: *//p' deploy/chart/Chart.yaml)"
+        run: |
+          sh scripts/check-release.sh "v$(sed -n 's/^version: *//p' deploy/chart/Chart.yaml)"
 
   shell:
     runs-on: ubuntu-latest
