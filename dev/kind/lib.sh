@@ -186,6 +186,12 @@ deploy_release() {
     --wait --timeout 10m
 }
 
+# is_fresh succeeds unless the release is deployed. A release that an interrupted first install left failed or pending
+# counts as fresh: the control plane may have started before the hook made the write token, and a restart does no harm.
+is_fresh() {
+  [ "$(helm --kube-context "$CTX" -n "$NS" status "$RELEASE" -o json 2> /dev/null | jq -r '.info.status // ""' 2> /dev/null || true)" != deployed ]
+}
+
 # wait_default_serviceaccount waits until the namespace's default ServiceAccount exists. A controller makes it a moment
 # after the namespace, and a pod created before then is refused ("serviceaccount default not found"; spike S1).
 wait_default_serviceaccount() {

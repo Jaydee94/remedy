@@ -12,5 +12,5 @@ Remedy is installed in the namespace {{ .Release.Namespace }}.
      kubectl -n {{ .Release.Namespace }} exec -it remedy-runner-0 -c runner -- /opt/claude/claude
    Type /login, open the URL it shows in a browser, paste the code, then /exit. The login survives restarts of the pod.
    If the runner was never logged in, every run ends with "Not logged in" until you have done this once. If it is logged in
-   already, the command opens the CLI directly and there is nothing to do.
+   already, the CLI is expected to open directly and there is nothing to do.
 {{- end }}

@@ -28,9 +28,8 @@ if [ "$(k -n "$NS" get secret remedy-write-token -o jsonpath='{.data.token}' 2> 
 else
   echo "write token: missing"
 fi
-# The line above is about the Secret. Whether the server pod already sees the file cannot be asked (the image has no shell):
-# the kubelet shows a new Secret value in a running pod after its next sync, one or two minutes later.
-echo "write token in the pod: not checkable; a pod started before the token existed sees it after up to 2 minutes (make dummy-up restarts it once on a fresh install)"
+# `write token:` is about the Secret. Whether the server pod already sees the file cannot be asked (the image has no shell); the
+# runbook explains it.
 echo "token refresher: last scheduled success $(k -n "$NS" get cronjob remedy-token-refresh -o jsonpath='{.status.lastSuccessfulTime}' 2> /dev/null | grep . || echo never)"
 echo "database volume: $(k -n "$NS" get pvc remedy-data -o jsonpath='{.status.phase}' 2>/dev/null || echo none)"
 if [ -d "$CLAUDE_DIR" ]; then login_dir=present; else login_dir=missing; fi

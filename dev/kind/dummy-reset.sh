@@ -17,6 +17,7 @@ k -n "$NS" delete pvc remedy-data --wait=true
 # that waits while no pod exists could wait for a claim that is never bound. The pod stays Pending until Helm has made
 # the claim again, then starts. (Measured: an upgrade of a scaled-down Deployment leaves it at 0 replicas.)
 k -n "$NS" scale deployment/remedy-server --replicas=1
+# No restart for the write token is needed here: the pod is started again anyway, after the token exists.
 deploy_release
 k -n "$NS" rollout status deployment/remedy-server --timeout=300s
 echo "the database is empty again"

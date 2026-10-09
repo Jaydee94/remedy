@@ -7,5 +7,6 @@ need docker kind kubectl helm make
 require_dummy
 new_tag
 build_and_load_images
+# No restart for the write token is needed here: the new tag rolls the pods, and they start after the token exists.
 deploy_release
 echo "redeployed with the tag $TAG"

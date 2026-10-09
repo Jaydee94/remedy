@@ -168,13 +168,16 @@ At the first sync:
 - The chart's hook, the Job `remedy-token-refresh-hook`, runs as an Argo CD `PostSync` job and fills the Secret
   `remedy-write-token` with the first write token.
 - The CronJob `remedy-token-refresh` mints the token again every 30 minutes, so its first run follows within half an hour.
-- The control plane mounts `remedy-write-token` as an optional Secret that was still empty when its pod started. The kubelet
-  shows the new file in the pod only at its next Secret sync, so for a minute or two (measured on kind: the first approved
-  restart at about 40 s after the install failed) an approved action fails with `open /var/run/remedy/write/token: no such file or
-  directory`. Reads are not affected. `kubectl -n remedy-system rollout restart deployment/remedy-server` makes it immediate
-  (the dummy setup does exactly that after a fresh install).
+- The control plane mounts `remedy-write-token` as an optional Secret that was still empty when its pod started. Observed once on
+  kind (docs/research/k8s-dummy-real-run.md): an approved action failed with `open /var/run/remedy/write/token: no such file or
+  directory` when it ran shortly after the install, and the same action passed about three minutes later. Expected kubelet
+  behaviour, not measured: a running pod shows a new Secret file only after the kubelet's next sync, up to a minute or two. Reads
+  are not affected. A restart of the control plane (`kubectl -n remedy-system rollout restart deployment/remedy-server`) starts a
+  pod after the token exists; the dummy setup does that after a fresh install, and in one check (1 of 1) the failure did not recur.
 - The runner's readiness and liveness probes use port 8082. The default-deny ingress policy lets them through only if the CNI
-  exempts traffic that the node itself originates; kindnet does (measured). k3s's kube-router was not measured. A runner pod
+  exempts traffic that the node itself originates. Evidence for kindnet: the dummy's runner pod ran with 0 restarts and became Ready
+  with `networkPolicy.enabled=true` and no ingress rule for port 8082 (one `503` readiness event at start, then Ready; one
+  observation, in the K-6 task report, which is not part of the repository). k3s's kube-router was not measured. A runner pod
   that restarts in a loop with failing probes means the CNI blocks them. A value `networkPolicy.runner.probeFrom` does not
   exist yet; until it does, the workaround is `networkPolicy.enabled=false`.
 
@@ -255,7 +258,7 @@ Longhorn or Velero snapshots work the same way; Litestream is a separate plan.
 - "the cluster cannot be reached with the read token" in the control plane log: the network policy. Check
   `networkPolicy.apiServer.cidrs` and `port` against `kubectl get endpoints kubernetes`.
 - Actions fail with `open /var/run/remedy/write/token: no such file or directory` right after the first sync: the kubelet has
-  not shown the new Secret in the pod yet. Wait one or two minutes, or restart the control plane
+  not shown the new Secret in the pod yet (expected kubelet behaviour: up to a minute or two). Wait, or restart the control plane
   (`kubectl -n remedy-system rollout restart deployment/remedy-server`).
 - The runner pod restarts in a loop and its readiness or liveness probe fails (`kubectl -n remedy-system describe pod
   remedy-runner-0`): the CNI blocks the node's probes on port 8082. See section 6; `networkPolicy.runner.probeFrom` does not

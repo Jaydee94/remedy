@@ -124,5 +124,26 @@ for form in "$T/fakehome" "$T/homelink/"; do
   if [ "$status" -eq 1 ] && echo "$err" | grep -q 'home directory'; then pass "marked home as $form"; else fail "marked home as $form (status $status: $err)"; fi
 done
 
+# is_fresh: only a deployed release is not fresh. helm is replaced by a stub on PATH that answers what the test says.
+mkdir "$T/bin"
+cat > "$T/bin/helm" <<'STUB'
+#!/bin/sh
+[ -n "${FAKE_HELM_JSON:-}" ] || exit 1
+printf '%s\n' "$FAKE_HELM_JSON"
+STUB
+chmod +x "$T/bin/helm"
+fresh_is() {
+  name=$1
+  want=$2
+  json=$3
+  if (PATH=$T/bin:$PATH; export PATH; FAKE_HELM_JSON=$json; export FAKE_HELM_JSON; is_fresh); then got=yes; else got=no; fi
+  if [ "$got" = "$want" ]; then pass "is_fresh: $name"; else fail "is_fresh: $name (got $got)"; fi
+}
+fresh_is "no release (helm status fails)" yes ""
+fresh_is "deployed" no '{"info":{"status":"deployed"}}'
+fresh_is "failed" yes '{"info":{"status":"failed"}}'
+fresh_is "pending-install" yes '{"info":{"status":"pending-install"}}'
+fresh_is "unreadable answer" yes 'not json'
+
 [ "$failed" -eq 0 ] && echo "all passed"
 exit "$failed"

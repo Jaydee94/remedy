@@ -72,10 +72,12 @@ spec:
             - {name: CLAUDE_CONFIG_DIR, value: /state/claude}
             - {name: TMPDIR, value: /tmp}
             - {name: TERM, value: xterm-256color}
-            # In an interactive session the CLI's native updater stages a copy of itself (about 244 MB) under
-            # $HOME/.local/share/claude/versions. That copy only takes effect through a launcher, which the runner does not use
-            # (it starts /opt/claude/claude), so it would be unused disk and traffic. This blocks the update paths; the login
-            # session started with `kubectl exec` inherits it. Headless runs did not stage anything.
+            # Measured (by the maintainer, in the dummy setup): after an interactive login there is one file of 249528 KiB
+            # (about 244 MiB) under $HOME/.local; inferred from its size: the CLI's updater staged a copy of itself there. The
+            # vendor's documentation (docs/research/k8s-s4-cli-install.md, not tested) says such a copy takes effect only through a
+            # launcher, which the runner does not use (it starts /opt/claude/claude), and that DISABLE_UPDATES=1 blocks the update
+            # paths. So this is meant to save unused disk and traffic; the `kubectl exec` login is expected to inherit it. In the
+            # runs observed, headless runs staged nothing. Whether it keeps the directory away is not yet verified.
             - {name: DISABLE_UPDATES, value: "1"}
             - {name: REMEDY_RUNNER_STATUS_ADDR, value: ":8082"}
             {{- with .Values.runner.model }}

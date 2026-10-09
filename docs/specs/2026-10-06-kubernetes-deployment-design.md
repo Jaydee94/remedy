@@ -169,6 +169,12 @@ executable on the one writable volume. One question stays open: an update starte
 run checks that `/state/.local/share/claude` stays absent, and if it appears, the answer is a spec change (`DISABLE_UPDATES=1`
 in the pod and an allowlist entry) before any code.
 
+Decision of 2026-10-09 (K-4's first real run): after an interactive login the maintainer measured one file of 249528 KiB under
+`.local` on the host side of the state volume; the headless runs created nothing in the runs observed. The maintainer decided to set
+`DISABLE_UPDATES=1` in the runner pod's environment only, with **no** entry in `provider.FilterEnv`'s allowlist (the headless runs
+did not stage anything, and the interactive login session started with `kubectl exec` is expected to inherit the pod environment).
+That the variable keeps the directory away is not yet verified; the maintainer will check it.
+
 Volumes: `/state` (the PVC; `HOME=/state`, `CLAUDE_CONFIG_DIR=/state/claude`), `/workspaces` (emptyDir, `REMEDY_WORKSPACES`),
 `/opt/claude` (emptyDir, read-only in the main container), `/tmp` (emptyDir). `SweepWorkspaces` already cleans the workspace
 root at start.
@@ -261,7 +267,7 @@ cluster matches; `dummy-down` removes the cluster and this file, never `claude/`
 
 | Target | Does |
 |---|---|
-| `make dummy-up` | prerequisites check; directory; cluster; demo workloads; Argo CD; images build and load; Secret; `helm upgrade --install`; waits for the server; prints the URL and the path of `dummy.env` (not the password) and whether the runner is logged in (it cannot read the login; it asks the runner: after K-6, before that it says how to run `dummy-login`) |
+| `make dummy-up` | prerequisites check; directory; cluster; demo workloads; Argo CD; images build and load; Secret; `helm upgrade --install`; waits for the server; prints the URL and the path of `dummy.env` (not the password) and whether the runner is logged in (it cannot read the login; it asks the runner: after K-6, before that it says how to run `dummy-login`) On a fresh install (a release that is not `deployed`) it restarts the control plane once, after the hook filled the write token (decision of 2026-10-09: the pod mounts the Secret optional, and an approved action failed once shortly after a cold start). |
 | `make dummy-down` | deletes the cluster and `dummy.env`; keeps the login |
 | `make dummy-login` | `kubectl exec -it` into the runner with its environment, starts `claude` |
 | `make dummy-logout` | deletes the host login directory after a confirmation |
