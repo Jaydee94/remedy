@@ -107,7 +107,10 @@ running as a service for other people's homelabs.
   the UI (Setup shows the login state; it does not notify on expiry).
 - GitHub Actions builds the control plane image and the runner image to GHCR. Delivered as
   a **Helm chart** in `deploy/chart` (2026-10-06,
-  [spec](specs/2026-10-06-kubernetes-deployment-design.md)).
+  [spec](specs/2026-10-06-kubernetes-deployment-design.md)). Releases are made by the
+  pipeline, not by hand: a merge with a `feat` or `fix` publishes the images, the chart as an
+  OCI artifact, the tag and a GitHub release
+  ([spec](specs/2026-10-09-release-automation-design.md); implemented, not yet run).
 - **Two identities in one pod.** The control plane pod runs as the read service account.
   A CronJob mints a short-lived token of the write service account into a Secret that the
   pod mounts as a file; if the job stops, the token expires and actions fail closed.

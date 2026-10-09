@@ -1,0 +1,17 @@
+{
+  "name": "remedy-release",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The release tooling of Remedy (semantic-release). Not part of the product.",
+  "engines": {
+    "node": "^22.22.2 || >=24.15"
+  },
+  "dependencies": {
+    "@semantic-release/changelog": "7.0.0",
+    "@semantic-release/exec": "7.1.0",
+    "@semantic-release/git": "11.0.1",
+    "@semantic-release/github": "12.0.10",
+    "conventional-changelog-conventionalcommits": "9.3.1",
+    "semantic-release": "25.0.9"
+  }
+}

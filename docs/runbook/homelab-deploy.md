@@ -1,13 +1,17 @@
 # Runbook: Remedy on a homelab k3s cluster, under Argo CD
 
 **Status of this runbook.** It has **not** been run end to end. Success criterion 4 of the spec is not shown. The k3s half of the
-NetworkPolicy spike (S3) is not measured (`docs/research/k8s-s3-networkpolicy.md`). No image has been published yet: the release
-task K-5 task 6 (the tag and the visibility of the GHCR packages) is not done. The chart was only rendered with Helm 4.3.0, while
-Argo CD renders with its own bundled Helm. Argo CD's handling of the `PostSync` hook and of the Secret without data
+NetworkPolicy spike (S3) is not measured (`docs/research/k8s-s3-networkpolicy.md`). No release has been made yet: no tag, no `X.Y.Z` image
+and no chart in the registry; only `sha-*` and `edge` images exist on GHCR (pushed since the merge of #130). The automated release ([`release.md`](release.md)) is implemented and its first run is
+expected on the first merge to `main`; the chart package is created by the first release, and the packages are expected to be private until the maintainer makes them public. The
+**install of the OCI chart under Argo CD is not proven on a cluster**: Argo CD's documentation shows an OCI Helm source (a
+registry URL without `oci://`, `chart:`, `targetRevision:`), but that source together with a `ref` source for
+`deploy/cli-pin.yaml` is not shown there and was not tried. The chart was only rendered with Helm 4.3.0 (also from a local
+package of the chart, as an OCI install would pull it), while Argo CD renders with its own bundled Helm. Argo CD's handling of the `PostSync` hook and of the Secret without data
 (`remedy-write-token`) is unproven. What was proven is the same chart on kind with the real agent
 (`docs/research/k8s-dummy-real-run.md`, `docs/research/k8s-runner-status-real-run.md`). Read every step as expected, not as tried.
 
-This installs Remedy from a tag of this repository, the way the maintainer runs it. The pieces are the chart
+This installs Remedy from a release of this repository, the way the maintainer runs it. The pieces are the chart
 [`deploy/chart`](../../deploy/chart/README.md), the pinned CLI [`deploy/cli-pin.yaml`](../../deploy/cli-pin.yaml) and the
 [spec](../specs/2026-10-06-kubernetes-deployment-design.md) behind both. Plan on about an hour, most of it waiting for images
 and DNS.
@@ -15,7 +19,7 @@ and DNS.
 ## 1. What this installs
 
 Remedy's control plane (a Deployment, `remedy-server`) and its runner (a StatefulSet, `remedy-runner`) in one namespace, from
-the Helm chart `deploy/chart` of a tag of this repository, managed by an Argo CD Application, on k3s (Traefik, local-path
+the Helm chart of a release (an OCI artifact; the same chart is `deploy/chart` at the release tag), managed by an Argo CD Application, on k3s (Traefik, local-path
 storage, kube-router for network policies). A SealedSecret holds the three application secrets and an Ingress serves the UI,
 which is reachable on the LAN or over a VPN only.
 
@@ -120,7 +124,8 @@ each one. The chart refuses to render when `cluster.write.namespaces` contains `
 
 ## 6. The Argo CD Application
 
-Two sources of this repository (the chart, and the pinned CLI as a values file through `ref`) and one of the GitOps repository:
+Three sources: the chart of a release from the OCI registry, the pinned CLI as a values file of this repository at the
+release tag (through `ref`), and the values of the GitOps repository:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -131,16 +136,16 @@ metadata:
 spec:
   project: default
   sources:
-    - repoURL: https://github.com/Jaydee94/remedy.git
-      targetRevision: v0.1.0              # the release; bump it to upgrade
-      path: deploy/chart
+    - repoURL: ghcr.io/jaydee94/charts   # an OCI registry: no oci:// prefix and no path; the chart is oci://ghcr.io/jaydee94/charts/remedy
+      chart: remedy
+      targetRevision: 0.1.0               # the release version X.Y.Z (no v); the first release is expected to be 0.1.0; bump it to upgrade
       helm:
         releaseName: remedy
         valueFiles:
           - $remedy/deploy/cli-pin.yaml
           - $gitops/apps/remedy/values.yaml
     - repoURL: https://github.com/Jaydee94/remedy.git
-      targetRevision: v0.1.0
+      targetRevision: v0.1.0              # the tag vX.Y.Z of the same release: the pin file of that version
       ref: remedy
     - repoURL: https://github.com/you/gitops.git      # your GitOps repository
       targetRevision: main
@@ -166,6 +171,35 @@ spec:
       jsonPointers:
         - /data
 ```
+
+The form of the first source is the one in Argo CD's documentation for a public OCI Helm chart ("the oci:// syntax is not
+included", `chart:` and `targetRevision:`, no `path`). A public registry needs no repository entry in Argo CD; this needs the
+three packages to be public (`release.md`, one-time setup). The documentation also shows a newer `oci://` source with `path: .`
+for OCI artifacts in general; this runbook does not use it. Verified in the documentation (2026-10-09): the form of the source
+and the rule that a source with `ref` has no `chart`. Not verified anywhere: that Argo CD resolves `$remedy/deploy/cli-pin.yaml`
+next to an OCI chart source (its documentation shows `ref` next to a classic Helm repository); the first sync is the proof.
+
+The chart in the registry has `version` and `appVersion` equal to the release, and the chart's image tag defaults to its
+`appVersion`: the OCI chart `0.1.0` pulls `remedy-server:0.1.0` and `remedy-runner:0.1.0`. `helm template` of a local package of
+the chart with the values of section 5 and `deploy/cli-pin.yaml` renders 25 objects that `kubeconform -strict` accepts, with
+those two images (measured).
+
+Installing from git at the tag works too, and is the alternative while the OCI install is unproven: replace the first source by
+
+```yaml
+    - repoURL: https://github.com/Jaydee94/remedy.git
+      targetRevision: v0.1.0
+      path: deploy/chart
+      helm:
+        releaseName: remedy
+        valueFiles:
+          - $remedy/deploy/cli-pin.yaml
+          - $gitops/apps/remedy/values.yaml
+```
+
+This is expected to work because `Chart.yaml` at a release tag has the release version (the release commit writes it before the
+tag is made); on a commit of `main` that is not a tag it says whatever the last release wrote, and the images of the chart's
+`appVersion` exist only for a release.
 
 At the first sync:
 
@@ -210,9 +244,10 @@ add repositories. Ask Remedy with "Read the cluster" to see the cluster tools wo
 
 ## 9. Upgrading
 
-A new release: bump `targetRevision` of both sources of this repository in the Application (the chart, and the one with `ref:
-remedy`) to the new tag. Do it after the images of that tag exist: `images.yml` pushes only from `main` and from `v*` tags, so
-no other branch or tag has images the chart could pull. The control plane restarts with `Recreate`: a minute without UI, runs in
+A new release: bump `targetRevision` of the chart source to the new version `X.Y.Z` and of the source with `ref: remedy` to the
+tag `vX.Y.Z` (with the git form of the chart, both sources of this repository take the tag). A release exists only when the
+GitHub release `vX.Y.Z` does: the images and the chart are pushed before the tag is made, so a version with a tag has its images
+and its chart. `release.yml` pushes `sha-<short>` and `edge` images from `main` too, but the chart pulls only `X.Y.Z`. The control plane restarts with `Recreate`: a minute without UI, runs in
 flight end as lost, sessions end.
 
 A new CLI version comes with a Renovate pull request on `deploy/cli-pin.yaml`. Check out that branch and run
@@ -228,18 +263,24 @@ it with `gpg --verify` against the key at `https://downloads.claude.ai/keys/clau
 `31DD DE24 DDFA B679 F42D 7BD2 BAA9 29FF 1A7E CACE`. Push, and merge when the `cli-pin` check is green.
 
 The pin is read from `deploy/cli-pin.yaml` at the tag the Application points to, so a new CLI reaches the cluster with the next
-tag: release it (next section), then bump both sources.
+release, not with the merge of the pin: a pin bump is a `chore` or `ci` commit, which releases nothing. To release it, give the
+pull request the title `fix: pin the claude CLI X.Y.Z` (the squash title decides), then bump both sources (next section).
 
 ## 10. The release process (for the maintainer)
 
-1. Change `version` and `appVersion` of `deploy/chart/Chart.yaml` to `X.Y.Z` in a pull request and merge it.
-2. Tag `vX.Y.Z` on the merge commit and push the tag.
-3. `images.yml` checks the tag against the chart (`scripts/check-release.sh`) and pushes `X.Y.Z` for both images.
-4. After the first release make both packages public once in GitHub (profile, Packages, `remedy-server` and `remedy-runner`,
-   Package settings, Change visibility, Public). Otherwise the cluster cannot pull them.
+The full runbook is [`release.md`](release.md). In short:
 
-The images are built per image in a matrix with fail-fast off, so a tag can publish one image and fail the other. Re-run the
-failed job of that workflow run; do not make a new tag.
+1. A merge to `main` that contains a `feat` or a `fix` makes the release: images `X.Y.Z`, the OCI chart, the tag `vX.Y.Z`, the
+   GitHub release with the changelog. Nobody tags by hand. The version comes from the commit messages.
+2. The pull request title must be a conventional commit (`feat: ...`, `fix: ...`, `docs: ...`): the `pr-title` check enforces it,
+   and the squash merge uses the title as the commit.
+3. The changelog is `CHANGELOG.md` and the text of the GitHub release.
+4. Make `remedy-server`, `remedy-runner` and `charts/remedy` public once (GitHub: profile, Packages, the package, Package settings,
+   Change visibility). The two image packages already exist and can be made public now; `charts/remedy` exists after the first
+   release. Otherwise the cluster cannot pull them.
+5. If `images` or `chart` fail, re-run the failed jobs of that run, but only while `main` has not moved (a re-run computes the
+   same version and overwrites the same tags). Never move or delete a tag.
+6. To skip a release on purpose, merge only `docs`, `chore` or `ci` commits (they release nothing).
 
 ## 11. Backup
 
@@ -265,6 +306,9 @@ Longhorn or Velero snapshots work the same way; Litestream is a separate plan.
 - The runner pod stays in `Init`: the CLI download or its checksum. Read `kubectl -n remedy-system logs remedy-runner-0 -c install-cli`.
 - The runner stays in `Init` right after a bump of the pin, with a checksum that differs: the pin's version and its checksums
   disagree. Run `scripts/cli-checksums.sh --check` on the pinned revision, and fix the pin as in section 9.
+- Argo CD cannot pull the chart (an error from `ghcr.io` about authorization or a missing chart): expected cause, not seen: the
+  package `charts/remedy` is still private, or `targetRevision` is not a released version. Make it public (`release.md`) and check
+  the version with `helm show chart oci://ghcr.io/jaydee94/charts/remedy --version X.Y.Z`.
 - Every run ends "Not logged in": do section 7.
 - The UI loads but nothing live updates: a proxy buffers the streams. Traefik streams by default; with nginx set
   `nginx.ingress.kubernetes.io/proxy-buffering: "off"` in `ingress.annotations`.
