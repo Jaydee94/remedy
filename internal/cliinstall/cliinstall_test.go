@@ -220,3 +220,29 @@ func TestInstallRefusesARedirectToPlainHTTPEvenWithAnInjectedClient(t *testing.T
 		t.Fatalf("the directory holds %v, want nothing", names)
 	}
 }
+
+func TestInstallRefusesAnEmptyArtifactEvenWithAMatchingChecksum(t *testing.T) {
+	o := serve(t, map[string][]byte{"/1.2.3/linux-arm64/claude": {}})
+	o.Platforms = map[string]cliinstall.Platform{"arm64": {Name: "linux-arm64", SHA256: sum(nil)}}
+	_, err := cliinstall.Install(context.Background(), o)
+	if err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("err = %v, want an error that says the artifact is empty", err)
+	}
+	if names := installed(t, o.Dest); len(names) != 0 {
+		t.Fatalf("the directory holds %v, want nothing", names)
+	}
+}
+
+func TestInstallRefusesAnEmptyArchiveMember(t *testing.T) {
+	archive := tarGz(t, map[string][]byte{"package/claude": {}})
+	o := serve(t, map[string][]byte{"/1.2.3/linux-arm64/claude": archive})
+	o.Archive, o.Member = "tar.gz", "claude"
+	o.Platforms = map[string]cliinstall.Platform{"arm64": {Name: "linux-arm64", SHA256: sum(archive)}}
+	_, err := cliinstall.Install(context.Background(), o)
+	if err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("err = %v, want an error that says the member is empty", err)
+	}
+	if names := installed(t, o.Dest); len(names) != 0 {
+		t.Fatalf("the directory holds %v, want nothing", names)
+	}
+}

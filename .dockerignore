@@ -1,7 +1,6 @@
 .git
 .github
 .claude
-.playwright-mcp
 bin
 docs
 dev
@@ -12,3 +11,8 @@ web/dist
 **/*.db-wal
 **/*.db-shm
 **/*.png
+.playwright-mcp
+**/.env*
+**/*.pem
+**/*.key
+.superpowers

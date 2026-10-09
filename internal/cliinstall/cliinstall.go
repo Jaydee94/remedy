@@ -159,6 +159,9 @@ func Install(ctx context.Context, o Options) (string, error) {
 	if n > maxDownload {
 		return "", errors.New("download: the artifact is larger than the installer reads")
 	}
+	if n == 0 {
+		return "", errors.New("download: the artifact is empty: refusing to install a file with no content")
+	}
 	if got := hex.EncodeToString(hash.Sum(nil)); got != p.SHA256 {
 		return "", fmt.Errorf("the checksum of the download is %s, pinned is %s: refusing to install it", got, p.SHA256)
 	}
@@ -220,6 +223,9 @@ func extract(r io.Reader, member string, w io.Writer) error {
 		}
 		if n > maxDownload {
 			return errors.New("the archive member is larger than the installer reads")
+		}
+		if n == 0 {
+			return fmt.Errorf("the archive member %q is empty", member)
 		}
 		return nil
 	}
