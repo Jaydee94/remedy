@@ -5,6 +5,7 @@ import { useSignOut } from './shellContext.ts'
 import GitHubSection from '@/components/setup/GitHubSection'
 import LimitsSection from '@/components/setup/LimitsSection'
 import ReposSection from '@/components/setup/ReposSection'
+import RunnerSection from '@/components/setup/RunnerSection'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -33,6 +34,8 @@ export default function SetupPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      <RunnerSection />
 
       {connection ? (
         <>
