@@ -72,12 +72,24 @@ spec:
             - {name: CLAUDE_CONFIG_DIR, value: /state/claude}
             - {name: TMPDIR, value: /tmp}
             - {name: TERM, value: xterm-256color}
+            - {name: REMEDY_RUNNER_STATUS_ADDR, value: ":8082"}
             {{- with .Values.runner.model }}
             - {name: REMEDY_CLAUDE_MODEL, value: {{ . | quote }}}
             {{- end }}
             {{- with .Values.runner.runTimeout }}
             - {name: REMEDY_RUN_TIMEOUT, value: {{ . | quote }}}
             {{- end }}
+          # The status port serves only the probes. No Service points at it. The login never decides readiness.
+          ports:
+            - {name: status, containerPort: 8082}
+          readinessProbe:
+            httpGet: {path: /readyz, port: status}
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /livez, port: status}
+            initialDelaySeconds: 10
+            periodSeconds: 20
           resources:
             {{- toYaml .Values.runner.resources | nindent 12 }}
           securityContext:

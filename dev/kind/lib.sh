@@ -196,3 +196,20 @@ wait_default_serviceaccount() {
     sleep 1
   done
 }
+
+# runner_state prints GET /api/runner of the dummy as JSON, or fails. It signs in with the generated admin password, which
+# goes only to the dummy's own URL: as JSON built by jq from the environment (a quote or a backslash in it stays valid),
+# on curl's stdin, never in an argument.
+runner_state() {
+  load_dummy_env
+  jar=$(umask 077; mktemp)
+  if ! jq -cn '{password: env.REMEDY_ADMIN_PASSWORD}' |
+       curl -sf -o /dev/null -c "$jar" -H 'X-Remedy-CSRF: 1' --data-binary @- "$REMEDY_URL/api/login"; then
+    rm -f "$jar"
+    return 1
+  fi
+  rc=0
+  curl -sf -b "$jar" "$REMEDY_URL/api/runner" || rc=$?
+  rm -f "$jar"
+  return $rc
+}

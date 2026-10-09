@@ -718,3 +718,29 @@ func TestAnEmptyPublicPeerListIsRefused(t *testing.T) {
 	set(values, "networkPolicy.enabled", false)
 	mustRender(t, values)
 }
+
+func TestTheRunnerHasAStatusPortAndProbesThatNeverDependOnTheLogin(t *testing.T) {
+	c := container(t, podSpec(t, mustRender(t, baseValues()).find("StatefulSet", "remedy-runner")), "runner")
+	if got := env(c)["REMEDY_RUNNER_STATUS_ADDR"]["value"]; got != ":8082" {
+		t.Errorf("REMEDY_RUNNER_STATUS_ADDR = %v, want :8082", got)
+	}
+	ports, _ := c["ports"].([]any)
+	if len(ports) != 1 || dig(t, ports[0], "name") != "status" || dig(t, ports[0], "containerPort") != 8082 {
+		t.Fatalf("ports = %v, want only status 8082", ports)
+	}
+	if dig(t, c, "livenessProbe", "httpGet", "path") != "/livez" || dig(t, c, "livenessProbe", "httpGet", "port") != "status" {
+		t.Errorf("livenessProbe = %v", c["livenessProbe"])
+	}
+	if dig(t, c, "readinessProbe", "httpGet", "path") != "/readyz" || dig(t, c, "readinessProbe", "httpGet", "port") != "status" {
+		t.Errorf("readinessProbe = %v", c["readinessProbe"])
+	}
+}
+
+func TestNoServiceReachesTheRunnersStatusPort(t *testing.T) {
+	d := mustRender(t, baseValues())
+	for _, svc := range d.all("Service") {
+		if strings.Contains(toString(svc["spec"]), "8082") || strings.Contains(toString(svc["spec"]), "status") {
+			t.Errorf("the Service %v exposes the runner's status port", dig(t, svc, "metadata", "name"))
+		}
+	}
+}

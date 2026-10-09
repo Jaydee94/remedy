@@ -32,10 +32,25 @@ apply_secret
 deploy_release
 
 load_dummy_env
+# The runner reports its login within a few seconds of starting; wait for it, up to a minute.
+login=unknown
+n=0
+while [ "$n" -lt 20 ]; do
+  login=$(runner_state 2> /dev/null | jq -r 'select(.connected) | .login' 2> /dev/null || true)
+  [ -n "$login" ] && [ "$login" != unknown ] && break
+  n=$((n + 1))
+  sleep 3
+done
+case ${login:-unknown} in
+  ok) login_line="the runner is logged in" ;;
+  missing) login_line="the runner is NOT logged in: run make dummy-login (once; it survives make dummy-down)" ;;
+  *) login_line="the runner has not said yet: make dummy-status" ;;
+esac
+
 echo
 echo "Ready."
 echo "  url:       $REMEDY_URL"
 echo "  password:  REMEDY_ADMIN_PASSWORD in $DUMMY_ENV"
-echo "  login:     make dummy-login   (once; the login survives make dummy-down)"
+echo "  login:     $login_line"
 echo "  then:      make dummy-smoke   (two real runs on your subscription)"
 echo "  status:    make dummy-status  /  logs: make dummy-logs  /  remove: make dummy-down"

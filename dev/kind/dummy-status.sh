@@ -17,10 +17,10 @@ ready=$(k -n "$NS" get deployment remedy-server -o jsonpath='{.status.readyRepli
 echo "server: ${ready:-0}/$(k -n "$NS" get deployment remedy-server -o jsonpath='{.spec.replicas}' 2> /dev/null) ready, image $(k -n "$NS" get deployment remedy-server -o jsonpath='{.spec.template.spec.containers[0].image}' 2> /dev/null)"
 phase=$(k -n "$NS" get pod remedy-runner-0 -o jsonpath='{.status.phase}' 2> /dev/null || true)
 if [ -z "$phase" ]; then
-  echo "runner: no pod"
+  echo "runner pod: no pod"
 else
   restarts=$(k -n "$NS" get pod remedy-runner-0 -o jsonpath='{.status.containerStatuses[0].restartCount}' 2> /dev/null || true)
-  echo "runner: $phase, restarts ${restarts:-0}"
+  echo "runner pod: $phase, restarts ${restarts:-0}"
 fi
 # The hook Job deletes itself when it succeeds, so the proof of a working refresher is the token and the CronJob's clock.
 if [ "$(k -n "$NS" get secret remedy-write-token -o jsonpath='{.data.token}' 2> /dev/null | wc -c)" -gt 0 ]; then
@@ -35,6 +35,10 @@ echo "login directory: $CLAUDE_DIR ($login_dir)"
 if [ -f "$DUMMY_ENV" ]; then
   load_dummy_env
   echo "url: $REMEDY_URL ($(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$REMEDY_URL/healthz" || true) on /healthz)"
+  # The control plane's own view: does the runner reach it, and has the runner said its login is there?
+  state=$(runner_state 2> /dev/null || true)
+  line=$(printf '%s' "$state" | jq -r 'if .connected then "connected, login " + .login else "not connected, login unknown" end' 2> /dev/null || true)
+  echo "runner: ${line:-unknown (the control plane did not answer)}"
   echo "secrets: $DUMMY_ENV"
 else
   echo "url: unknown (no $DUMMY_ENV)"

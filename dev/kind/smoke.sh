@@ -91,6 +91,10 @@ jq -cn '{password: env.REMEDY_ADMIN_PASSWORD}' |
 api GET /api/capabilities | jq -e '.cluster.read and .cluster.write and (.cluster.namespaces | index("demo") != null)' > /dev/null ||
   fail "the cluster tools are not on for the namespace demo (GET /api/capabilities)"
 
+state=$(api GET /api/runner) || fail "cannot ask the control plane about its runner"
+[ "$(printf '%s' "$state" | jq -r .connected)" = true ] || fail "the runner is not connected to the control plane. make dummy-status"
+[ "$(printf '%s' "$state" | jq -r .login)" != missing ] || fail "the runner is not logged in. Run: make dummy-login"
+
 say "run 1: why does something in demo crash?"
 RUN1=$(start_run "In the namespace demo of the Kubernetes cluster one deployment keeps crashing. Use your tools to find out which one and why, and tell me the cause in two sentences. Do not change anything.")
 wait_run "$RUN1" deny-all
