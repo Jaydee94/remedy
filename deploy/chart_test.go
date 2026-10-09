@@ -744,3 +744,12 @@ func TestNoServiceReachesTheRunnersStatusPort(t *testing.T) {
 		}
 	}
 }
+
+func TestTheRunnerDisablesTheCLIUpdater(t *testing.T) {
+	// The CLI's auto-updater stages a copy of itself under $HOME/.local/share/claude in an interactive session; the runner
+	// does not start the CLI through a launcher, so that copy is never used. The login session inherits the pod environment.
+	c := container(t, podSpec(t, mustRender(t, baseValues()).find("StatefulSet", "remedy-runner")), "runner")
+	if got := env(c)["DISABLE_UPDATES"]["value"]; got != "1" {
+		t.Errorf("DISABLE_UPDATES = %v, want \"1\"", got)
+	}
+}

@@ -78,12 +78,17 @@ file or directory"; that was wrong for this setup. Only the directories were loo
 
 The three directories were born at 09:55:55, the time of the maintainer's login session. I looked at 09:57:40, before the smoke
 test above, and again at 09:58:07 after it: the birth and modification times did not change. So the directory came with the
-interactive login (the CLI started by hand as `/opt/claude/claude` with `HOME=/state`), not from the two headless runs. **What it
-holds is not known**: it could be state of the CLI or an update the CLI downloaded because it was not installed by its own installer.
-Looking inside was out of bounds (it sits in the login directory). This is an open decision for the maintainer, not an accepted
-risk. The options are listed and undecided: `DISABLE_UPDATES=1` in the runner pod's environment together with an entry in
-`provider.FilterEnv`'s allowlist (a spec change: the spec says nothing is added to it), or mounting nothing writable under
-`$HOME/.local`. The maintainer may measure the directory's size and contents themselves.
+interactive login (the CLI started by hand as `/opt/claude/claude` with `HOME=/state`), not from the two headless runs.
+
+Follow-up (2026-10-09, after the coordinator measured it; I did not look inside): **measured**, one file of 249528 KiB under
+`.local`, created at the interactive login; it is the staged copy of the CLI that its native updater writes in an interactive
+session (`$HOME/.local/share/claude/versions`), and it takes effect only through a launcher, which the runner does not use
+(it starts `/opt/claude/claude`), so it is unused disk and traffic. **Decided**: the chart sets `DISABLE_UPDATES=1` in the runner
+container (a chart test pins it; `provider.FilterEnv` and the spec are unchanged, because the headless runs did not stage anything,
+and the `kubectl exec` login inherits the pod environment). On the cluster rebuilt for the follow-up the runner pod shows
+`DISABLE_UPDATES=1`. **Not yet verified**: that the directory does not come back. The maintainer will delete
+`~/remedy-kind/claude/.local` themselves, start `make dummy-login` once (already logged in, it opens directly), type `/exit`, and
+confirm. Until then this is a decision and a configuration, not a measured effect.
 
 ## Step 5: the login survives, and the other targets work
 
@@ -114,20 +119,33 @@ Cause (the server log, not the agent): both approved restarts failed with
 `an approved tool failed ... err="open /var/run/remedy/write/token: no such file or directory"`, and the server had logged at its
 start `REMEDY_K8S_WRITE_TOKEN_FILE holds no token yet`. `make dummy-status` already said `write token: present`, because the Secret
 `remedy-write-token` held a token (one key, 1280 base64 characters), but the server pod mounts that Secret `optional: true`, it was
-empty when the pod started, and the kubelet had not yet shown the file in the pod. The agent behaved correctly: it asked, was
-approved, saw the error, and asked again once. This is a race of the setup. The one allowed re-run, about three minutes later,
-passed:
+empty when the pod started, and the kubelet had not yet shown the file in the pod (it does so at its next Secret sync, one or two
+minutes later). The agent behaved correctly: it asked, was approved, saw the error, and asked again once. This was a race of
+the setup. The one allowed re-run, about three minutes later, passed (22 s, exit 0, `approve ... (call 12)`, restarted at
+2026-10-09T08:04:48Z).
+
+### The fix and its proof (follow-up round, 2026-10-09)
+
+`dev/kind/dummy-up.sh` remembers whether the release did not exist before this run. On a fresh install, after `helm` has finished
+(the post-install hook has completed by then), it checks that the Secret holds a token (otherwise it fails with a message about
+the hook Job), prints `restarting the control plane once so that its pod sees the write token the hook made after the pod started`,
+and runs `rollout restart` and `rollout status --timeout=300s` of `deployment/remedy-server`. An upgrade does not restart.
+`dummy-status` keeps `write token:` on the Secret and adds a line saying that the pod's view cannot be checked.
+
+Proof, one pass: `make dummy-down`, then `make dummy-up` (**119 s**, exit 0, the restart line and `successfully rolled out`
+printed, `login: the runner is logged in`), then immediately `make dummy-smoke`: **25 s**, exit 0:
 
 ```
-smoke: run 1 ok: 4 tool calls
+smoke: run 1 ok: 5 tool calls
 smoke: run 2: restart demo/web
-smoke: approve cluster_rollout_restart (call 12)
-smoke: run 2 ok: demo/web restarted at 2026-10-09T08:04:48Z
-smoke: all ok (runs ab79fa4e8ff487899da794ed0bb98e7d and bef3f8abf10283c992768dd4df84338d)
+smoke: approve cluster_rollout_restart (call 6)
+smoke: run 2 ok: demo/web restarted at 2026-10-09T08:11:15Z
+smoke: all ok (runs e810a2770ad13d236b1b0701ed074f8f and a72a50c583107c83055dab1daaa4f1d5)
 ```
 
-22 s, exit 0 when `smoke.sh` ran through make. Not fixed in this task (a change to `dummy-up.sh` or the chart; open): the fix would
-be that `dummy-up` waits until the server pod sees the token file, not only the Secret. The runbook says to wait a few minutes.
+The first approved restart succeeded: the race did not occur. One sample is not a proof that it cannot occur (the restart makes the
+pod start after the token exists, which is why the file is there from the start; the kubelet's sync interval is not involved).
+A second `make dummy-up` on the running cluster (an upgrade) took 29 s and printed no restart line, as designed.
 
 ## Step 6: the secrets are nowhere they should not be
 
@@ -140,7 +158,7 @@ be that `dummy-up` waits until the server pod sees the token file, not only the 
 
 Success criterion 1 (a reachable UI, a healthy control plane and a runner connected to it after `make dummy-up` without manual
 steps but the one-time login): proven twice (82 s and 90 s cold starts, `/healthz` 200, `runner: connected, login ok`, two pods),
-with the caveat of the write-token race above: right after `dummy-up` the cluster actions can still fail for a few minutes.
+with the write-token race found and fixed in the follow-up round (one immediate smoke pass after a cold start succeeded).
 Criterion 2 (`make dummy-down` removes everything in the cluster, the login survives): proven; after `dummy-down` and `dummy-up`
 the runner was logged in without a second login. Criterion 3 (`make dummy-smoke` runs a real ad-hoc cluster run and an approved
 action and fails with a clear message otherwise): proven for the success path (19 s, 22 s) and for the clear failure without a
@@ -150,5 +168,5 @@ succeeded restart`; the reason is only in the server log, which the message does
 Not proven: criteria 4 and 5 (the homelab, the trust boundaries); a Linux Docker host (the `0700` login directory was measured on
 Docker Desktop for Mac only); the quota cost (the CLI printed none); the stability of the agent's behaviour (the smoke test
 asserts states, not text; it ran three times here, and in the failed pass the agent asked for the restart twice because the first
-failed). Open points: the content and cause of `~/remedy-kind/claude/.local/share/claude` (step 4a, undecided), and the
-write-token race at the cold start.
+failed). Open point: whether `DISABLE_UPDATES=1` really keeps `~/remedy-kind/claude/.local/share/claude` from coming back (step 4a: decided
+and configured, not yet verified by the maintainer).

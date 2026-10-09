@@ -29,7 +29,23 @@ write_dummy_env
 new_tag
 build_and_load_images
 apply_secret
+fresh=no
+helm --kube-context "$CTX" -n "$NS" status "$RELEASE" > /dev/null 2>&1 || fresh=yes
 deploy_release
+
+# On a fresh install the post-install hook fills the Secret remedy-write-token only after the control plane's pod started. The
+# pod mounts it optional and the kubelet shows the new file in the pod after its next Secret sync, one or two minutes later, so
+# an approved action in that window fails ("open /var/run/remedy/write/token: no such file"). One restart of the control plane
+# makes it see the file at once. An upgrade keeps the file, and a restart would end sessions for nothing.
+if [ "$fresh" = yes ]; then
+  [ -n "$(k -n "$NS" get secret remedy-write-token -o jsonpath='{.data.token}' 2> /dev/null)" ] || {
+    echo "the Secret remedy-write-token holds no token although the install is done: the hook Job failed. kubectl -n $NS get jobs; kubectl -n $NS logs job/remedy-token-refresh-hook" >&2
+    exit 1
+  }
+  echo "restarting the control plane once so that its pod sees the write token the hook made after the pod started"
+  k -n "$NS" rollout restart deployment/remedy-server
+  k -n "$NS" rollout status deployment/remedy-server --timeout=300s
+fi
 
 load_dummy_env
 # The runner reports its login within a few seconds of starting; wait for it, up to a minute.

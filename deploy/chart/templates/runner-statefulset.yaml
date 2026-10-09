@@ -72,6 +72,11 @@ spec:
             - {name: CLAUDE_CONFIG_DIR, value: /state/claude}
             - {name: TMPDIR, value: /tmp}
             - {name: TERM, value: xterm-256color}
+            # In an interactive session the CLI's native updater stages a copy of itself (about 244 MB) under
+            # $HOME/.local/share/claude/versions. That copy only takes effect through a launcher, which the runner does not use
+            # (it starts /opt/claude/claude), so it would be unused disk and traffic. This blocks the update paths; the login
+            # session started with `kubectl exec` inherits it. Headless runs did not stage anything.
+            - {name: DISABLE_UPDATES, value: "1"}
             - {name: REMEDY_RUNNER_STATUS_ADDR, value: ":8082"}
             {{- with .Values.runner.model }}
             - {name: REMEDY_CLAUDE_MODEL, value: {{ . | quote }}}

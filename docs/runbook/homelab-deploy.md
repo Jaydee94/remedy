@@ -168,6 +168,15 @@ At the first sync:
 - The chart's hook, the Job `remedy-token-refresh-hook`, runs as an Argo CD `PostSync` job and fills the Secret
   `remedy-write-token` with the first write token.
 - The CronJob `remedy-token-refresh` mints the token again every 30 minutes, so its first run follows within half an hour.
+- The control plane mounts `remedy-write-token` as an optional Secret that was still empty when its pod started. The kubelet
+  shows the new file in the pod only at its next Secret sync, so for a minute or two (measured on kind: the first approved
+  restart at about 40 s after the install failed) an approved action fails with `open /var/run/remedy/write/token: no such file or
+  directory`. Reads are not affected. `kubectl -n remedy-system rollout restart deployment/remedy-server` makes it immediate
+  (the dummy setup does exactly that after a fresh install).
+- The runner's readiness and liveness probes use port 8082. The default-deny ingress policy lets them through only if the CNI
+  exempts traffic that the node itself originates; kindnet does (measured). k3s's kube-router was not measured. A runner pod
+  that restarts in a loop with failing probes means the CNI blocks them. A value `networkPolicy.runner.probeFrom` does not
+  exist yet; until it does, the workaround is `networkPolicy.enabled=false`.
 
 ## 7. The one-time login
 
@@ -245,6 +254,12 @@ Longhorn or Velero snapshots work the same way; Litestream is a separate plan.
   `nginx.ingress.kubernetes.io/proxy-buffering: "off"` in `ingress.annotations`.
 - "the cluster cannot be reached with the read token" in the control plane log: the network policy. Check
   `networkPolicy.apiServer.cidrs` and `port` against `kubectl get endpoints kubernetes`.
+- Actions fail with `open /var/run/remedy/write/token: no such file or directory` right after the first sync: the kubelet has
+  not shown the new Secret in the pod yet. Wait one or two minutes, or restart the control plane
+  (`kubectl -n remedy-system rollout restart deployment/remedy-server`).
+- The runner pod restarts in a loop and its readiness or liveness probe fails (`kubectl -n remedy-system describe pod
+  remedy-runner-0`): the CNI blocks the node's probes on port 8082. See section 6; `networkPolicy.runner.probeFrom` does not
+  exist yet, so the workaround is `networkPolicy.enabled=false`.
 - Actions fail with "the token file … is empty": the refresher has not run. Read `kubectl -n remedy-system get cronjob,job` and the
   logs of the last job.
 - Argo CD shows the Secret `remedy-write-token` as out of sync: the `ignoreDifferences` of section 6 is missing.

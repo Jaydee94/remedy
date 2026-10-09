@@ -19,7 +19,7 @@ subscription you can log in with. Port `18080` on the host must be free (`8080` 
 
 | Command | What it does |
 |---|---|
-| `make dummy-up` | Cluster, demo workloads, Argo CD, both images, the chart. Cold start about 1.5 minutes. Ends with a `Ready.` block: the URL, where the password is, and the runner's login state (`the runner is logged in`, `NOT logged in` or `has not said yet`). |
+| `make dummy-up` | Cluster, demo workloads, Argo CD, both images, the chart; on a fresh install it restarts the control plane once, after the write token exists. Cold start about 1.5 to 2 minutes. Ends with a `Ready.` block: the URL, where the password is, and the runner's login state (`the runner is logged in`, `NOT logged in` or `has not said yet`). |
 | `make dummy-login` | Interactive, once: starts `claude` in the runner pod. Type `/login`, open the URL, paste the code, `/exit`. |
 | `make dummy-smoke` | Two real runs (a cluster question about `demo/crashy`, an approved restart of `demo/web`). About 20 s, two short runs of quota. Stops before the first run when the runner is not connected or not logged in. |
 | `make dummy-status` | `key: value` lines (below). |
@@ -32,7 +32,7 @@ subscription you can log in with. Port `18080` on the host must be free (`8080` 
 ## The first time
 
 ```sh
-make dummy-up        # about 1.5 minutes
+make dummy-up        # about 1.5 to 2 minutes
 make dummy-login     # once: /login, open the URL, paste the code, /exit
 make dummy-smoke     # two real runs on your subscription
 ```
@@ -68,6 +68,7 @@ Then open `http://127.0.0.1:18080` and sign in. The password is `REMEDY_ADMIN_PA
   server: 1/1 ready, image remedy-server:dev-<time>
   runner pod: Running, restarts 0
   write token: present
+  write token in the pod: not checkable; ...
   token refresher: last scheduled success <time or never>
   database volume: Bound
   login directory: /Users/<you>/remedy-kind/claude (present)
@@ -78,8 +79,9 @@ Then open `http://127.0.0.1:18080` and sign in. The password is `REMEDY_ADMIN_PA
 
   The `runner:` line is `connected, login ok`, `connected, login missing`, `connected, login unknown` (the runner has not
   reported yet, for example right after a restart: ask again in a few seconds), `not connected, login unknown`, or `unknown (the
-  control plane did not answer)`. `write token: present` says the Secret holds a token, not that the server pod already sees it
-  (see Troubleshooting).
+  control plane did not answer)`. `write token: present` says the Secret holds a token, not that the server pod already sees it:
+  the next line says that this cannot be checked (the server image has no shell). After a fresh `dummy-up` the pod has been
+  restarted once and sees it; a pod started before the token existed sees it up to about two minutes later (see Troubleshooting).
 - `~/remedy-kind/dummy.env` has `REMEDY_URL` and `REMEDY_ADMIN_PASSWORD`. Use the password only to sign in at that URL (as JSON on
   stdin, never in an argument); do not print it, and do not write it into a file of the repository.
 - Exit codes of the smoke test. `dev/kind/smoke.sh` called directly: 0 all ok; 1 a failed assertion, or a missing login (it
@@ -101,24 +103,28 @@ testbed with a local server; here the server and runner are the pods of the char
 One line each. Those marked "seen" happened in the first real run; the others are what the scripts and the spec say and were not
 provoked.
 
-- Seen: the first run of the smoke test after a cold `dummy-up` can fail with `smoke: FAILED: run 2 has no single approved and
-  succeeded restart`, and the server log says `an approved tool failed ... open /var/run/remedy/write/token: no such file or
-  directory`. The write token is filled by a hook after the server pod has started; the Secret is mounted optional and the kubelet
-  needs some time to show a new Secret in the pod. `make dummy-status` already says `write token: present` in that window.
-  Wait a few minutes after `dummy-up`, then run the smoke test again. (Open point: `dummy-up` could wait for the file, not for the
-  Secret.)
-- Seen: `make dummy-redeploy` prints the chart's NOTES ("The runner logs in once ... Until then every run ends with Not logged
-  in"), also when the runner is logged in. The login survives; check `make dummy-status`. Right after a redeploy or a reset the
-  `runner:` line can say `login unknown` for a few seconds.
+- Seen and fixed: the first smoke test right after a cold `dummy-up` once failed with `smoke: FAILED: run 2 has no single approved
+  and succeeded restart`, and the server log said `an approved tool failed ... open /var/run/remedy/write/token: no such file or
+  directory`. The write token is filled by a hook after the server pod has started; the pod mounts the Secret optional and the
+  kubelet shows a new file in a running pod only at its next Secret sync, one or two minutes later. `dummy-up` now restarts the
+  control plane once on a fresh install, after it has checked that the Secret holds the token (it says so in one line), so the
+  smoke test can follow at once (measured once: it passed 25 s after `dummy-up` returned). An upgrade (`dummy-up` on a running
+  cluster) does not restart. If a pod of the control plane is started by other means before the token exists, the same window
+  applies: wait one or two minutes or `kubectl --context kind-remedy-dev -n remedy-system rollout restart deployment/remedy-server`.
+- Seen: right after a redeploy or a reset the `runner:` line can say `login unknown` for a few seconds; ask again. (The chart's
+  NOTES used to say that every run ends with "Not logged in" also for a runner that was logged in; they now say it only for a
+  runner that was never logged in.)
 - Seen: `make dummy-smoke; echo "exit=$?"` prints 2, not 1: see "For an agent".
 - Seen: the smoke test without a login stops in about 4 s with `the runner is not logged in. Run: make dummy-login` and costs
   nothing.
-- Known limit, an open decision, not a failure: after your interactive login the directory `~/remedy-kind/claude/.local/share/claude`
-  exists on the host (created at the time of the login session, not by the headless smoke runs). What it holds is not known. It may be
-  state of the CLI or an update download that the CLI wrote because it does not run from its own installer path. Options, none
-  chosen: set `DISABLE_UPDATES=1` in the runner pod together with an entry in `provider.FilterEnv`'s allowlist (a change to the
-  spec, which says nothing is added there), or mount nothing writable under `$HOME/.local`. Until the maintainer decides, do not
-  list or copy the directory; it sits inside the login directory.
+- The CLI's updater (found at the first interactive login): measured, the directory `~/remedy-kind/claude/.local/share/claude`
+  appeared at the time of the interactive login session (not from the headless smoke runs) and held one file of 249528 KiB under
+  `.local` (a staged copy of the CLI; the CLI does not run from there, because the runner starts `/opt/claude/claude`). Decided:
+  the chart sets `DISABLE_UPDATES=1` in the runner container, which the `kubectl exec` login inherits; `provider.FilterEnv` and
+  the spec are unchanged (the headless runs did not stage anything). NOT YET VERIFIED: the maintainer deletes
+  `~/remedy-kind/claude/.local` themselves, runs `make dummy-login` once after the redeploy (the runner is logged in, so the CLI
+  opens directly), types `/exit`, and checks that the directory does not come back. Until that is done, do not rely on it.
+  No script and no agent lists or deletes anything in the login directory.
 - The install is stuck (`helm ... --wait` runs the full 10 minutes): `kubectl --context kind-remedy-dev -n remedy-system get pods`
   and `describe pod`; most often a pod waits for an image (`make dummy-redeploy` loads them again) or the runner's init container
   cannot download the CLI (next line).
