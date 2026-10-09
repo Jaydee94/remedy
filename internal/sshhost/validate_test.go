@@ -48,6 +48,7 @@ func TestValidateRejects(t *testing.T) {
 		"nul in notes":    func(f *sshhost.Fields) { f.Notes = "a\x00b" },
 		"docker":          func(f *sshhost.Fields) { f.DockerPattern = "a b" },
 		"unit":            func(f *sshhost.Fields) { f.SystemdUnits = []string{"a;b"} },
+		"unit with colon": func(f *sshhost.Fields) { f.SystemdUnits = []string{"x:y"} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := valid()

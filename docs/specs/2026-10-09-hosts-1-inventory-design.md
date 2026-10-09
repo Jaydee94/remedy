@@ -126,7 +126,7 @@ Comments in the snippet tell the maintainer what to check: the path of `docker` 
 
 - `account`: `^[a-z_][a-z0-9_-]{0,31}$`.
 - `dockerPattern`: `^[A-Za-z0-9][A-Za-z0-9_.-]*\*?$` — a name, optionally ending in one `*`. No other wildcard, no comma, no space, no newline.
-- `systemdUnits`: each `^[A-Za-z0-9][A-Za-z0-9_.@:-]*$` with a suffix that must be one of `.service`, `.timer`, `.socket` or none (then `.service` is written). At most 20.
+- `systemdUnits`: each `^[A-Za-z0-9][A-Za-z0-9_.@-]*$` with a suffix that must be one of `.service`, `.timer`, `.socket` or none (then `.service` is written). At most 20. `:` is excluded because sudoers needs it escaped, and `visudo` rejects an unescaped one.
 - Everything is validated again when the snippet is generated, not only when the host is saved, and a value that fails makes the generator return an error instead of text.
 
 The snippet is a suggestion. Its exact lines, and the limits of the wildcards in them, are the maintainer's to read; the text says so. A test generates snippets for a set of hostile inputs (a newline, a comma, `ALL`, a leading dash, a very long value) and asserts that none produces a line that grants more than the table above.

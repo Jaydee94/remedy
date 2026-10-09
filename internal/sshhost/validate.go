@@ -19,7 +19,7 @@ var (
 	hostnameRE = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$`)
 	accountRE  = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 	dockerRE   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}\*?$`)
-	unitRE     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,100}\.(service|timer|socket)$`)
+	unitRE     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@-]{0,100}\.(service|timer|socket)$`)
 )
 
 // FieldError is a problem with one field, worded so that it can be shown to the maintainer as it is.
@@ -97,7 +97,7 @@ func normalizeUnits(units []string) ([]string, error) {
 			u += ".service"
 		}
 		if !unitRE.MatchString(u) {
-			return nil, &FieldError{"systemdUnits", "a systemd unit may contain letters, digits and _ . @ : -, and ends in .service, .timer or .socket"}
+			return nil, &FieldError{"systemdUnits", "a systemd unit may contain letters, digits and _ . @ -, and ends in .service, .timer or .socket"}
 		}
 		if !seen[u] {
 			seen[u] = true

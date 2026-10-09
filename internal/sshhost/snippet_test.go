@@ -10,7 +10,7 @@ import (
 
 const (
 	pat  = `[A-Za-z0-9][A-Za-z0-9_.-]*\*?`
-	unit = `[A-Za-z0-9][A-Za-z0-9_.@:-]*\.(service|timer|socket)`
+	unit = `[A-Za-z0-9][A-Za-z0-9_.@-]*\.(service|timer|socket)`
 )
 
 // grantLine is the only shape of a non-comment line the generator may produce for the account.
@@ -104,6 +104,8 @@ func TestSnippetRefusesHostileInput(t *testing.T) {
 		"leading dash in unit": func(in *sshhost.SnippetInput) { in.SystemdUnits = []string{"-x.service"} },
 		"unit of a wrong kind": func(in *sshhost.SnippetInput) { in.SystemdUnits = []string{"a.mount"} },
 		"unit without suffix":  func(in *sshhost.SnippetInput) { in.SystemdUnits = []string{"a"} }, // Snippet wants normalised units
+		"colon in unit":        func(in *sshhost.SnippetInput) { in.SystemdUnits = []string{"x:y.service"} },
+		"backslash in unit":    func(in *sshhost.SnippetInput) { in.SystemdUnits = []string{`a\b.service`} },
 		"account with rights":  func(in *sshhost.SnippetInput) { in.Account = "root ALL=(ALL)" },
 		"upper case account":   func(in *sshhost.SnippetInput) { in.Account = "Remedy" },
 		"empty account":        func(in *sshhost.SnippetInput) { in.Account = "" },
