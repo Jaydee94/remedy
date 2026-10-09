@@ -37,13 +37,13 @@ other than `main`, and moving past `0.x` (1.0.0 is a decision for the maintainer
 | R3 | Start and 0.x | The tag `v0.0.0` is created once by hand on the first commit of the repository, so the first release is `0.1.0` and its changelog holds the whole history of `feat` and `fix` commits. `releaseRules`: `feat` is minor, `fix` and `perf` are patch, a `BREAKING CHANGE` is **minor** while the major version is 0, `revert` is patch, everything else releases nothing. 1.0.0 is made by the maintainer (a commit with a release rule override, or a manual tag), never by accident. |
 | R4 | Trigger | Every push to `main`. The workflow runs `semantic-release --dry-run` first; with no releasable commit nothing but `sha-<short>` and `edge` happens. |
 | R5 | One workflow | A tag created by `GITHUB_TOKEN` does not start other workflows, so the tag cannot start the image build. `.github/workflows/release.yml` has the whole chain. `images.yml` keeps only what a pull request needs (build `linux/amd64`, push nothing) and `workflow_dispatch`; it loses the `push` and `tags` triggers. |
-| R6 | Order | `plan` (dry run: next version) then `images` and `chart` (build and push the artifacts with the planned version) then `publish` (semantic-release for real: bump commit, tag, GitHub release). Artifacts first: a failure in between leaves unused `X.Y.Z` artifacts, never a release without artifacts. A re-run of the same push recomputes the same version and overwrites the same tags. |
-| R7 | Serialisation | `concurrency: {group: release, cancel-in-progress: false}`. If `main` moved between `plan` and `publish`, the push of the bump commit is refused; the run fails, the artifacts of that version stay unused, and the run of the newer push computes the next version. |
+| R6 | Order | `plan` (dry run: next version) then `images` and `chart` (build and push the artifacts with the planned version) then `publish` (semantic-release for real: bump commit, tag, GitHub release). Artifacts first: a failure in between leaves unused `X.Y.Z` artifacts, never a release without artifacts. A re-run of the same push recomputes the same version and overwrites the same tags, but only while `main` has not moved (section 8a). |
+| R7 | Serialisation | `concurrency: {group: release, cancel-in-progress: false}`. If `main` moved between `plan` and `publish`, semantic-release does not get a refused push: its `git push --dry-run` is rejected, it checks whether the branch is behind the remote, logs "behind the remote one ... won't be published" and exits 0 without a release. `plan` can print `none` for that reason too. `publish` then fails at its final check (no tag) with an explanatory message, the artifacts of that version stay unused, and the run of the newer push computes the version. |
 | R8 | Chart as OCI | `helm package deploy/chart --version X --app-version X` and `helm push` to `oci://ghcr.io/jaydee94/charts` (the chart is `charts/remedy`). The chart `.tgz` is also attached to the GitHub release. `helm lint` runs before the push. The chart does not contain `cli-pin.yaml` (it stays a values file of the repository, as in the runbook). |
 | R9 | Image tags | Unchanged for `main`: `sha-<short>` and `edge`. With a version: `X.Y.Z` as well. No `latest`. |
 | R10 | Release notes | Generated from the conventional commits by the `conventionalcommits` preset: sections Features, Bug Fixes, Performance, Reverts; BREAKING CHANGE notes; `docs`, `chore`, `ci`, `test`, `refactor`, `style` hidden. The same text goes to `CHANGELOG.md` and to the GitHub release. No comments on pull requests or issues (`successComment`, `failComment` and `releasedLabels` off), so the job does not need `issues: write` or `pull-requests: write`. |
 | R11 | Pull request titles | `scripts/check-pr-title.sh` (with a shell test in `make shell-test`) checks that a title is `type(scope)?!?: subject` with a known type; `.github/workflows/pr-title.yml` runs it on `pull_request` (`opened`, `edited`, `synchronize`, `reopened`) with the title passed through the environment, never interpolated into a script. Squash merges use the pull request title as the commit subject, so the title decides the release. |
-| R12 | Verification after publish | `publish` ends with `scripts/check-release.sh vX.Y.Z` on the new tag (it exists: the tag must match `Chart.yaml`). |
+| R12 | Verification after publish | `publish` ends with three checks (section 4): the tag exists on the remote, `scripts/check-release.sh vX.Y.Z` on the `Chart.yaml` of that tag, and the GitHub release is published with the chart attached. |
 | R13 | Dependencies | The plugins and their dependencies are pinned by `release/package-lock.json`; Renovate's npm manager updates them (a pull request, not an automatic merge). `npm ci` runs with `--ignore-scripts`. |
 
 ## 3. Why 0.x with the breaking rule on minor
@@ -59,7 +59,9 @@ and the tag `v0.0.0` on the first commit makes the first `feat` release `0.1.0`.
 1. **`plan`** (`contents: write`): `actions/checkout` with `fetch-depth: 0` and `persist-credentials: false`, Node (the version in
    `release/.nvmrc`), `npm ci --ignore-scripts` in `release/`, then `semantic-release --dry-run --extends ./release/release.config.js`
    with `RELEASE_MODE=plan`; the `exec` plugin's `verifyReleaseCmd` writes `${nextRelease.version}` to a file. Output: `version`
-   (empty when nothing is to be released) and the short SHA. The plan mode loads only the analyzer, the notes generator and
+   (empty when nothing is to be released). The step refuses any version that is not `X.Y.Z` and any major other than 0
+   (R3: without the tag `v0.0.0` semantic-release plans `1.0.0` for a first release; a major version is the maintainer's
+   decision, who changes that line on purpose). The plan mode loads only the analyzer, the notes generator and
    `exec`. It still needs `contents: write` because semantic-release's core checks push access with `git push --dry-run` even in a
    dry run; the job runs only the pinned release tool and never builds or runs code of the repository.
 2. **`images`** (matrix `remedy-server`, `remedy-runner`; `contents: read`, `packages: write`): as today's push job of
@@ -70,8 +72,14 @@ and the tag `v0.0.0` on the first commit makes the first `feat` release `0.1.0`.
    it in `ci.yml`). `helm lint`, `helm package`, `helm registry login ghcr.io` with `GITHUB_TOKEN` through stdin, `helm push`.
    The `.tgz` is uploaded as a workflow artifact for `publish`.
 4. **`publish`** (needs `images` and `chart`; only when `version` is set; `contents: write`): checkout with
-   `fetch-depth: 0` and the token for the push, download the `.tgz`, `npx semantic-release` for real with the `.tgz` as an asset of
-   the `github` plugin; then `scripts/check-release.sh "v$VERSION"` after `git fetch --tags`.
+   `fetch-depth: 0` and `persist-credentials: false` (no token is stored: semantic-release builds the authenticated URL from
+   `GITHUB_TOKEN` itself), download the `.tgz` into `dist` and check that `dist/remedy-$VERSION.tgz` exists (the `github` plugin's
+   asset glob would otherwise make a release without the chart), then `semantic-release` for real with the `.tgz` as an asset. The
+   commit identity is `github-actions[bot]` (`GIT_AUTHOR_*` and `GIT_COMMITTER_*` in the environment; the default would be
+   `semantic-release-bot`). Final checks, each failing the run: the tag `v$VERSION` exists on the remote (`git fetch --tags`, then
+   `ls-remote`; if not, `main` moved and the run of the newer push releases), `Chart.yaml` at the tag matches it
+   (`scripts/check-release.sh` on the file read from the tag), and the GitHub release exists, is not a draft and has the asset
+   `remedy-$VERSION.tgz` (`gh` and `jq`, preinstalled; `contents: write` covers reading releases).
 
 `images.yml` (pull requests): the existing PR build of both images for `linux/amd64`, no push, no tag trigger, no
 `check-release.sh` step. The `cli-pin.yml` and `ci.yml` workflows are unchanged except that `ci.yml`'s chart job also asserts that
@@ -123,6 +131,21 @@ and refuses anything that is not `X.Y.Z` or a file with other `version` lines.
 | A3 | A bad conventional title (for example `feat:` for a fix) releases the wrong bump. | Mitigated by the title check; a wrong release is corrected by the next one, tags and releases are not rewritten. |
 | A4 | The workflow writes to an unprotected `main` with the workflow token. | Accepted while `main` is unprotected; a branch protection needs a decision (R2). |
 | A5 | Merging a pull request is publishing: every merge with a `feat` or `fix` makes a public GitHub release. | The intended behaviour (R4); the manual alternative was declined. |
+| A6 | Re-running an older run of `main` moves `edge` backwards. GitHub keeps one pending run per concurrency group, so the `sha-<short>` image of an intermediate push may never be built. | Accepted: re-run only the latest run of `main`. No release is lost, because the analysis covers all commits since the last tag. |
+
+## 8a. Failure points and recovery
+
+| # | State | Recovery |
+|---|---|---|
+| 1 | `plan` fails | Nothing is pushed, no images. Re-run if it is the latest run of `main`, else the next push does it. |
+| 2 | `plan` says `none` for a merge with a `feat` or `fix` | Look for "behind the remote one" in the log: `main` moved and the newer run releases. |
+| 3 | `images` or `chart` fails with a version | X.Y.Z artifacts may be pushed; no commit, tag or release. "Re-run failed jobs" while `main` has not moved. |
+| 4 | `publish`: the chart package is missing | As 3. |
+| 5 | `publish`: `main` moved | semantic-release exits 0 as "behind", the final check fails with "no tag". Nothing to do, the newer run releases. |
+| 6 | The bump commit is pushed but the tag push failed | `main` has `chore(release)` without a tag. Tag the bump commit by hand (`git tag vX.Y.Z <sha>`, push) and run the final checks again, or let the next run plan the same version (a duplicate changelog section is fixed by a `docs:` pull request). |
+| 7 | The tag is pushed but the GitHub release failed or is a draft | A re-run of `publish` does not recover (semantic-release exits 0 as "behind" and the final check fails on the missing release). Create or finish the release by hand: `gh release create vX.Y.Z dist/remedy-X.Y.Z.tgz --notes-file <the CHANGELOG section>`, or upload the asset and `gh release edit vX.Y.Z --draft=false`. Never move or delete the tag. |
+| 8 | The final check fails although the tag exists | Tag and `Chart.yaml` disagree: fix forward with a `fix:` pull request, never rewrite a tag. |
+| 9 | Before the first merge | Push `v0.0.0` on the first commit. Set the squash merge title to the pull request title: the repository has `squash_merge_commit_title=COMMIT_OR_PR_TITLE` and the message `COMMIT_MESSAGES`, which makes the squash subject of a single-commit pull request the commit's subject, not the title, and puts every commit message in the body, so a `[skip ci]` in any of them skips the release run. The maintainer decides: `gh api -X PATCH repos/Jaydee94/remedy -f squash_merge_commit_title=PR_TITLE -f squash_merge_commit_message=BLANK`, optionally with `-F allow_merge_commit=false -F allow_rebase_merge=false`. Make the three packages public after the first run. Never re-run an older run of `main`. |
 
 ## 9. Documents and files to change
 

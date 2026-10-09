@@ -46,6 +46,11 @@
       "matchPackageNames": ["semantic-release", "/^@semantic-release\\//"],
       "groupName": "semantic-release",
       "automerge": false
+    },
+    {
+      "description": "The release tools run with a write token: a freshly published npm version is not proposed for a week.",
+      "matchFileNames": ["release/package.json"],
+      "minimumReleaseAge": "7 days"
     }
   ]
 }

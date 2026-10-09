@@ -52,6 +52,15 @@ jobs:
             echo "semantic-release planned '$version', which is not X.Y.Z" >&2
             exit 1
           fi
+          # A major version is the maintainer's decision (spec R3), never an accident: without the tag v0.0.0 semantic-release
+          # plans 1.0.0 for the first release. When the maintainer decides on 1.0.0, they change this line on purpose.
+          case "$version" in
+            ''|0.*) ;;
+            *)
+              echo "planned $version: a major version is the maintainer's decision (spec R3); is the tag v0.0.0 missing?" >&2
+              exit 1
+              ;;
+          esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "next release version: ${version:-none}"
 
@@ -165,16 +174,50 @@ jobs:
             ls -l dist >&2 || true
             exit 1
           fi
+      # The identity of the bump commit: semantic-release would otherwise use its own default (semantic-release-bot).
       - name: semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_MODE: full
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: release/node_modules/.bin/semantic-release --extends ./release/release.config.js
-      # The tag as the remote has it (the repository is public, so the fetch needs no credentials), not the working tree.
-      - name: The tag matches the chart
+      # If main moved since plan, semantic-release finds its branch behind the remote, says so and exits 0 without a release.
+      # The tag is then missing and this run fails on purpose: the run of the newer push releases.
+      # The remote has the tag (the repository is public, so the fetch needs no credentials).
+      - name: The tag exists
         env:
           VERSION: ${{ needs.plan.outputs.version }}
         run: |
           git fetch --tags --force origin
+          # A tag that only exists locally (a push that failed after the tag was made) does not count: ask the remote too.
+          if ! git rev-parse -q --verify "refs/tags/v$VERSION" > /dev/null || ! git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" > /dev/null; then
+            echo "no tag v$VERSION: main moved during this run (semantic-release says \"behind\"); the run of the newer push releases" >&2
+            exit 1
+          fi
+      - name: The tag matches the chart
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
           git show "v$VERSION:deploy/chart/Chart.yaml" > "$RUNNER_TEMP/Chart.yaml"
           sh scripts/check-release.sh "v$VERSION" "$RUNNER_TEMP/Chart.yaml"
+      # The GitHub release exists, is published and has the chart. gh and jq are preinstalled on the runner.
+      - name: The GitHub release has the chart
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          fail() {
+            echo "$1" >&2
+            echo "recovery by hand (never move or delete the tag; docs/runbook): either create the release" >&2
+            echo "  gh release create v$VERSION dist/remedy-$VERSION.tgz --title v$VERSION --notes-file <the CHANGELOG.md section of $VERSION>" >&2
+            echo "or finish the existing one" >&2
+            echo "  gh release upload v$VERSION dist/remedy-$VERSION.tgz --clobber && gh release edit v$VERSION --draft=false" >&2
+            exit 1
+          }
+          release=$(gh release view "v$VERSION" --json isDraft,assets) || fail "no GitHub release v$VERSION"
+          printf '%s' "$release" | jq -e '.isDraft == false' > /dev/null || fail "the GitHub release v$VERSION is a draft"
+          printf '%s' "$release" | jq -e --arg name "remedy-$VERSION.tgz" 'any(.assets[]; .name == $name)' > /dev/null || fail "the GitHub release v$VERSION has no asset remedy-$VERSION.tgz"
+          echo "the GitHub release v$VERSION is published with remedy-$VERSION.tgz"
