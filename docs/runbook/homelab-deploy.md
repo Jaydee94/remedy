@@ -115,7 +115,7 @@ networkPolicy:
 
 The pinned CLI is not here: it comes from `deploy/cli-pin.yaml` of this repository (next section). Find the API server's address
 with `kubectl get endpoints kubernetes -o jsonpath='{.subsets[0].addresses[0].ip}'`; on a k3s cluster with several servers list
-each one. The chart refuses to render when `cluster.write.namespaces` contains `remedy-system`, and when the network policies and
+each one. The chart refuses to render when `cluster.write.namespaces` contains `remedy-system` or the Argo CD namespace, when `cluster.argoNamespace` is `remedy-system`, when `server.env` sets a variable the chart sets itself (`REMEDY_ADDR`, `REMEDY_INTERNAL_ADDR`, `REMEDY_DB`, `REMEDY_K8S_*`), and when the network policies and
 `cluster.enabled` are on but `networkPolicy.apiServer.cidrs` is empty.
 
 ## 6. The Argo CD Application

@@ -29,7 +29,7 @@ Success criteria:
 3. `make dummy-smoke` runs a real ad-hoc cluster run and an approved action against the demo workloads and fails with a clear
    message otherwise.
 4. The chart installs on the maintainer's k3s homelab with a secret that exists already, an Ingress and no code change.
-5. No trust boundary of `CLAUDE.md` is weakened (section 5 lists what the cluster adds).
+5. No trust boundary of `CLAUDE.md` is weakened (section 5 lists what the cluster adds; see R10, accepted until measured).
 
 ## 2. Decisions
 
@@ -298,11 +298,11 @@ what they did in plain lines. `dummy.env` and `dummy-status` give an agent URL, 
 - `Dockerfile` (server image) builds both server binaries and the UI, as today, plus `remedy-tokenrefresh`. A second
   `Dockerfile.runner` builds `remedy-runner`. `make images` builds both for the local architecture.
 - `.github/workflows/images.yml`: on push to `main` and on tags `v*`, buildx with QEMU for `linux/amd64,linux/arm64`, push to
-  `ghcr.io/jaydee94/remedy-server` and `remedy-runner` with `sha-<short>` and `edge` on a push to `main`, and `X.Y.Z` (without the `v`) on a tag `vX.Y.Z`. On a tag the workflow checks
+  `ghcr.io/jaydee94/remedy-server` and `remedy-runner` with `sha-<short>` and `edge` on a push to `main`, and `X.Y.Z` (without the `v`) on a tag `vX.Y.Z` (a tag also pushes the `sha-<short>` tag of its commit). On a tag the workflow checks
   that `Chart.yaml`'s `appVersion` equals the tag. The workflow has `packages: write` and nothing more.
-- `make chart-check` (in `make check` and CI): `helm lint` and `helm template` with `deploy/chart/ci/lint-values.yaml` (the cluster and
-  the write side on; it is the only values file the target renders, not the dummy's), `kubeconform` on that render when it is
-  installed (the Makefile says CI runs it), and the Go render tests in `deploy/` (D13), which render the chart with many other values.
+- `make chart-check` (in `make check` and CI): `helm lint` with `deploy/chart/ci/lint-values.yaml` (the cluster and
+  the write side on; it is the only values file the target uses, not the dummy's), and `helm template` of the same values piped into
+  `kubeconform` only when kubeconform is installed (the Makefile says CI runs it), and the Go render tests in `deploy/` (D13), which render the chart with many other values.
 - `renovate.json` gets a custom manager for `runner.cli.version` and the Argo CD version in `up.sh`.
 - Homelab: an Argo `Application` with two sources, the chart from this repository at a tag and a values file from the
   maintainer's GitOps repository (the repository is public: no credentials). Argo hooks map the chart's Helm hook to a `PostSync`
@@ -369,7 +369,7 @@ K-6 prepares for it. Until then the login stays the `kubectl exec -it` of sectio
 | R7 | `Recreate` and an RWO PVC mean a short outage per rollout; runs in flight are ended by the reaper; sessions (in memory) end. | One maintainer; acceptable. |
 | R8 | 24/7 operation on a subscription login stays the risk of `docs/research/subscription-cli-usage.md`. | Limits of automatic diagnosis, as before. |
 | R9 | The dummy's real agent spends subscription quota on every smoke run. | The smoke test makes two runs; it is opt-in, never in CI. |
-| R10 | New with the cluster. On Linux the CLI's OAuth credential is a plain file under `HOME=/state` (`CLAUDE_CONFIG_DIR=/state/claude`) and is readable by the uid the agent CLI runs as (65532, the runner's own). `REMEDY_RUNNER_TOKEN` is readable in `/proc/1/environ` of the runner container by the same uid. On the maintainer's macOS host the credential was in the keychain. The only barrier is `--restricted`, which per `claude --help` of 2.1.287 (`docs/research/spike-claude-billing.md`) confines file tools to the working directory; this was **not measured** with the pinned CLI (2.1.288) and the runner's exact flags. Agent output is not redacted before it is stored: `internal/redact` is applied to the prompt and to the gatekeeper's call text only. | Accepted until measured. Proposed, not done (a decision for the maintainer): a canary-file spike with the pinned CLI and the runner's exact flags (a canary file outside the workspace, never the credential itself), and redacting `sk-ant-` patterns from stored run output as defence in depth. |
+| R10 | New with the cluster. On Linux the CLI's OAuth credential is a plain file under `HOME=/state` (`CLAUDE_CONFIG_DIR=/state/claude`) and is readable by the uid the agent CLI runs as (65532, the runner's own). `REMEDY_RUNNER_TOKEN` is readable in `/proc/1/environ` of the runner container by the same uid. On the maintainer's macOS host the credential was in the keychain. The only barrier is `--restricted`, which per `claude --help` of 2.1.287 (`docs/research/spike-claude-billing.md`) confines file tools to the working directory; this was **not measured** with the pinned CLI (`deploy/cli-pin.yaml`, 2.1.292 at the time of writing) and the runner's exact flags. Agent output is not redacted before it is stored: `internal/redact` is applied to the prompt and to the gatekeeper's call text only. | Accepted until measured. Proposed, not done (a decision for the maintainer): a canary-file spike with the pinned CLI and the runner's exact flags (a canary file outside the workspace, never the credential itself), and redacting `sk-ant-` patterns from stored run output as defence in depth. |
 
 ## 12. Documents to change
 

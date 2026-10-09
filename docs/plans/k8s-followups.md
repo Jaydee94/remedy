@@ -13,7 +13,7 @@ A plain backlog, not a plan. Each line says what is open and where it comes from
 - The S3 run on k3s: `scripts/spike/k8s/s3-netpol.sh <homelab-context>`. It should also answer whether kube-router lets the
   node's traffic (the kubelet's probes on 8080 and 8082) through the default policies. (`docs/research/k8s-s3-networkpolicy.md`;
   `docs/runbook/homelab-deploy.md` section 6.)
-- The confinement spike of spec section 5, R10: with the pinned CLI and the runner's exact flags, can the agent read a canary file
+- The confinement spike of spec section 11, R10: with the pinned CLI and the runner's exact flags, can the agent read a canary file
   outside its workspace (never the credential itself)? (`docs/specs/2026-10-06-kubernetes-deployment-design.md`, R10.)
 - Success criterion 4 of the spec: the runbook run end to end under Argo CD on k3s, including Argo CD's handling of the
   `PostSync` hook and of the Secret without data. (`docs/runbook/homelab-deploy.md`, "Status of this runbook".)

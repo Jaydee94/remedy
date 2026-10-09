@@ -25,7 +25,7 @@ With `cluster.enabled` the control plane runs as the read account (a projected t
 With `cluster.write.enabled` a CronJob (default schedule `*/30 * * * *`, `cluster.write.tokenRefresh.schedule`) and a Job that runs as a post-install and post-upgrade
 hook mint a two-hour token of the write account into the Secret
 `remedy-write-token`, which the pod mounts; Roles are created in each of `cluster.write.namespaces` (which must exist) and in
-`cluster.argoNamespace`. `cluster.write.namespaces` can never contain the release namespace. If the refresher stops, actions
+`cluster.argoNamespace`. `cluster.write.namespaces` can never contain the release namespace or `cluster.argoNamespace`, and `cluster.argoNamespace` can never be the release namespace (the chart refuses to render). If the refresher stops, actions
 fail closed after the token expires. Under Argo CD add an `ignoreDifferences` for the Secret's `/data`.
 
 ## NetworkPolicies: what the address rules mean
