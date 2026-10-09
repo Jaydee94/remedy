@@ -35,7 +35,7 @@ version=$(field version)
 app=$(field appVersion)
 [ -n "$version" ] && [ -n "$app" ] || { echo "$chart has no version or no appVersion" >&2; exit 1; }
 if [ "$version" != "$want" ] || [ "$app" != "$want" ]; then
-  echo "the tag says $want but $chart has version $version and appVersion $app: change both, merge, then tag" >&2
+  echo "the tag says $want but $chart has version $version and appVersion $app: the release writes both from the tag's version, so if they differ something changed the chart by hand" >&2
   exit 1
 fi
 echo "the tag $tag matches the chart"

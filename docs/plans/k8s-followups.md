@@ -11,12 +11,12 @@ A plain backlog, not a plan. Each line says what is open and where it comes from
 - The first release, by the release automation (replaces K-5 task 6; `docs/runbook/release.md`, `docs/plans/release-1-automation.md`
   task 6): create the tag `v0.0.0` on the first commit; set the repository's squash merge to the pull request title
   (`gh api -X PATCH repos/Jaydee94/remedy -f squash_merge_commit_title=PR_TITLE -f squash_merge_commit_message=BLANK`); merge the
-  pipeline pull request with a `feat:` title; make the three packages (`remedy-server`, `remedy-runner`, `charts/remedy`) public; run the
+  pipeline pull request with a `feat:` title; make the three packages (`remedy-server`, `remedy-runner` now, `charts/remedy` after the first run) public; run the
   released images in the dummy once; write `docs/research/release-first-run.md`. The first run is expected to prove three things:
   the bump commit push by `GITHUB_TOKEN`, the chart package linked to the repository, and the final check of `publish`.
 - The Renovate pull request for the CLI pin: Renovate has opened one on the branch `renovate/claude-code-cli-2.x` (a CLI bump).
   `cli-pin.yml` fails it until `scripts/cli-checksums.sh <version>` has written the checksums; run it on that branch. A pin bump is a
-  `chore` commit that releases nothing: to ship it, title the pull request `fix: pin the claude CLI X.Y.Z`.
+  `chore(deps)` commit (expected) that releases nothing: retitling it `fix: pin the claude CLI X.Y.Z` to ship it is the maintainer's decision.
 - The OCI chart install under Argo CD (`chart:` from `ghcr.io/jaydee94/charts` with a `ref` source for `deploy/cli-pin.yaml`) is not
   proven; the git source at the tag is the alternative. (`docs/runbook/homelab-deploy.md`, section 6.)
 - The S3 run on k3s: `scripts/spike/k8s/s3-netpol.sh <homelab-context>`. It should also answer whether kube-router lets the
@@ -59,5 +59,6 @@ A plain backlog, not a plan. Each line says what is open and where it comes from
   `EXIT` trap; `dummy-logout` on a symlinked `claude` prints "removed" without deleting.
 - Login check: its timeout kills the CLI but not the CLI's descendants.
 - Runner: no test that a 401 from the control plane means "not connected".
-- Release: merging to `main` triggers the first push of the `sha-*` and `edge` images (and, with a `feat` or `fix`, the release) to GHCR;
-  the packages are expected to be private until they are made public.
+- Release: the image packages `remedy-server` and `remedy-runner` already exist on GHCR (the old `images.yml` pushed `sha-*` and `edge`
+  when #130 was merged: run 37928003258, success, 2026-10-09T12:07Z); their visibility was not checked and they can be made public now.
+  `charts/remedy` is created by the first release (expected private until made public).

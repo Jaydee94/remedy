@@ -3,7 +3,7 @@
 **Status of this runbook.** It has **not** been run end to end. Success criterion 4 of the spec is not shown. The k3s half of the
 NetworkPolicy spike (S3) is not measured (`docs/research/k8s-s3-networkpolicy.md`). Nothing has been released yet: no tag, no
 image and no chart in the registry. The automated release ([`release.md`](release.md)) is implemented and its first run is
-expected on the first merge to `main`; the packages are expected to be private until the maintainer makes them public. The
+expected on the first merge to `main`; the chart package is created by the first release, and the packages are expected to be private until the maintainer makes them public. The
 **install of the OCI chart under Argo CD is not proven on a cluster**: Argo CD's documentation shows an OCI Helm source (a
 registry URL without `oci://`, `chart:`, `targetRevision:`), but that source together with a `ref` source for
 `deploy/cli-pin.yaml` is not shown there and was not tried. The chart was only rendered with Helm 4.3.0 (also from a local
@@ -275,8 +275,9 @@ The full runbook is [`release.md`](release.md). In short:
 2. The pull request title must be a conventional commit (`feat: ...`, `fix: ...`, `docs: ...`): the `pr-title` check enforces it,
    and the squash merge uses the title as the commit.
 3. The changelog is `CHANGELOG.md` and the text of the GitHub release.
-4. After the first release make `remedy-server`, `remedy-runner` and `charts/remedy` public once (GitHub: profile, Packages, the
-   package, Package settings, Change visibility). Otherwise the cluster cannot pull them.
+4. Make `remedy-server`, `remedy-runner` and `charts/remedy` public once (GitHub: profile, Packages, the package, Package settings,
+   Change visibility). The two image packages already exist and can be made public now; `charts/remedy` exists after the first
+   release. Otherwise the cluster cannot pull them.
 5. If `images` or `chart` fail, re-run the failed jobs of that run, but only while `main` has not moved (a re-run computes the
    same version and overwrites the same tags). Never move or delete a tag.
 6. To skip a release on purpose, merge only `docs`, `chore` or `ci` commits (they release nothing).

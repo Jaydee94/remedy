@@ -14,7 +14,7 @@ ok  "fix"                          "fix: do not restart the server twice"
 ok  "breaking"                     "feat!: drop the old runner route"
 ok  "scope and breaking"           "fix(server)!: refuse a bad token"
 ok  "docs"                         "docs: README for the release"
-ok  "chore"                        "chore(release): 1.0.0 [skip ci]"
+ok  "chore"                        "chore(release): 1.0.0"
 ok  "ci"                           "ci: build both images on a pull request"
 ok  "perf"                         "perf: read the claim once"
 ok  "revert"                       "revert: feat: add the release pipeline"
@@ -36,6 +36,19 @@ second line"
 bad "a type inside the title"      "Add a feat: x"
 bad "a bad second line"            "feat: one
  two"
+
+# GitHub skips the whole workflow run of a push when a commit message contains one of these words; a title with one
+# would skip the release for its merge.
+bad "skip ci"                      "feat: add x [skip ci]"
+bad "ci skip"                      "feat: add x [ci skip]"
+bad "no ci"                        "fix: add x [no ci]"
+bad "skip actions"                 "feat: add x [skip actions]"
+bad "actions skip"                 "feat: add x [actions skip]"
+bad "skip ci, upper case"          "feat: add x [SKIP CI]"
+bad "skip ci, mixed case"          "fix: add x [Skip Ci]"
+bad "skip ci in the middle"        "feat: add [skip ci] x"
+ok  "a bracket that is no keyword" "feat: add [skipping] x"
+ok  "the words without brackets"   "docs: how to skip ci"
 
 # The title can also come from the environment (the workflow passes it there).
 if PR_TITLE="fix: from the environment" sh "$SCRIPT" > /dev/null 2>&1; then echo "ok    PR_TITLE"; else echo "FAIL  PR_TITLE"; fails=$((fails + 1)); fi

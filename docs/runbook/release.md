@@ -15,7 +15,7 @@ expected, not seen: section 3 lists the three things the first run proves.
 | Job | What it does |
 |---|---|
 | `plan` | Runs semantic-release in dry-run mode and says the next version `X.Y.Z`, or nothing. Refuses a version that is not `X.Y.Z` and any major other than 0. |
-| `images` | Builds `remedy-server` and `remedy-runner` for `linux/amd64` and `linux/arm64` and pushes them. Runs on every push to `main`. |
+| `images` | Builds `remedy-server` and `remedy-runner` for `linux/amd64` and `linux/arm64` and pushes them. Runs on every push to `main` once `plan` has succeeded (it needs `plan`). |
 | `chart` | Only with a version: lints and packages the chart with `version` and `appVersion` set to `X.Y.Z`, pushes it to the registry. |
 | `publish` | Only with a version, after `images` and `chart`: semantic-release for real (bump commit, tag, GitHub release), then three checks. |
 
@@ -42,20 +42,33 @@ with one of the types `feat`, `fix`, `perf`, `revert`, `docs`, `chore`, `ci`, `t
 |---|---|
 | `feat` | minor (`0.1.0` to `0.2.0`) |
 | `fix`, `perf` | patch |
-| a breaking change (`feat!:` or a `BREAKING CHANGE:` footer) | minor, not major |
-| a revert made by git (`Revert "feat: ..."`) | patch |
-| `docs`, `chore`, `ci`, `test`, `refactor`, `style`, `build` | nothing |
+| any type marked with `!` (`feat!:`, and also `docs!:`, `chore!:`, `refactor!:`) | minor, not major. With the squash setting of section 3 (blank body) a `BREAKING CHANGE:` footer cannot reach `main`; only the `!` in the title marks a breaking change. This follows from the setting; it was not tried. |
+| `docs`, `chore`, `ci`, `test`, `refactor`, `style`, `build`, `revert` without a `!` | nothing |
+
+**A revert releases nothing by itself.** The `revert` rule (patch) fires only on a commit whose body has the line
+`This reverts commit <sha>.` that `git revert` writes (the scratch test `release/test/dry-run.sh` covers exactly that commit).
+With the squash setting of section 3 the body is blank, so the line never reaches `main`. A revert titled `revert: x` also gives no
+release (reviewer ran the real analyzer). GitHub's Revert button titles the pull request `Revert "feat: x"`, which the title check
+refuses: retitle it. To ship a revert, title the pull request `fix: revert <what>`.
 
 Traps:
 
-- **`[skip ci]` skips the whole release run.** GitHub skips the run of a push when a commit message of the push contains
-  `[skip ci]`, `[ci skip]`, `[no ci]` or `[skip actions]`: no images, no release for that merge. Keep these words out of titles
-  and, while the squash body carries commit messages, out of every commit. (The bump commit has `[skip ci]` on purpose.)
-- **A major version is refused on purpose** (spec R3). The `plan` job fails when the planned major is not 0, and the rules in
-  `release/release.config.js` make a breaking change a minor. To go to 1.0.0 the maintainer changes the guard in
-  `.github/workflows/release.yml` (the `case "$version"` step of `plan`) and the breaking rule in the configuration, deliberately.
-- With the repository setting of section 3 the squash body is empty, so a breaking change can only be marked with `!` in the title.
-  This follows from the setting; it was not tried.
+- **`[skip ci]` skips the whole release run.** GitHub documents the keywords `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`
+  and `[actions skip]`, and the trailer `skip-checks: true`, in the commit message of a push (and the HEAD commit for pull
+  requests): the workflow run is skipped, so no images and no release for that merge. In practice the squash commit is what is
+  pushed to `main`. `scripts/check-pr-title.sh` refuses the five keywords in a title, case-insensitively. The bump commit has
+  `[skip ci]` on purpose.
+- **A major version is refused on purpose** (spec R3). To go to 1.0.0 the maintainer does all four of these, in one pull request:
+  (a) the `breaking` rule in `release/release.config.js` becomes `release: 'major'` (as written it can never produce a major);
+  (b) 1.0.0 then happens only when a breaking commit (a `feat!:` title) reaches `main` after that;
+  (c) the guard `case "$version" in ''|0.*)` of the `plan` job in `.github/workflows/release.yml` is removed or relaxed on purpose, because
+  as written it also blocks 1.1.0 and every later major;
+  (d) `release/test/dry-run.sh` pins the 0.x behaviour (`feat!` gives 0.2.0, `refactor!` 0.5.0), so `make release-test` and the CI
+  `release` job fail until the test is updated in the same pull request.
+- **Renovate titles.** `config:recommended` is expected to title a `dependencies` bump `fix(deps):`, so a merged semantic-release, Go or web
+  dependency pull request would release a patch with no product change. Retitle such a pull request `chore(deps):` if that is not wanted.
+  The CLI pin pull request is expected to be `chore(deps)`; retitling it `fix: pin the claude CLI X.Y.Z` to ship it is the maintainer's
+  decision (section 5). Neither title was observed.
 - A wrong type releases the wrong bump (spec A3). Do not rewrite a tag; fix forward.
 
 ## 3. One-time setup
@@ -66,10 +79,16 @@ Do these before the first merge, in this order. Each is outward-facing: do them 
    and its changelog holds the history of `feat` and `fix` commits. Nothing runs on a tag.
 
    ```sh
+   git fetch origin
    git tag v0.0.0 $(git rev-list --max-parents=0 origin/main) && git push origin v0.0.0
    ```
 
    (`origin/main` has one root commit at the time of writing; the command needs exactly one.)
+
+   Expected: no workflow run for this tag. GitHub reads the workflow files of the tagged commit, and the first commit holds only
+   `README.md` (checked with `git ls-tree`). If a run does start, it is the old `images.yml` of `main` (it still has
+   `on: push: tags: ['v*']` until the pipeline pull request is merged): it is expected to fail at its first step, `check-release.sh v0.0.0`
+   against the `Chart.yaml` version `0.1.0`, before any login or push. A red run like that is harmless; ignore it. The merge removes the trigger.
 
 2. **The squash merge setting.** The repository currently has `squash_merge_commit_title=COMMIT_OR_PR_TITLE` and
    `squash_merge_commit_message=COMMIT_MESSAGES`. With these a single-commit pull request is squashed with the commit's subject, not
@@ -87,14 +106,19 @@ Do these before the first merge, in this order. Each is outward-facing: do them 
    ```
 
 3. **Merge the pipeline pull request** with a conventional title such as
-   `feat: automated releases with semantic-release, images and the Helm chart as OCI artifacts`. It is the first run.
+   `feat: automated releases with semantic-release, images and the Helm chart as OCI artifacts`. It is the first run; it is expected
+   to release `0.1.0`. The first changelog will list the `feat` and `fix` commits since the first commit, but not pull request #130:
+   its title is not a conventional commit, so its squash commit is not one either.
 
-4. **Make the three packages public** after the first run. They are expected to be created private by the first push. In GitHub:
-   profile, Packages, then `remedy-server`, `remedy-runner` and `charts/remedy`, Package settings, Change visibility, Public.
-   Without this the cluster cannot pull them.
+4. **Make the three packages public.** The two image packages `remedy-server` and `remedy-runner` already exist on GHCR: the old
+   `images.yml` pushed `sha-*` and `edge` when #130 was merged (run 37928003258, success, 2026-10-09T12:07Z, as told by the
+   maintainer's coordinator). Their visibility was not checked (the token used here lacks `read:packages`), and they can be made public
+   now. Only `charts/remedy` is created by the first release, expected private like a new package; make it public after the first run. In GitHub:
+   profile, Packages, then the package, Package settings, Change visibility, Public. Without this the cluster cannot pull them.
 
    ```sh
    docker logout ghcr.io 2> /dev/null || true
+   helm registry logout ghcr.io 2> /dev/null || true
    docker pull ghcr.io/jaydee94/remedy-server:0.1.0
    helm show chart oci://ghcr.io/jaydee94/charts/remedy --version 0.1.0
    ```
@@ -123,19 +147,20 @@ overwrites the same tags). Re-run only the **latest** run of `main`: an older ru
 | 3 | `images` or `chart` fails with a version | `X.Y.Z` artifacts may be pushed; no commit, tag or release. Run "Re-run failed jobs" while `main` has not moved. |
 | 4 | `publish`: the chart package is missing | As 3. |
 | 5 | `publish`: `main` moved | semantic-release exits 0 as "behind", the check "The tag exists" fails with "no tag". Nothing to do: the run of the newer push releases. |
-| 6 | The bump commit is on `main` but the tag push failed | `main` has `chore(release): X.Y.Z` and no tag. Tag the bump commit by hand and run the checks again, or let the next run plan the same version (a duplicate changelog section is fixed by a `docs:` pull request): `git fetch origin && git tag vX.Y.Z <sha of the bump commit> && git push origin vX.Y.Z` |
+| 6 | The bump commit is on `main` but the tag push failed | `main` has `chore(release): X.Y.Z` and no tag, and no GitHub release (expected order, from the plugin sources, not run here: bump commit pushed in `prepare`, then tag created and pushed, the GitHub release last). Either let the next run plan the same version (a duplicate changelog section is fixed by a `docs:` pull request), or tag by hand, `git fetch origin && git tag vX.Y.Z <sha of the bump commit> && git push origin vX.Y.Z`, then follow with row 7 (create the release by hand) and run the three checks: the tag exists locally and on the remote, `git rev-parse -q --verify refs/tags/vX.Y.Z && git ls-remote --exit-code --tags origin refs/tags/vX.Y.Z`; the chart at the tag, `git show vX.Y.Z:deploy/chart/Chart.yaml \| grep -E '^(version\|appVersion):'`; the release, `gh release view vX.Y.Z --json isDraft,assets` (not a draft, asset `remedy-X.Y.Z.tgz`). |
 | 7 | The tag is pushed but the GitHub release failed or is a draft | A re-run of `publish` does not recover. Create the release by hand, with the chart from the run's artifact `chart` (or `helm pull oci://ghcr.io/jaydee94/charts/remedy --version X.Y.Z`): `gh release create vX.Y.Z remedy-X.Y.Z.tgz --title vX.Y.Z --notes-file <the CHANGELOG section of X.Y.Z>`. Or finish the existing one: `gh release upload vX.Y.Z remedy-X.Y.Z.tgz --clobber && gh release edit vX.Y.Z --draft=false` |
 | 8 | A final check fails although the tag exists | Tag and `Chart.yaml` disagree: fix forward with a `fix:` pull request. |
 | 9 | Before the first merge | Section 3: the tag `v0.0.0` and the squash setting. |
 
 ## 5. Skipping a release on purpose
 
-- Merge only `docs`, `chore`, `ci`, `test`, `refactor`, `style` or `build` pull requests: they release nothing, and the merge still
+- Merge only `docs`, `chore`, `ci`, `test`, `refactor`, `style` or `build` pull requests without a `!`: they release nothing, and the merge still
   pushes `sha-<short>` and `edge`. This is the normal way.
 - `[skip ci]` in a commit message of the merge skips the whole workflow, so the images are not rebuilt either. Use it only when
   nothing should run.
-- A pin bump of the CLI (`deploy/cli-pin.yaml`, a Renovate pull request) is a `chore` or `ci` commit and releases nothing; the
-  cluster reads the pin at the release tag. Give that pull request the title `fix: pin the claude CLI X.Y.Z` to release it.
+- A pin bump of the CLI (`deploy/cli-pin.yaml`, a Renovate pull request) is expected to be a `chore(deps)` commit and releases nothing;
+  the cluster reads the pin at the release tag. Retitling the pull request `fix: pin the claude CLI X.Y.Z` to release it is the
+  maintainer's decision.
   Renovate opens the pull request; `cli-pin.yml` fails it until `scripts/cli-checksums.sh <version>` has written the checksums on
   its branch.
 

@@ -18,5 +18,11 @@ case $title in
   *'
 '*) fail ;;
 esac
+# GitHub skips the whole workflow run of a push when a commit message contains one of these words: a title with one would
+# skip the release (and the images) for its merge.
+if printf '%s' "$title" | grep -Eiq '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]'; then
+  echo "the title contains a skip keyword ([skip ci], [ci skip], [no ci], [skip actions], [actions skip]): it would skip the release run of the merge" >&2
+  exit 1
+fi
 printf '%s' "$title" | grep -Eq '^(feat|fix|perf|revert|docs|chore|ci|test|refactor|style|build)(\([a-z0-9._/-]+\))?!?: [^ ]' || fail
 echo "the title is a conventional commit"

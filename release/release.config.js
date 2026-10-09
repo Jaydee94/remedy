@@ -6,6 +6,8 @@
 //   full  local + the GitHub release with the chart attached; used by .github/workflows/release.yml (publish)
 // The rules are those of 0.x (docs/specs/2026-10-09-release-automation-design.md R3): feat is minor, fix and perf are
 // patch, a breaking change is minor too (1.0.0 is the maintainer's decision), revert is patch, nothing else releases.
+// The revert rule fires only on a commit whose body has the line `This reverts commit <sha>.` that git revert writes: with
+// the blank squash body of the repository setting (docs/runbook/release.md) a revert releases nothing by itself.
 // There is no default: a forgotten RELEASE_MODE must not turn into a publishing run.
 const mode = process.env.RELEASE_MODE
 if (!['plan', 'local', 'full'].includes(mode)) {
