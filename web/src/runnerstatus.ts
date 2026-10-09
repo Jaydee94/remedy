@@ -16,6 +16,10 @@ export interface RunnerView {
   sentence: string
   /** What to do, when there is something to do. */
   hint: string | null
+  /** A fact about the past, outside the live sentence: it changes with the clock, the sentence must not. */
+  detail: string | null
+  /** A command to copy, shown apart from the hint. */
+  command: string | null
   /** The CLI's version line. Only a runner that is connected has one: a gone runner's version is a fact about the past. */
   version: string | null
 }
@@ -24,8 +28,13 @@ const good = { dot: 'bg-success', soft: 'bg-soft-resolved', text: 'text-success'
 const bad = { dot: 'bg-destructive', soft: 'bg-soft-open', text: 'text-destructive' }
 const neutral = { dot: 'bg-muted-foreground', soft: 'bg-muted', text: 'text-muted-foreground' }
 
-/** How to log the runner in once. The runner pod's name is fixed by the chart. */
-export const loginHint = 'Log in once in the runner pod: kubectl exec -it remedy-runner-0 -c runner -- /opt/claude/claude, then type /login.'
+/** How to log the runner in once; the command follows it. */
+export const loginHint = 'Log in once in the runner pod, then type /login:'
+
+/** The runner pod's name is fixed by the chart. */
+export const loginCommand = 'kubectl exec -it remedy-runner-0 -c runner -- /opt/claude/claude'
+
+const checkPod = 'Check that the runner is running: in Kubernetes the pod is remedy-runner-0.'
 
 /** A control plane without `GET /api/runner` (an older one) answers 404: the section then says nothing instead of an error. */
 export function hideOnError(status: number): boolean {
@@ -45,23 +54,17 @@ export function runnerView(s: RunnerStatus, now: number): RunnerView {
 
   if (!s.connected) {
     if (!s.lastSeenAt) {
-      return {
-        connection,
-        login,
-        sentence: 'I have not heard from my runner yet.',
-        hint: 'Check that the runner is running: in Kubernetes the pod is remedy-runner-0.',
-        version,
-      }
+      return { connection, login, sentence: 'I have not heard from my runner yet.', hint: checkPod, detail: null, command: null, version }
     }
     const silent = Math.max(0, Math.round((now - Date.parse(s.lastSeenAt)) / 1000))
-    return { connection, login, sentence: `My runner has not been heard from for ${duration(silent)}.`, hint: null, version }
+    return { connection, login, sentence: 'My runner is not connected.', hint: checkPod, detail: `I last heard from it ${duration(silent)} ago.`, command: null, version }
   }
   switch (s.login) {
     case 'ok':
-      return { connection, login, sentence: 'My runner is connected and logged in, so I can run an agent.', hint: null, version }
+      return { connection, login, sentence: 'My runner is connected and logged in, so I can run an agent.', hint: null, detail: null, command: null, version }
     case 'missing':
-      return { connection, login, sentence: 'My runner is connected, but the agent is not logged in, so I cannot run one.', hint: loginHint, version }
+      return { connection, login, sentence: 'My runner is connected, but the agent is not logged in, so I cannot run one.', hint: loginHint, detail: null, command: loginCommand, version }
     default:
-      return { connection, login, sentence: 'My runner is connected. I do not know yet whether the agent is logged in.', hint: null, version }
+      return { connection, login, sentence: 'My runner is connected. I do not know yet whether the agent is logged in.', hint: null, detail: null, command: null, version }
   }
 }
