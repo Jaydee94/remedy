@@ -146,6 +146,7 @@ type Runner struct {
 	ClaudeBin     string        // REMEDY_CLAUDE_BIN, default "claude"
 	ClaudeModel   string        // REMEDY_CLAUDE_MODEL, empty means the adapter's default
 	RunTimeout    time.Duration // REMEDY_RUN_TIMEOUT, a Go duration, default 10m, at least 10s
+	StatusAddr    string        // REMEDY_RUNNER_STATUS_ADDR, default empty: no status listener; set, it serves /livez and /readyz
 }
 
 func RunnerFromEnv(get func(string) string) (Runner, error) {
@@ -158,6 +159,12 @@ func RunnerFromEnv(get func(string) string) (Runner, error) {
 	}
 	if len(c.Token) < minTokenLen {
 		return Runner{}, errors.New("REMEDY_RUNNER_TOKEN must be set and at least 24 characters")
+	}
+	c.StatusAddr = get("REMEDY_RUNNER_STATUS_ADDR")
+	if c.StatusAddr != "" {
+		if _, port, err := net.SplitHostPort(c.StatusAddr); err != nil || port == "" {
+			return Runner{}, errors.New("REMEDY_RUNNER_STATUS_ADDR must be host:port or :port, for example :8082")
+		}
 	}
 
 	c.RunTimeout = defaultRunTimeout

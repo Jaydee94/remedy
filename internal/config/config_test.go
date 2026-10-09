@@ -157,3 +157,25 @@ func TestServerFromEnvRefusesABadInternalAddr(t *testing.T) {
 		}
 	}
 }
+
+func TestRunnerFromEnvStatusAddr(t *testing.T) {
+	base := map[string]string{"REMEDY_RUNNER_TOKEN": "a-runner-token-of-24-chars-or-more"}
+	c, err := config.RunnerFromEnv(env(base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.StatusAddr != "" {
+		t.Fatalf("the default is no status listener, got %q", c.StatusAddr)
+	}
+	base["REMEDY_RUNNER_STATUS_ADDR"] = ":8082"
+	c, err = config.RunnerFromEnv(env(base))
+	if err != nil || c.StatusAddr != ":8082" {
+		t.Fatalf("StatusAddr = %q, err %v", c.StatusAddr, err)
+	}
+	for _, bad := range []string{"8082", "localhost", "localhost:"} {
+		base["REMEDY_RUNNER_STATUS_ADDR"] = bad
+		if _, err := config.RunnerFromEnv(env(base)); err == nil || !strings.Contains(err.Error(), "REMEDY_RUNNER_STATUS_ADDR") {
+			t.Errorf("%q: err = %v, want one that names the variable", bad, err)
+		}
+	}
+}
