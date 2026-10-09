@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -58,9 +59,15 @@ func main() {
 	defer stop()
 
 	if cfg.StatusAddr != "" {
-		statusSrv := &http.Server{Addr: cfg.StatusAddr, Handler: runner.StatusHandler(status), ReadHeaderTimeout: 10 * time.Second}
+		// Bind before anything else starts: a runner that cannot serve its probes must not run on without them.
+		ln, err := net.Listen("tcp", cfg.StatusAddr)
+		if err != nil {
+			log.Error("cannot listen for the status probes", "addr", cfg.StatusAddr, "err", err)
+			os.Exit(1)
+		}
+		statusSrv := &http.Server{Handler: runner.StatusHandler(status), ReadHeaderTimeout: 10 * time.Second}
 		go func() {
-			if err := statusSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if err := statusSrv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Error("status listener failed", "err", err)
 				os.Exit(1)
 			}
@@ -71,7 +78,7 @@ func main() {
 			defer cancel()
 			_ = statusSrv.Shutdown(shutdown)
 		}()
-		log.Info("status listener", "addr", cfg.StatusAddr)
+		log.Info("status listener", "addr", ln.Addr().String())
 	}
 	go (&runner.Reporter{Client: loop.Client, Status: status, Log: log}).Run(ctx)
 	go (&runner.LoginChecker{

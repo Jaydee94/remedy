@@ -117,7 +117,10 @@ func TestTheLoginCheckerChecksAtOnceAndKeepsTheVersion(t *testing.T) {
 	calls := make(chan struct{}, 10)
 	checker := &runner.LoginChecker{
 		Check: func(context.Context) (provider.LoginState, string) {
-			calls <- struct{}{}
+			select {
+			case calls <- struct{}{}:
+			default:
+			}
 			return provider.LoginMissing, ""
 		},
 		Version:   func(context.Context) string { return "2.1.288 (Claude Code)" },
@@ -172,7 +175,10 @@ func TestTheCheckerTreatsAnUnknownAnswerAsUnknownNeverAsMissing(t *testing.T) {
 	calls := make(chan struct{}, 10)
 	checker := &runner.LoginChecker{
 		Check: func(context.Context) (provider.LoginState, string) {
-			calls <- struct{}{}
+			select {
+			case calls <- struct{}{}:
+			default:
+			}
 			return provider.LoginUnknown, "the check timed out"
 		},
 		Status: status, OKEvery: time.Hour, ElseEvery: 10 * time.Millisecond, Log: quiet(),
@@ -251,4 +257,50 @@ func TestTheReporterDoesNotNeedTheClaimLoop(t *testing.T) {
 	eventually(t, "not connected from the failing report while the claim is still stuck", func() bool { return !status.Connected() })
 	failing.Store(false)
 	eventually(t, "connected again from the report alone", status.Connected)
+}
+
+// A report that is cut short by the runner stopping says nothing about the control plane: Connected must stay as it was.
+func TestAReportCutShortByShutdownDoesNotMarkTheRunnerNotConnected(t *testing.T) {
+	arrived := make(chan struct{}, 1)
+	release := make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /runner/v1/status", func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case arrived <- struct{}{}:
+		default:
+		}
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { close(release) }) // runs before ts.Close
+	status := runner.NewStatus()
+	status.SetConnected(true)
+	rep := &runner.Reporter{
+		Client: &runner.Client{BaseURL: ts.URL, Token: "runner-token-with-at-least-24-chars", HTTP: ts.Client()},
+		Status: status, Interval: 20 * time.Millisecond, Log: quiet(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { rep.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	select {
+	case <-arrived:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the report never arrived")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return after the cancel")
+	}
+	if !status.Connected() {
+		t.Fatal("a report cut short by the shutdown marked the runner not connected")
+	}
 }

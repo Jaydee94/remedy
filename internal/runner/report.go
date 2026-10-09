@@ -44,6 +44,8 @@ func (r *Reporter) Run(ctx context.Context) {
 	if interval <= 0 {
 		interval = DefaultReportInterval
 	}
+	// Loop.Run writes the same fact from the claim: the two disagree only when the claim and status endpoints disagree,
+	// and then not ready is the right answer.
 	for {
 		if err := r.Client.ReportStatus(ctx, r.Status.Report()); err != nil {
 			if ctx.Err() != nil {
@@ -81,6 +83,7 @@ func (c *LoginChecker) Run(ctx context.Context) {
 		elseEvery = DefaultLoginCheckElse
 	}
 	if c.Version != nil {
+		// Read once at start: a CLI upgrade restarts the pod.
 		vctx, cancel := context.WithTimeout(ctx, loginCheckTimeout)
 		c.Status.SetCLIVersion(c.Version(vctx))
 		cancel()

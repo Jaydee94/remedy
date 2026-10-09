@@ -47,6 +47,8 @@ func (l *Loop) Run(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
+			// The Reporter writes the same fact from the status endpoint: they disagree only when the claim and status
+			// endpoints disagree, and then not ready is the right answer.
 			l.Status.SetConnected(false)
 			l.Log.Warn("claim failed", "err", err)
 			sleep(ctx, backoff)
