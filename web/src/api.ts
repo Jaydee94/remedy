@@ -38,6 +38,19 @@ export interface Capabilities {
   }
 }
 
+/** What the control plane knows about its runner. The login is `unknown` whenever the runner is not connected. */
+export interface RunnerStatus {
+  /** The runner made an authenticated request in the last 45 seconds. */
+  connected: boolean
+  /** When the runner last made one. Left out when it never has. */
+  lastSeenAt?: string
+  login: 'ok' | 'missing' | 'unknown'
+  /** When the runner last checked its login. */
+  loginCheckedAt?: string
+  /** The CLI's version line, plain text. */
+  cliVersion?: string
+}
+
 /** A call of an agent to a gatekeeper tool: a row of the audit log, and for a mutating tool an approval. */
 export interface ToolCall {
   id: number
@@ -261,6 +274,7 @@ export const api = {
   listIncidentRuns: (incidentId: number) => request<Run[]>('GET', `/api/runs?incident=${incidentId}`),
   diagnoseIncident: (id: number) => request<{ runId: string }>('POST', `/api/incidents/${id}/diagnose`),
   getLimits: () => request<Limits>('GET', '/api/limits'),
+  getRunner: () => request<RunnerStatus>('GET', '/api/runner'),
 
   /** The newest entries, or the ones before the entry with the id `before`. */
   listActivity: (before?: number) =>

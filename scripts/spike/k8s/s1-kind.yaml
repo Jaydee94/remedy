@@ -1,0 +1,9 @@
+# THROWAWAY (spike S1). A kind cluster whose node mounts a host directory.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: remedy-spike
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: __HOSTDIR__
+        containerPath: /mnt/remedy-claude

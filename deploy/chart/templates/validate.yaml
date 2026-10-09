@@ -1,0 +1,29 @@
+{{- /* Fails the render for a value the chart cannot work without or must never accept. It renders nothing. */ -}}
+{{- $_ := include "remedy.secretName" . -}}
+{{- range $name, $_ := .Values.server.env }}
+{{- if or (has $name (list "REMEDY_ADDR" "REMEDY_INTERNAL_ADDR" "REMEDY_DB")) (hasPrefix "REMEDY_K8S_" $name) }}
+{{- fail (printf "server.env.%s: the chart sets this variable itself (a second entry would silently win); use the chart's own values (server.service, persistence, cluster.*) instead" $name) }}
+{{- end }}
+{{- end }}
+{{- if .Values.cluster.write.enabled }}
+{{- if not .Values.cluster.enabled }}
+{{- fail "cluster.write.enabled needs cluster.enabled: the actions check their target with the read side" }}
+{{- end }}
+{{- if not .Values.cluster.write.namespaces }}
+{{- fail "cluster.write.namespaces must name at least one namespace when cluster.write.enabled is true" }}
+{{- end }}
+{{- if eq .Values.cluster.argoNamespace $.Release.Namespace }}
+{{- fail (printf "cluster.argoNamespace is the release namespace %q: the write Role for Argo CD applications would be a write Role in the release namespace; Remedy may read itself, never change itself" .Values.cluster.argoNamespace) }}
+{{- end }}
+{{- range .Values.cluster.write.namespaces }}
+{{- if eq . $.Values.cluster.argoNamespace }}
+{{- fail (printf "cluster.write.namespaces contains the Argo CD namespace %q (cluster.argoNamespace): its write Role for applications is rendered there already, a second one with the same name would clash; Argo CD applications are synced through the Argo CD namespace, do not list it" .) }}
+{{- end }}
+{{- if eq . $.Release.Namespace }}
+{{- fail (printf "cluster.write.namespaces contains the release namespace %q: Remedy may read itself, never change itself" .) }}
+{{- end }}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" .) }}
+{{- fail (printf "cluster.write.namespaces: %q is not a namespace name (lower case letters, digits and dashes)" .) }}
+{{- end }}
+{{- end }}
+{{- end }}

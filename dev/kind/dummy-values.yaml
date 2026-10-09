@@ -1,0 +1,33 @@
+# The chart's values for the dummy setup. dummy-up.sh adds the image tags and the API server's address
+# (networkPolicy.apiServer.cidrs) with --set, and deploy/cli-pin.yaml supplies the pinned CLI.
+image:
+  pullPolicy: IfNotPresent
+  server: {repository: remedy-server}
+  runner: {repository: remedy-runner}
+
+existingSecret:
+  name: remedy-secrets
+
+server:
+  service:
+    type: NodePort
+    nodePort: 30080     # kind.yaml maps it to http://127.0.0.1:18080
+  env:
+    REMEDY_LOG_LEVEL: debug   # one line per tool call: run, tool, kind, replay, refused; never the arguments
+
+runner:
+  model: sonnet         # the CLI runs with --restricted, which ignores settings: the model is always pinned
+  persistence:
+    existingClaim: claude-state
+
+cluster:
+  enabled: true
+  write:
+    enabled: true
+    namespaces: [demo]
+
+networkPolicy:
+  enabled: true         # kind enforces policies (spike S3); dummy-up.sh adds the API server's address and its port 6443
+  public:
+    from:
+      - ipBlock: {cidr: 0.0.0.0/0}

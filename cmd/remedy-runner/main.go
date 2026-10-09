@@ -6,11 +6,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/config"
 	"github.com/Jaydee94/remedy/internal/provider"
@@ -18,6 +21,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "install-cli" {
+		os.Exit(installCLI(os.Args[2:]))
+	}
+
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	cfg, err := config.RunnerFromEnv(os.Getenv)
@@ -36,9 +43,12 @@ func main() {
 		log.Info("removed what an earlier runner left behind", "path", cfg.WorkspaceRoot, "directories", n)
 	}
 
+	claude := provider.Claude{Binary: cfg.ClaudeBin, Model: cfg.ClaudeModel}
+	status := runner.NewStatus()
 	loop := &runner.Loop{
 		Client:        &runner.Client{BaseURL: cfg.ServerURL, Token: cfg.Token, HTTP: &http.Client{}},
-		Providers:     map[string]provider.Provider{"claude": provider.Claude{Binary: cfg.ClaudeBin, Model: cfg.ClaudeModel}},
+		Providers:     map[string]provider.Provider{"claude": claude},
+		Status:        status,
 		WorkspaceRoot: cfg.WorkspaceRoot,
 		Env:           os.Environ(),
 		Log:           log,
@@ -47,6 +57,36 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if cfg.StatusAddr != "" {
+		// Bind before anything else starts: a runner that cannot serve its probes must not run on without them.
+		ln, err := net.Listen("tcp", cfg.StatusAddr)
+		if err != nil {
+			log.Error("cannot listen for the status probes", "addr", cfg.StatusAddr, "err", err)
+			os.Exit(1)
+		}
+		statusSrv := &http.Server{Handler: runner.StatusHandler(status), ReadHeaderTimeout: 10 * time.Second}
+		go func() {
+			if err := statusSrv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Error("status listener failed", "err", err)
+				os.Exit(1)
+			}
+		}()
+		go func() {
+			<-ctx.Done()
+			shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = statusSrv.Shutdown(shutdown)
+		}()
+		log.Info("status listener", "addr", ln.Addr().String())
+	}
+	go (&runner.Reporter{Client: loop.Client, Status: status, Log: log}).Run(ctx)
+	go (&runner.LoginChecker{
+		Check:   func(c context.Context) (provider.LoginState, string) { return claude.LoginCheck(c, os.Environ()) },
+		Version: func(c context.Context) string { return claude.Version(c, os.Environ()) },
+		Status:  status,
+		Log:     log,
+	}).Run(ctx)
 
 	log.Info("runner started", "server", cfg.ServerURL, "workspaces", cfg.WorkspaceRoot)
 	loop.Run(ctx)

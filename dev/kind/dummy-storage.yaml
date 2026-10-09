@@ -1,0 +1,24 @@
+# The runner's state volume in the dummy setup: the CLI's login. It is a hostPath volume on the directory that kind
+# mounts from the host (kind.yaml), so the login survives deleting the cluster. The claim is bound to this volume.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: remedy-claude
+spec:
+  capacity: {storage: 1Gi}
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: remedy-host
+  claimRef: {namespace: remedy-system, name: claude-state}
+  hostPath: {path: /mnt/remedy-claude, type: Directory}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: claude-state
+  namespace: remedy-system
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: remedy-host
+  volumeName: remedy-claude
+  resources: {requests: {storage: 1Gi}}

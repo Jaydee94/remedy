@@ -70,11 +70,30 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	var internal *http.Server
+	if a.InternalHandler != nil {
+		internal = &http.Server{
+			Addr:              cfg.InternalAddr,
+			Handler:           a.InternalHandler,
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+		go func() {
+			log.Info("internal listener", "addr", cfg.InternalAddr)
+			if err := internal.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Error("internal listener failed", "err", err)
+				os.Exit(1)
+			}
+		}()
+	}
+
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
+		if internal != nil {
+			_ = internal.Shutdown(shutdownCtx)
+		}
 	}()
 
 	log.Info("control plane listening", "addr", cfg.Addr, "db", cfg.DBPath, "pollInterval", cfg.PollInterval)

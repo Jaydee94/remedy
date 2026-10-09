@@ -33,6 +33,7 @@ type Loop struct {
 	Backoff           time.Duration // wait after a failed claim, default 3s
 	RunTimeout        time.Duration // longest a run may take while it does not wait for an approval, default DefaultRunTimeout
 	HeartbeatInterval time.Duration // how often a run with tools reports to the control plane, default DefaultHeartbeatInterval
+	Status            *Status       // optional: told whether the control plane answers the claim
 }
 
 func (l *Loop) Run(ctx context.Context) {
@@ -46,10 +47,14 @@ func (l *Loop) Run(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
+			// The Reporter writes the same fact from the status endpoint: they disagree only when the claim and status
+			// endpoints disagree, and then not ready is the right answer.
+			l.Status.SetConnected(false)
 			l.Log.Warn("claim failed", "err", err)
 			sleep(ctx, backoff)
 			continue
 		}
+		l.Status.SetConnected(true)
 		if r == nil {
 			continue // long-poll timed out, ask again
 		}

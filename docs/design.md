@@ -104,9 +104,21 @@ running as a service for other people's homelabs.
 - **Everything in the cluster**, managed by Argo. Control plane as a Deployment, runner as
   a StatefulSet with a PVC for CLI logins and workspaces.
 - CLI login once via `kubectl exec`. The runner checks login status regularly, shows it in
-  the UI and notifies on expiry.
-- GitHub Actions builds images to GHCR. Delivered as a Helm chart or Kustomize base in
-  this repo.
+  the UI (Setup shows the login state; it does not notify on expiry).
+- GitHub Actions builds the control plane image and the runner image to GHCR. Delivered as
+  a **Helm chart** in `deploy/chart` (2026-10-06,
+  [spec](specs/2026-10-06-kubernetes-deployment-design.md)).
+- **Two identities in one pod.** The control plane pod runs as the read service account.
+  A CronJob mints a short-lived token of the write service account into a Secret that the
+  pod mounts as a file; if the job stops, the token expires and actions fail closed.
+- **Two listeners.** The control plane serves the UI, `/api` and `/healthz` on the public
+  port and `/runner/v1` and `/mcp` on an internal one (`REMEDY_INTERNAL_ADDR`), so an
+  Ingress cannot expose the runner token or the run tokens.
+- **The `claude` binary is in no image.** An init container of the runner pod installs the
+  pinned, unmodified CLI from the official source and verifies its checksum, because the
+  images are public and the binary is proprietary.
+- A throwaway **dummy setup** in kind (`make dummy-up`, `make dummy-down`) runs the real
+  chain with the real agent; the login lives in a host directory that survives it.
 - **Deliberately no** self-protection (no heartbeat, no protected paths) in the MVP.
 
 ### 2.8 Web UI (branch 8)

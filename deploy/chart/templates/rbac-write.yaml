@@ -1,0 +1,66 @@
+{{- if .Values.cluster.write.enabled }}
+{{- range .Values.cluster.write.namespaces }}
+---
+# The write identity in a namespace the actions are allowed in: restart a workload, delete a pod. It reads nothing.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: remedy-write
+  namespace: {{ . }}
+  labels:
+    {{- include "remedy.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [patch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: remedy-write
+  namespace: {{ . }}
+  labels:
+    {{- include "remedy.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: remedy-write
+subjects:
+  - kind: ServiceAccount
+    name: remedy-write
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+---
+# The write identity may patch Argo CD applications, in the namespace they live in. RBAC cannot say "only applications
+# that deploy to an allowed namespace": that limit is in Remedy's code.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: remedy-write
+  namespace: {{ .Values.cluster.argoNamespace }}
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [applications]
+    verbs: [patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: remedy-write
+  namespace: {{ .Values.cluster.argoNamespace }}
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: remedy-write
+subjects:
+  - kind: ServiceAccount
+    name: remedy-write
+    namespace: {{ .Release.Namespace }}
+{{- end }}

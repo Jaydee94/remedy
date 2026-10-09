@@ -1,0 +1,24 @@
+name: cli-pin
+
+# Renovate bumps the version in deploy/cli-pin.yaml but cannot compute the checksums of the new artifacts. This recomputes
+# them and fails when they differ, so that a pin with a wrong checksum cannot merge. To fix a failing pull request:
+#   scripts/cli-checksums.sh <the new version>   and push the result.
+on:
+  pull_request:
+    paths:
+      - deploy/cli-pin.yaml
+      - scripts/cli-checksums.sh
+      - .github/workflows/cli-pin.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: sh scripts/cli-checksums.sh --check

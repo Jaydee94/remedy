@@ -1,0 +1,14 @@
+{{- if .Values.runner.enabled }}
+# Headless, for the StatefulSet's identity only. Nothing connects to the runner: it dials the control plane.
+apiVersion: v1
+kind: Service
+metadata:
+  name: remedy-runner
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: runner
+spec:
+  clusterIP: None
+  selector:
+    {{- include "remedy.selector" (dict "ctx" . "component" "runner") | nindent 4 }}
+{{- end }}

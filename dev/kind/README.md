@@ -66,3 +66,10 @@ restart `demo/web`, delete one of its pods, refresh and sync `guestbook` (which 
 RBAC stops a `Writer` that the code would let act in `other` or in `kube-system`. They also show that the action tools' checks hold against real
 pods (the creation time of a pod has a resolution of one second) and a real Argo CD. Run them on a testbed you are about to throw away, after the
 read-only tests: after a sync the testbed is no longer what those expect.
+
+## The dummy setup: the chart in this cluster, with the real agent
+
+`make dummy-up` builds this cluster up with Remedy itself installed from the Helm chart (`deploy/chart`), and `make dummy-down`
+removes it; the CLI login in `~/remedy-kind/claude` survives. See [`docs/runbook/dummy-setup.md`](../../docs/runbook/dummy-setup.md).
+It and `up.sh` do not share a running cluster: the account names collide, and `dummy-up.sh` says so. `down.sh` is `make dummy-down`:
+it removes the cluster and what the scripts generated, never `claude/`.

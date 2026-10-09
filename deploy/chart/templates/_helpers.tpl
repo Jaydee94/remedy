@@ -1,0 +1,69 @@
+{{/* The labels every object carries. */}}
+{{- define "remedy.labels" -}}
+app.kubernetes.io/name: remedy
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
+{{- end }}
+
+{{/* The labels that select the pods of a component. Call with (dict "ctx" . "component" "server"). */}}
+{{- define "remedy.selector" -}}
+app.kubernetes.io/name: remedy
+app.kubernetes.io/instance: {{ .ctx.Release.Name }}
+app.kubernetes.io/component: {{ .component }}
+{{- end }}
+
+{{- define "remedy.serverImage" -}}
+{{ .Values.image.server.repository }}:{{ .Values.image.server.tag | default .Chart.AppVersion }}
+{{- end }}
+
+{{- define "remedy.runnerImage" -}}
+{{ .Values.image.runner.repository }}:{{ .Values.image.runner.tag | default .Chart.AppVersion }}
+{{- end }}
+
+{{/* The Secret with the three application secrets. The chart never creates it. */}}
+{{- define "remedy.secretName" -}}
+{{ required "existingSecret.name is required: the chart never creates the admin password, the runner token or the master key" .Values.existingSecret.name }}
+{{- end }}
+
+{{/* The private ranges: an egress rule for the internet leaves them out. */}}
+{{- define "remedy.privateRanges" -}}
+- 10.0.0.0/8
+- 172.16.0.0/12
+- 192.168.0.0/16
+- 169.254.0.0/16
+{{- end }}
+
+{{/* The control plane's account: the read identity when the cluster is on, otherwise one with no rights. */}}
+{{- define "remedy.serverAccount" -}}
+{{- if .Values.cluster.enabled -}}remedy-read{{- else -}}remedy-server{{- end -}}
+{{- end }}
+
+{{/* The pod of the token refresher, for the CronJob and for the hook Job. */}}
+{{- define "remedy.refreshPod" -}}
+restartPolicy: Never
+serviceAccountName: remedy-token-refresher
+automountServiceAccountToken: true
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+containers:
+  - name: refresh
+    image: {{ include "remedy.serverImage" . | quote }}
+    imagePullPolicy: {{ .Values.image.pullPolicy }}
+    command: ["/remedy-tokenrefresh"]
+    args:
+      - --namespace={{ .Release.Namespace }}
+      - --account=remedy-write
+      - --secret=remedy-write-token
+      - --lifetime={{ .Values.cluster.write.tokenRefresh.lifetime }}
+      - --api={{ .Values.cluster.api }}
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+{{- end }}

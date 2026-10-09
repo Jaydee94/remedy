@@ -1,6 +1,18 @@
-# A single-node cluster for trying Remedy's cluster tools. See up.sh.
+# A single-node cluster for trying Remedy: the cluster tools of the host-run testbed (up.sh) and the chart-installed
+# dummy setup (dummy-up.sh). lib.sh renders it: kind needs an absolute host path and does not expand variables, so
+# __CLAUDE_DIR__ is replaced by ~/remedy-kind/claude before the cluster is created.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: remedy-dev
 nodes:
   - role: control-plane
+    extraMounts:
+      # The CLI's login lives here, on the host, so that it survives deleting the cluster. The runner's volume is a
+      # hostPath volume on this path (dummy-storage.yaml).
+      - hostPath: __CLAUDE_DIR__
+        containerPath: /mnt/remedy-claude
+    extraPortMappings:
+      # The UI of the dummy setup: http://127.0.0.1:18080 -> the node's NodePort 30080 (the chart's public Service).
+      - containerPort: 30080
+        hostPort: 18080
+        listenAddress: 127.0.0.1

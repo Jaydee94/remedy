@@ -1,0 +1,8 @@
+# The dummy setup's namespace. The Pod Security Standard "restricted" is enforced: every pod the chart makes must pass it,
+# which is what the chart's hardening is for.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: remedy-system
+  labels:
+    pod-security.kubernetes.io/enforce: restricted

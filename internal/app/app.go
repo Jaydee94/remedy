@@ -26,7 +26,11 @@ import (
 )
 
 type App struct {
-	Handler    http.Handler
+	// Handler serves the UI and the admin API; when no internal address is configured it serves everything.
+	Handler http.Handler
+	// InternalHandler serves /runner/v1 and /mcp and is non-nil only when REMEDY_INTERNAL_ADDR is set.
+	InternalHandler http.Handler
+
 	Poller     *poller.Poller
 	Reaper     *reaper.Reaper
 	Responder  *responder.Responder
@@ -114,12 +118,35 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		log.Warn("abandoned the approvals a restart left behind", "count", n)
 	}
 
+	deps := server.Deps{
+		Store:        st,
+		Auth:         auth.New(cfg.AdminPassword),
+		RunnerToken:  cfg.RunnerToken,
+		Web:          web,
+		Key:          cfg.MasterKey,
+		NewGitHub:    func(token secret.Value) server.GitHub { return reader(token) },
+		Incidents:    engine,
+		Responder:    diagnoser,
+		PollInterval: cfg.PollInterval,
+		Gatekeeper:   gate,
+		Cluster:      clusterCapabilities(cfg.Cluster, kubeReader, kubeWriter),
+		RunnerStatus: server.NewRunnerStatus(),
+	}
+	var handler, internalHandler http.Handler
+	if cfg.InternalAddr != "" {
+		handler, internalHandler = server.NewSplit(deps)
+	} else {
+		handler = server.New(deps)
+	}
+
 	return &App{
-		Responder:  diagnoser,
-		Gatekeeper: gate,
-		KubeReader: kubeReader,
-		KubeWriter: kubeWriter,
-		log:        log,
+		Handler:         handler,
+		InternalHandler: internalHandler,
+		Responder:       diagnoser,
+		Gatekeeper:      gate,
+		KubeReader:      kubeReader,
+		KubeWriter:      kubeWriter,
+		log:             log,
 		Poller: &poller.Poller{
 			Store:      st,
 			Engine:     engine,
@@ -138,19 +165,6 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 				}
 			},
 		},
-		Handler: server.New(server.Deps{
-			Store:        st,
-			Auth:         auth.New(cfg.AdminPassword),
-			RunnerToken:  cfg.RunnerToken,
-			Web:          web,
-			Key:          cfg.MasterKey,
-			NewGitHub:    func(token secret.Value) server.GitHub { return reader(token) },
-			Incidents:    engine,
-			Responder:    diagnoser,
-			PollInterval: cfg.PollInterval,
-			Gatekeeper:   gate,
-			Cluster:      clusterCapabilities(cfg.Cluster, kubeReader, kubeWriter),
-		}),
 	}
 }
 

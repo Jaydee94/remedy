@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: remedy-server
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: 1
+  # SQLite has one connection and one file: the old pod must be gone before the new one opens it.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "remedy.selector" (dict "ctx" . "component" "server") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "remedy.labels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+    spec:
+      serviceAccountName: {{ include "remedy.serverAccount" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: {{ include "remedy.serverImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - {name: http, containerPort: 8080}
+            - {name: internal, containerPort: 8081}
+          env:
+            - {name: REMEDY_ADDR, value: ":8080"}
+            - {name: REMEDY_INTERNAL_ADDR, value: ":8081"}
+            - {name: REMEDY_DB, value: /data/remedy.db}
+            - name: REMEDY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "remedy.secretName" . }}
+                  key: {{ .Values.existingSecret.keys.adminPassword }}
+            - name: REMEDY_RUNNER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "remedy.secretName" . }}
+                  key: {{ .Values.existingSecret.keys.runnerToken }}
+            - name: REMEDY_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "remedy.secretName" . }}
+                  key: {{ .Values.existingSecret.keys.masterKey }}
+            {{- if .Values.cluster.enabled }}
+            - {name: REMEDY_K8S_API, value: {{ .Values.cluster.api | quote }}}
+            - {name: REMEDY_K8S_READ_TOKEN_FILE, value: /var/run/remedy/read/token}
+            - {name: REMEDY_K8S_CA_FILE, value: /var/run/remedy/read/ca.crt}
+            - {name: REMEDY_K8S_ARGO_NAMESPACE, value: {{ .Values.cluster.argoNamespace | quote }}}
+            {{- end }}
+            {{- if .Values.cluster.write.enabled }}
+            - {name: REMEDY_K8S_WRITE_TOKEN_FILE, value: /var/run/remedy/write/token}
+            - {name: REMEDY_K8S_WRITE_NAMESPACES, value: {{ join "," .Values.cluster.write.namespaces | quote }}}
+            {{- end }}
+            {{- range $name, $value := .Values.server.env }}
+            {{- if regexMatch "PASSWORD|TOKEN|KEY" $name }}
+            {{- fail (printf "server.env.%s: a name that contains PASSWORD, TOKEN or KEY is refused; secrets belong in the existing Secret, not in values" $name) }}
+            {{- end }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: tmp, mountPath: /tmp}
+            {{- if .Values.cluster.enabled }}
+            - {name: cluster-read, mountPath: /var/run/remedy/read, readOnly: true}
+            {{- end }}
+            {{- if .Values.cluster.write.enabled }}
+            # A directory mount, never subPath: the kubelet does not update a subPath, and the token is replaced.
+            - {name: cluster-write, mountPath: /var/run/remedy/write, readOnly: true}
+            {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.server.persistence.existingClaim | default "remedy-data" }}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.cluster.enabled }}
+        # The read identity: the pod's own account token, renewed by the kubelet, and the cluster's CA.
+        - name: cluster-read
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - {key: ca.crt, path: ca.crt}
+        {{- end }}
+        {{- if .Values.cluster.write.enabled }}
+        # The write identity: filled by the refresher after the first start, so the Secret is optional.
+        - name: cluster-write
+          secret:
+            secretName: remedy-write-token
+            optional: true
+        {{- end }}

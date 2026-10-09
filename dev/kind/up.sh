@@ -1,43 +1,21 @@
 #!/bin/sh
-# Starts the kind cluster for trying Remedy's cluster tools: demo workloads, two service accounts with their roles, a
-# pinned Argo CD, and the files the control plane needs. Usage: dev/kind/up.sh [output directory]
+# Starts the kind cluster for trying Remedy's cluster tools with a server on the host: demo workloads, two service
+# accounts with their roles, a pinned Argo CD, and the files the control plane needs.
+# Usage: dev/kind/up.sh [output directory]
 # The output directory (default ~/remedy-kind) gets the CA, one token file per identity and an env.sh. It is outside
-# the repository on purpose: it holds credentials.
+# the repository on purpose: it holds credentials. For the chart-installed setup use dummy-up.sh instead; the two do not
+# share a running cluster (the account names collide).
 set -eu
+[ $# -gt 0 ] && REMEDY_KIND_DIR=$1
+. "$(dirname "$0")/lib.sh"
+need docker kind kubectl openssl
 
-ARGOCD_VERSION=v3.5.3
-CLUSTER=remedy-dev
-CTX=kind-$CLUSTER
-DIR=$(cd "$(dirname "$0")" && pwd)
-OUT=${1:-$HOME/remedy-kind}
+ensure_cluster
+install_demo
+k apply -f "$KIND_DIR/rbac.yaml"
+install_argocd
+k apply -f "$KIND_DIR/argocd-rbac.yaml"
 
-for tool in docker kind kubectl openssl; do
-  command -v "$tool" > /dev/null || { echo "$tool is needed" >&2; exit 1; }
-done
-
-if kind get clusters 2> /dev/null | grep -qx "$CLUSTER"; then
-  echo "cluster $CLUSTER exists"
-else
-  kind create cluster --config "$DIR/kind.yaml"
-fi
-k() { kubectl --context "$CTX" "$@"; }
-
-k apply -f "$DIR/demo.yaml"
-k apply -f "$DIR/rbac.yaml"
-
-# Argo CD, the core installation (no UI, no API server): the controller, the repo server and Redis. Server-side
-# apply because its CRDs are too large for the annotation a client-side apply adds.
-k create namespace argocd --dry-run=client -o yaml | k apply -f -
-k apply -n argocd --server-side --force-conflicts \
-  -f "https://raw.githubusercontent.com/argoproj/argo-cd/$ARGOCD_VERSION/manifests/core-install.yaml"
-k wait --for=condition=Established crd/applications.argoproj.io --timeout=120s
-k -n argocd rollout status deployment/argocd-repo-server --timeout=300s
-k -n argocd rollout status statefulset/argocd-application-controller --timeout=300s
-k apply -f "$DIR/argocd-rbac.yaml"
-k apply -f "$DIR/guestbook.yaml"
-
-(umask 077; mkdir -p "$OUT")
-chmod 700 "$OUT"
 server=$(k config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')
 k config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | openssl base64 -d -A > "$OUT/ca.crt"
 (umask 077

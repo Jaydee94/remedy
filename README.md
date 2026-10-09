@@ -157,7 +157,7 @@ an instruction. Four actions are possible in the namespaces of
 application ([`docs/specs/2026-10-04-phase-2c-cluster-design.md`](docs/specs/2026-10-04-phase-2c-cluster-design.md)). A run with the real CLI against the
 testbed is described in [`docs/runbook/cluster-real-run.md`](docs/runbook/cluster-real-run.md) and recorded in
 [`docs/research/phase-2c-real-run.md`](docs/research/phase-2c-real-run.md).
-[`dev/kind/`](dev/kind/README.md) has a throwaway kind cluster with demo workloads and Argo CD to try it on.
+[`dev/kind/`](dev/kind/README.md) has a throwaway kind cluster with demo workloads and Argo CD to try it on. For the whole chain in a cluster, with Remedy installed by its Helm chart, see [`docs/runbook/dummy-setup.md`](docs/runbook/dummy-setup.md) (`make dummy-up`).
 
 ### Container
 
@@ -168,5 +168,8 @@ docker run -p 8080:8080 -v remedy-data:/data \
 ```
 
 The image runs as a non-root user; `/data` holds the SQLite database. Use a named volume
-or a directory writable by uid 65532. Only the control plane is containerised so far; the
-runner needs the CLI login and runs on the host in this phase.
+or a directory writable by uid 65532. The runner has its own image (`Dockerfile.runner`;
+`make images` builds both; a tag `vX.Y.Z` publishes them to GHCR). It does not contain the
+`claude` CLI: the Helm chart's init container installs the pinned CLI, and the login is done
+once with `kubectl exec`. The chart is in [`deploy/chart`](deploy/chart/README.md); how to
+install it on k3s under Argo CD is in [`docs/runbook/homelab-deploy.md`](docs/runbook/homelab-deploy.md).

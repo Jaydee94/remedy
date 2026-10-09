@@ -27,6 +27,7 @@ func (s *srv) runner(next http.HandlerFunc) http.HandlerFunc {
 			writeErr(w, http.StatusUnauthorized, "invalid runner token")
 			return
 		}
+		s.d.RunnerStatus.Touch(time.Now()) // an authenticated request means the runner is there
 		next(w, r)
 	}
 }

@@ -106,7 +106,11 @@ func (c Config) Validate() error {
 		}
 	}
 	if c.WriteTokenFile != "" {
-		if _, err := readToken(c.WriteTokenFile); err != nil {
+		// A refresher fills this file after the control plane has started (in a cluster the Secret it comes from is
+		// empty at install), so a file that is not there yet or holds no token is not a mistake: Warnings says so
+		// and every action fails until the file holds a token. It is read again at every request. A file that holds
+		// something wrong is still refused.
+		if _, err := readToken(c.WriteTokenFile); err != nil && !tokenNotThereYet(err) {
 			return fmt.Errorf("REMEDY_K8S_WRITE_TOKEN_FILE: %w", err)
 		}
 	}
@@ -124,9 +128,20 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// tokenNotThereYet says whether readToken failed because the file does not exist or holds no token.
+func tokenNotThereYet(err error) bool {
+	var empty emptyTokenError
+	return errors.Is(err, os.ErrNotExist) || errors.As(err, &empty)
+}
+
 // Warnings lists what is configured but cannot be used, for a start-up log. It assumes a valid configuration.
 func (c Config) Warnings() []string {
 	var w []string
+	if c.WriteTokenFile != "" {
+		if _, err := readToken(c.WriteTokenFile); err != nil && tokenNotThereYet(err) {
+			w = append(w, "REMEDY_K8S_WRITE_TOKEN_FILE holds no token yet: every cluster action fails until it does (the token refresher fills it)")
+		}
+	}
 	if c.WriteTokenFile != "" && len(c.WriteNamespaces) == 0 {
 		w = append(w, "REMEDY_K8S_WRITE_TOKEN_FILE is set but REMEDY_K8S_WRITE_NAMESPACES is empty: no cluster action can be used")
 	}

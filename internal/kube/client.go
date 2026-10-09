@@ -138,6 +138,11 @@ func newClient(c Config, tokenFile string, allow func(string) bool, what string,
 	}, nil
 }
 
+// emptyTokenError is the error for a token file that exists and holds no token.
+type emptyTokenError struct{ path string }
+
+func (e emptyTokenError) Error() string { return fmt.Sprintf("the token file %s is empty", e.path) }
+
 // readToken reads a token file. It is called for every request: a projected service account token is replaced
 // by the kubelet before it expires.
 func readToken(path string) (secret.Value, error) {
@@ -148,7 +153,7 @@ func readToken(path string) (secret.Value, error) {
 	tok := strings.TrimSpace(string(raw))
 	switch {
 	case tok == "":
-		return secret.Value{}, fmt.Errorf("the token file %s is empty", path)
+		return secret.Value{}, emptyTokenError{path}
 	case strings.ContainsAny(tok, "\r\n"):
 		return secret.Value{}, fmt.Errorf("the token file %s holds more than one line", path)
 	}

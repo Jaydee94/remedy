@@ -1,0 +1,34 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: remedy
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.ingress.tls.secretName }}
+  tls:
+    - hosts:
+        - {{ required "ingress.host is required when the Ingress is enabled" .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ required "ingress.host is required when the Ingress is enabled" .Values.ingress.host | quote }}
+      http:
+        paths:
+          # Only the public Service. /runner/v1 and /mcp live on the internal port and are not reachable from here.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: remedy-server
+                port:
+                  number: 8080
+{{- end }}
