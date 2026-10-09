@@ -177,7 +177,7 @@ At the first sync:
 - The runner's readiness and liveness probes use port 8082. The default-deny ingress policy lets them through only if the CNI
   exempts traffic that the node itself originates. Evidence for kindnet: the dummy's runner pod ran with 0 restarts and became Ready
   with `networkPolicy.enabled=true` and no ingress rule for port 8082 (one `503` readiness event at start, then Ready; one
-  observation, in the K-6 task report, which is not part of the repository). k3s's kube-router was not measured. A runner pod
+  observation, recorded in `docs/research/k8s-runner-status-real-run.md`). k3s's kube-router was not measured. A runner pod
   that restarts in a loop with failing probes means the CNI blocks them. A value `networkPolicy.runner.probeFrom` does not
   exist yet; until it does, the workaround is `networkPolicy.enabled=false`.
 
@@ -188,7 +188,7 @@ kubectl -n remedy-system exec -it remedy-runner-0 -c runner -- /opt/claude/claud
 ```
 
 Type `/login`, open the URL in a browser, paste the code, `/exit`. The login is on the runner's volume and survives restarts of
-the pod, but not the loss of the volume. (After plan K-6, Setup shows whether the runner is logged in.)
+the pod, but not the loss of the volume. Setup shows whether the runner is connected and what the CLI's own status command says about the login ("Logged in", "Not logged in" or "Login unknown"); the runner checks every minute while the login is not fine and every 10 minutes while it is. A login that has expired on the server side may still read as "Logged in" until a run fails with "Not logged in": that was not measured (`docs/research/k8s-runner-status-real-run.md`).
 
 ## 8. First use
 
