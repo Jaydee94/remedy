@@ -2,7 +2,14 @@
 # Tests the release configuration in a scratch git repository with a local bare remote and crafted commits: the version
 # rules (0.x), what releases nothing, the notes, and what the real (local) run writes. Run from anywhere:
 #   cd release && npm ci --ignore-scripts && cd .. && sh release/test/dry-run.sh
+# The `full` mode (the GitHub release) can not be run without GitHub: here it is only loaded and checked, and it is
+# exercised for real only by .github/workflows/release.yml.
+# Nothing of the caller's environment may reach the test (CI and GITHUB_* make semantic-release detect another branch,
+# GIT_DIR and the like point git elsewhere, tokens would be used): semantic-release runs in `env -i`, and the git commands
+# of the test use no global or system git configuration.
 set -eu
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_NAMESPACE
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 SR=$ROOT/release/node_modules/.bin/semantic-release
 CONFIG=$ROOT/release/release.config.js
@@ -41,9 +48,13 @@ commit() { # commit <subject> [<body>]
   if [ $# -gt 1 ]; then git commit -q -m "$1" -m "$2"; else git commit -q -m "$1"; fi
   git push -q origin main
 }
+# The environment of semantic-release is built from nothing: PATH (node, git), a HOME of its own and the isolated git config.
+clean_env() { env -i PATH="$PATH" HOME="$WORK" TMPDIR="$WORK" GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null "$@"; }
 sr() { # sr <mode> [extra args]: runs semantic-release in the scratch repository, output in $WORK/sr.log
   mode=$1; shift
-  RELEASE_MODE=$mode "$SR" --no-ci --repository-url "file://$REMOTE" --extends "$CONFIG" "$@" > "$WORK/sr.log" 2>&1 || { cat "$WORK/sr.log" >&2; echo "semantic-release failed ($mode)" >&2; exit 1; }
+  clean_env RELEASE_MODE="$mode" "$SR" --no-ci --repository-url "file://$REMOTE" --extends "$CONFIG" "$@" > "$WORK/sr.log" 2>&1 || { cat "$WORK/sr.log" >&2; echo "semantic-release failed ($mode)" >&2; exit 1; }
+  # A branch detected from the environment makes semantic-release stop without a release; that must never read as "no release".
+  if grep -q 'configured to only publish from' "$WORK/sr.log"; then cat "$WORK/sr.log" >&2; echo "semantic-release saw another branch than main ($mode)" >&2; exit 1; fi
 }
 planned() { # planned: the version the plan mode computes, or empty
   rm -f .release-version
@@ -59,6 +70,31 @@ release() { sr local; git pull -q --ff-only origin main; }
 expect "nothing since the tag" ""
 commit "feat: the first feature"
 expect "a feature on 0.0.0 gives 0.1.0" "0.1.0"
+# plan mode can not publish, even without the --dry-run flag
+tags_before=$(git --git-dir="$REMOTE" tag | sort | tr '\n' ' ')
+head_before=$(git rev-parse HEAD)
+remote_before=$(git --git-dir="$REMOTE" rev-parse main)
+rm -f .release-version
+sr plan
+[ "$(cat .release-version 2>/dev/null)" = "0.1.0" ] && say "plan without --dry-run still writes .release-version" || fail "plan without --dry-run wrote no .release-version"
+[ "$(git --git-dir="$REMOTE" tag | sort | tr '\n' ' ')" = "$tags_before" ] && [ "$(git tag | sort | tr '\n' ' ')" = "$tags_before" ] && say "plan without --dry-run creates no tag" || fail "plan without --dry-run created a tag"
+[ "$(git rev-parse HEAD)" = "$head_before" ] && [ "$(git --git-dir="$REMOTE" rev-parse main)" = "$remote_before" ] && [ -z "$(git status --porcelain --untracked-files=no)" ] && say "plan without --dry-run makes no commit and changes no file" || fail "plan without --dry-run changed the repository"
+# there is no default mode. The configuration says why; semantic-release itself only fails (with --extends it hides the
+# message of a configuration that throws behind "Cannot find module"), and it fails before it reads or pushes anything.
+if clean_env node -e "require('$CONFIG')" > "$WORK/nomode.log" 2>&1; then fail "the configuration loaded without RELEASE_MODE"
+elif grep -q 'RELEASE_MODE must be plan, local or full (got "undefined")' "$WORK/nomode.log"; then say "no RELEASE_MODE is refused by the configuration"
+else fail "no RELEASE_MODE failed with another message: $(head -c 300 "$WORK/nomode.log")"; fi
+if clean_env "$SR" --no-ci --repository-url "file://$REMOTE" --extends "$CONFIG" --dry-run > "$WORK/nomode.log" 2>&1; then fail "semantic-release ran without RELEASE_MODE"; else say "semantic-release does not run without RELEASE_MODE"; fi
+# the full mode loads: six plugins that resolve, the chart attached to the release, no comments
+full=$(cd "$ROOT/release" && clean_env RELEASE_MODE=full node -e "
+const c = require('$CONFIG')
+const names = c.plugins.map((p) => p[0])
+for (const n of names) require.resolve(n, { paths: ['$ROOT/release'] })
+const gh = c.plugins.find((p) => p[0] === '@semantic-release/github')[1]
+const ok = names.length === 6 && !c.dryRun && gh.assets.some((a) => a.path === 'dist/remedy-*.tgz') && gh.successCommentCondition === false && gh.failCommentCondition === false && gh.releasedLabels === false
+console.log(ok ? 'full ok' : 'full wrong: ' + JSON.stringify(c))
+" 2>&1) || true
+[ "$full" = "full ok" ] && say "the full mode loads: six plugins, the chart attached, no comments, no dry run" || fail "the full mode: $full"
 release
 grep -q '^version: 0.1.0$' deploy/chart/Chart.yaml && say "Chart.yaml version written" || fail "Chart.yaml version not written"
 grep -q '^appVersion: "0.1.0"$' deploy/chart/Chart.yaml && say "Chart.yaml appVersion written" || fail "Chart.yaml appVersion not written"

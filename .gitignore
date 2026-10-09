@@ -8,4 +8,4 @@
 .playwright-mcp/
 release/node_modules/
 .release-version
-dist/
+/dist/

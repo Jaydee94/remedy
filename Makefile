@@ -67,6 +67,7 @@ shell-test: ## Run the shell tests: the dummy's directory guard, its smoke decis
 	sh scripts/set-chart-version_test.sh
 	sh scripts/check-pr-title_test.sh
 
+# The third line needs scripts/chart-oci_test.sh, which task 3 of the release plan adds: until then this target fails there.
 release-test: ## Test the release configuration in a scratch repository and the chart's OCI push (needs node, git, helm, docker)
 	cd release && npm ci --ignore-scripts
 	sh release/test/dry-run.sh

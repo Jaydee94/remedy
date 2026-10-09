@@ -16,3 +16,4 @@ web/dist
 **/*.pem
 **/*.key
 .superpowers
+release

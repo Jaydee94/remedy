@@ -33,6 +33,19 @@
       "matchDepNames": ["claude-code-cli"],
       "automerge": false,
       "labels": ["cli-pin"]
+    },
+    {
+      "description": "The preset 10.x needs conventional-changelog-writer 9, which the semantic-release 25 plugins do not ship yet (they use 8): the release notes fail with 10.x. Lift this when the plugins move to writer 9.",
+      "matchFileNames": ["release/package.json"],
+      "matchPackageNames": ["conventional-changelog-conventionalcommits"],
+      "allowedVersions": "<10"
+    },
+    {
+      "description": "The release tooling moves together: one pull request for semantic-release and its plugins, never merged by itself.",
+      "matchFileNames": ["release/package.json"],
+      "matchPackageNames": ["semantic-release", "/^@semantic-release\\//"],
+      "groupName": "semantic-release",
+      "automerge": false
     }
   ]
 }

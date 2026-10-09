@@ -4,7 +4,7 @@
   "private": true,
   "description": "The release tooling of Remedy (semantic-release). Not part of the product.",
   "engines": {
-    "node": ">=22"
+    "node": "^22.22.2 || >=24.15"
   },
   "dependencies": {
     "@semantic-release/changelog": "7.0.0",
