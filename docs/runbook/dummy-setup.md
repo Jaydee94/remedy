@@ -70,14 +70,14 @@ Then open `http://127.0.0.1:18080` and sign in. The password is `REMEDY_ADMIN_PA
   write token: present
   token refresher: last scheduled success <time or never>
   database volume: Bound
-  login directory: /Users/<you>/remedy-kind/claude (present)
+  login directory: ~/remedy-kind/claude (present)
   url: http://127.0.0.1:18080 (200 on /healthz)
   runner: connected, login ok
-  secrets: /Users/<you>/remedy-kind/dummy.env
+  secrets: ~/remedy-kind/dummy.env
   ```
 
   Other answers: `cluster: none` (exit 1; no cluster, run `make dummy-up`), `release: not installed` (exit 1), and
-  `url: unknown (no /Users/<you>/remedy-kind/dummy.env)` instead of the last two lines when `dummy.env` is missing. `write token:`
+  `url: unknown (no ~/remedy-kind/dummy.env)` instead of the last two lines when `dummy.env` is missing. `write token:`
   is `present` or `missing`. The `runner:` line is `connected, login ok`, `connected, login missing`, `connected, login unknown` (the runner has not
   reported yet, for example right after a restart: ask again in a few seconds), `not connected, login unknown`, or `unknown (the
   control plane did not answer)`. `write token: present` says the Secret holds a token, not that the server pod already sees it.

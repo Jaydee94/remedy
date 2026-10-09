@@ -36,7 +36,7 @@ Two changes to the script from the brief:
 ## Output, mode 700
 
 ```text
-host dir: drwx------  2 jaydee  staff  64  7 Oct 08:28 /Users/jaydee/remedy-kind-spike
+host dir: drwx------  2 jaydee  staff  64  7 Oct 08:28 ~/remedy-kind-spike
 pod/writer condition met
 uid=65532 gid=65532 groups=65532
 /state:
@@ -45,10 +45,10 @@ drwxr-xr-x    3 65532    65532           96 Oct  7 06:28 claude
 -rw-r--r--    1 65532    65532           49 Oct  7 06:28 probe.txt
 written by 65532 at Wed Oct  7 06:28:56 UTC 2026
 == on the host after the pod
-/Users/jaydee/remedy-kind-spike:
+~/remedy-kind-spike:
 drwx------   3 501  20    96  7 Oct 08:28 .
 drwxr-xr-x   3 501  20    96  7 Oct 08:28 claude
-/Users/jaydee/remedy-kind-spike/claude:
+~/remedy-kind-spike/claude:
 -rw-r--r--  1 501  20  49  7 Oct 08:28 probe.txt
 written by 65532 at Wed Oct  7 06:28:56 UTC 2026            <- cat on the host
 == inside the kind node
@@ -64,7 +64,7 @@ written by 65532 at Wed Oct  7 06:29:26 UTC 2026
 ## Output, mode 755
 
 ```text
-host dir: drwxr-xr-x  2 jaydee  staff  64  7 Oct 08:29 /Users/jaydee/remedy-kind-spike
+host dir: drwxr-xr-x  2 jaydee  staff  64  7 Oct 08:29 ~/remedy-kind-spike
 uid=65532 gid=65532 groups=65532
 /state:
 drwxr-xr-x    3 65532    65532           96 Oct  7 06:30 claude
@@ -72,10 +72,10 @@ drwxr-xr-x    3 65532    65532           96 Oct  7 06:30 claude
 -rw-r--r--    1 65532    65532           49 Oct  7 06:30 probe.txt
 written by 65532 at Wed Oct  7 06:30:05 UTC 2026
 == on the host after the pod
-/Users/jaydee/remedy-kind-spike:
+~/remedy-kind-spike:
 drwxr-xr-x   3 501  20    96  7 Oct 08:30 .
 drwxr-xr-x   3 501  20    96  7 Oct 08:30 claude
-/Users/jaydee/remedy-kind-spike/claude:
+~/remedy-kind-spike/claude:
 -rw-r--r--  1 501  20  49  7 Oct 08:30 probe.txt
 written by 65532 at Wed Oct  7 06:30:05 UTC 2026            <- cat on the host
 == inside the kind node
@@ -97,10 +97,10 @@ its tail:
 == cleanup
 Deleting cluster "remedy-spike" ...
 Deleted nodes: ["remedy-spike-control-plane"]
-left: claude    (the directory /Users/jaydee/remedy-kind-spike stays so that you can inspect it; remove it by hand)
+left: claude    (the directory ~/remedy-kind-spike stays so that you can inspect it; remove it by hand)
 cleanup check: kind clusters left: No kind clusters found. 
 cleanup check: host paths left:
-/Users/jaydee/remedy-kind-spike
+~/remedy-kind-spike
 ```
 
 The script keeps the directory for inspection, so it was removed by hand afterwards
@@ -110,7 +110,7 @@ The script keeps the directory for inspection, so it was removed by hand afterwa
 $ kind get clusters
 No kind clusters found.
 $ command ls -d ~/remedy-kind-spike*
-zsh: no matches found: /Users/jaydee/remedy-kind-spike*
+zsh: no matches found: ~/remedy-kind-spike*
 ```
 
 ## Findings

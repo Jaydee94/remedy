@@ -41,7 +41,7 @@ added) and ended with
 ```
 Ready.
   url:       http://127.0.0.1:18080
-  password:  REMEDY_ADMIN_PASSWORD in /Users/<you>/remedy-kind/dummy.env
+  password:  REMEDY_ADMIN_PASSWORD in ~/remedy-kind/dummy.env
   login:     the runner is logged in
 ```
 
@@ -140,7 +140,8 @@ What this run shows of D8 (the runner's connection and login are visible, and th
   `connected, login ok`); the page says `Not connected` with the time since the last contact and the pod hint when the runner is
   gone for more than 45 s, and `Login unknown` rather than an old `Logged in` in that state; the login survives the pod's
   recreation; the pod's probes are not blocked by the network policy on kindnet and the probes never depended on the login (the pod
-  was Ready and the readiness event was a 503 only at the start); a restart of the control plane is healed within about 10 s of the
+  was Ready and the readiness event was a 503 only at the start; evidence, observed once: in the part-1 check, before the maintainer's
+  login, `make dummy-status` said `runner: connected, login missing` while the runner pod was Running and Ready); a restart of the control plane is healed within about 10 s of the
   moment the page could be used again.
 - Shown (measured, n=1): the status command answers in under a second and with the right exit code with an unreachable proxy.
 - Not shown: the `Logged in` to `Not logged in` change on the page (item 2 needs the maintainer) and the way back (item 3; only

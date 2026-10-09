@@ -1,6 +1,10 @@
 # Kubernetes deployment and the dummy setup: design
 
-Status: draft for review, 2026-10-06. Implements the decision of `docs/design.md` §2.7 ("everything in the cluster, managed by
+Status: implemented on the branch `feat/kubernetes-deployment` (not merged; first written 2026-10-06 as a draft). Not yet proven:
+success criterion 4 (the homelab run under Argo CD, `docs/runbook/homelab-deploy.md`); the k3s half of S3; the release (K-5 task 6:
+the tag and public GHCR packages); the check by the maintainer that `DISABLE_UPDATES` keeps `.local` from returning; and the
+live items of K-6 task 6 that need the maintainer (`docs/research/k8s-runner-status-real-run.md`). The open items are listed
+in `docs/plans/k8s-followups.md`. Implements the decision of `docs/design.md` §2.7 ("everything in the cluster, managed by
 Argo; control plane as a Deployment, runner as a StatefulSet with a PVC") and refines it. Where this document and §2.7
 differ, the first plan (K-1) changes §2.7 before it changes any code, as the design document requires.
 
@@ -202,7 +206,8 @@ must still reach `Ready`, otherwise no unattended check is possible).
 | Public surface | Only the public port is exposed: `/api`, `/healthz`, the UI. `/runner/v1` and `/mcp` are on the internal port and reachable only from runner pods (NetworkPolicy) and in-cluster. |
 | Secrets | `existingSecret` only. Values never carry a secret; a render assertion fails on a key named like one. |
 | Pod hardening | Non-root, read-only root filesystem, no capabilities, seccomp `RuntimeDefault`, on every pod. The dummy labels its namespace `pod-security.kubernetes.io/enforce: restricted`. |
-| CLI credentials | Remedy never reads them. A repository check (an extension of `scripts/check-no-token-leak.sh`) fails when a script opens a file in the login directory. The scripts create and `chmod` it only. |
+| CLI credentials | Remedy never reads them. A repository check, the separate `scripts/check-login-dir-untouched.sh` (with its own test; `make shell-test`), fails when a script opens a file in the login directory. The scripts create the directory, set its mode and test that it exists; the one deletion is `make dummy-logout`, which removes the directory's content after a confirmation. |
+| Agent and credentials in one uid | New with the cluster, see R10: the CLI's login file and the runner token can be read by the uid the agent runs as. Accepted until measured. |
 | Binary provenance | Pinned version, verified checksum, official source, unmodified. The checksum is the vendor's own: S4 compared the downloaded `linux-x64` and `linux-arm64` files of the pinned version with the signed `manifest.json` of its release (good signature, key fingerprint equal to the one the documentation publishes). |
 
 NetworkPolicies:
@@ -262,8 +267,8 @@ a hostPath PV and its claim for `runner.persistence.existingClaim`, `cluster.ena
 made right after the namespace is refused until that account exists).
 
 State: `~/remedy-kind/dummy.env` (mode `0600`) holds the generated admin password, runner token and master key and the URL, so
-a person or an agent can read the URL and the password. `dummy-up` keeps the values if the file exists and the Secret in the
-cluster matches; `dummy-down` removes the cluster and this file, never `claude/`.
+a person or an agent can read the URL and the password. `dummy-up` keeps `dummy.env` when the file exists (the code does not compare it with the
+cluster) and writes the Secret from it again on every run; `dummy-down` removes the cluster and this file, never `claude/`.
 
 | Target | Does |
 |---|---|
@@ -293,10 +298,11 @@ what they did in plain lines. `dummy.env` and `dummy-status` give an agent URL, 
 - `Dockerfile` (server image) builds both server binaries and the UI, as today, plus `remedy-tokenrefresh`. A second
   `Dockerfile.runner` builds `remedy-runner`. `make images` builds both for the local architecture.
 - `.github/workflows/images.yml`: on push to `main` and on tags `v*`, buildx with QEMU for `linux/amd64,linux/arm64`, push to
-  `ghcr.io/jaydee94/remedy-server` and `remedy-runner` with `sha-<short>` (and `vX.Y.Z` on a tag). On a tag the workflow checks
+  `ghcr.io/jaydee94/remedy-server` and `remedy-runner` with `sha-<short>` and `edge` on a push to `main`, and `X.Y.Z` (without the `v`) on a tag `vX.Y.Z`. On a tag the workflow checks
   that `Chart.yaml`'s `appVersion` equals the tag. The workflow has `packages: write` and nothing more.
-- `make chart-check` (in `make check` and CI): `helm lint`, `helm template` for the default and the dummy values, `kubeconform`,
-  and the Go render tests (D13).
+- `make chart-check` (in `make check` and CI): `helm lint` and `helm template` with `deploy/chart/ci/lint-values.yaml` (the cluster and
+  the write side on; it is the only values file the target renders, not the dummy's), `kubeconform` on that render when it is
+  installed (the Makefile says CI runs it), and the Go render tests in `deploy/` (D13), which render the chart with many other values.
 - `renovate.json` gets a custom manager for `runner.cli.version` and the Argo CD version in `up.sh`.
 - Homelab: an Argo `Application` with two sources, the chart from this repository at a tag and a values file from the
   maintainer's GitOps repository (the repository is public: no credentials). Argo hooks map the chart's Helm hook to a `PostSync`
@@ -363,6 +369,7 @@ K-6 prepares for it. Until then the login stays the `kubectl exec -it` of sectio
 | R7 | `Recreate` and an RWO PVC mean a short outage per rollout; runs in flight are ended by the reaper; sessions (in memory) end. | One maintainer; acceptable. |
 | R8 | 24/7 operation on a subscription login stays the risk of `docs/research/subscription-cli-usage.md`. | Limits of automatic diagnosis, as before. |
 | R9 | The dummy's real agent spends subscription quota on every smoke run. | The smoke test makes two runs; it is opt-in, never in CI. |
+| R10 | New with the cluster. On Linux the CLI's OAuth credential is a plain file under `HOME=/state` (`CLAUDE_CONFIG_DIR=/state/claude`) and is readable by the uid the agent CLI runs as (65532, the runner's own). `REMEDY_RUNNER_TOKEN` is readable in `/proc/1/environ` of the runner container by the same uid. On the maintainer's macOS host the credential was in the keychain. The only barrier is `--restricted`, which per `claude --help` of 2.1.287 (`docs/research/spike-claude-billing.md`) confines file tools to the working directory; this was **not measured** with the pinned CLI (2.1.288) and the runner's exact flags. Agent output is not redacted before it is stored: `internal/redact` is applied to the prompt and to the gatekeeper's call text only. | Accepted until measured. Proposed, not done (a decision for the maintainer): a canary-file spike with the pinned CLI and the runner's exact flags (a canary file outside the workspace, never the credential itself), and redacting `sk-ant-` patterns from stored run output as defence in depth. |
 
 ## 12. Documents to change
 

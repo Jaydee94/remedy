@@ -1,5 +1,12 @@
 # Runbook: Remedy on a homelab k3s cluster, under Argo CD
 
+**Status of this runbook.** It has **not** been run end to end. Success criterion 4 of the spec is not shown. The k3s half of the
+NetworkPolicy spike (S3) is not measured (`docs/research/k8s-s3-networkpolicy.md`). No image has been published yet: the release
+task K-5 task 6 (the tag and the visibility of the GHCR packages) is not done. The chart was only rendered with Helm 4.3.0, while
+Argo CD renders with its own bundled Helm. Argo CD's handling of the `PostSync` hook and of the Secret without data
+(`remedy-write-token`) is unproven. What was proven is the same chart on kind with the real agent
+(`docs/research/k8s-dummy-real-run.md`, `docs/research/k8s-runner-status-real-run.md`). Read every step as expected, not as tried.
+
 This installs Remedy from a tag of this repository, the way the maintainer runs it. The pieces are the chart
 [`deploy/chart`](../../deploy/chart/README.md), the pinned CLI [`deploy/cli-pin.yaml`](../../deploy/cli-pin.yaml) and the
 [spec](../specs/2026-10-06-kubernetes-deployment-design.md) behind both. Plan on about an hour, most of it waiting for images
@@ -180,6 +187,12 @@ At the first sync:
   observation, recorded in `docs/research/k8s-runner-status-real-run.md`). k3s's kube-router was not measured. A runner pod
   that restarts in a loop with failing probes means the CNI blocks them. A value `networkPolicy.runner.probeFrom` does not
   exist yet; until it does, the workaround is `networkPolicy.enabled=false`.
+- The control plane's own readiness and liveness probes (port 8080) pass the default policy only if the CNI lets the kubelet in:
+  `networkPolicy.public.from` defaults to the `kube-system` namespace and does not include the node. This was never exercised on
+  the kind dummy, because `dummy-values.yaml` opens `public.from` to `0.0.0.0/0`. On a CNI that blocks the node's traffic the
+  server would never become Ready, Argo CD would never report it Healthy and the `PostSync` hook would never run. k3s's
+  kube-router is believed to let sources on the local node through, but that is unverified. The workaround that exists today: add
+  the node range to `networkPolicy.public.from`, or set `networkPolicy.enabled=false`.
 
 ## 7. The one-time login
 
@@ -263,6 +276,9 @@ Longhorn or Velero snapshots work the same way; Litestream is a separate plan.
 - The runner pod restarts in a loop and its readiness or liveness probe fails (`kubectl -n remedy-system describe pod
   remedy-runner-0`): the CNI blocks the node's probes on port 8082. See section 6; `networkPolicy.runner.probeFrom` does not
   exist yet, so the workaround is `networkPolicy.enabled=false`.
+- The control plane pod never becomes Ready, Argo CD stays `Progressing` and the hook never runs: the probes on port 8080 may be
+  blocked by the policy (unverified on k3s; see section 6). Add the node range to `networkPolicy.public.from`, or set
+  `networkPolicy.enabled=false`.
 - Actions fail with "the token file … is empty": the refresher has not run. Read `kubectl -n remedy-system get cronjob,job` and the
   logs of the last job.
 - Argo CD shows the Secret `remedy-write-token` as out of sync: the `ignoreDifferences` of section 6 is missing.

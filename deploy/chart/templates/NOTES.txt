@@ -2,7 +2,7 @@ Remedy is installed in the namespace {{ .Release.Namespace }}.
 
 1. The control plane: kubectl -n {{ .Release.Namespace }} rollout status deployment/remedy-server
 {{- if .Values.ingress.enabled }}
-   Open https://{{ .Values.ingress.host }} and sign in as the admin with the password in the Secret "{{ .Values.existingSecret.name }}".
+   Open {{ if .Values.ingress.tls.secretName }}https{{ else }}http{{ end }}://{{ .Values.ingress.host }} and sign in as the admin with the password in the Secret "{{ .Values.existingSecret.name }}".
 {{- else }}
    There is no Ingress. Reach the public Service with: kubectl -n {{ .Release.Namespace }} port-forward service/remedy-server 8080:8080
 {{- end }}

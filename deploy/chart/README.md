@@ -19,7 +19,7 @@ Spec: [`docs/specs/2026-10-06-kubernetes-deployment-design.md`](../../docs/specs
 | PVC | `remedy-data` | kept on uninstall; `server.persistence.existingClaim` uses your own |
 | StatefulSet | `remedy-runner` | init container `install-cli`; no Kubernetes token |
 | Ingress | `remedy` | optional |
-| NetworkPolicies | `remedy-server`, `remedy-runner` | on by default; `networkPolicy.*` |
+| NetworkPolicies | `remedy-server`, `remedy-runner`, `remedy-token-refresher` (only with `cluster.write.enabled`: DNS and the API server, nothing else) | on by default; `networkPolicy.*` |
 
 With `cluster.enabled` the control plane runs as the read account (a projected token) and the chart creates a read-only ClusterRole.
 With `cluster.write.enabled` a CronJob (default schedule `*/30 * * * *`, `cluster.write.tokenRefresh.schedule`) and a Job that runs as a post-install and post-upgrade

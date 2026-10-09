@@ -68,7 +68,9 @@ The Go tests of the cluster tools run on recordings of a real cluster (`internal
 
 ## Architecture
 
-Two Go processes (module `github.com/Jaydee94/remedy`, `go 1.27.1`) plus a UI in `web/`:
+Two Go processes (module `github.com/Jaydee94/remedy`, `go 1.27.1`) plus a UI in `web/`, and one small third binary: `cmd/remedy-tokenrefresh` (stdlib only; it runs as a CronJob and as a Helm hook in the cluster and mints the write identity's short-lived token). The runner can also serve `/livez` and `/readyz` on `REMEDY_RUNNER_STATUS_ADDR` for the pod's probes.
+
+The two processes and the UI:
 
 - **Control plane** (`cmd/remedy-server`): admin API for the UI, runner API, SSE stream, SQLite, a GitHub poller that feeds the incident engine (`internal/poller`, `internal/incident`), a reaper for runs that stay `running` (`internal/reaper`: 15 minutes for a run without gatekeeper access, 2 minutes without a heartbeat for one with it), a responder that diagnoses incidents (`internal/responder`), and the MCP gatekeeper (`internal/gatekeeper`, served at `/mcp`). `internal/app` wires all of it for `cmd/remedy-server` and for the tests that run the whole chain.
 - **Runner** (`cmd/remedy-runner`): the only place that holds agent-CLI logins. It dials out to the control plane, long-polls `POST /runner/v1/claim`, runs one CLI subprocess per run in a temp workspace, and posts each output line back as an event (`/runner/v1/runs/{id}/events`, then `/finish`). It has no GitHub, cluster or DB credentials. At start it removes what a killed runner left in its workspace root (`SweepWorkspaces`: only real directories named `<32 hex>-…`, so the root may be shared with other files, but not with a second runner). A run with gatekeeper access also gets a heartbeat (`POST /runner/v1/runs/{id}/heartbeat`, every 10 s): its answer stops the run's time budget while the run waits for an approval (`runClock`) and carries a cancel; a cancel or a 404 stops the agent (the context is cancelled, which `SIGKILL`s the CLI), and a heartbeat that fails never does.
