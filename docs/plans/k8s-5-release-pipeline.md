@@ -879,7 +879,7 @@ git push origin v0.1.0
 gh run watch "$(gh run list --workflow images.yml --limit 1 --json databaseId -q '.[0].databaseId')"
 ```
 
-Expected: `check-release.sh` prints `the tag v0.1.0 matches the chart`; both matrix jobs of `images` finish green; `gh api users/jaydee94/packages/container/remedy-server/versions -q '.[0].metadata.container.tags'` lists `0.1.0` and a `sha-…` tag (same for `remedy-runner`).
+Expected: `check-release.sh` prints `the tag v0.1.0 matches the chart`; both matrix jobs of `images` finish green; `gh api users/jaydee94/packages/container/remedy-server/versions -q '[.[].metadata.container.tags[]] | unique'` lists `0.1.0` and a `sha-…` tag, and no `latest` (same for `remedy-runner`; the pushed images also carry provenance attestations, which show up as untagged package versions, hence the filter on tags).
 
 - [ ] **Step 3: Ask, then make the packages public**
 
@@ -889,10 +889,10 @@ The packages are private after their first push. Ask the maintainer to make both
 docker logout ghcr.io 2> /dev/null || true
 docker pull ghcr.io/jaydee94/remedy-server:0.1.0
 docker pull ghcr.io/jaydee94/remedy-runner:0.1.0
-docker manifest inspect ghcr.io/jaydee94/remedy-runner:0.1.0 | grep -E '"architecture"' | sort -u
+docker manifest inspect ghcr.io/jaydee94/remedy-runner:0.1.0 | grep -E '"architecture"' | grep -v unknown | sort -u
 ```
 
-Expected: both pulls succeed without a login; the manifest lists `amd64` and `arm64`.
+Expected: both pulls succeed without a login; the manifest lists `amd64` and `arm64` (the `unknown/unknown` entries of the provenance attestation are filtered out).
 
 - [ ] **Step 4: The published images in the dummy**
 

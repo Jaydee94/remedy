@@ -36,9 +36,12 @@ jobs:
           - {name: remedy-server, file: Dockerfile}
           - {name: remedy-runner, file: Dockerfile.runner}
     env:
-      PUSH: ${{ github.event_name != 'pull_request' }}
+      # Only main and a v* tag push. A pull request, and a manual run from any other branch, build and push nothing.
+      PUSH: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: A tag must match the Helm chart
         if: startsWith(github.ref, 'refs/tags/')
@@ -59,6 +62,8 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/jaydee94/${{ matrix.name }}
+          # No mutable "latest": the chart pins the version it was released with.
+          flavor: latest=false
           tags: |
             type=sha,prefix=sha-,format=short
             type=edge,branch=main
