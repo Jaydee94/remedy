@@ -64,6 +64,8 @@ shell-test: ## Run the shell tests: the dummy's directory guard, its smoke decis
 	sh scripts/check-login-dir-untouched.sh
 	sh scripts/check-release_test.sh
 	sh scripts/cli-checksums_test.sh
+	sh scripts/set-chart-version_test.sh
+	sh scripts/check-pr-title_test.sh
 
 check: fmt vet test chart-check shell-test web-lint web-test web-build ## Everything CI checks
 
