@@ -54,7 +54,8 @@ const changelog = ['@semantic-release/changelog', { changelogFile: 'CHANGELOG.md
 const execPlan = ['@semantic-release/exec', { verifyReleaseCmd: 'printf %s "${nextRelease.version}" > .release-version' }]
 // verifyRelease runs before any commit or tag: the version semantic-release computes must be the one the workflow planned
 // (EXPECTED_VERSION, whose images and chart are already pushed). Required in full mode; in local mode (the scratch test) it is
-// checked only when set. The shell variable is written without braces: the exec plugin reads ${...} as a template.
+// checked only when set. EXPECTED_VERSION is read from the environment by the script: never write it into the command as
+// ${EXPECTED_VERSION}, because the exec plugin reads ${...} as a lodash template and fails with a ReferenceError.
 const execPrepare = [
   '@semantic-release/exec',
   {

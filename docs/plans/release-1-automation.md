@@ -1004,7 +1004,7 @@ git push origin v0.0.0
 
 - [ ] **Step 3: Ask, then merge**
 
-Ask: "May I merge the pull request? The merge publishes release 0.1.0: two images and the chart to GHCR (private until you make them public), the tag v0.1.0 and a public GitHub release." Only on a yes: squash-merge with the title above, then `gh run watch` the `release` run.
+Ask: "May I merge the pull request? The merge publishes release 0.1.0: the `0.1.0` tags of the two image packages (which exist already since the merge of #130), the new chart package `charts/remedy` (private until you make it public), the tag v0.1.0 and a public GitHub release." Only on a yes: squash-merge with the title above, then `gh run watch` the `release` run.
 Expected: `plan` says `0.1.0`; `images` and `chart` push; `publish` makes the commit `chore(release): 0.1.0 [skip ci]`, the tag `v0.1.0` and the release with the chart attached; the last step prints `the tag v0.1.0 matches the chart`.
 
 - [ ] **Step 4: What only the first run can show**
