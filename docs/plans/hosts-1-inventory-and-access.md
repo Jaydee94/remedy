@@ -2135,7 +2135,7 @@ func okCommands() map[string]sshtest.Reply {
 		"id -un":     {Out: "remedy\n"},
 		"id -Gn":     {Out: "remedy users\n"},
 		"uname -sr":  {Out: "Linux 6.8.0\n"},
-		"sudo -n -l": {Out: "User remedy may run the following commands on nas:\n    (root) NOPASSWD: /usr/bin/docker ps -a\n"},
+		"env LC_ALL=C sudo -n -l": {Out: "User remedy may run the following commands on nas:\n    (root) NOPASSWD: /usr/bin/docker ps -a\n"},
 	}
 }
 
@@ -2599,7 +2599,7 @@ import (
 )
 
 // testCommands are the four commands of a connection test. They are constants: no user input ever reaches them.
-var testCommands = [4]string{"id -un", "id -Gn", "uname -sr", "sudo -n -l"}
+var testCommands = [4]string{"id -un", "id -Gn", "uname -sr", "env LC_ALL=C sudo -n -l"}
 
 // Service is what the control plane uses. The zero value is ready. It lets only one connection per host be open at a time,
 // so two clicks on "Test" do not open two sessions.
@@ -2723,7 +2723,7 @@ func nasCommands() map[string]sshtest.Reply {
 		"id -un":     {Out: "remedy\n"},
 		"id -Gn":     {Out: "remedy users\n"},
 		"uname -sr":  {Out: "Linux 6.8.0\n"},
-		"sudo -n -l": {Out: "User remedy may run the following commands on nas:\n    (root) NOPASSWD: /usr/bin/docker ps -a\n"},
+		"env LC_ALL=C sudo -n -l": {Out: "User remedy may run the following commands on nas:\n    (root) NOPASSWD: /usr/bin/docker ps -a\n"},
 	}
 }
 
@@ -3060,7 +3060,7 @@ func TestPinningNeedsTheFingerprintYouSaw(t *testing.T) {
 func TestATestAfterPinningReportsTheAccountsRights(t *testing.T) {
 	cmds := nasCommands()
 	cmds["id -Gn"] = sshtest.Reply{Out: "remedy users docker\n"}
-	cmds["sudo -n -l"] = sshtest.Reply{Out: "User remedy may run the following commands on nas:\n    (ALL : ALL) NOPASSWD: ALL\n"}
+	cmds["env LC_ALL=C sudo -n -l"] = sshtest.Reply{Out: "User remedy may run the following commands on nas:\n    (ALL : ALL) NOPASSWD: ALL\n"}
 	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: cmds})
 	e := newHostEnv(t, nil, "", ghKey(t, 1), srv)
 	h := e.create(t, "nas")
