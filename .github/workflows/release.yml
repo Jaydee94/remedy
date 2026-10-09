@@ -1,0 +1,180 @@
+name: release
+
+# On every push to main: semantic-release says whether the commits make a release (plan); both images are built and pushed
+# (sha-<short>, edge, and X.Y.Z when there is a release); the chart is packaged and pushed as an OCI artifact; and only
+# when both are done does semantic-release write the version, tag it and make the GitHub release (publish). A failure in
+# between leaves unused X.Y.Z artifacts, never a release without artifacts. See docs/specs/2026-10-09-release-automation-design.md.
+#
+#   plan --> images --------> publish   (publish only when plan found a version)
+#     \                         ^
+#      `--> chart (if version) -'
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    # contents: write only because semantic-release checks push access with a dry-run push even in a dry run.
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: release/.nvmrc
+          cache: npm
+          cache-dependency-path: release/package-lock.json
+      - run: npm ci --ignore-scripts --prefix release
+      - id: next
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_MODE: plan
+        run: |
+          rm -f .release-version
+          release/node_modules/.bin/semantic-release --dry-run --extends ./release/release.config.js
+          version=$(cat .release-version 2> /dev/null || true)
+          # The version ends up in image tags and file names: only X.Y.Z (or nothing) may leave this job.
+          re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          if [ -n "$version" ] && ! [[ $version =~ $re ]]; then
+            echo "semantic-release planned '$version', which is not X.Y.Z" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "next release version: ${version:-none}"
+
+  # Runs on every push to main, with or without a release: sha-<short> and edge always, X.Y.Z when plan found a version.
+  # docker/metadata-action skips a tag whose enable is false before it reads the value, so the empty value of the no-release
+  # case is never used (checked against v6.2.0, see the task 4 report).
+  images:
+    needs: plan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: remedy-server, file: Dockerfile}
+          - {name: remedy-runner, file: Dockerfile.runner}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/jaydee94/${{ matrix.name }}
+          # No mutable "latest": the chart pins the version it was released with.
+          flavor: latest=false
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=edge,branch=main
+            type=raw,value=${{ needs.plan.outputs.version }},enable=${{ needs.plan.outputs.version != '' }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max,ignore-error=true
+
+  chart:
+    needs: plan
+    if: needs.plan.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # The Helm preinstalled on the runner; no third-party setup action.
+      - name: Helm version
+        run: helm version
+      - name: Package
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: sh scripts/package-chart.sh "$VERSION" dist
+      - name: Push to GHCR
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          printf '%s' "$GITHUB_TOKEN" | helm registry login ghcr.io --username "$ACTOR" --password-stdin
+          sh scripts/push-chart.sh "dist/remedy-$VERSION.tgz" oci://ghcr.io/jaydee94/charts
+      - uses: actions/upload-artifact@v7
+        with:
+          name: chart
+          path: dist/remedy-*.tgz
+          if-no-files-found: error
+
+  publish:
+    needs: [plan, images, chart]
+    if: needs.plan.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: chart
+          path: dist
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: release/.nvmrc
+          cache: npm
+          cache-dependency-path: release/package-lock.json
+      - run: npm ci --ignore-scripts --prefix release
+      # The assets glob of the github plugin (dist/remedy-*.tgz) makes a release without the chart when nothing matches.
+      - name: The chart package is there
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          if [ ! -f "dist/remedy-$VERSION.tgz" ]; then
+            echo "dist/remedy-$VERSION.tgz is missing: the release would have no chart attached" >&2
+            ls -l dist >&2 || true
+            exit 1
+          fi
+      - name: semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_MODE: full
+        run: release/node_modules/.bin/semantic-release --extends ./release/release.config.js
+      # The tag as the remote has it (the repository is public, so the fetch needs no credentials), not the working tree.
+      - name: The tag matches the chart
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          git fetch --tags --force origin
+          git show "v$VERSION:deploy/chart/Chart.yaml" > "$RUNNER_TEMP/Chart.yaml"
+          sh scripts/check-release.sh "v$VERSION" "$RUNNER_TEMP/Chart.yaml"
