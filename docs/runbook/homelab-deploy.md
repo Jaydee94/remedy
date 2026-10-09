@@ -14,23 +14,30 @@ which is reachable on the LAN or over a VPN only.
 
 ## 2. You need
 
-- k3s with Argo CD and Sealed Secrets installed.
+- k3s with Argo CD and Sealed Secrets installed. Argo CD must be 2.6 or later (an Application with several sources and `ref`).
+- The `default` AppProject, or one that allows what the chart creates: a ClusterRole and a ClusterRoleBinding, and Roles in
+  `remedy-system`, in each of the write namespaces and in the Argo CD namespace.
 - `kubectl`, `kubeseal` and `openssl` on your machine.
 - A GitOps repository that Argo CD watches.
 - DNS for the UI's host name, and a TLS certificate for it (cert-manager, or a Secret you provide).
 - A Claude subscription, for the one-time login.
 - The namespaces in which Remedy may act. They must exist.
 
+`kubectl get endpoints kubernetes` (used below) prints a deprecation warning on newer Kubernetes versions. It is harmless;
+`kubectl get endpointslices -l kubernetes.io/service-name=kubernetes` is the alternative.
+
 ## 3. The namespace
 
-Remedy runs in its own namespace, with the restricted Pod Security Standard (every pod of the chart passes it):
+Remedy runs in its own namespace, with the restricted Pod Security Standard (every pod of the chart passes it). Create it
+yourself, before anything else: the SealedSecret of the next section needs the namespace to exist.
 
 ```sh
 kubectl create namespace remedy-system
 kubectl label namespace remedy-system pod-security.kubernetes.io/enforce=restricted
 ```
 
-(With Argo CD's `managedNamespaceMetadata` below the label is set by Argo instead; do one of the two.)
+The Application in section 6 sets the same label through `managedNamespaceMetadata`; with the namespace made here, that is only
+a safeguard.
 
 ## 4. The secret
 
@@ -44,14 +51,16 @@ printf 'admin-password=%s\nrunner-token=%s\nmaster-key=%s\n' "$(openssl rand -he
 
 `printf` is a shell builtin, so the values are in no process's argument list, and the plain Secret is never written to disk: it
 goes from `kubectl` to `kubeseal` through pipes. `kubeseal` asks the Sealed Secrets controller in your cluster for its
-certificate, so `kubectl` must reach the cluster.
+certificate, so `kubectl` must reach the cluster. If `kubeseal` cannot find the controller, name it:
+`--controller-name sealed-secrets --controller-namespace kube-system` (or whatever your install uses).
 
 Commit `remedy-secrets.sealed.yaml` to the GitOps repository (it is safe there). The Application in section 6 does not apply
 it: let the way your GitOps repository applies its other manifests do so, or apply it once with
-`kubectl apply -f remedy-secrets.sealed.yaml`. The controller then makes the Secret `remedy-secrets` in `remedy-system`.
+`kubectl apply -f remedy-secrets.sealed.yaml`. Either way the namespace of section 3 must exist first. The controller then
+makes the Secret `remedy-secrets` in `remedy-system`.
 
-Note the admin password before it is gone: it is only in the cluster after this. Once the controller has made the Secret,
-`kubectl -n remedy-system get secret remedy-secrets -o jsonpath='{.data.admin-password}' | base64 -d` shows it.
+The pipeline does not show the admin password. Read it from the Secret once the controller has made it:
+`kubectl -n remedy-system get secret remedy-secrets -o jsonpath='{.data.admin-password}' | base64 -d`.
 
 ## 5. The values
 
@@ -142,8 +151,8 @@ spec:
       labels:
         pod-security.kubernetes.io/enforce: restricted
   ignoreDifferences:
-    # The token refresher writes the data of this Secret; the chart has none. Without this Argo CD (selfHeal) would see
-    # a difference and fight the refresher.
+    # The token refresher writes the data of this Secret; the chart's Secret has no data, so a sync cannot overwrite it.
+    # This entry is a safeguard against drift reports. RespectIgnoreDifferences is not needed: there is no data to apply.
     - group: ""
       kind: Secret
       name: remedy-write-token
@@ -171,7 +180,7 @@ the pod, but not the loss of the volume. (After plan K-6, Setup shows whether th
 
 ## 8. First use
 
-Open the host name, sign in as `admin` with the password of section 4, then in Setup connect GitHub (the token is write-only) and
+Open the host name, sign in with the admin password of section 4 (the login page has no user name), then in Setup connect GitHub (the token is write-only) and
 add repositories. Ask Remedy with "Read the cluster" to see the cluster tools work; each change waits for your approval.
 
 ## 9. Upgrading
@@ -212,14 +221,17 @@ failed job of that workflow run; do not make a new tag.
 The database is the only state of the control plane (incidents, runs, the sealed GitHub token); the runner's volume holds the
 CLI login, which you can make again with section 7. A `local-path` volume lives on one node: copy it or snapshot it.
 
-1. Stop the control plane. With `selfHeal` Argo CD scales it back at once, so disable auto-sync on the Application first (Argo
-   CD UI, App Details, Disable Auto-Sync), then
+1. Find the node that runs the control plane before you stop it, because the volume is on that node:
+   `kubectl -n remedy-system get pod -l app.kubernetes.io/component=server -o wide` (the PV's node affinity says the same).
+2. Stop the control plane. With `selfHeal` Argo CD scales it back at once, so disable auto-sync on the Application first (Argo
+   CD UI, App Details, Disable Auto-Sync, or `argocd app set remedy --sync-policy none`). If a parent application with `selfHeal`
+   manages the Application, it must stop syncing it too. Then
    `kubectl -n remedy-system scale deployment/remedy-server --replicas=0`.
-2. Find the volume's directory on the node:
+3. Find the volume's directory:
    `kubectl get pv "$(kubectl -n remedy-system get pvc remedy-data -o jsonpath='{.spec.volumeName}')" -o jsonpath='{.spec.local.path}{.spec.hostPath.path}'`
    (one of the two fields is set, depending on the provisioner).
-3. As root on that node, copy `remedy.db` and `remedy.db-wal` (if it exists) out of that directory.
-4. Scale back to one (`kubectl -n remedy-system scale deployment/remedy-server --replicas=1`) and enable auto-sync again.
+4. As root on that node, copy `remedy.db` and `remedy.db-wal` (if it exists) out of that directory.
+5. Scale back to one (`kubectl -n remedy-system scale deployment/remedy-server --replicas=1`) and enable auto-sync again.
 
 Longhorn or Velero snapshots work the same way; Litestream is a separate plan.
 
@@ -236,5 +248,6 @@ Longhorn or Velero snapshots work the same way; Litestream is a separate plan.
 - Actions fail with "the token file … is empty": the refresher has not run. Read `kubectl -n remedy-system get cronjob,job` and the
   logs of the last job.
 - Argo CD shows the Secret `remedy-write-token` as out of sync: the `ignoreDifferences` of section 6 is missing.
+  The refresher's data is not the chart's, so this is a drift report only; the entry silences it.
 - The session cookie has no `Secure` flag: the control plane sets it when the request arrives with `X-Forwarded-Proto: https`,
   which Traefik sends when TLS ends there. Without `ingress.tls.secretName` the chart has no TLS block.
