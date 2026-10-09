@@ -124,3 +124,13 @@ func (c *Client) Finish(ctx context.Context, runID string, o run.Outcome) error 
 	defer resp.Body.Close()
 	return expect(resp, http.StatusNoContent)
 }
+
+// ReportStatus tells the control plane the runner's login state. It is best effort: the reporter decides what a failure means.
+func (c *Client) ReportStatus(ctx context.Context, r Report) error {
+	resp, err := c.do(ctx, requestTimeout, "/runner/v1/status", r)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return expect(resp, http.StatusNoContent)
+}

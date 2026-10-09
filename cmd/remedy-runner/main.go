@@ -6,11 +6,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/config"
 	"github.com/Jaydee94/remedy/internal/provider"
@@ -40,9 +42,12 @@ func main() {
 		log.Info("removed what an earlier runner left behind", "path", cfg.WorkspaceRoot, "directories", n)
 	}
 
+	claude := provider.Claude{Binary: cfg.ClaudeBin, Model: cfg.ClaudeModel}
+	status := runner.NewStatus()
 	loop := &runner.Loop{
 		Client:        &runner.Client{BaseURL: cfg.ServerURL, Token: cfg.Token, HTTP: &http.Client{}},
-		Providers:     map[string]provider.Provider{"claude": provider.Claude{Binary: cfg.ClaudeBin, Model: cfg.ClaudeModel}},
+		Providers:     map[string]provider.Provider{"claude": claude},
+		Status:        status,
 		WorkspaceRoot: cfg.WorkspaceRoot,
 		Env:           os.Environ(),
 		Log:           log,
@@ -51,6 +56,30 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if cfg.StatusAddr != "" {
+		statusSrv := &http.Server{Addr: cfg.StatusAddr, Handler: runner.StatusHandler(status), ReadHeaderTimeout: 10 * time.Second}
+		go func() {
+			if err := statusSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Error("status listener failed", "err", err)
+				os.Exit(1)
+			}
+		}()
+		go func() {
+			<-ctx.Done()
+			shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = statusSrv.Shutdown(shutdown)
+		}()
+		log.Info("status listener", "addr", cfg.StatusAddr)
+	}
+	go (&runner.Reporter{Client: loop.Client, Status: status, Log: log}).Run(ctx)
+	go (&runner.LoginChecker{
+		Check:   func(c context.Context) (provider.LoginState, string) { return claude.LoginCheck(c, os.Environ()) },
+		Version: func(c context.Context) string { return claude.Version(c, os.Environ()) },
+		Status:  status,
+		Log:     log,
+	}).Run(ctx)
 
 	log.Info("runner started", "server", cfg.ServerURL, "workspaces", cfg.WorkspaceRoot)
 	loop.Run(ctx)
