@@ -130,6 +130,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		PollInterval: cfg.PollInterval,
 		Gatekeeper:   gate,
 		Cluster:      clusterCapabilities(cfg.Cluster, kubeReader, kubeWriter),
+		RunnerStatus: server.NewRunnerStatus(),
 	}
 	var handler, internalHandler http.Handler
 	if cfg.InternalAddr != "" {

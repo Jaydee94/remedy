@@ -45,6 +45,10 @@ type Deps struct {
 
 	// Cluster says what can be done in a cluster. The zero value is no cluster.
 	Cluster Cluster
+
+	// RunnerStatus is what the control plane knows about its runner. When it is nil there are neither the report route
+	// nor GET /api/runner.
+	RunnerStatus *RunnerStatus
 }
 
 type srv struct {
@@ -104,6 +108,10 @@ func (s *srv) routes(public, internal *http.ServeMux) {
 	internal.HandleFunc("POST /runner/v1/runs/{id}/events", s.runner(s.postEvent))
 	internal.HandleFunc("POST /runner/v1/runs/{id}/finish", s.runner(s.finish))
 	internal.HandleFunc("POST /runner/v1/runs/{id}/heartbeat", s.runner(s.heartbeat))
+	if d.RunnerStatus != nil {
+		internal.HandleFunc("POST /runner/v1/status", s.runner(s.postRunnerStatus))
+		public.HandleFunc("GET /api/runner", s.session(s.getRunner))
+	}
 
 	if d.NewGitHub != nil {
 		public.HandleFunc("GET /api/github/connection", s.session(s.getConnection))
