@@ -56,12 +56,12 @@ and the tag `v0.0.0` on the first commit makes the first `feat` release `0.1.0`.
 
 `.github/workflows/release.yml`, `on: push: branches: [main]`, top-level `permissions: {contents: read}`.
 
-1. **`plan`** (`contents: read`): `actions/checkout` with `fetch-depth: 0` and `persist-credentials: false`, Node (the version in
-   `release/.nvmrc`), `npm ci --ignore-scripts` in `release/`, then `npx semantic-release --dry-run --extends ./release/.releaserc.plan.json`; the
-   `exec` plugin's `verifyReleaseCmd` writes `${nextRelease.version}` to a file. Output: `version` (empty when nothing is to be
-   released) and the short SHA. The plan configuration has only the analyzer, the notes generator and `exec`: the `git` and
-   `github` plugins check for write access in `verifyConditions` even in a dry run, which would give `plan` more permission than
-   it needs.
+1. **`plan`** (`contents: write`): `actions/checkout` with `fetch-depth: 0` and `persist-credentials: false`, Node (the version in
+   `release/.nvmrc`), `npm ci --ignore-scripts` in `release/`, then `semantic-release --dry-run --extends ./release/release.config.js`
+   with `RELEASE_MODE=plan`; the `exec` plugin's `verifyReleaseCmd` writes `${nextRelease.version}` to a file. Output: `version`
+   (empty when nothing is to be released) and the short SHA. The plan mode loads only the analyzer, the notes generator and
+   `exec`. It still needs `contents: write` because semantic-release's core checks push access with `git push --dry-run` even in a
+   dry run; the job runs only the pinned release tool and never builds or runs code of the repository.
 2. **`images`** (matrix `remedy-server`, `remedy-runner`; `contents: read`, `packages: write`): as today's push job of
    `images.yml` (QEMU, buildx, login with `GITHUB_TOKEN`, `docker/metadata-action` with `type=sha`, `type=edge,branch=main`
    and, when `version` is set, `type=raw,value=X.Y.Z`, `docker/build-push-action` for `linux/amd64,linux/arm64`).
@@ -80,16 +80,17 @@ and the tag `v0.0.0` on the first commit makes the first `feat` release `0.1.0`.
 ## 5. The configuration
 
 `release/package.json` (private, only the dependencies), `release/package-lock.json`, `release/.nvmrc`, and
-`release/.releaserc.json` (`branches: ["main"]`, `tagFormat: "v${version}"`, the plugin list with the options of R3, R10 and R12) and
-`release/.releaserc.plan.json` (the same `branches`, `tagFormat` and analyzer/notes options, only the plugins `plan` needs; one shared
-file of the common options avoids drift: `.releaserc.plan.json` extends a common base).
+`release/release.config.js` (one file with three modes chosen by `RELEASE_MODE`: `plan` = analyzer, notes generator and `exec`; `local` = plan
+plus changelog, `exec` prepare and `git`, no `github` plugin, used by the scratch-repository test; `full` = everything; `branches: ["main"]`,
+`tagFormat: "v${version}"`, the options of R3, R10 and R12). One file keeps the modes from drifting apart.
 `scripts/set-chart-version.sh X.Y.Z` rewrites exactly the `version:` and `appVersion:` lines of `deploy/chart/Chart.yaml`
 and refuses anything that is not `X.Y.Z` or a file with other `version` lines.
 
 ## 6. Trust boundaries and permissions
 
-- No secret other than `GITHUB_TOKEN`. `plan` and the pull-request workflows have `contents: read` only. Only `publish` has
-  `contents: write` (tag, bump commit, release) and only `images` and `chart` have `packages: write`.
+- No secret other than `GITHUB_TOKEN`. The pull-request workflows have `contents: read` only. `plan` and `publish` have
+  `contents: write` (`plan` only because semantic-release checks push access in a dry run; `publish` for the bump commit, the tag and
+  the release) and only `images` and `chart` have `packages: write`.
 - Untrusted text: commit messages feed the version, the notes and the changelog; they are never interpolated into a shell
   line (the version is `X.Y.Z` validated by `set-chart-version.sh`). A pull request title goes to the check through the
   environment. The release notes are commit subjects: a hostile subject can only appear as text in the changelog.
