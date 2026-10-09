@@ -169,6 +169,7 @@ docker run -p 8080:8080 -v remedy-data:/data \
 
 The image runs as a non-root user; `/data` holds the SQLite database. Use a named volume
 or a directory writable by uid 65532. The runner has its own image (`Dockerfile.runner`;
-`make images` builds both). It does not contain the `claude` CLI: the Helm chart's init
-container installs the pinned CLI, and the login is done once with `kubectl exec`. Until
-the chart exists (plan K-2) the runner runs on the host.
+`make images` builds both; a tag `vX.Y.Z` publishes them to GHCR). It does not contain the
+`claude` CLI: the Helm chart's init container installs the pinned CLI, and the login is done
+once with `kubectl exec`. The chart is in [`deploy/chart`](deploy/chart/README.md); how to
+install it on k3s under Argo CD is in [`docs/runbook/homelab-deploy.md`](docs/runbook/homelab-deploy.md).

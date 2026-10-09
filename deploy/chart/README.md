@@ -40,3 +40,9 @@ pod with a pod or namespace selector, never with an address.
 ## Checking it
 
 `make chart-check` lints, renders, validates (kubeconform) and runs the render tests in `deploy/`.
+
+## Installing it in a homelab
+
+[`docs/runbook/homelab-deploy.md`](../../docs/runbook/homelab-deploy.md): the namespace, a SealedSecret, the values, an Argo CD
+Application with two sources of this repository (the chart, and the pinned CLI in `deploy/cli-pin.yaml`), the one-time login and
+upgrades.
