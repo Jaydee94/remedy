@@ -989,7 +989,7 @@ This task changes things outside the repository and cannot be undone by a commit
 
 - [ ] **Step 1: The pull request is green**
 
-Push the branch, open the pull request with a **conventional title** (`feat: automated releases with semantic-release, images and the Helm chart as OCI artifacts`) and check `pr-title`, `ci` (including `release`), `images` and `chart`.
+Push the branch, open the pull request with a **conventional title** (`feat: automated releases with semantic-release, images and the Helm chart as OCI artifacts`) and check `pr-title`, `ci` (its jobs `go`, `web`, `chart`, `shell` and `release`) and `images`.
 Expected: all green.
 
 - [ ] **Step 2: Ask, then the start tag**
@@ -1021,12 +1021,13 @@ Ask the maintainer to make `remedy-server`, `remedy-runner` and `charts/remedy` 
 make dummy-down && make dummy-up
 helm --kube-context kind-remedy-dev -n remedy-system upgrade remedy oci://ghcr.io/jaydee94/charts/remedy --version 0.1.0 \
   -f deploy/cli-pin.yaml -f dev/kind/dummy-values.yaml \
+  --set image.server.repository=ghcr.io/jaydee94/remedy-server --set image.runner.repository=ghcr.io/jaydee94/remedy-runner \
   --set "networkPolicy.apiServer.cidrs={$(kubectl --context kind-remedy-dev get endpoints kubernetes -o jsonpath='{.subsets[0].addresses[0].ip}')/32}" \
   --wait --timeout 10m
 make dummy-smoke
 ```
 
-Expected: the upgrade pulls the images `ghcr.io/jaydee94/remedy-server:0.1.0` and `…runner:0.1.0` (the chart's default tag is its `appVersion`) and the smoke test ends `all ok` (two short runs of the maintainer's quota: ask first).
+`dev/kind/dummy-values.yaml` sets the repositories `remedy-server` and `remedy-runner` (unqualified, for the locally loaded images), so without the two `--set image.*.repository` flags the upgrade would deploy `docker.io/remedy-server:0.1.0` and time out. Expected: the upgrade pulls the images `ghcr.io/jaydee94/remedy-server:0.1.0` and `…runner:0.1.0` (the chart's default tag is its `appVersion`) and the smoke test ends `all ok` (two short runs of the maintainer's quota: ask first).
 
 - [ ] **Step 7: The record**
 

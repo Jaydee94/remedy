@@ -18,7 +18,7 @@ Docs: `docs/design.md` (decisions), `docs/specs/` (what and why), `docs/plans/` 
 ## Commands
 
 ```sh
-make check                                       # fmt, vet, test, chart check, web lint, web test, web build (same as CI)
+make check                                       # fmt, vet, test, chart check, shell tests, web lint, web test, web build (CI also runs make release-test in its own job)
 make chart-check                                 # helm lint, render, kubeconform (if installed) and the render tests of deploy/chart
                                                  # needs helm (so does make check); kubeconform is used when on PATH:
                                                  # go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7 (binary in ~/go/bin)

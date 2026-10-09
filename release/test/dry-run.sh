@@ -29,7 +29,7 @@ git config tag.gpgsign false
 git remote add origin "$REMOTE"
 
 mkdir -p scripts deploy/chart
-cp "$ROOT/scripts/set-chart-version.sh" scripts/
+cp "$ROOT/scripts/set-chart-version.sh" "$ROOT/scripts/check-expected-version.sh" scripts/
 cp "$ROOT/deploy/chart/Chart.yaml" deploy/chart/Chart.yaml
 sh scripts/set-chart-version.sh 0.0.0 > /dev/null
 git add -A
@@ -94,8 +94,30 @@ const gh = c.plugins.find((p) => p[0] === '@semantic-release/github')[1]
 const ok = names.length === 6 && !c.dryRun && gh.assets.some((a) => a.path === 'dist/remedy-*.tgz') && gh.successCommentCondition === false && gh.failCommentCondition === false && gh.releasedLabels === false
 console.log(ok ? 'full ok' : 'full wrong: ' + JSON.stringify(c))
 " 2>&1) || true
+# in full mode the version check is mandatory (an unset EXPECTED_VERSION fails), in local mode it is optional
+cmds=$(cd "$ROOT/release" && for m in local full; do clean_env RELEASE_MODE=$m node -e "
+const c = require('$CONFIG')
+const cmd = c.plugins.filter((p) => p[0] === '@semantic-release/exec').map((p) => p[1].verifyReleaseCmd).filter(Boolean).join(' ; ')
+console.log('$m: ' + cmd)
+"; done 2>&1)
+case $cmds in
+  *"local: "*check-expected-version.sh*optional*"full: "*check-expected-version.sh*require*) say "the exec step checks EXPECTED_VERSION: optional in local mode, required in full mode" ;;
+  *) fail "the exec step of the version check: $cmds" ;;
+esac
 [ "$full" = "full ok" ] && say "the full mode loads: six plugins, the chart attached, no comments, no dry run" || fail "the full mode: $full"
-release
+# the version the workflow planned (EXPECTED_VERSION) must be the version semantic-release computes, checked before any
+# commit or tag: a wrong one fails the run and leaves the repository and the remote as they were
+rel_expect() { clean_env RELEASE_MODE=local EXPECTED_VERSION="$1" "$SR" --no-ci --repository-url "file://$REMOTE" --extends "$CONFIG" > "$WORK/sr.log" 2>&1; }
+tags_before=$(git --git-dir="$REMOTE" tag | sort | tr '\n' ' ')
+head_before=$(git rev-parse HEAD)
+remote_before=$(git --git-dir="$REMOTE" rev-parse main)
+if rel_expect 0.9.9; then fail "a release ran with a wrong EXPECTED_VERSION"; else say "a wrong EXPECTED_VERSION fails the run"; fi
+grep -q '0.9.9' "$WORK/sr.log" && grep -q '0.1.0' "$WORK/sr.log" && say "the message names both versions" || fail "the message of a wrong EXPECTED_VERSION: $(tail -c 400 "$WORK/sr.log")"
+[ "$(git --git-dir="$REMOTE" tag | sort | tr '\n' ' ')" = "$tags_before" ] && [ "$(git tag | sort | tr '\n' ' ')" = "$tags_before" ] && say "a wrong EXPECTED_VERSION creates no tag" || fail "a wrong EXPECTED_VERSION created a tag"
+[ "$(git rev-parse HEAD)" = "$head_before" ] && [ "$(git --git-dir="$REMOTE" rev-parse main)" = "$remote_before" ] && [ -z "$(git status --porcelain --untracked-files=no)" ] && say "a wrong EXPECTED_VERSION makes no commit and changes no file" || fail "a wrong EXPECTED_VERSION changed the repository"
+rel_expect 0.1.0 || { cat "$WORK/sr.log" >&2; fail "the right EXPECTED_VERSION did not release"; }
+git pull -q --ff-only origin main
+[ "$(git --git-dir="$REMOTE" tag | grep -cx v0.1.0)" = 1 ] && say "the right EXPECTED_VERSION releases" || fail "no tag v0.1.0 after the right EXPECTED_VERSION"
 grep -q '^version: 0.1.0$' deploy/chart/Chart.yaml && say "Chart.yaml version written" || fail "Chart.yaml version not written"
 grep -q '^appVersion: "0.1.0"$' deploy/chart/Chart.yaml && say "Chart.yaml appVersion written" || fail "Chart.yaml appVersion not written"
 grep -q '^## ' CHANGELOG.md && grep -q '### Features' CHANGELOG.md && grep -q 'the first feature' CHANGELOG.md && say "CHANGELOG.md has the Features section" || fail "CHANGELOG.md lacks the Features section"

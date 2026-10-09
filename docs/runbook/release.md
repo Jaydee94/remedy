@@ -17,7 +17,7 @@ expected, not seen: section 3 lists the three things the first run proves.
 | `plan` | Runs semantic-release in dry-run mode and says the next version `X.Y.Z`, or nothing. Refuses a version that is not `X.Y.Z` and any major other than 0. |
 | `images` | Builds `remedy-server` and `remedy-runner` for `linux/amd64` and `linux/arm64` and pushes them. Runs on every push to `main` once `plan` has succeeded (it needs `plan`). |
 | `chart` | Only with a version: lints and packages the chart with `version` and `appVersion` set to `X.Y.Z`, pushes it to the registry. |
-| `publish` | Only with a version, after `images` and `chart`: semantic-release for real (bump commit, tag, GitHub release), then three checks. |
+| `publish` | Only with a version, after `images` and `chart`: semantic-release for real (it first checks that its version is the planned one, then bump commit, tag, GitHub release), then three checks. |
 
 What is published where:
 
@@ -65,10 +65,13 @@ Traps:
   as written it also blocks 1.1.0 and every later major;
   (d) `release/test/dry-run.sh` pins the 0.x behaviour (`feat!` gives 0.2.0, `refactor!` 0.5.0), so `make release-test` and the CI
   `release` job fail until the test is updated in the same pull request.
-- **Renovate titles.** `config:recommended` is expected to title a `dependencies` bump `fix(deps):`, so a merged semantic-release, Go or web
-  dependency pull request would release a patch with no product change. Retitle such a pull request `chore(deps):` if that is not wanted.
-  The CLI pin pull request is expected to be `chore(deps)`; retitling it `fix: pin the claude CLI X.Y.Z` to ship it is the maintainer's
-  decision (section 5). Neither title was observed.
+- **Renovate titles.** Observed: the open Renovate pull requests #132 (the CLI pin) and #133 (an action bump) are titled
+  `chore(deps): ...`. Still expected, not observed: `config:recommended` gives `fix(deps)` to npm `dependencies` and Go `require` bumps.
+  `renovate.json` sets `semanticCommitType: chore` for `release/package.json` (the release tooling is not the product), so those bumps
+  release nothing. A Go module or web dependency bump is still expected to be a `fix(deps)` patch release with no product change,
+  unless you retitle it `chore(deps):`. The CLI pin pull request is `chore(deps)`; retitling it `fix: pin the claude CLI X.Y.Z` to ship
+  it is the maintainer's decision (section 5).
+- **`pr-title` is not a required check** (`main` is unprotected), so a red title can still be merged. Look at the check before you merge.
 - A wrong type releases the wrong bump (spec A3). Do not rewrite a tag; fix forward.
 
 ## 3. One-time setup
@@ -76,7 +79,7 @@ Traps:
 Do these before the first merge, in this order. Each is outward-facing: do them yourself.
 
 1. **The start tag.** Without it the first release would be `1.0.0` (and `plan` refuses it). With it the first `feat` is `0.1.0`
-   and its changelog holds the history of `feat` and `fix` commits. Nothing runs on a tag.
+   and its changelog holds the history of `feat` and `fix` commits.
 
    ```sh
    git fetch origin
@@ -85,10 +88,8 @@ Do these before the first merge, in this order. Each is outward-facing: do them 
 
    (`origin/main` has one root commit at the time of writing; the command needs exactly one.)
 
-   Expected: no workflow run for this tag. GitHub reads the workflow files of the tagged commit, and the first commit holds only
-   `README.md` (checked with `git ls-tree`). If a run does start, it is the old `images.yml` of `main` (it still has
-   `on: push: tags: ['v*']` until the pipeline pull request is merged): it is expected to fail at its first step, `check-release.sh v0.0.0`
-   against the `Chart.yaml` version `0.1.0`, before any login or push. A red run like that is harmless; ignore it. The merge removes the trigger.
+   The tagged commit holds only `README.md` and no workflow (checked with `git ls-tree`), so GitHub is expected to start no run for
+   this tag; if a run starts anyway (the old `images.yml`), it fails at its first step, which is harmless.
 
 2. **The squash merge setting.** The repository currently has `squash_merge_commit_title=COMMIT_OR_PR_TITLE` and
    `squash_merge_commit_message=COMMIT_MESSAGES`. With these a single-commit pull request is squashed with the commit's subject, not
@@ -108,7 +109,10 @@ Do these before the first merge, in this order. Each is outward-facing: do them 
 3. **Merge the pipeline pull request** with a conventional title such as
    `feat: automated releases with semantic-release, images and the Helm chart as OCI artifacts`. It is the first run; it is expected
    to release `0.1.0`. The first changelog will list the `feat` and `fix` commits since the first commit, but not pull request #130:
-   its title is not a conventional commit, so its squash commit is not one either.
+   its title is not a conventional commit, so its squash commit is not one either. Merge nothing else until the run is green: an open
+   Renovate pull request merged meanwhile would move `main` and turn the first run into failure row 5, and muddy the proof of the first run.
+   The first bump commit is expected to hold only `CHANGELOG.md`: `Chart.yaml` already says `0.1.0`, so `set-chart-version.sh` rewrites
+   it unchanged.
 
 4. **Make the three packages public.** The two image packages `remedy-server` and `remedy-runner` already exist on GHCR: the old
    `images.yml` pushed `sha-*` and `edge` when #130 was merged (run 37928003258, success, 2026-10-09T12:07Z, as told by the
@@ -146,6 +150,7 @@ overwrites the same tags). Re-run only the **latest** run of `main`: an older ru
 | 2 | `plan` says `none` for a merge with a `feat` or `fix` | Look for "behind the remote one" in the log: `main` moved and the newer run releases. Otherwise look at the commit messages that reached `main`. |
 | 3 | `images` or `chart` fails with a version | `X.Y.Z` artifacts may be pushed; no commit, tag or release. Run "Re-run failed jobs" while `main` has not moved. |
 | 4 | `publish`: the chart package is missing | As 3. |
+| 4a | `publish`: semantic-release fails before the bump commit (the push is refused, `EGITNOPERMISSION`; or the version it computes differs from the planned one, which `scripts/check-expected-version.sh` reports in `verifyRelease`, before any commit or tag) | As 3: unused `X.Y.Z` artifacts, no commit, tag or release. Fix the permission or the settings (or find why the commits changed between `plan` and `publish`) and re-run the failed jobs while `main` has not moved. |
 | 5 | `publish`: `main` moved | semantic-release exits 0 as "behind", the check "The tag exists" fails with "no tag". Nothing to do: the run of the newer push releases. |
 | 6 | The bump commit is on `main` but the tag push failed | `main` has `chore(release): X.Y.Z` and no tag, and no GitHub release (expected order, from the plugin sources, not run here: bump commit pushed in `prepare`, then tag created and pushed, the GitHub release last). Either let the next run plan the same version (a duplicate changelog section is fixed by a `docs:` pull request), or tag by hand, `git fetch origin && git tag vX.Y.Z <sha of the bump commit> && git push origin vX.Y.Z`, then follow with row 7 (create the release by hand) and run the three checks: the tag exists locally and on the remote, `git rev-parse -q --verify refs/tags/vX.Y.Z && git ls-remote --exit-code --tags origin refs/tags/vX.Y.Z`; the chart at the tag, `git show vX.Y.Z:deploy/chart/Chart.yaml \| grep -E '^(version\|appVersion):'`; the release, `gh release view vX.Y.Z --json isDraft,assets` (not a draft, asset `remedy-X.Y.Z.tgz`). |
 | 7 | The tag is pushed but the GitHub release failed or is a draft | A re-run of `publish` does not recover. Create the release by hand, with the chart from the run's artifact `chart` (or `helm pull oci://ghcr.io/jaydee94/charts/remedy --version X.Y.Z`): `gh release create vX.Y.Z remedy-X.Y.Z.tgz --title vX.Y.Z --notes-file <the CHANGELOG section of X.Y.Z>`. Or finish the existing one: `gh release upload vX.Y.Z remedy-X.Y.Z.tgz --clobber && gh release edit vX.Y.Z --draft=false` |

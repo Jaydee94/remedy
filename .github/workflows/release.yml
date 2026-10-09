@@ -179,6 +179,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_MODE: full
+          # The version that plan found and that images and chart were pushed for: semantic-release must compute the same one.
+          EXPECTED_VERSION: ${{ needs.plan.outputs.version }}
           GIT_AUTHOR_NAME: github-actions[bot]
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: github-actions[bot]

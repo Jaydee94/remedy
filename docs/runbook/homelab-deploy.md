@@ -1,8 +1,8 @@
 # Runbook: Remedy on a homelab k3s cluster, under Argo CD
 
 **Status of this runbook.** It has **not** been run end to end. Success criterion 4 of the spec is not shown. The k3s half of the
-NetworkPolicy spike (S3) is not measured (`docs/research/k8s-s3-networkpolicy.md`). Nothing has been released yet: no tag, no
-image and no chart in the registry. The automated release ([`release.md`](release.md)) is implemented and its first run is
+NetworkPolicy spike (S3) is not measured (`docs/research/k8s-s3-networkpolicy.md`). No release has been made yet: no tag, no `X.Y.Z` image
+and no chart in the registry; only `sha-*` and `edge` images exist on GHCR (pushed since the merge of #130). The automated release ([`release.md`](release.md)) is implemented and its first run is
 expected on the first merge to `main`; the chart package is created by the first release, and the packages are expected to be private until the maintainer makes them public. The
 **install of the OCI chart under Argo CD is not proven on a cluster**: Argo CD's documentation shows an OCI Helm source (a
 registry URL without `oci://`, `chart:`, `targetRevision:`), but that source together with a `ref` source for

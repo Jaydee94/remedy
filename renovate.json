@@ -48,9 +48,10 @@
       "automerge": false
     },
     {
-      "description": "The release tools run with a write token: a freshly published npm version is not proposed for a week.",
+      "description": "The release tools run with a write token: a freshly published npm version is not proposed for a week. They are not the product: the commit type is chore, so a bump releases nothing.",
       "matchFileNames": ["release/package.json"],
-      "minimumReleaseAge": "7 days"
+      "minimumReleaseAge": "7 days",
+      "semanticCommitType": "chore"
     }
   ]
 }
