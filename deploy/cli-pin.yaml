@@ -5,7 +5,7 @@
 # manifest.json.sig). scripts/cli-checksums.sh (plan K-5) computes and compares them for a new version.
 runner:
   cli:
-    version: "2.1.292"
+    version: "2.1.296"
     urlTemplate: "https://downloads.claude.ai/claude-code-releases/{version}/{platform}/claude"
     archive: none
     member: ""
