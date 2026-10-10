@@ -200,6 +200,6 @@ func TestChecksOfOneHostDoNotOverlap(t *testing.T) {
 	}
 	wg.Wait()
 	if srv.MaxConcurrent() != 1 {
-		t.Fatalf("%d connections to one host were open at the same time, want 1", srv.MaxConcurrent())
+		t.Fatalf("%d exec sessions on one host were served at the same time, want 1", srv.MaxConcurrent())
 	}
 }

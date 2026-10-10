@@ -41,8 +41,8 @@ type Server struct {
 	mu       sync.Mutex
 	signer   ssh.Signer
 	attempts int
-	open     int
-	maxOpen  int
+	serving  int
+	maxServe int
 	conns    map[net.Conn]struct{}
 }
 
@@ -84,8 +84,9 @@ func (s *Server) SetHostSigner(sg ssh.Signer) { s.mu.Lock(); s.signer = sg; s.mu
 // exchange makes none.
 func (s *Server) Attempts() int { s.mu.Lock(); defer s.mu.Unlock(); return s.attempts }
 
-// MaxConcurrent is the highest number of connections that were open at the same time.
-func (s *Server) MaxConcurrent() int { s.mu.Lock(); defer s.mu.Unlock(); return s.maxOpen }
+// MaxConcurrent is the highest number of exec sessions that were being served at the same time. A session stops counting
+// before its exit status is sent, so a client that has seen the exit status never races the count of the next one.
+func (s *Server) MaxConcurrent() int { s.mu.Lock(); defer s.mu.Unlock(); return s.maxServe }
 
 func (s *Server) attempt() { s.mu.Lock(); s.attempts++; s.mu.Unlock() }
 
@@ -125,15 +126,10 @@ func (s *Server) serverConfig() *ssh.ServerConfig {
 func (s *Server) handle(nc net.Conn) {
 	s.mu.Lock()
 	s.conns[nc] = struct{}{}
-	s.open++
-	if s.open > s.maxOpen {
-		s.maxOpen = s.open
-	}
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
 		delete(s.conns, nc)
-		s.open--
 		s.mu.Unlock()
 		_ = nc.Close()
 	}()
@@ -171,12 +167,21 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 			return
 		}
 		_ = req.Reply(true, nil)
+		s.mu.Lock()
+		s.serving++
+		if s.serving > s.maxServe {
+			s.maxServe = s.serving
+		}
+		s.mu.Unlock()
 		r, ok := s.cfg.Commands[p.Command]
 		if !ok {
 			r = Reply{Out: "unknown command: " + p.Command + "\n", Exit: 127}
 		}
 		time.Sleep(r.Delay)
 		_, _ = io.WriteString(ch, r.Out)
+		s.mu.Lock()
+		s.serving--
+		s.mu.Unlock()
 		_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{uint32(r.Exit)}))
 		return
 	}
