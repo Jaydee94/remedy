@@ -22,6 +22,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/server"
+	"github.com/Jaydee94/remedy/internal/sshhost"
 	"github.com/Jaydee94/remedy/internal/store"
 )
 
@@ -131,6 +132,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		Gatekeeper:   gate,
 		Cluster:      clusterCapabilities(cfg.Cluster, kubeReader, kubeWriter),
 		RunnerStatus: server.NewRunnerStatus(),
+		Hosts:        &sshhost.Service{},
 	}
 	var handler, internalHandler http.Handler
 	if cfg.InternalAddr != "" {
