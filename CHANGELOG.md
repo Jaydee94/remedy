@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.0](https://github.com/Jaydee94/remedy/compare/v0.1.1...v0.2.0) (2026-10-11)
+
+### Features
+
+* hosts, cycle 1 (inventory, sealed logins, host key pinning, connection test) ([#139](https://github.com/Jaydee94/remedy/issues/139)) ([b0902d9](https://github.com/Jaydee94/remedy/commit/b0902d9ee6f8623dbae8d2cb9ab1cff18e87637c))
+
+### Bug Fixes
+
+* chart tests read the chart's appVersion instead of spelling it out ([#140](https://github.com/Jaydee94/remedy/issues/140)) ([af7a528](https://github.com/Jaydee94/remedy/commit/af7a528b9616a227648747920bf531b02352e0bc))
+
 ## [0.1.1](https://github.com/Jaydee94/remedy/compare/v0.1.0...v0.1.1) (2026-10-09)
 
 ### Bug Fixes
