@@ -77,7 +77,7 @@ export default function HostForm({ host, busy, run, onSaved }: Props) {
           className="min-h-20 rounded-xl border border-input bg-transparent px-3 py-2 text-base outline-none focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm"
         />
       </Field>
-      <Field label="Containers I may start and stop" hint="A name with one star at the end, for example remedy-*. Leave it empty for none. It only shapes the snippet below.">
+      <Field label="Containers I may start and stop" hint="A name with one star at the end, for example remedy-*. Leave it empty for none. It only shapes the snippet below. In sudoers a star also matches spaces: it limits less than it looks.">
         <Input value={f.dockerPattern} onChange={(e) => set('dockerPattern')(e.target.value)} placeholder="remedy-*" className={input} autoComplete="off" />
       </Field>
       <Field label="systemd units I may start and stop" hint="One per line. It only shapes the snippet below.">

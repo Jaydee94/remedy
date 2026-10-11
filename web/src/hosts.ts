@@ -32,7 +32,7 @@ export function statusSentence(h: Host): string {
   if (h.status === 'error' || h.status === 'key_changed' || h.status === 'undecryptable') return h.statusDetail || "I couldn't log in."
   if (!h.credential) return "I don't have a login for this host yet."
   if (h.status === 'ok') return 'I can log in.'
-  if (h.status === 'untrusted') return 'I can reach the host, but its key is not pinned yet. Compare the fingerprint, then pin it.'
+  if (h.status === 'untrusted') return 'I can reach the host, but its key is not pinned yet. Test the connection and compare the fingerprint it shows.'
   if (h.pinnedFingerprint) return "The key is pinned. I haven't tested the login yet."
   return "I have a login, but I don't trust the host's key yet. Test the connection and I'll show you the key."
 }

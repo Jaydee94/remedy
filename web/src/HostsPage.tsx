@@ -55,6 +55,7 @@ export default function HostsPage() {
                     </span>
                   </span>
                   <span className="text-[13px] text-muted-foreground break-all">{hostLine(h, now)}</span>
+                  {h.statusDetail && <span className="text-[13px] text-destructive break-words">{h.statusDetail}</span>}
                 </Link>
               </li>
             )

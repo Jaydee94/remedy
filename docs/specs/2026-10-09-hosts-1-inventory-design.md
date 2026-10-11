@@ -1,6 +1,6 @@
 # Hosts, cycle 1: the inventory and access
 
-Status: draft for the maintainer's review, 2026-10-09. Implementation plan: not written yet.
+Status: implemented 2026-10-11 (pull request pending). Implementation plan: docs/plans/hosts-1-inventory-and-access.md.
 Parent document: [`2026-10-09-hosts-and-skills-design.md`](2026-10-09-hosts-and-skills-design.md) (the umbrella: sections 2, 4 and 11 are binding here).
 Models it copies: the GitHub connection (`internal/store/github.go`, `internal/server/github.go`, `internal/secret`) for sealed credentials and the views that never show them.
 
