@@ -3842,7 +3842,8 @@ describe('statusSentence', () => {
     assert.match(statusSentence(host({ credential: { kind: 'password', hint: 'set', updatedAt: 'x' } })), /test the connection/i)
     assert.match(statusSentence(host({ credential: { kind: 'password', hint: 'set', updatedAt: 'x' }, status: 'untrusted' })), /not pinned/)
     assert.match(statusSentence(host({ credential: { kind: 'password', hint: 'set', updatedAt: 'x' }, pinnedFingerprint: 'SHA256:a' })), /haven't tested/)
-    assert.match(statusSentence(host({ status: 'ok', pinnedFingerprint: 'SHA256:a' })), /can log in/)
+    assert.match(statusSentence(host({ status: 'ok', credential: { kind: 'password', hint: 'set', updatedAt: 'x' }, pinnedFingerprint: 'SHA256:a' })), /can log in/)
+    assert.match(statusSentence(host({ status: 'ok' })), /don't have a login/)
   })
 
   it('uses the server\'s detail for a failure', () => {
