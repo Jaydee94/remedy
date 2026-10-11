@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.1](https://github.com/Jaydee94/remedy/compare/v0.1.0...v0.1.1) (2026-10-09)
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/crypto to v0.58.0 ([#135](https://github.com/Jaydee94/remedy/issues/135)) ([2c6601b](https://github.com/Jaydee94/remedy/commit/2c6601b7a2e2594cde60728349d8147a35033730))
+
 ## [0.1.0](https://github.com/Jaydee94/remedy/compare/v0.0.0...v0.1.0) (2026-10-09)
 
 ### Features
