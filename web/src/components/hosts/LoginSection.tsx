@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '@/api.ts'
 import type { Host } from '@/api.ts'
@@ -14,7 +14,8 @@ interface Props {
   host: Host
   busy: boolean
   run: Run
-  onHost: (h: Host) => void
+  /** The host as the server has it after a change, and the sentence that says what changed (it is not tested). */
+  onChanged: (h: Host, notice: string) => void
 }
 
 /**
@@ -22,12 +23,20 @@ interface Props {
  * are emptied as soon as the request is sent, also when it fails (the page cannot keep what it must not keep). Nothing goes in a
  * URL or in storage.
  */
-export default function LoginSection({ host, busy, run, onHost }: Props) {
+export default function LoginSection({ host, busy, run, onChanged }: Props) {
   const [kind, setKind] = useState<'key' | 'password'>(host.credential?.kind ?? 'key')
   const [editing, setEditing] = useState(!host.credential)
   const keyRef = useRef<HTMLTextAreaElement>(null)
   const passphraseRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
+  const focusFirst = useRef(false)
+
+  // "Replace login" opens the form: the focus goes to its first field, once (switching the kind keeps the focus on the tab).
+  useEffect(() => {
+    if (!editing || !focusFirst.current) return
+    focusFirst.current = false
+    ;(kind === 'key' ? keyRef : passwordRef).current?.focus()
+  }, [editing, kind])
 
   function clear() {
     for (const r of [keyRef, passphraseRef, passwordRef]) if (r.current) r.current.value = ''
@@ -43,7 +52,7 @@ export default function LoginSection({ host, busy, run, onHost }: Props) {
     clear()
     const res = await run(() => api.putHostCredential(host.id, body))
     if (res) {
-      onHost(res)
+      onChanged(res, "I replaced the login. I haven't tested it yet: test the connection to check it.")
       setEditing(false)
     }
   }
@@ -54,7 +63,7 @@ export default function LoginSection({ host, busy, run, onHost }: Props) {
       return api.getHost(host.id)
     })
     if (done) {
-      onHost(done)
+      onChanged(done, 'I removed the login.')
       setEditing(true)
     }
   }
@@ -136,7 +145,11 @@ export default function LoginSection({ host, busy, run, onHost }: Props) {
 
       {host.credential && !editing && (
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" className="h-10" onClick={() => setEditing(true)}>
+          <Button variant="outline" size="sm" className="h-10" onClick={() => {
+              focusFirst.current = true
+              setEditing(true)
+            }}
+          >
             Replace login
           </Button>
           <ConfirmButton label="Remove login" confirmLabel="Confirm: remove the login" className="h-10" disabled={busy} onConfirm={() => void remove()} />

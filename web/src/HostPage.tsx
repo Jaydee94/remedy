@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router'
 import { api, ApiError } from './api.ts'
 import type { Host, PresentedKey } from './api.ts'
 import { statusSentence } from './hosts.ts'
+import { useFocusRestore } from './useFocusRestore.ts'
 import ConfirmButton from '@/components/ConfirmButton'
 import HostForm from '@/components/hosts/HostForm'
 import LoginSection from '@/components/hosts/LoginSection'
@@ -33,6 +34,7 @@ export default function HostPage({ id }: { id: number }) {
   const [gone, setGone] = useState(false)
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
+  const { target: heading, restore } = useFocusRestore<HTMLHeadingElement>()
 
   useEffect(() => {
     api
@@ -62,6 +64,16 @@ export default function HostPage({ id }: { id: number }) {
     }
   }, [])
 
+  // For the actions that remove the control that was clicked (pin, unpin, save and remove a login): the focus goes back to the heading.
+  // `restore` remembers the focused control when it is called, so it comes first; it does nothing when the control stays (a failure).
+  const runRestoring: Run = useCallback(
+    <T,>(action: () => Promise<T>) => {
+      void restore()
+      return run(action)
+    },
+    [restore, run],
+  )
+
   async function remove() {
     if ((await run(() => api.deleteHost(id).then(() => true))) === true) navigate('/hosts')
   }
@@ -83,7 +95,9 @@ export default function HostPage({ id }: { id: number }) {
       {host ? (
         <>
           <div className="flex flex-col gap-1">
-            <h1 className="font-serif text-[clamp(26px,3vw,34px)] font-normal break-all">{host.name}</h1>
+            <h1 ref={heading} tabIndex={-1} className="font-serif text-[clamp(26px,3vw,34px)] font-normal break-all outline-none">
+              {host.name}
+            </h1>
             <span className="text-muted-foreground">{statusSentence(host)}</span>
           </div>
 
@@ -107,15 +121,24 @@ export default function HostPage({ id }: { id: number }) {
               onSaved={(h, pinCleared) => {
                 setHost(h)
                 setNotice(pinCleared ? 'The address changed, so I forgot the pinned key. Test the connection and pin it again.' : '')
-                if (pinCleared) setPresented(null)
+                setPresented(null) // a key shown for the old address or port must not be offered for the new one
               }}
             />
           </Part>
           <Part title="How I log in">
-            <LoginSection key={host.credential?.updatedAt ?? 'none'} host={host} busy={busy} run={run} onHost={setHost} />
+            <LoginSection
+              key={host.credential?.updatedAt ?? 'none'}
+              host={host}
+              busy={busy}
+              run={runRestoring}
+              onChanged={(h, text) => {
+                setHost(h)
+                setNotice(text)
+              }}
+            />
           </Part>
           <Part title="Trust">
-            <TrustSection host={host} presented={presented} busy={busy} run={run} onHost={setHost} onPresented={setPresented} />
+            <TrustSection host={host} presented={presented} busy={busy} run={runRestoring} onHost={setHost} onPresented={setPresented} />
           </Part>
           <Part title="What the account can do">
             {host.credential ? (
