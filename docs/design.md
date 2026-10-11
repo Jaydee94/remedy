@@ -46,7 +46,7 @@ running as a service for other people's homelabs.
 - **Untrusted input:** logs, alert text, PR descriptions and commit messages are data,
   never instructions (prompt injection). They are marked and passed fenced as such.
 - **Hosts (2026-10-09).** A machine outside the cluster is a second kind of access, through the same
-  gatekeeper: one tool, `host_exec`, with an argv array (no shell string) that the control plane runs over SSH.
+  gatekeeper: two tools, `host_read` and `host_change` (cycle 2), with an argv array (no shell string) that the control plane runs over SSH.
   Default deny: a command that the built-in table does not describe as reading is a change and waits for an
   approval, and a change runs as `sudo -n`. The credentials stay in the control plane, sealed. See 2.10.
 

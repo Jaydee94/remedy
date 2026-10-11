@@ -18,7 +18,7 @@ the host yet: no agent, no tool, no incident. This cycle builds the part that ho
 
 ### Non-goals
 
-- `host_exec`, the classification of commands, the gatekeeper tools and the `runs.hosts` binding (cycle 2).
+- The host tools (`host_read`, `host_change`), the classification of commands, the gatekeeper tools and the binding of hosts to runs (cycle 2).
 - Label matchers that map alerts to a host. They are evaluated in cycle 4 and are added there, as a column and a part of the form. (The umbrella lists them
   under this cycle; this spec moves them, and the umbrella is changed to say so.)
 - Skills, notes written by an agent, groups or tags of hosts, and any use of the Kubernetes API through the inventory.
