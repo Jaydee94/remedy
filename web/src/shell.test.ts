@@ -23,9 +23,15 @@ describe('sectionOf', () => {
     assert.equal(sectionOf('/nope'), null)
   })
 
-  it('has five items, in the order of the navigation', () => {
-    assert.deepEqual(navItems.map((n) => n.section), ['today', 'conversations', 'needs', 'ask', 'setup'])
-    assert.deepEqual(navItems.map((n) => n.short), ['Today', 'Chats', 'Needs you', 'Ask', 'Setup'])
+  it('maps the hosts pages to Hosts', () => {
+    assert.equal(sectionOf('/hosts'), 'hosts')
+    assert.equal(sectionOf('/hosts/3'), 'hosts')
+    assert.equal(sectionOf('/hostsX'), null)
+  })
+
+  it('has six items, in the order of the navigation', () => {
+    assert.deepEqual(navItems.map((n) => n.section), ['today', 'conversations', 'needs', 'ask', 'hosts', 'setup'])
+    assert.deepEqual(navItems.map((n) => n.short), ['Today', 'Chats', 'Needs you', 'Ask', 'Hosts', 'Setup'])
   })
 })
 
@@ -39,6 +45,11 @@ describe('defaultHeader', () => {
   it('gives a thread and a run a back target', () => {
     assert.deepEqual(defaultHeader('/incidents/27'), { title: 'Conversation', back: '/incidents' })
     assert.deepEqual(defaultHeader('/runs/abc'), { title: 'Run', back: '/runs' })
+  })
+
+  it('gives a host a back target to the list', () => {
+    assert.deepEqual(defaultHeader('/hosts'), { title: 'Hosts' })
+    assert.deepEqual(defaultHeader('/hosts/3'), { title: 'Host', back: '/hosts' })
   })
 
   it('falls back to the name of the app for an unknown path', () => {
