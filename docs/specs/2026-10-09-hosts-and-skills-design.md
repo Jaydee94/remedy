@@ -16,7 +16,7 @@ configured in the web UI.
 | Cycle | Content | Result |
 |---|---|---|
 | 1 | Hosts and access: inventory, credentials, host key pinning, connection test | A host can be created, trusted and tested in the UI; no agent uses it yet |
-| 2 | Host tools in the gatekeeper: `host_exec`, classification, approvals, an SSH testbed | A question run reads a host; an action waits for an approval |
+| 2 | Host tools in the gatekeeper: `host_list`, `host_read`, `host_change`, classification, approvals, an SSH testbed ([spec](2026-10-11-hosts-2-tools-design.md)) | A question run reads a host; an action waits for an approval |
 | 3 | Settings in the database: a settings layer with the environment as defaults, the Setup page | Limits, URLs and rules are changed in the UI |
 | 4 | The Alertmanager source and the responder for outages, with the host tools | An alert becomes an incident, is mapped to a host and diagnosed |
 | 5 | Skills and the learning run: skills per host, `skill_get`, a review list | Remedy gets to know a host and keeps what the maintainer confirms |
@@ -27,7 +27,7 @@ The Argo CD source of part 2D is **not** in this series. It is postponed, not dr
 ### Non-goals
 
 - Hosts as a graph (services, dependencies, topology): that is phase 3 and builds on the inventory, it does not replace it.
-- An agent that can take a shell. Agents get `host_exec` and nothing else on a host.
+- An agent that can take a shell. Agents get `host_list`, `host_read` and `host_change` and nothing else on a host.
 - Credentials created or rotated by Remedy on a host, other than showing a snippet. Remedy does not log in as an administrator to set itself up.
 - A path filter in Remedy (section 5). Remedy does not know which files are sensitive; the host's file permissions do.
 - Notifications, a fixer for hosts, writing to Alertmanager, Loki, the Argo CD source, several users.
@@ -58,7 +58,7 @@ The Argo CD source of part 2D is **not** in this series. It is postponed, not dr
 
 This is the one place where a mistake means an action without an approval, so it is spelled out.
 
-1. The agent calls `host_exec` with `host` and `argv`. `argv` is an array of strings. There is no field for a shell string and no way to say "through a shell".
+1. The agent calls `host_read` (a command of the table, no approval) or `host_change` (anything else, an approval each; decided in cycle 2, which split the single `host_exec` of this document in two because the gatekeeper decides read or mutating per tool) with `host` and `argv`. `argv` is an array of strings. There is no field for a shell string and no way to say "through a shell".
 2. The tool's strict `Decode` rejects a program name that contains a path separator or a space, an empty argv, an argument with a newline or a NUL byte, and an argv over a fixed length.
 3. **Classification.** The built-in table maps a program and its arguments to `read` or nothing. A table entry says which flags and subcommands are allowed, not only which program: `docker ps -a` is a read, `docker run` is not, and `find` is not in the table at all because of `-exec`. Anything that is not exactly described is a **change**. There is no third state.
 4. A **read** runs without an approval. A **change** is run by `sudo -n <argv>` and waits for an approval. The "never" list is checked first and for both classes.
@@ -92,7 +92,7 @@ remedy ALL=(root) NOPASSWD: /usr/bin/docker start remedy-*, /usr/bin/docker rest
 
 The snippet is a suggestion generated from the host's kind; it is never run by Remedy. The cycle's spec says how the lines are chosen and shows the known limits of wildcards in `sudoers`.
 
-**Connection test.** Connects, shows the fingerprint when none is pinned, and after confirmation runs a fixed set of reads (`id`, `groups`, `sudo -n -l`, `uname -a`) and reports: reachable, host key matches, who the account is, its groups, whether `sudo -n` works and for what. It **warns** when the account is root, when it is in the `docker` group, or when `sudo -n -l` shows `(ALL) NOPASSWD: ALL`. The test is not an agent run and does not use `host_exec`.
+**Connection test.** Connects, shows the fingerprint when none is pinned, and after confirmation runs a fixed set of reads (`id`, `groups`, `sudo -n -l`, `uname -a`) and reports: reachable, host key matches, who the account is, its groups, whether `sudo -n` works and for what. It **warns** when the account is root, when it is in the `docker` group, or when `sudo -n -l` shows `(ALL) NOPASSWD: ALL`. The test is not an agent run and does not use the host tools.
 
 ## 5. Cycle 2: host tools in the gatekeeper
 
@@ -101,7 +101,7 @@ The tool group `host`, offered only to runs that have hosts assigned (`runs.host
 | Tool | Class | What it does |
 |---|---|---|
 | `host_list` | read | The hosts assigned to this run: name, notes, kind. No addresses, no credentials. |
-| `host_exec` | read or change | Section 3. |
+| `host_read` / `host_change` | read / mutating | Section 3 and the cycle 2 spec. |
 
 The runner needs no change: the tools are served by the same MCP server, and the claim already carries what a run may use. A **testbed** (`dev/ssh/`): a container with `sshd`, an unprivileged user, a `sudoers` file and a fake `docker`, started by a script like `dev/kind/up.sh`, so that the whole chain is tested without the maintainer's machines. Its login keys are generated on start and removed with it.
 
@@ -131,7 +131,7 @@ On this lab, Alertmanager has a single receiver `blackhole`. It still holds the 
 
 **Skills.** A table of skills (name, description, body, host or global, origin, state, the time and the run that proposed it). The body is Markdown shown as text; it is never rendered as markup in the UI and never decides the structure of a sentence Remedy "says".
 
-- A skill written by the maintainer is trusted as instructions *for the agent's reasoning*, but it still cannot widen what `host_exec` allows (section 2, "The table").
+- A skill written by the maintainer is trusted as instructions *for the agent's reasoning*, but it still cannot widen what `host_read` allows (section 2, "The table").
 - A skill proposed by an agent has origin `proposed` and is invisible to runs until confirmed. After a confirmation it carries `proposed, confirmed`, so that a later reader can see where it came from.
 - The prompt lists names and descriptions; `skill_get` returns the body, as data, through `sanitize`.
 
@@ -192,7 +192,7 @@ A log line that contains an instruction must not become a skill. The defence is 
 ## 13. Open points for the cycle specs
 
 - Cycle 1: decided in [`2026-10-09-hosts-1-inventory-design.md`](2026-10-09-hosts-1-inventory-design.md) (a navigation item, the schema, a snippet generated from three fields, no groups).
-- Cycle 2: the first contents of the table of reads (the set is small and grows by a decision recorded with a test); concurrency and timeouts; whether `host_exec` of a host that is unreachable fails the run or only the call.
+- Cycle 2: the first contents of the table of reads (the set is small and grows by a decision recorded with a test); concurrency and timeouts; whether a host tool of an unreachable host fails the run or only the call (decided in the cycle 2 spec: the call).
 - Cycle 3: the registry's list of keys and which need a restart; where a failed setting is shown.
 - Cycle 4: how a matcher conflict is shown; what an incident without a host gets for tools.
 - Cycle 5: the learner's answer schema; how many proposals per run; what happens to a skill when its host is deleted.
