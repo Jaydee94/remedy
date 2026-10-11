@@ -17,6 +17,23 @@ import (
 
 const chartDir = "chart"
 
+// defaultServerImage is the image the chart uses when nothing overrides it: the default repository at the chart's appVersion.
+// The release writes the appVersion into Chart.yaml (a commit with [skip ci]), so a test must read it and never spell it out.
+func defaultServerImage(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(chartDir, "Chart.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c struct {
+		AppVersion string `yaml:"appVersion"`
+	}
+	if err := yaml.Unmarshal(b, &c); err != nil || c.AppVersion == "" {
+		t.Fatalf("appVersion of Chart.yaml: %q, %v", c.AppVersion, err)
+	}
+	return "ghcr.io/jaydee94/remedy-server:" + c.AppVersion
+}
+
 // baseValues are the values a chart needs to render at all, and nothing else.
 func baseValues() map[string]any {
 	sha := strings.Repeat("a", 64)

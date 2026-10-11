@@ -342,7 +342,7 @@ func TestTheWriteTokenSecretIsEmptyAndTheRefresherFillsItEveryHalfHour(t *testin
 		t.Errorf("refresher pod = %v", pod)
 	}
 	c := container(t, pod, "refresh")
-	if c["image"] != "ghcr.io/jaydee94/remedy-server:0.1.0" {
+	if c["image"] != defaultServerImage(t) {
 		t.Errorf("image = %v, want the control plane's image (it carries /remedy-tokenrefresh)", c["image"])
 	}
 	if got := toString(c["command"]); !strings.Contains(got, "/remedy-tokenrefresh") {
