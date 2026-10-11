@@ -54,6 +54,8 @@ func Snippet(in SnippetInput) (SnippetOutput, error) {
 	b.WriteString("# Read every line. Check the paths first: command -v docker; command -v systemctl\n")
 	b.WriteString("# Reading the journal needs the group systemd-journal, not sudo.\n")
 	if p := in.DockerPattern; p != "" {
+		b.WriteString("# In sudoers a * also matches spaces and further arguments, so a pattern with a star limits less than it looks.\n")
+		b.WriteString("# A name without a star is an exact match.\n")
 		a := in.Account + " ALL=(root) NOPASSWD: "
 		b.WriteString(a + "/usr/bin/docker ps -a\n")
 		b.WriteString(a + "/usr/bin/docker logs --tail * " + p + "\n")

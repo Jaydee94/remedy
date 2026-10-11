@@ -113,6 +113,9 @@ func TestDialRefusesAKeyOfAnotherType(t *testing.T) {
 	if _, err := sshhost.Dial(context.Background(), targetOf(srv), passwordCred(t, "pw"), pin); !errors.Is(err, sshhost.ErrHostKeyChanged) {
 		t.Fatalf("err = %v, want ErrHostKeyChanged (not unreachable)", err)
 	}
+	if srv.Attempts() != 0 {
+		t.Fatal("a login was offered to a host that showed a key of another type")
+	}
 }
 
 func TestDialRejectsAWrongPassword(t *testing.T) {
@@ -178,6 +181,37 @@ func TestCheckBuildsTheReport(t *testing.T) {
 	}
 	if rep.Account != "remedy" || rep.System != "Linux 6.8.0" || rep.Sudo != sshhost.SudoLimited || len(rep.SudoRules) != 1 || len(rep.Warnings) != 0 {
 		t.Fatalf("report = %+v", rep)
+	}
+}
+
+func TestCheckReportsACutSudoListingAsUnreadable(t *testing.T) {
+	cmds := okCommands()
+	cmds["env LC_ALL=C sudo -n -l"] = sshtest.Reply{
+		Out: "User remedy may run the following commands on nas:\n" + strings.Repeat("    (root) NOPASSWD: /usr/bin/docker ps -a\n", 600),
+	}
+	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: cmds})
+	var svc sshhost.Service
+	rep, err := svc.Check(context.Background(), 1, targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv))
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if rep.Sudo != sshhost.SudoLimited || len(rep.Warnings) != 1 || rep.Warnings[0] != "I could not read the sudo rules; check them yourself." {
+		t.Fatalf("report = %+v", rep)
+	}
+}
+
+func TestRunKeepsOnlyStdout(t *testing.T) {
+	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{
+		"id -un": {Out: "remedy\n", Stderr: "sudo: unable to resolve host nas\n"},
+	}})
+	cl, err := sshhost.Dial(context.Background(), targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cl.Close()
+	got, err := cl.Run(context.Background(), "id -un")
+	if err != nil || got.Output != "remedy\n" {
+		t.Fatalf("Run = %+v, %v (stderr must not reach the output)", got, err)
 	}
 }
 

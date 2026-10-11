@@ -433,31 +433,34 @@ func (s *srv) testHost(w http.ResponseWriter, r *http.Request) {
 	ctx, h := r.Context(), e.Host
 	var presented *presentedKey
 
+	// Every SaveHostTest below passes the pin this test ran against (empty on the unpinned path) and its error is dropped on
+	// purpose: a stale result (the pin changed meanwhile) must not be written, and a vanished host is answered by the GetHost after.
+
 	if h.PinnedKey == "" {
 		// Not pinned: only the key exchange. The login never leaves the control plane.
 		key, err := s.d.Hosts.Probe(ctx, h.ID, targetOf(h))
 		if err != nil {
 			status, detail := hostFailure(err)
-			_ = s.d.Store.SaveHostTest(ctx, h.ID, status, detail, "", time.Now())
+			_ = s.d.Store.SaveHostTest(ctx, h.ID, h.PinnedKey, status, detail, "", time.Now())
 		} else {
 			presented = &presentedKey{Type: key.Type, Fingerprint: key.Fingerprint}
-			_ = s.d.Store.SaveHostTest(ctx, h.ID, store.HostUntrusted, "", "", time.Now())
+			_ = s.d.Store.SaveHostTest(ctx, h.ID, h.PinnedKey, store.HostUntrusted, "", "", time.Now())
 		}
 	} else {
 		cred, err := s.openHostCredential(e)
 		switch {
 		case errors.Is(err, secret.ErrOpen):
-			_ = s.d.Store.SaveHostTest(ctx, h.ID, store.HostUndecryptable, undecryptableHost, "", time.Now())
+			_ = s.d.Store.SaveHostTest(ctx, h.ID, h.PinnedKey, store.HostUndecryptable, undecryptableHost, "", time.Now())
 		case err != nil:
 			status, detail := hostFailure(err)
-			_ = s.d.Store.SaveHostTest(ctx, h.ID, status, detail, "", time.Now())
+			_ = s.d.Store.SaveHostTest(ctx, h.ID, h.PinnedKey, status, detail, "", time.Now())
 		default:
 			rep, err := s.d.Hosts.Check(ctx, h.ID, targetOf(h), cred, h.PinnedKey)
 			if err != nil {
 				status, detail := hostFailure(err)
-				_ = s.d.Store.SaveHostTest(ctx, h.ID, status, detail, "", time.Now())
+				_ = s.d.Store.SaveHostTest(ctx, h.ID, h.PinnedKey, status, detail, "", time.Now())
 			} else if b, merr := json.Marshal(rep); merr == nil {
-				_ = s.d.Store.SaveHostTest(ctx, h.ID, store.HostOK, "", string(b), time.Now())
+				_ = s.d.Store.SaveHostTest(ctx, h.ID, h.PinnedKey, store.HostOK, "", string(b), time.Now())
 			}
 		}
 	}

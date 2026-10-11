@@ -98,6 +98,15 @@ func TestBuildReportWarnings(t *testing.T) {
 	}
 }
 
+func TestBuildReportWithCutSudoOutputIsNotUnderstood(t *testing.T) {
+	got := sshhost.BuildReport(time.Now(), sshhost.Outcome{
+		Account: "a\n", GroupsOut: "a\n", SudoOut: limitedOut, SudoOK: true, SudoCut: true,
+	})
+	if got.Sudo != sshhost.SudoLimited || len(got.Warnings) != 1 || got.Warnings[0] != "I could not read the sudo rules; check them yourself." {
+		t.Fatalf("report for a cut sudo listing = %+v", got)
+	}
+}
+
 func TestBuildReportCleansWhatTheHostSays(t *testing.T) {
 	got := sshhost.BuildReport(time.Now(), sshhost.Outcome{
 		Account: "re\x1b[31mmedy\n", GroupsOut: strings.Repeat("g", 200) + " ok\n", System: strings.Repeat("L", 300), SudoOK: false,

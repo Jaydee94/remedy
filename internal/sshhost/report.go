@@ -37,6 +37,7 @@ type Outcome struct {
 	System    string // uname -sr
 	SudoOut   string // sudo -n -l
 	SudoOK    bool   // sudo -n -l exited 0
+	SudoCut   bool   // the output of sudo -n -l was longer than we keep, so the listing is incomplete
 }
 
 // SudoCheck is the reading of the output of sudo -n -l.
@@ -126,6 +127,9 @@ func BuildReport(at time.Time, o Outcome) Report {
 		r.Groups = append(r.Groups, truncate(clean(g), maxGroupLen))
 	}
 	sudo := ParseSudoList(o.SudoOut, o.SudoOK)
+	if o.SudoCut {
+		sudo.Understood = false // a cut listing is never read as complete; the level stays what was seen (never none)
+	}
 	r.Sudo = sudo.Level
 	r.SudoRules = sudo.Rules
 	if r.SudoRules == nil {

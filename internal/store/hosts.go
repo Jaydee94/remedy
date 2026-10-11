@@ -263,7 +263,8 @@ func (s *Store) DeleteHost(ctx context.Context, id int64) error {
 	})
 }
 
-// SaveHostCredential sets or replaces a host's login. A host whose old login could not be decrypted is untested again.
+// SaveHostCredential sets or replaces a host's login. A host whose last test was ok, failed or could not decrypt the old login
+// is untested again: that result does not describe the new login.
 func (s *Store) SaveHostCredential(ctx context.Context, c HostCredential) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		name, err := hostName(ctx, tx, c.HostID)
@@ -277,14 +278,14 @@ func (s *Store) SaveHostCredential(ctx context.Context, c HostCredential) error 
 			c.HostID, c.Kind, c.Ciphertext, c.Hint, c.PublicKey, formatTS(time.Now())); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx,
-			`UPDATE hosts SET status = 'new', status_detail = '' WHERE id = ? AND status = 'undecryptable'`, c.HostID); err != nil {
+		if _, err := tx.ExecContext(ctx, resetStaleStatus, c.HostID); err != nil {
 			return err
 		}
 		return insertActivity(ctx, tx, NewActivity{Kind: KindHostChanged, Summary: "Credential of " + name + " replaced"})
 	})
 }
 
+// DeleteHostCredential removes a host's login. The last test no longer describes the host, as with a replaced login.
 func (s *Store) DeleteHostCredential(ctx context.Context, hostID int64) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		name, err := hostName(ctx, tx, hostID)
@@ -293,6 +294,9 @@ func (s *Store) DeleteHostCredential(ctx context.Context, hostID int64) error {
 		}
 		res, err := tx.ExecContext(ctx, `DELETE FROM host_credentials WHERE host_id = ?`, hostID)
 		if err := oneRow(res, err); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, resetStaleStatus, hostID); err != nil {
 			return err
 		}
 		return insertActivity(ctx, tx, NewActivity{Kind: KindHostChanged, Summary: "Credential of " + name + " removed"})
@@ -329,9 +333,37 @@ func (s *Store) UnpinHostKey(ctx context.Context, id int64) error {
 	})
 }
 
-// SaveHostTest records the result of a connection test. It writes no activity: tests are frequent.
-func (s *Store) SaveHostTest(ctx context.Context, id int64, status HostStatus, detail, report string, at time.Time) error {
-	return oneRow(s.db.ExecContext(ctx,
-		`UPDATE hosts SET status = ?, status_detail = ?, report = ?, checked_at = ? WHERE id = ?`,
-		string(status), detail, report, formatTS(at), id))
+// ErrStale says a connection test finished after the pin it ran against was changed or removed (the address or port was
+// edited, or the key was pinned or unpinned meanwhile). Its result belongs to a situation that no longer exists and is dropped.
+var ErrStale = errors.New("the result belongs to an earlier state of the host")
+
+// resetStaleStatus makes a host whose last test no longer describes it untested: a changed or removed login invalidates an
+// ok, error or undecryptable result and the report. untrusted and key_changed are about the host key, not the login.
+const resetStaleStatus = `UPDATE hosts SET status = 'new', status_detail = '', report = ''
+	WHERE id = ? AND status IN ('ok', 'error', 'undecryptable')`
+
+// SaveHostTest records the result of a connection test. It writes no activity: tests are frequent. pinnedKey is the pin the test
+// ran against (empty for the probe of an unpinned host): if the host's pin is another one now, nothing is written and ErrStale
+// is returned; ErrNotFound if the host is gone.
+func (s *Store) SaveHostTest(ctx context.Context, id int64, pinnedKey string, status HostStatus, detail, report string, at time.Time) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx,
+			`UPDATE hosts SET status = ?, status_detail = ?, report = ?, checked_at = ? WHERE id = ? AND pinned_key = ?`,
+			string(status), detail, report, formatTS(at), id, pinnedKey)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 1 {
+			return nil
+		}
+		var exists int
+		err = tx.QueryRowContext(ctx, `SELECT 1 FROM hosts WHERE id = ?`, id).Scan(&exists)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return ErrStale
+	})
 }

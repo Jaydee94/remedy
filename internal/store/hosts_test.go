@@ -104,7 +104,7 @@ func TestPinUnpinAndTestStatus(t *testing.T) {
 	h, _ := s.CreateHost(ctx, hostFields("nas"))
 
 	at := time.Now().UTC()
-	if err := s.SaveHostTest(ctx, h.ID, store.HostOK, "", `{"account":"remedy"}`, at); err != nil {
+	if err := s.SaveHostTest(ctx, h.ID, "", store.HostOK, "", `{"account":"remedy"}`, at); err != nil {
 		t.Fatal(err)
 	}
 	e, _ := s.GetHost(ctx, h.ID)
@@ -179,7 +179,7 @@ func TestDeleteHostCredentialAndUndecryptableReset(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	h, _ := s.CreateHost(ctx, hostFields("nas"))
 	_ = s.SaveHostCredential(ctx, store.HostCredential{HostID: h.ID, Kind: "password", Ciphertext: []byte{9}, Hint: "set", UpdatedAt: time.Now()})
-	_ = s.SaveHostTest(ctx, h.ID, store.HostUndecryptable, "cannot decrypt", "", time.Now())
+	_ = s.SaveHostTest(ctx, h.ID, "", store.HostUndecryptable, "cannot decrypt", "", time.Now())
 
 	// A new login replaces what the master key could not open, so the host is untested again.
 	_ = s.SaveHostCredential(ctx, store.HostCredential{HostID: h.ID, Kind: "password", Ciphertext: []byte{8}, Hint: "set", UpdatedAt: time.Now()})
@@ -234,5 +234,88 @@ func TestHostActivityNamesNoSecrets(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("activity[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+func TestChangingTheLoginMakesAnOkHostUntestedAgain(t *testing.T) {
+	cred := store.HostCredential{Kind: "password", Ciphertext: []byte{9}, Hint: "set", UpdatedAt: time.Now()}
+	for _, st := range []store.HostStatus{store.HostOK, store.HostError, store.HostUndecryptable} {
+		for _, op := range []string{"replace", "delete"} {
+			s, ctx := openStore(t), context.Background()
+			h, _ := s.CreateHost(ctx, hostFields("nas"))
+			cred.HostID = h.ID
+			if err := s.SaveHostCredential(ctx, cred); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.SaveHostTest(ctx, h.ID, "", st, "detail", `{"account":"remedy"}`, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			if op == "replace" {
+				err := s.SaveHostCredential(ctx, cred)
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if err := s.DeleteHostCredential(ctx, h.ID); err != nil {
+				t.Fatal(err)
+			}
+			e, _ := s.GetHost(ctx, h.ID)
+			if e.Host.Status != store.HostNew || e.Host.Report != "" || e.Host.StatusDetail != "" {
+				t.Fatalf("%s a login on a %s host: %+v", op, st, e.Host)
+			}
+		}
+	}
+}
+
+func TestChangingTheLoginKeepsUntrustedAndKeyChanged(t *testing.T) {
+	cred := store.HostCredential{Kind: "password", Ciphertext: []byte{9}, Hint: "set", UpdatedAt: time.Now()}
+	for _, st := range []store.HostStatus{store.HostUntrusted, store.HostKeyChanged} {
+		for _, op := range []string{"replace", "delete"} {
+			s, ctx := openStore(t), context.Background()
+			h, _ := s.CreateHost(ctx, hostFields("nas"))
+			cred.HostID = h.ID
+			_ = s.SaveHostCredential(ctx, cred)
+			_ = s.SaveHostTest(ctx, h.ID, "", st, "detail", "", time.Now())
+			if op == "replace" {
+				_ = s.SaveHostCredential(ctx, cred)
+			} else {
+				_ = s.DeleteHostCredential(ctx, h.ID)
+			}
+			if e, _ := s.GetHost(ctx, h.ID); e.Host.Status != st || e.Host.StatusDetail != "detail" {
+				t.Fatalf("%s a login on a %s host: %+v", op, st, e.Host)
+			}
+		}
+	}
+}
+
+func TestSaveHostTestDropsAResultForAChangedPin(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	h, _ := s.CreateHost(ctx, hostFields("nas"))
+	const key = "ssh-ed25519 AAAA"
+	if err := s.PinHostKey(ctx, h.ID, key, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// The test ran against the pin; the pin is removed while it was in flight.
+	if err := s.UnpinHostKey(ctx, h.ID); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := s.GetHost(ctx, h.ID)
+	err := s.SaveHostTest(ctx, h.ID, key, store.HostOK, "", `{"account":"remedy"}`, time.Now())
+	if !errors.Is(err, store.ErrStale) {
+		t.Fatalf("stale result error = %v, want ErrStale", err)
+	}
+	after, _ := s.GetHost(ctx, h.ID)
+	if after.Host.Status != before.Host.Status || after.Host.Report != "" || after.Host.CheckedAt != nil {
+		t.Fatalf("a stale result changed the row: %+v", after.Host)
+	}
+	// A pin that was replaced is stale as well.
+	_ = s.PinHostKey(ctx, h.ID, "ssh-ed25519 BBBB", time.Now())
+	if err := s.SaveHostTest(ctx, h.ID, key, store.HostOK, "", "{}", time.Now()); !errors.Is(err, store.ErrStale) {
+		t.Fatalf("replaced pin error = %v, want ErrStale", err)
+	}
+	if err := s.SaveHostTest(ctx, h.ID, "ssh-ed25519 BBBB", store.HostOK, "", "{}", time.Now()); err != nil {
+		t.Fatalf("a result for the current pin: %v", err)
+	}
+	if err := s.SaveHostTest(ctx, 999, "", store.HostOK, "", "{}", time.Now()); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("unknown host = %v, want ErrNotFound", err)
 	}
 }

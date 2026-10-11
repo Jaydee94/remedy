@@ -54,6 +54,18 @@ func TestSnippetForTheNAS(t *testing.T) {
 		}
 	}
 	assertOnlyGrants(t, out.Sudoers, "remedy")
+
+	// The docker block warns, in comments, that a star in sudoers also matches spaces.
+	dockerStart := strings.Index(out.Sudoers, "/usr/bin/docker ps -a")
+	warned := false
+	for _, line := range strings.Split(out.Sudoers[:dockerStart], "\n") {
+		if strings.HasPrefix(line, "#") && strings.Contains(line, "spaces") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Errorf("no comment before the docker lines says that * also matches spaces:\n%s", out.Sudoers)
+	}
 }
 
 func assertOnlyGrants(t *testing.T, sudoers, account string) {

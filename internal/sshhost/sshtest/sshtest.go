@@ -20,9 +20,10 @@ import (
 
 // Reply is the answer to one command line.
 type Reply struct {
-	Out   string
-	Exit  int
-	Delay time.Duration // how long the server waits before it answers
+	Out    string
+	Stderr string // written to the channel's stderr stream
+	Exit   int
+	Delay  time.Duration // how long the server waits before it answers
 }
 
 type Config struct {
@@ -178,6 +179,9 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 			r = Reply{Out: "unknown command: " + p.Command + "\n", Exit: 127}
 		}
 		time.Sleep(r.Delay)
+		if r.Stderr != "" {
+			_, _ = io.WriteString(ch.Stderr(), r.Stderr)
+		}
 		_, _ = io.WriteString(ch, r.Out)
 		s.mu.Lock()
 		s.serving--

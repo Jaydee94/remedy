@@ -52,6 +52,6 @@ func (s *Service) Check(ctx context.Context, hostID int64, t Target, cred Creden
 		}
 	}
 	return BuildReport(time.Now(), Outcome{
-		Account: res[0].Output, GroupsOut: res[1].Output, System: res[2].Output, SudoOut: res[3].Output, SudoOK: res[3].ExitCode == 0,
+		Account: res[0].Output, GroupsOut: res[1].Output, System: res[2].Output, SudoOut: res[3].Output, SudoOK: res[3].ExitCode == 0, SudoCut: res[3].Truncated,
 	}), nil
 }

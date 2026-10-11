@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -214,7 +215,8 @@ func (c *Client) Run(ctx context.Context, cmd string) (Result, error) {
 	}
 	defer sess.Close()
 	w := &capWriter{max: MaxOutput}
-	sess.Stdout, sess.Stderr = w, w
+	// Only stdout is kept: a notice on stderr such as "sudo: unable to resolve host" must not become part of `id -un`.
+	sess.Stdout, sess.Stderr = w, io.Discard
 	done := make(chan error, 1)
 	go func() { done <- sess.Run(cmd) }()
 	timer := time.NewTimer(commandTimeout)
