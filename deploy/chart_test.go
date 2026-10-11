@@ -43,7 +43,7 @@ func TestTheServerRunsOnceWithRecreateAndHardening(t *testing.T) {
 	if dig(t, c, "readinessProbe", "httpGet", "path") != "/healthz" || dig(t, c, "livenessProbe", "httpGet", "path") != "/healthz" {
 		t.Fatalf("probes = %v / %v", c["readinessProbe"], c["livenessProbe"])
 	}
-	if got := c["image"]; got != "ghcr.io/jaydee94/remedy-server:0.1.0" {
+	if got := c["image"]; got != defaultServerImage(t) {
 		t.Fatalf("image = %v, want the default repository at the chart's appVersion", got)
 	}
 }
