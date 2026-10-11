@@ -4,6 +4,8 @@ import { ApiError, api, setUnauthorizedHandler } from './api.ts'
 import AppLayout from './components/AppLayout.tsx'
 import AskPage from './AskPage.tsx'
 import ConversationsPage from './ConversationsPage.tsx'
+import HostPage from './HostPage.tsx'
+import HostsPage from './HostsPage.tsx'
 import IncidentThreadPage from './IncidentThreadPage.tsx'
 import Login from './Login.tsx'
 import NeedsYouPage from './NeedsYouPage.tsx'
@@ -23,6 +25,13 @@ function IncidentRoute() {
   const id = Number(useParams().id)
   if (Number.isInteger(id) && id > 0) return <IncidentThreadPage key={id} id={id} />
   return <NotFoundPage />
+}
+
+/** Mounts HostPage with key={id}; anything that is not a positive whole number is not a host. */
+function HostRoute() {
+  const { id } = useParams()
+  const n = Number(id)
+  return Number.isInteger(n) && n > 0 ? <HostPage key={n} id={n} /> : <NotFoundPage />
 }
 
 /** A page that does not exist, in the same column as the others. */
@@ -88,6 +97,8 @@ export default function App() {
         <Route path="approvals" element={<NeedsYouPage />} />
         <Route path="runs" element={<AskPage />} />
         <Route path="runs/:id" element={<RunRoute />} />
+        <Route path="hosts" element={<HostsPage />} />
+        <Route path="hosts/:id" element={<HostRoute />} />
         <Route path="settings" element={<SetupPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

@@ -1,6 +1,6 @@
 import type { Incident, ToolCall } from './api.ts'
 
-export type Section = 'today' | 'conversations' | 'needs' | 'ask' | 'setup'
+export type Section = 'today' | 'conversations' | 'needs' | 'ask' | 'hosts' | 'setup'
 
 export interface NavItem {
   section: Section
@@ -15,6 +15,7 @@ export const navItems: NavItem[] = [
   { section: 'conversations', to: '/incidents', label: 'Conversations', short: 'Chats' },
   { section: 'needs', to: '/approvals', label: 'Needs you', short: 'Needs you' },
   { section: 'ask', to: '/runs', label: 'Ask Remedy', short: 'Ask' },
+  { section: 'hosts', to: '/hosts', label: 'Hosts', short: 'Hosts' },
   { section: 'setup', to: '/settings', label: 'Setup', short: 'Setup' },
 ]
 
@@ -37,6 +38,7 @@ export interface Header {
 export function defaultHeader(pathname: string): Header {
   if (pathname.startsWith('/incidents/')) return { title: 'Conversation', back: '/incidents' }
   if (pathname.startsWith('/runs/')) return { title: 'Run', back: '/runs' }
+  if (pathname.startsWith('/hosts/')) return { title: 'Host', back: '/hosts' }
   const section = sectionOf(pathname)
   const item = navItems.find((n) => n.section === section)
   return { title: item ? item.label : 'Remedy' }

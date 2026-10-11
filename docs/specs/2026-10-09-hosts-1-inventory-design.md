@@ -1,6 +1,6 @@
 # Hosts, cycle 1: the inventory and access
 
-Status: draft for the maintainer's review, 2026-10-09. Implementation plan: not written yet.
+Status: implemented 2026-10-11 (pull request pending). Implementation plan: docs/plans/hosts-1-inventory-and-access.md.
 Parent document: [`2026-10-09-hosts-and-skills-design.md`](2026-10-09-hosts-and-skills-design.md) (the umbrella: sections 2, 4 and 11 are binding here).
 Models it copies: the GitHub connection (`internal/store/github.go`, `internal/server/github.go`, `internal/secret`) for sealed credentials and the views that never show them.
 
@@ -35,7 +35,7 @@ the host yet: no agent, no tool, no incident. This cycle builds the part that ho
 | Sealing | AES-256-GCM through `internal/secret`, with the additional data `host_credential:<host id>`. The plain value exists only in the request that sets it and in the memory of a connection. |
 | What the API shows | The kind, `hint` and (for a key) the public key as an `authorized_keys` line. For a **key** the hint is the key's SHA-256 fingerprint, because the last characters of a PEM block say nothing. For a **password** it is the text `set`: no character of a password is ever shown. (The umbrella says "last characters"; this refines it for the two kinds.) |
 | Host key | Pinned in the host's row as the key's public line and fingerprint. A first test **never proceeds past the key exchange**; it reports the fingerprint. Pinning is a separate call that names the fingerprint the maintainer saw. A different key than the pinned one is refused and shown as `key changed`. No option switches the check off. |
-| Test | Fixed commands, built from constants, no user input: `id -un`, `id -Gn`, `uname -sr`, `sudo -n -l`. Ten seconds per command, 16 KB per output. It is not an agent run and does not use the gatekeeper. |
+| Test | Fixed commands, built from constants, no user input: `id -un`, `id -Gn`, `uname -sr`, `env LC_ALL=C sudo -n -l` (the locale is fixed, so that the parser sees English). Ten seconds per command, 16 KB per output. It is not an agent run and does not use the gatekeeper. |
 | Warnings | The test reports an account that is `root`, one in the group `docker`, and `sudo -n -l` output that allows everything without a password. Warnings are advice; none of them blocks saving. |
 | Snippet | Generated on the server from the fields, as plain text, never executed. Every value that is put into it is validated against a strict pattern first (section 5). |
 | Delete | Deleting a host deletes its credential. Rows that refer to a host do not exist yet; cycle 2 and 4 add `host_id` columns with `ON DELETE SET NULL` and a test that the delete clears them. |
@@ -126,7 +126,7 @@ Comments in the snippet tell the maintainer what to check: the path of `docker` 
 
 - `account`: `^[a-z_][a-z0-9_-]{0,31}$`.
 - `dockerPattern`: `^[A-Za-z0-9][A-Za-z0-9_.-]*\*?$` — a name, optionally ending in one `*`. No other wildcard, no comma, no space, no newline.
-- `systemdUnits`: each `^[A-Za-z0-9][A-Za-z0-9_.@:-]*$` with a suffix that must be one of `.service`, `.timer`, `.socket` or none (then `.service` is written). At most 20.
+- `systemdUnits`: each `^[A-Za-z0-9][A-Za-z0-9_.@-]*$` with a suffix that must be one of `.service`, `.timer`, `.socket` or none (then `.service` is written). At most 20. `:` is excluded because sudoers needs it escaped, and `visudo` rejects an unescaped one.
 - Everything is validated again when the snippet is generated, not only when the host is saved, and a value that fails makes the generator return an error instead of text.
 
 The snippet is a suggestion. Its exact lines, and the limits of the wildcards in them, are the maintainer's to read; the text says so. A test generates snippets for a set of hostile inputs (a newline, a comma, `ALL`, a leading dash, a very long value) and asserts that none produces a line that grants more than the table above.

@@ -14,6 +14,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/secret"
+	"github.com/Jaydee94/remedy/internal/sshhost"
 	"github.com/Jaydee94/remedy/internal/store"
 )
 
@@ -49,6 +50,9 @@ type Deps struct {
 	// RunnerStatus is what the control plane knows about its runner. When it is nil there are neither the report route
 	// nor GET /api/runner.
 	RunnerStatus *RunnerStatus
+
+	// Hosts connects to the machines in the inventory. When it is nil the host routes are not registered.
+	Hosts *sshhost.Service
 }
 
 type srv struct {
@@ -122,6 +126,19 @@ func (s *srv) routes(public, internal *http.ServeMux) {
 		public.HandleFunc("POST /api/repos", s.session(s.addRepo))
 		public.HandleFunc("PATCH /api/repos/{id}", s.session(s.patchRepo))
 		public.HandleFunc("DELETE /api/repos/{id}", s.session(s.deleteRepo))
+	}
+
+	if d.Hosts != nil {
+		public.HandleFunc("GET /api/hosts", s.session(s.listHosts))
+		public.HandleFunc("POST /api/hosts", s.session(s.createHost))
+		public.HandleFunc("GET /api/hosts/{id}", s.session(s.getHost))
+		public.HandleFunc("PATCH /api/hosts/{id}", s.session(s.patchHost))
+		public.HandleFunc("DELETE /api/hosts/{id}", s.session(s.deleteHost))
+		public.HandleFunc("PUT /api/hosts/{id}/credential", s.session(s.putHostCredential))
+		public.HandleFunc("DELETE /api/hosts/{id}/credential", s.session(s.deleteHostCredential))
+		public.HandleFunc("POST /api/hosts/{id}/test", s.session(s.testHost))
+		public.HandleFunc("POST /api/hosts/{id}/hostkey", s.session(s.pinHostKey))
+		public.HandleFunc("DELETE /api/hosts/{id}/hostkey", s.session(s.unpinHostKey))
 	}
 
 	if d.Incidents != nil {

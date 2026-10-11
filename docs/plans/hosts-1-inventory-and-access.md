@@ -155,7 +155,7 @@ func hostFields(name string) store.HostFields {
 	}
 }
 
-func activityKinds(t *testing.T, s *store.Store) []string {
+func activitySummaries(t *testing.T, s *store.Store) []string {
 	t.Helper()
 	log, err := s.ListActivity(context.Background(), store.ActivityQuery{})
 	if err != nil {
@@ -200,7 +200,7 @@ func TestCreateGetListHost(t *testing.T) {
 	if _, err := s.GetHost(ctx, 999); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("unknown host error = %v", err)
 	}
-	if got := activityKinds(t, s); len(got) != 2 || got[1] != "Host nas created" {
+	if got := activitySummaries(t, s); len(got) != 2 || got[1] != "Host nas created" {
 		t.Fatalf("activity = %v", got)
 	}
 }
@@ -360,7 +360,7 @@ func TestHostActivityNamesNoSecrets(t *testing.T) {
 	_ = s.DeleteHost(ctx, h.ID)
 
 	want := []string{"Host nas removed", "Host key of nas pinned", "Credential of nas replaced", "Host nas created"}
-	got := activityKinds(t, s)
+	got := activitySummaries(t, s)
 	if len(got) != len(want) {
 		t.Fatalf("activity = %v", got)
 	}
@@ -832,7 +832,7 @@ import (
 
 const (
 	pat  = `[A-Za-z0-9][A-Za-z0-9_.-]*\*?`
-	unit = `[A-Za-z0-9][A-Za-z0-9_.@:-]*\.(service|timer|socket)`
+	unit = `[A-Za-z0-9][A-Za-z0-9_.@-]*\.(service|timer|socket)`
 )
 
 // grantLine is the only shape of a non-comment line the generator may produce for the account.
@@ -984,7 +984,7 @@ var (
 	hostnameRE = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$`)
 	accountRE  = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 	dockerRE   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}\*?$`)
-	unitRE     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,100}\.(service|timer|socket)$`)
+	unitRE     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@-]{0,100}\.(service|timer|socket)$`)
 )
 
 // FieldError is a problem with one field, worded so that it can be shown to the maintainer as it is.
@@ -1062,7 +1062,7 @@ func normalizeUnits(units []string) ([]string, error) {
 			u += ".service"
 		}
 		if !unitRE.MatchString(u) {
-			return nil, &FieldError{"systemdUnits", "a systemd unit may contain letters, digits and _ . @ : -, and ends in .service, .timer or .socket"}
+			return nil, &FieldError{"systemdUnits", "a systemd unit may contain letters, digits and _ . @ -, and ends in .service, .timer or .socket"}
 		}
 		if !seen[u] {
 			seen[u] = true
@@ -1624,14 +1624,14 @@ type Server struct {
 	Host string
 	Port int
 
-	cfg       Config
-	ln        net.Listener
-	mu        sync.Mutex
-	signer    ssh.Signer
-	attempts  int
-	open      int
-	maxOpen   int
-	conns     map[net.Conn]struct{}
+	cfg      Config
+	ln       net.Listener
+	mu       sync.Mutex
+	signer   ssh.Signer
+	attempts int
+	serving  int
+	maxServe int
+	conns    map[net.Conn]struct{}
 }
 
 // Start listens on a free port of 127.0.0.1 and serves until the test ends.
@@ -1668,8 +1668,9 @@ func (s *Server) SetHostSigner(sg ssh.Signer) { s.mu.Lock(); s.signer = sg; s.mu
 // exchange makes none.
 func (s *Server) Attempts() int { s.mu.Lock(); defer s.mu.Unlock(); return s.attempts }
 
-// MaxConcurrent is the highest number of connections that were open at the same time.
-func (s *Server) MaxConcurrent() int { s.mu.Lock(); defer s.mu.Unlock(); return s.maxOpen }
+// MaxConcurrent is the highest number of exec sessions that were being served at the same time. A session stops counting
+// before its exit status is sent, so a client that has seen the exit status never races the count of the next one.
+func (s *Server) MaxConcurrent() int { s.mu.Lock(); defer s.mu.Unlock(); return s.maxServe }
 
 func (s *Server) attempt() { s.mu.Lock(); s.attempts++; s.mu.Unlock() }
 
@@ -1709,15 +1710,10 @@ func (s *Server) serverConfig() *ssh.ServerConfig {
 func (s *Server) handle(nc net.Conn) {
 	s.mu.Lock()
 	s.conns[nc] = struct{}{}
-	s.open++
-	if s.open > s.maxOpen {
-		s.maxOpen = s.open
-	}
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
 		delete(s.conns, nc)
-		s.open--
 		s.mu.Unlock()
 		_ = nc.Close()
 	}()
@@ -1755,12 +1751,21 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 			return
 		}
 		_ = req.Reply(true, nil)
+		s.mu.Lock()
+		s.serving++
+		if s.serving > s.maxServe {
+			s.maxServe = s.serving
+		}
+		s.mu.Unlock()
 		r, ok := s.cfg.Commands[p.Command]
 		if !ok {
 			r = Reply{Out: "unknown command: " + p.Command + "\n", Exit: 127}
 		}
 		time.Sleep(r.Delay)
 		_, _ = io.WriteString(ch, r.Out)
+		s.mu.Lock()
+		s.serving--
+		s.mu.Unlock()
 		_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{uint32(r.Exit)}))
 		return
 	}
@@ -2135,7 +2140,7 @@ func okCommands() map[string]sshtest.Reply {
 		"id -un":     {Out: "remedy\n"},
 		"id -Gn":     {Out: "remedy users\n"},
 		"uname -sr":  {Out: "Linux 6.8.0\n"},
-		"sudo -n -l": {Out: "User remedy may run the following commands on nas:\n    (root) NOPASSWD: /usr/bin/docker ps -a\n"},
+		"env LC_ALL=C sudo -n -l": {Out: "User remedy may run the following commands on nas:\n    (root) NOPASSWD: /usr/bin/docker ps -a\n"},
 	}
 }
 
@@ -2156,25 +2161,26 @@ func TestChecksOfOneHostDoNotOverlap(t *testing.T) {
 	cmds["id -un"] = sshtest.Reply{Out: "remedy\n", Delay: 150 * time.Millisecond}
 	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: cmds})
 	pin := lineOf(t, srv)
+	cred := passwordCred(t, "pw") // made here: t.Fatal must not be called from the goroutines below
 	var svc sshhost.Service
 	var wg sync.WaitGroup
 	for i := 0; i < 3; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := svc.Check(context.Background(), 7, targetOf(srv), passwordCred(t, "pw"), pin); err != nil {
+			if _, err := svc.Check(context.Background(), 7, targetOf(srv), cred, pin); err != nil {
 				t.Errorf("Check: %v", err)
 			}
 		}()
 	}
 	wg.Wait()
 	if srv.MaxConcurrent() != 1 {
-		t.Fatalf("%d connections to one host were open at the same time, want 1", srv.MaxConcurrent())
+		t.Fatalf("%d exec sessions on one host were served at the same time, want 1", srv.MaxConcurrent())
 	}
 }
 ```
 
-Note: `lineOf` itself opens a probe connection before the concurrent part, so it is closed before the checks start; `MaxConcurrent` counts connections, and the probe ends before.
+Note: `lineOf` itself opens a probe connection before the concurrent part, so it is closed before the checks start; `MaxConcurrent` counts exec sessions (a TCP connection is closed asynchronously, which made a count of connections flaky), and the probe runs none.
 
 - [ ] **Step 4: Run to see it fail**
 
@@ -2598,7 +2604,7 @@ import (
 )
 
 // testCommands are the four commands of a connection test. They are constants: no user input ever reaches them.
-var testCommands = [4]string{"id -un", "id -Gn", "uname -sr", "sudo -n -l"}
+var testCommands = [4]string{"id -un", "id -Gn", "uname -sr", "env LC_ALL=C sudo -n -l"}
 
 // Service is what the control plane uses. The zero value is ready. It lets only one connection per host be open at a time,
 // so two clicks on "Test" do not open two sessions.
@@ -2722,7 +2728,7 @@ func nasCommands() map[string]sshtest.Reply {
 		"id -un":     {Out: "remedy\n"},
 		"id -Gn":     {Out: "remedy users\n"},
 		"uname -sr":  {Out: "Linux 6.8.0\n"},
-		"sudo -n -l": {Out: "User remedy may run the following commands on nas:\n    (root) NOPASSWD: /usr/bin/docker ps -a\n"},
+		"env LC_ALL=C sudo -n -l": {Out: "User remedy may run the following commands on nas:\n    (root) NOPASSWD: /usr/bin/docker ps -a\n"},
 	}
 }
 
@@ -3059,7 +3065,7 @@ func TestPinningNeedsTheFingerprintYouSaw(t *testing.T) {
 func TestATestAfterPinningReportsTheAccountsRights(t *testing.T) {
 	cmds := nasCommands()
 	cmds["id -Gn"] = sshtest.Reply{Out: "remedy users docker\n"}
-	cmds["sudo -n -l"] = sshtest.Reply{Out: "User remedy may run the following commands on nas:\n    (ALL : ALL) NOPASSWD: ALL\n"}
+	cmds["env LC_ALL=C sudo -n -l"] = sshtest.Reply{Out: "User remedy may run the following commands on nas:\n    (ALL : ALL) NOPASSWD: ALL\n"}
 	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: cmds})
 	e := newHostEnv(t, nil, "", ghKey(t, 1), srv)
 	h := e.create(t, "nas")
@@ -3836,7 +3842,8 @@ describe('statusSentence', () => {
     assert.match(statusSentence(host({ credential: { kind: 'password', hint: 'set', updatedAt: 'x' } })), /test the connection/i)
     assert.match(statusSentence(host({ credential: { kind: 'password', hint: 'set', updatedAt: 'x' }, status: 'untrusted' })), /not pinned/)
     assert.match(statusSentence(host({ credential: { kind: 'password', hint: 'set', updatedAt: 'x' }, pinnedFingerprint: 'SHA256:a' })), /haven't tested/)
-    assert.match(statusSentence(host({ status: 'ok', pinnedFingerprint: 'SHA256:a' })), /can log in/)
+    assert.match(statusSentence(host({ status: 'ok', credential: { kind: 'password', hint: 'set', updatedAt: 'x' }, pinnedFingerprint: 'SHA256:a' })), /can log in/)
+    assert.match(statusSentence(host({ status: 'ok' })), /don't have a login/)
   })
 
   it('uses the server\'s detail for a failure', () => {

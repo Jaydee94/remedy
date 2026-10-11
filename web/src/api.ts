@@ -100,6 +100,78 @@ export interface Repo {
   createdAt: string
 }
 
+export type HostStatus = 'new' | 'untrusted' | 'ok' | 'error' | 'key_changed' | 'undecryptable'
+
+/** What the last connection test learned about the account. Everything in it came from the host: show it as text. */
+export interface HostReport {
+  at: string
+  account: string
+  groups: string[]
+  system: string
+  sudo: 'none' | 'limited' | 'unrestricted'
+  sudoRules: string[]
+  warnings: string[]
+}
+
+/** A host's login, without the login: its kind, a hint (a key's fingerprint, or "set" for a password) and, for a key, the public key. */
+export interface HostCredentialView {
+  kind: 'key' | 'password'
+  hint: string
+  publicKey?: string
+  updatedAt: string
+}
+
+export interface HostOnboarding {
+  authorizedKeys: string
+  sudoers: string
+  /** Set when the snippet could not be made from the host's fields. */
+  error?: string
+}
+
+export interface Host {
+  id: number
+  name: string
+  address: string
+  port: number
+  account: string
+  notes: string
+  dockerPattern: string
+  systemdUnits: string[]
+  enabled: boolean
+  status: HostStatus
+  statusDetail: string
+  checkedAt?: string
+  /** Only `GET /api/hosts/{id}` and the answers of its actions have the report and the onboarding snippet. */
+  report?: HostReport
+  pinnedFingerprint?: string
+  pinnedAt?: string
+  credential?: HostCredentialView
+  onboarding?: HostOnboarding
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PresentedKey {
+  type: string
+  fingerprint: string
+}
+
+export type HostTest = Host & { presentedKey?: PresentedKey }
+export type HostPatched = Host & { pinCleared: boolean }
+
+export interface HostBody {
+  name?: string
+  address?: string
+  port?: number
+  account?: string
+  notes?: string
+  dockerPattern?: string
+  systemdUnits?: string[]
+  enabled?: boolean
+}
+
+export type CredentialBody = { kind: 'key'; key: string; passphrase: string } | { kind: 'password'; password: string }
+
 export type IncidentState = 'open' | 'diagnosing' | 'diagnosed' | 'resolved' | 'ignored'
 
 export type IncidentSource = 'github' | 'alertmanager' | 'argocd'
@@ -259,6 +331,16 @@ export const api = {
   addRepo: (fullName: string) => request<Repo>('POST', '/api/repos', { fullName }),
   setRepoEnabled: (id: number, enabled: boolean) => request<void>('PATCH', `/api/repos/${id}`, { enabled }),
   deleteRepo: (id: number) => request<void>('DELETE', `/api/repos/${id}`),
+  listHosts: () => request<Host[]>('GET', '/api/hosts'),
+  createHost: (body: HostBody) => request<Host>('POST', '/api/hosts', body),
+  getHost: (id: number) => request<Host>('GET', `/api/hosts/${id}`),
+  patchHost: (id: number, body: HostBody) => request<HostPatched>('PATCH', `/api/hosts/${id}`, body),
+  deleteHost: (id: number) => request<void>('DELETE', `/api/hosts/${id}`),
+  putHostCredential: (id: number, body: CredentialBody) => request<Host>('PUT', `/api/hosts/${id}/credential`, body),
+  deleteHostCredential: (id: number) => request<void>('DELETE', `/api/hosts/${id}/credential`),
+  testHost: (id: number) => request<HostTest>('POST', `/api/hosts/${id}/test`),
+  pinHostKey: (id: number, fingerprint: string) => request<Host>('POST', `/api/hosts/${id}/hostkey`, { fingerprint }),
+  unpinHostKey: (id: number) => request<void>('DELETE', `/api/hosts/${id}/hostkey`),
 
   /** state is "active", "all" or one incident state. source is left out for every source. */
   listIncidents: (state: string, repoId?: number, source?: IncidentSource) => {
