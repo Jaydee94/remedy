@@ -119,14 +119,39 @@ func shellSeparator(r rune) bool {
 	return unicode.IsSpace(r) || strings.ContainsRune(";&|()<>`$'\"\\", r)
 }
 
+// stripQuoting removes the quote and backslash characters: a shell reads "ba"sh and b\ash as the program bash.
+func stripQuoting(word string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\'' || r == '"' || r == '\\' {
+			return -1
+		}
+		return r
+	}, word)
+}
+
+// hasPrefixWord says whether one of the words starts with prefix.
+func hasPrefixWord(words []string, prefix string) bool {
+	for _, w := range words {
+		if strings.HasPrefix(w, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // expand returns the words of argv and, for a word that a shell would split (white space, ; & | ( ) < > ` $ ' " \), its
 // tokens after it. A shell string handed to su -c or env -S is a command line, so each of its tokens is seen as a possible
-// program as well.
+// program as well. A word with quotes or backslashes is also seen with them removed, so that a program name joined from
+// fragments (b\ash, "ba"sh, r\m) is seen as the program it names.
 func expand(argv []string) []string {
-	out := append([]string(nil), argv...)
+	out := make([]string, 0, len(argv))
 	for _, w := range argv {
+		out = append(out, w)
 		if f := strings.FieldsFunc(w, shellSeparator); len(f) != 1 || f[0] != w {
 			out = append(out, f...)
+		}
+		if s := stripQuoting(w); s != w {
+			out = append(out, strings.FieldsFunc(s, shellSeparator)...)
 		}
 	}
 	return out
@@ -135,7 +160,7 @@ func expand(argv []string) []string {
 // NeverReason says why a command is never run, or "" when the list has nothing against it. The list is in code, applies to
 // `host_change` before an approval is asked for and again when the call runs, and holds also when the maintainer would approve.
 //
-// It looks at EVERY word as a possible program (with the words after it as its arguments), and at every whitespace token of a
+// It looks at EVERY word as a possible program (with the words after it as its arguments), and at every shell token of a
 // word, so a program behind sudo, env, nohup, timeout, xargs or inside a shell string is seen as well. Paths are checked as
 // given and as cleaned. The price is a false positive for a container or unit named like a dangerous program; that direction
 // is safe. A reason is one short sentence without a final period.
@@ -187,7 +212,8 @@ func programReason(prog string, rest []string) string {
 	case prog == "doas":
 		return "doas runs commands as another user; sudo -n is the only privilege path"
 	case prog == "env":
-		if hasFlag(rest, "S", "--split-string") {
+		// GNU env takes --s as the unique abbreviation of --split-string; a one-letter name is not matched by longMatch.
+		if hasFlag(rest, "S", "--split-string") || hasPrefixWord(rest, "--s") {
 			return "env -S runs a string as a command line, which cannot be shown or judged"
 		}
 	case in(prog, "nsenter", "chroot"):
