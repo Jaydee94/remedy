@@ -1,6 +1,6 @@
 # Hosts, cycle 2: host tools in the gatekeeper
 
-Status: draft for the maintainer's review, 2026-10-11. Implementation plan: not written yet.
+Status: implemented 2026-10-13 (pull request pending). Implementation plan: docs/plans/hosts-2-host-tools.md.
 Parent documents: [`2026-10-09-hosts-and-skills-design.md`](2026-10-09-hosts-and-skills-design.md) (the umbrella: sections 2, 3 and 11 are binding here; this spec changes `host_exec` into two tools, see 2),
 [`2026-10-09-hosts-1-inventory-design.md`](2026-10-09-hosts-1-inventory-design.md) (hosts, sealed logins, pinned keys, the connection test and its report, built),
 [`2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md`](2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md) and
