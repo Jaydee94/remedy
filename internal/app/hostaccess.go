@@ -66,14 +66,9 @@ func (a *HostAccess) Exec(ctx context.Context, runID, host string, sudo bool, ar
 	if err != nil {
 		return hostexec.Result{}, err
 	}
-	var e *store.HostEntry
-	for i := range entries {
-		if strings.EqualFold(entries[i].Host.Name, host) && usable(entries[i]) {
-			e = &entries[i]
-		}
-	}
-	if e == nil {
-		return hostexec.Result{}, gatekeeper.ArgumentError(fmt.Sprintf("there is no host %q available to you; host_list shows the hosts you may use", host))
+	e, err := pickHost(entries, host)
+	if err != nil {
+		return hostexec.Result{}, err
 	}
 	raw, err := a.Key.Open(e.Credential.Ciphertext, store.HostCredentialAAD(e.Host.ID))
 	if errors.Is(err, secret.ErrOpen) {
@@ -103,6 +98,33 @@ func (a *HostAccess) Exec(ctx context.Context, runID, host string, sudo bool, ar
 		return hostexec.Result{}, gatekeeper.ArgumentError(hostFailure(err))
 	}
 	return hostexec.Result{Stdout: res.Stdout, Stderr: res.Stderr, ExitCode: res.ExitCode, StdoutCut: res.StdoutCut, StderrCut: res.StderrCut}, nil
+}
+
+// pickHost finds the usable host of a run that a name means: the exact name first, and a name that differs only in case when
+// exactly one host does. Names are unique without regard to case in the database, so more than one is not expected; if it
+// happens, the name is refused rather than guessed.
+func pickHost(entries []store.HostEntry, name string) (*store.HostEntry, error) {
+	var folded *store.HostEntry
+	matches := 0
+	for i := range entries {
+		if !usable(entries[i]) {
+			continue
+		}
+		if entries[i].Host.Name == name {
+			return &entries[i], nil
+		}
+		if strings.EqualFold(entries[i].Host.Name, name) {
+			folded = &entries[i]
+			matches++
+		}
+	}
+	switch matches {
+	case 0:
+		return nil, gatekeeper.ArgumentError(fmt.Sprintf("there is no host %q available to you; host_list shows the hosts you may use", name))
+	case 1:
+		return folded, nil
+	}
+	return nil, gatekeeper.ArgumentError(fmt.Sprintf("the host name %q is ambiguous: more than one host has it apart from its case; use the exact name from host_list", name))
 }
 
 // hostFailure is the sentence the agent gets for a failed connection. The set is closed.

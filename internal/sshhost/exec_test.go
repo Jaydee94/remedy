@@ -3,6 +3,7 @@ package sshhost_test
 import (
 	"context"
 	"errors"
+	"net"
 	"reflect"
 	"strings"
 	"sync"
@@ -232,6 +233,73 @@ func TestExecCallsAConnectionThatBreaksDuringTheCanaryUnreachable(t *testing.T) 
 	}
 	if seen := srv.Seen(); !reflect.DeepEqual(seen, []string{canaryCmd}) {
 		t.Fatalf("the server received %q: the command must not follow a canary that broke", seen)
+	}
+}
+
+// Only a timeout of the command itself has an unknown outcome. Before the command is sent, a timeout is a host that
+// cannot be reached.
+func TestExecCallsATimeoutBeforeTheCommandUnreachable(t *testing.T) {
+	t.Run("the canary", func(t *testing.T) {
+		srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{
+			canaryCmd: {Out: canaryWant, Delay: 2 * time.Second}, "the change": {Out: "ran"},
+		}})
+		var svc sshhost.Service
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+		defer cancel()
+		_, err := svc.Exec(ctx, 1, targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv), "the change", execOpts())
+		if !errors.Is(err, sshhost.ErrUnreachable) || errors.Is(err, sshhost.ErrTimeout) {
+			t.Fatalf("err = %v, want ErrUnreachable: no command of ours was sent", err)
+		}
+		if seen := srv.Seen(); !reflect.DeepEqual(seen, []string{canaryCmd}) {
+			t.Fatalf("the server received %q: only the canary may have been sent", seen)
+		}
+	})
+	t.Run("the dial", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ln.Close()
+		go func() { // accepts and says nothing
+			for {
+				c, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				defer c.Close()
+			}
+		}()
+		srv := sshtest.Start(t, sshtest.Config{Password: "pw"})
+		target := targetOf(srv)
+		target.Address, target.Port = "127.0.0.1", ln.Addr().(*net.TCPAddr).Port
+		defer sshhost.SetConnectTimeout(200 * time.Millisecond)()
+		var svc sshhost.Service
+		_, err = svc.Exec(context.Background(), 1, target, passwordCred(t, "pw"), lineOf(t, srv), "the change", execOpts())
+		if !errors.Is(err, sshhost.ErrUnreachable) || errors.Is(err, sshhost.ErrTimeout) {
+			t.Fatalf("err = %v, want ErrUnreachable", err)
+		}
+	})
+}
+
+func TestExecClassifiesAFailureToStartTheCommand(t *testing.T) {
+	cases := map[string]struct {
+		reply sshtest.Reply
+		want  error
+	}{
+		// The server said no to the exec request: nothing ran.
+		"the exec request is rejected": {sshtest.Reply{Reject: true}, sshhost.ErrUnreachable},
+		// The connection broke while the answer to the exec request was awaited: the command may have started.
+		"the connection breaks at the exec request": {sshtest.Reply{DropAtRequest: true}, sshhost.ErrLostAfterStart},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{canaryCmd: {Out: canaryWant}, "the change": c.reply}})
+			var svc sshhost.Service
+			_, err := svc.Exec(context.Background(), 1, targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv), "the change", execOpts())
+			if !errors.Is(err, c.want) {
+				t.Fatalf("err = %v, want %v", err, c.want)
+			}
+		})
 	}
 }
 

@@ -3,6 +3,7 @@ package sshhost
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -52,13 +53,16 @@ func (c *Client) RunSplit(ctx context.Context, cmd string, limit int, timeout ti
 	// Start and Wait apart, so that a failure to start (nothing ran) differs from a connection that breaks while the
 	// command runs (unknown outcome).
 	type ended struct {
-		err     error
+		err error
+		// started is false only when the server answered the exec request with "no": the command did not run. Any other
+		// failure of Start (the connection broke while the answer was awaited) may have come after the server started it.
 		started bool
 	}
+	rejected := fmt.Sprintf("ssh: command %v failed", cmd) // what the library says for an exec request that was answered "no"
 	done := make(chan ended, 1)
 	go func() {
 		if err := sess.Start(cmd); err != nil {
-			done <- ended{err: err}
+			done <- ended{err: err, started: err.Error() != rejected}
 			return
 		}
 		done <- ended{err: sess.Wait(), started: true}
@@ -106,13 +110,18 @@ func (s *Service) Exec(ctx context.Context, hostID int64, t Target, cred Credent
 		return ExecResult{}, ErrShell
 	}
 	defer s.lock(hostID)()
+	// ErrTimeout means that the command was sent and did not end: its outcome is unknown. A timeout of the dial or of the
+	// canary happens before that, so it is a host that cannot be reached.
 	cl, err := Dial(ctx, t, cred, pinLine)
+	if errors.Is(err, ErrTimeout) {
+		return ExecResult{}, ErrUnreachable
+	}
 	if err != nil {
 		return ExecResult{}, err
 	}
 	defer cl.Close()
 	canary, err := cl.RunSplit(ctx, o.CanaryCommand, canaryLimit, canaryTimeout)
-	if errors.Is(err, ErrLostAfterStart) {
+	if errors.Is(err, ErrLostAfterStart) || errors.Is(err, ErrTimeout) {
 		// Only the canary had started: nothing that changes a host has run yet.
 		return ExecResult{}, ErrUnreachable
 	}

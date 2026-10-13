@@ -3830,7 +3830,13 @@ git commit -m "feat(gatekeeper): the host tools: host_list, host_read and host_c
 
 **Interfaces:**
 - Consumes: `gatekeeper.HostAccess`, `gatekeeper.HostInfo`, `gatekeeper.ArgumentError`, `hostexec.*`, `sshhost.Service.Exec`, `store.RunHosts`, `store.HostCredentialAAD`.
-- Produces: `app.HostAccess{Store *store.Store; Key secret.Key; SSH *sshhost.Service}` implementing `gatekeeper.HostAccess`; the app registers `gatekeeper.HostTools(...)` and shares one `sshhost.Service` between the host routes and the host tools (one lock per host for both).
+- Produces: `app.HostAccess{Store *store.Store; Key secret.Key; SSH *sshhost.Service; CommandTimeout time.Duration}` implementing `gatekeeper.HostAccess`; the app registers `gatekeeper.HostTools(...)` and shares one `sshhost.Service` between the host routes and the host tools (one lock per host for both).
+
+**Amendments made in implementation and review (the code below already has them; the test code in Step 1 is the first version, the tests in `internal/app/hostaccess_test.go` and `internal/sshhost/exec_test.go` are authoritative):**
+- `sshhost.ErrLostAfterStart` (exec.go): `RunSplit` splits `Start` from `Wait`; a connection that breaks after the command started is `ErrLostAfterStart`, and so is a `Start` error other than the server's explicit "no" to the exec request (`ssh: command ... failed`). `Service.Exec` turns a timeout or break of the dial or the canary into `ErrUnreachable`: `ErrTimeout` and `ErrLostAfterStart` mean the command was sent, so `HostAccess` maps both to `gatekeeper.ErrHostTimeout` (an unknown outcome for a change). `sshtest.Reply` got `Drop`, `Reject` and `DropAtRequest`; `export_test.go` got `SetConnectTimeout`.
+- `gatekeeper.executeTimeout` is 75 s (dial 10 s + canary 10 s + command 30 s + slack).
+- `pickHost`: exact name first, then a case-insensitive match only when exactly one; otherwise a fixed "no host" or "ambiguous" sentence. `internal/app/export_test.go` exposes it as `PickHost`.
+- `CommandTimeout` on `HostAccess` so a test need not wait 30 s.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -4101,9 +4107,11 @@ type HostAccess struct {
 	Store *store.Store
 	Key   secret.Key
 	SSH   *sshhost.Service
+	// CommandTimeout bounds the command itself (not the dial or the canary). Zero means 30 seconds.
+	CommandTimeout time.Duration
 }
 
-const hostCommandTimeout = 30 * time.Second
+const defaultHostCommandTimeout = 30 * time.Second
 
 // usable says whether a host can be given a command now: enabled, with a login and a pinned key.
 func usable(e store.HostEntry) bool {
@@ -4142,14 +4150,9 @@ func (a *HostAccess) Exec(ctx context.Context, runID, host string, sudo bool, ar
 	if err != nil {
 		return hostexec.Result{}, err
 	}
-	var e *store.HostEntry
-	for i := range entries {
-		if strings.EqualFold(entries[i].Host.Name, host) && usable(entries[i]) {
-			e = &entries[i]
-		}
-	}
-	if e == nil {
-		return hostexec.Result{}, gatekeeper.ArgumentError(fmt.Sprintf("there is no host %q available to you; host_list shows the hosts you may use", host))
+	e, err := pickHost(entries, host)
+	if err != nil {
+		return hostexec.Result{}, err
 	}
 	raw, err := a.Key.Open(e.Credential.Ciphertext, store.HostCredentialAAD(e.Host.ID))
 	if errors.Is(err, secret.ErrOpen) {
@@ -4162,19 +4165,51 @@ func (a *HostAccess) Exec(ctx context.Context, runID, host string, sudo bool, ar
 	if err != nil {
 		return hostexec.Result{}, gatekeeper.ArgumentError("the stored login of the host cannot be used; the maintainer has to enter it again")
 	}
+	timeout := a.CommandTimeout
+	if timeout <= 0 {
+		timeout = defaultHostCommandTimeout
+	}
 	target := sshhost.Target{Address: e.Host.Address, Port: e.Host.Port, Account: e.Host.Account}
 	res, err := a.SSH.Exec(ctx, e.Host.ID, target, cred, e.Host.PinnedKey, hostexec.CommandLine(argv, sudo), sshhost.ExecOptions{
-		Limit: hostexec.StreamLimit, Timeout: hostCommandTimeout,
+		Limit: hostexec.StreamLimit, Timeout: timeout,
 		CanaryCommand: hostexec.CanaryCommand(), CanaryWant: hostexec.CanaryWant(),
 	})
-	if errors.Is(err, sshhost.ErrTimeout) {
-		// The host tools tell a timed-out change apart from a timed-out read: its outcome is unknown.
+	if errors.Is(err, sshhost.ErrTimeout) || errors.Is(err, sshhost.ErrLostAfterStart) {
+		// The host tools tell a timed-out change apart from a timed-out read: its outcome is unknown. sshhost answers these
+		// two only after the command was sent; a timeout of the dial or the canary is ErrUnreachable.
 		return hostexec.Result{}, gatekeeper.ErrHostTimeout
 	}
 	if err != nil {
 		return hostexec.Result{}, gatekeeper.ArgumentError(hostFailure(err))
 	}
 	return hostexec.Result{Stdout: res.Stdout, Stderr: res.Stderr, ExitCode: res.ExitCode, StdoutCut: res.StdoutCut, StderrCut: res.StderrCut}, nil
+}
+
+// pickHost finds the usable host of a run that a name means: the exact name first, and a name that differs only in case when
+// exactly one host does. Names are unique without regard to case in the database, so more than one is not expected; if it
+// happens, the name is refused rather than guessed.
+func pickHost(entries []store.HostEntry, name string) (*store.HostEntry, error) {
+	var folded *store.HostEntry
+	matches := 0
+	for i := range entries {
+		if !usable(entries[i]) {
+			continue
+		}
+		if entries[i].Host.Name == name {
+			return &entries[i], nil
+		}
+		if strings.EqualFold(entries[i].Host.Name, name) {
+			folded = &entries[i]
+			matches++
+		}
+	}
+	switch matches {
+	case 0:
+		return nil, gatekeeper.ArgumentError(fmt.Sprintf("there is no host %q available to you; host_list shows the hosts you may use", name))
+	case 1:
+		return folded, nil
+	}
+	return nil, gatekeeper.ArgumentError(fmt.Sprintf("the host name %q is ambiguous: more than one host has it apart from its case; use the exact name from host_list", name))
 }
 
 // hostFailure is the sentence the agent gets for a failed connection. The set is closed.
@@ -4184,8 +4219,6 @@ func hostFailure(err error) string {
 		return "the host shows another key than the pinned one, so nothing was sent; the maintainer has to look at it"
 	case errors.Is(err, sshhost.ErrAuth):
 		return "the host rejected the login"
-	case errors.Is(err, sshhost.ErrTimeout):
-		return "the host did not answer in time"
 	case errors.Is(err, sshhost.ErrRefused):
 		return "the host refused the connection"
 	case errors.Is(err, sshhost.ErrShell):

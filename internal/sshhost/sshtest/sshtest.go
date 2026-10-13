@@ -25,6 +25,9 @@ type Reply struct {
 	Exit   int
 	Delay  time.Duration // how long the server waits before it answers
 	Drop   bool          // break the connection once the command has started: no output, no exit status
+	// Reject answers the exec request with "no": the command does not run. DropAtRequest breaks the connection instead of
+	// answering it: the client cannot know whether the command started.
+	Reject, DropAtRequest bool
 }
 
 type Config struct {
@@ -184,6 +187,21 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request, nc net.Conn) 
 			_ = req.Reply(false, nil)
 			return
 		}
+		r, ok := s.cfg.Commands[p.Command]
+		if !ok {
+			r = Reply{Out: "unknown command: " + p.Command + "\n", Exit: 127}
+		}
+		if r.Reject { // the server says no to the exec request itself: the command does not run
+			_ = req.Reply(false, nil)
+			return
+		}
+		if r.DropAtRequest { // the connection breaks before the exec request is answered
+			s.mu.Lock()
+			s.seen = append(s.seen, p.Command)
+			s.mu.Unlock()
+			_ = nc.Close()
+			return
+		}
 		_ = req.Reply(true, nil)
 		go s.watch(reqs) // the requests that arrive while the command is being served, such as a signal
 		s.mu.Lock()
@@ -193,10 +211,6 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request, nc net.Conn) 
 			s.maxServe = s.serving
 		}
 		s.mu.Unlock()
-		r, ok := s.cfg.Commands[p.Command]
-		if !ok {
-			r = Reply{Out: "unknown command: " + p.Command + "\n", Exit: 127}
-		}
 		time.Sleep(r.Delay)
 		if r.Drop {
 			s.mu.Lock()

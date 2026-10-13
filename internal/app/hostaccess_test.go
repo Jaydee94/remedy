@@ -264,3 +264,118 @@ func TestExecAnswersErrHostTimeoutWhenTheOutcomeOfTheCommandIsUnknown(t *testing
 		t.Errorf("the server received %q, want the canary and the command", seen)
 	}
 }
+
+// A timeout of the canary happens before the command is sent: the agent must not be told that a change may have happened.
+func TestExecAfterATimeoutOfTheCanaryIsNotAnUnknownOutcome(t *testing.T) {
+	r := newAccessRig(t, map[string]sshtest.Reply{hostexec.CanaryCommand(): {Out: hostexec.CanaryWant(), Delay: 2 * time.Second}})
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	_, err := r.access.Exec(ctx, r.runID, "nas", false, []string{"reboot"})
+	var arg gatekeeper.ArgumentError
+	if errors.Is(err, gatekeeper.ErrHostTimeout) || !errors.As(err, &arg) || !strings.Contains(arg.Error(), "cannot be reached") {
+		t.Fatalf("err = %v, want the sentence for a host that cannot be reached", err)
+	}
+	if seen := r.srv.Seen(); len(seen) != 1 {
+		t.Fatalf("the server received %q: only the canary may be sent", seen)
+	}
+}
+
+func TestPickHostPrefersTheExactNameAndRefusesWhatIsNotOneHost(t *testing.T) {
+	entry := func(name string, enabled bool) store.HostEntry {
+		return store.HostEntry{
+			Host:       store.Host{HostFields: store.HostFields{Name: name, Enabled: enabled}, PinnedKey: "k"},
+			Credential: &store.HostCredential{},
+		}
+	}
+	pick := func(name string, entries ...store.HostEntry) (string, error) {
+		e, err := app.PickHost(entries, name)
+		if err != nil {
+			return "", err
+		}
+		return e.Host.Name, nil
+	}
+
+	if got, err := pick("nas", entry("NAS", true), entry("nas", true)); err != nil || got != "nas" {
+		t.Errorf("an exact match among two that differ in case: %q, %v, want nas", got, err)
+	}
+	if got, err := pick("nas", entry("Nas", true), entry("other", true)); err != nil || got != "Nas" {
+		t.Errorf("one match that differs in case: %q, %v, want Nas", got, err)
+	}
+	if got, err := pick("nas", entry("Nas", false), entry("NAS", true)); err != nil || got != "NAS" {
+		t.Errorf("a host that cannot be used does not count: %q, %v, want NAS", got, err)
+	}
+	var arg gatekeeper.ArgumentError
+	if _, err := pick("nas", entry("other", true)); !errors.As(err, &arg) || !strings.Contains(arg.Error(), "no host") {
+		t.Errorf("no match: err = %v, want the sentence for an unknown host", err)
+	}
+	if _, err := pick("nas", entry("Nas", true), entry("NAS", true)); !errors.As(err, &arg) || !strings.Contains(arg.Error(), "ambiguous") {
+		t.Errorf("two matches that differ in case: err = %v, want the sentence for an ambiguous name", err)
+	}
+}
+
+// sealBlob stores a login whose plaintext is blob, sealed the way the control plane seals it.
+func (r *accessRig) sealBlob(t *testing.T, kind string, blob []byte) {
+	t.Helper()
+	sealed, err := r.key.Seal(blob, store.HostCredentialAAD(r.host.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.st.SaveHostCredential(context.Background(), store.HostCredential{HostID: r.host.ID, Kind: kind, Ciphertext: sealed, Hint: "set"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExecWithALoginOrPinThatCannotBeUsedIsAFixedSentence(t *testing.T) {
+	ctx := context.Background()
+	r := newAccessRig(t, okCmds())
+	secretText := "s3cr3t-marker"
+	check := func(name string, err error, want string) {
+		t.Helper()
+		var arg gatekeeper.ArgumentError
+		if !errors.As(err, &arg) || !strings.Contains(arg.Error(), want) {
+			t.Errorf("%s: err = %v, want an ArgumentError that says %q", name, err, want)
+			return
+		}
+		for _, leak := range []string{"127.0.0.1", "remedy", "pw", secretText, "garbage", "json", "ssh:", "BEGIN"} {
+			if strings.Contains(arg.Error(), leak) {
+				t.Errorf("%s: %q reached the agent in %q", name, leak, arg.Error())
+			}
+		}
+	}
+	exec := func() error { _, err := r.access.Exec(ctx, r.runID, "nas", false, []string{"uptime"}); return err }
+
+	// A blob that was changed after sealing.
+	cred, _ := sshhost.NewPasswordCredential("pw")
+	blob, _ := cred.Marshal()
+	sealed, err := r.key.Seal(blob, store.HostCredentialAAD(r.host.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed[len(sealed)-1] ^= 0xff
+	if err := r.st.SaveHostCredential(ctx, store.HostCredential{HostID: r.host.ID, Kind: "password", Ciphertext: sealed, Hint: "set"}); err != nil {
+		t.Fatal(err)
+	}
+	check("a corrupted sealed blob", exec(), "cannot be decrypted")
+
+	// A blob that opens and is not a login.
+	r.sealBlob(t, "password", []byte("not json "+secretText))
+	check("a blob that is not a login", exec(), "cannot be used")
+
+	// A key login whose key does not parse.
+	bad, _ := sshhost.Credential{Kind: sshhost.KindKey, Key: secret.NewValue("garbage " + secretText)}.Marshal()
+	r.sealBlob(t, "key", bad)
+	check("a key that does not parse", exec(), "not set up for use")
+	if len(r.srv.Seen()) != 0 || r.srv.Attempts() != 0 {
+		t.Fatal("something was sent to the host with a login that cannot be used")
+	}
+
+	// A pinned key that is not a key.
+	r.setPassword(t, "pw")
+	if err := r.st.PinHostKey(ctx, r.host.ID, "garbage "+secretText, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	check("a pin that is not a key", exec(), "not set up for use")
+	if r.srv.Attempts() != 0 {
+		t.Fatal("a login was offered with a pin that is not a key")
+	}
+}
