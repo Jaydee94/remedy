@@ -45,6 +45,7 @@ type Server struct {
 	serving  int
 	maxServe int
 	seen     []string
+	signals  []string
 	conns    map[net.Conn]struct{}
 }
 
@@ -95,6 +96,13 @@ func (s *Server) Seen() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]string(nil), s.seen...)
+}
+
+// Signals returns the names of the signals (such as "TERM") the client sent to a running command, in order.
+func (s *Server) Signals() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.signals...)
 }
 
 func (s *Server) attempt() { s.mu.Lock(); s.attempts++; s.mu.Unlock() }
@@ -176,6 +184,7 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 			return
 		}
 		_ = req.Reply(true, nil)
+		go s.watch(reqs) // the requests that arrive while the command is being served, such as a signal
 		s.mu.Lock()
 		s.seen = append(s.seen, p.Command)
 		s.serving++
@@ -197,6 +206,23 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 		s.mu.Unlock()
 		_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{uint32(r.Exit)}))
 		return
+	}
+}
+
+// watch records the signal requests of a session until its channel closes. The server does not act on them.
+func (s *Server) watch(reqs <-chan *ssh.Request) {
+	for req := range reqs {
+		if req.Type == "signal" {
+			var p struct{ Signal string }
+			if ssh.Unmarshal(req.Payload, &p) == nil {
+				s.mu.Lock()
+				s.signals = append(s.signals, p.Signal)
+				s.mu.Unlock()
+			}
+		}
+		if req.WantReply {
+			_ = req.Reply(false, nil)
+		}
 	}
 }
 

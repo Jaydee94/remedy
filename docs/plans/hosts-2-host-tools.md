@@ -1748,10 +1748,10 @@ git commit -m "feat(hostexec): the result text and the docker inspect filter" -m
 
 **Files:**
 - Create: `internal/sshhost/exec.go`, `internal/sshhost/exec_test.go`
-- Modify: `internal/sshhost/sshtest/sshtest.go` (`Seen()`)
+- Modify: `internal/sshhost/sshtest/sshtest.go` (`Seen()`, `Signals()`)
 
 **Interfaces:**
-- Produces: `sshhost.ExecResult{Stdout, Stderr string; ExitCode int; StdoutCut, StderrCut bool}`, `sshhost.ExecOptions{Limit int; Timeout time.Duration; CanaryCommand, CanaryWant string}`, `(*sshhost.Client).RunSplit(ctx, cmd string, limit int, timeout time.Duration) (ExecResult, error)`, `(*sshhost.Service).Exec(ctx, hostID int64, t Target, cred Credential, pinLine, cmd string, o ExecOptions) (ExecResult, error)`, `sshhost.ErrShell`, `(*sshtest.Server).Seen() []string`.
+- Produces: `sshhost.ExecResult{Stdout, Stderr string; ExitCode int; StdoutCut, StderrCut bool}`, `sshhost.ExecOptions{Limit int; Timeout time.Duration; CanaryCommand, CanaryWant string}`, `(*sshhost.Client).RunSplit(ctx, cmd string, limit int, timeout time.Duration) (ExecResult, error)` (zero limit and timeout mean 24 KB and 30 s; a timeout or a cancelled context sends SIGTERM to the remote command), `(*sshhost.Service).Exec(ctx, hostID int64, t Target, cred Credential, pinLine, cmd string, o ExecOptions) (ExecResult, error)` (an empty `CanaryCommand` or `CanaryWant` is `ErrShell` before any login), `sshhost.ErrShell`, `(*sshtest.Server).Seen() []string`, `(*sshtest.Server).Signals() []string`.
 - `sshhost` does not import `hostexec`: the caller passes the command line and the canary as strings.
 
 - [ ] **Step 1: Let the test server remember what it received**
@@ -1774,6 +1774,8 @@ func (s *Server) Seen() []string {
 	return append([]string(nil), s.seen...)
 }
 ```
+
+It also records the signal requests of a session (`signals []string`, `Signals()`): right after `_ = req.Reply(true, nil)` the session starts `go s.watch(reqs)`, which reads the session's later requests (the loop that read the exec request returns after the command), appends the name of each `signal` request (`struct{ Signal string }`, `"TERM"` for SIGTERM) under `s.mu` and answers the ones that want a reply with false. `Signals()` returns a copy like `Seen()`. The server does not act on a signal.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -1915,6 +1917,91 @@ func TestExecsOfOneHostDoNotOverlap(t *testing.T) {
 		t.Fatalf("%d exec sessions on one host were served at the same time, want 1", srv.MaxConcurrent())
 	}
 }
+
+func TestExecKeepsTwentyFourKilobytesPerStreamWhenNoLimitIsGiven(t *testing.T) {
+	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{
+		canaryCmd: {Out: canaryWant},
+		"noisy":   {Out: strings.Repeat("o", 40<<10), Stderr: strings.Repeat("e", 40<<10)},
+	}})
+	var svc sshhost.Service
+	o := sshhost.ExecOptions{CanaryCommand: canaryCmd, CanaryWant: canaryWant}
+	got, err := svc.Exec(context.Background(), 1, targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv), "noisy", o)
+	if err != nil || len(got.Stdout) != 24<<10 || len(got.Stderr) != 24<<10 || !got.StdoutCut || !got.StderrCut {
+		t.Fatalf("stdout %d (cut %v), stderr %d (cut %v), err %v, want 24576 bytes each, both cut", len(got.Stdout), got.StdoutCut, len(got.Stderr), got.StderrCut, err)
+	}
+}
+
+func TestExecWithoutACanaryIsRefusedBeforeAnyLogin(t *testing.T) {
+	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{canaryCmd: {Out: canaryWant}, "the cmd": {Out: "ran"}}})
+	var svc sshhost.Service
+	cred, pin := passwordCred(t, "pw"), lineOf(t, srv)
+	for name, o := range map[string]sshhost.ExecOptions{
+		"neither":          {Limit: 1000, Timeout: time.Second},
+		"only the command": {Limit: 1000, Timeout: time.Second, CanaryCommand: canaryCmd},
+		"only the answer":  {Limit: 1000, Timeout: time.Second, CanaryWant: canaryWant},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := svc.Exec(context.Background(), 1, targetOf(srv), cred, pin, "the cmd", o); !errors.Is(err, sshhost.ErrShell) {
+				t.Fatalf("err = %v, want ErrShell", err)
+			}
+			if srv.Attempts() != 0 || len(srv.Seen()) != 0 {
+				t.Fatalf("a host was contacted: %d logins, received %q", srv.Attempts(), srv.Seen())
+			}
+		})
+	}
+}
+
+// waitForTerm waits for the server to see exactly one TERM signal request.
+func waitForTerm(t *testing.T, srv *sshtest.Server, why string) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if reflect.DeepEqual(srv.Signals(), []string{"TERM"}) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("the server saw the signals %q, want a TERM %s", srv.Signals(), why)
+}
+
+func TestExecAsksTheRemoteCommandToStopWhenItTimesOut(t *testing.T) {
+	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{
+		canaryCmd: {Out: canaryWant}, "slow": {Out: "late", Delay: 2 * time.Second},
+	}})
+	var svc sshhost.Service
+	o := execOpts()
+	o.Timeout = 200 * time.Millisecond
+	if _, err := svc.Exec(context.Background(), 1, targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv), "slow", o); !errors.Is(err, sshhost.ErrTimeout) {
+		t.Fatalf("err = %v, want ErrTimeout", err)
+	}
+	waitForTerm(t, srv, "after the timeout")
+}
+
+func TestExecAsksTheRemoteCommandToStopWhenTheContextEnds(t *testing.T) {
+	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{
+		canaryCmd: {Out: canaryWant}, "slow": {Out: "late", Delay: 2 * time.Second},
+	}})
+	var svc sshhost.Service
+	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	defer cancel()
+	if _, err := svc.Exec(ctx, 1, targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv), "slow", execOpts()); !errors.Is(err, sshhost.ErrTimeout) {
+		t.Fatalf("err = %v, want ErrTimeout", err)
+	}
+	waitForTerm(t, srv, "after the context ended")
+}
+
+func TestRunSplitUsesTheDefaultsForAZeroLimitAndTimeout(t *testing.T) {
+	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{"quick": {Out: "out", Stderr: "err"}}})
+	cl, err := sshhost.Dial(context.Background(), targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cl.Close()
+	got, err := cl.RunSplit(context.Background(), "quick", 0, 0)
+	if err != nil || got.Stdout != "out" || got.Stderr != "err" || got.StdoutCut || got.StderrCut {
+		t.Fatalf("result = %+v, err = %v: a zero limit must not keep nothing and a zero timeout must not fire at once", got, err)
+	}
+}
 ```
 
 - [ ] **Step 3: Run to see them fail**
@@ -1954,8 +2041,16 @@ type ExecResult struct {
 }
 
 // RunSplit runs one command in its own session (no pty, no environment, no input) and keeps at most limit bytes of each
-// stream. A command that does not end in time is stopped with ErrTimeout.
+// stream. A limit or timeout of zero or less means 24 KB and 30 seconds. A command that does not end in time (or when ctx
+// ends) is asked to stop with SIGTERM (best effort: a server may ignore it) before the session is closed, and the call
+// answers ErrTimeout.
 func (c *Client) RunSplit(ctx context.Context, cmd string, limit int, timeout time.Duration) (ExecResult, error) {
+	if limit <= 0 {
+		limit = defaultExecLimit
+	}
+	if timeout <= 0 {
+		timeout = defaultExecTimeout
+	}
 	sess, err := c.c.NewSession()
 	if err != nil {
 		return ExecResult{}, ErrUnreachable
@@ -1981,8 +2076,10 @@ func (c *Client) RunSplit(ctx context.Context, cmd string, limit int, timeout ti
 		}
 		return res, nil
 	case <-timer.C:
+		_ = sess.Signal(ssh.SIGTERM)
 		return ExecResult{}, ErrTimeout
 	case <-ctx.Done():
+		_ = sess.Signal(ssh.SIGTERM)
 		return ExecResult{}, ErrTimeout
 	}
 }
@@ -1999,11 +2096,9 @@ type ExecOptions struct {
 // Exec connects against the pinned key, proves with the canary that the account's shell reads quoted words like a POSIX
 // shell, runs the command line and closes the connection. Only one connection per host is open at a time.
 func (s *Service) Exec(ctx context.Context, hostID int64, t Target, cred Credential, pinLine, cmd string, o ExecOptions) (ExecResult, error) {
-	if o.Limit <= 0 {
-		o.Limit = defaultExecLimit
-	}
-	if o.Timeout <= 0 {
-		o.Timeout = defaultExecTimeout
+	// Without a canary every shell would pass (an empty command prints nothing and exits 0): refuse before any login.
+	if o.CanaryCommand == "" || o.CanaryWant == "" {
+		return ExecResult{}, ErrShell
 	}
 	defer s.lock(hostID)()
 	cl, err := Dial(ctx, t, cred, pinLine)

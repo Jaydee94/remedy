@@ -146,3 +146,75 @@ func TestExecsOfOneHostDoNotOverlap(t *testing.T) {
 		t.Fatalf("%d exec sessions on one host were served at the same time, want 1", srv.MaxConcurrent())
 	}
 }
+
+func TestExecWithoutACanaryIsRefusedBeforeAnyLogin(t *testing.T) {
+	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{canaryCmd: {Out: canaryWant}, "the cmd": {Out: "ran"}}})
+	var svc sshhost.Service
+	cred, pin := passwordCred(t, "pw"), lineOf(t, srv)
+	for name, o := range map[string]sshhost.ExecOptions{
+		"neither":          {Limit: 1000, Timeout: time.Second},
+		"only the command": {Limit: 1000, Timeout: time.Second, CanaryCommand: canaryCmd},
+		"only the answer":  {Limit: 1000, Timeout: time.Second, CanaryWant: canaryWant},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := svc.Exec(context.Background(), 1, targetOf(srv), cred, pin, "the cmd", o); !errors.Is(err, sshhost.ErrShell) {
+				t.Fatalf("err = %v, want ErrShell", err)
+			}
+			if srv.Attempts() != 0 || len(srv.Seen()) != 0 {
+				t.Fatalf("a host was contacted: %d logins, received %q", srv.Attempts(), srv.Seen())
+			}
+		})
+	}
+}
+
+// waitForTerm waits for the server to see exactly one TERM signal request.
+func waitForTerm(t *testing.T, srv *sshtest.Server, why string) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if reflect.DeepEqual(srv.Signals(), []string{"TERM"}) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("the server saw the signals %q, want a TERM %s", srv.Signals(), why)
+}
+
+func TestExecAsksTheRemoteCommandToStopWhenItTimesOut(t *testing.T) {
+	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{
+		canaryCmd: {Out: canaryWant}, "slow": {Out: "late", Delay: 2 * time.Second},
+	}})
+	var svc sshhost.Service
+	o := execOpts()
+	o.Timeout = 200 * time.Millisecond
+	if _, err := svc.Exec(context.Background(), 1, targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv), "slow", o); !errors.Is(err, sshhost.ErrTimeout) {
+		t.Fatalf("err = %v, want ErrTimeout", err)
+	}
+	waitForTerm(t, srv, "after the timeout")
+}
+
+func TestExecAsksTheRemoteCommandToStopWhenTheContextEnds(t *testing.T) {
+	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{
+		canaryCmd: {Out: canaryWant}, "slow": {Out: "late", Delay: 2 * time.Second},
+	}})
+	var svc sshhost.Service
+	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	defer cancel()
+	if _, err := svc.Exec(ctx, 1, targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv), "slow", execOpts()); !errors.Is(err, sshhost.ErrTimeout) {
+		t.Fatalf("err = %v, want ErrTimeout", err)
+	}
+	waitForTerm(t, srv, "after the context ended")
+}
+
+func TestRunSplitUsesTheDefaultsForAZeroLimitAndTimeout(t *testing.T) {
+	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{"quick": {Out: "out", Stderr: "err"}}})
+	cl, err := sshhost.Dial(context.Background(), targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cl.Close()
+	got, err := cl.RunSplit(context.Background(), "quick", 0, 0)
+	if err != nil || got.Stdout != "out" || got.Stderr != "err" || got.StdoutCut || got.StderrCut {
+		t.Fatalf("result = %+v, err = %v: a zero limit must not keep nothing and a zero timeout must not fire at once", got, err)
+	}
+}

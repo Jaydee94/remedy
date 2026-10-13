@@ -27,8 +27,16 @@ type ExecResult struct {
 }
 
 // RunSplit runs one command in its own session (no pty, no environment, no input) and keeps at most limit bytes of each
-// stream. A command that does not end in time is stopped with ErrTimeout.
+// stream. A limit or timeout of zero or less means 24 KB and 30 seconds. A command that does not end in time (or when ctx
+// ends) is asked to stop with SIGTERM (best effort: a server may ignore it) before the session is closed, and the call
+// answers ErrTimeout.
 func (c *Client) RunSplit(ctx context.Context, cmd string, limit int, timeout time.Duration) (ExecResult, error) {
+	if limit <= 0 {
+		limit = defaultExecLimit
+	}
+	if timeout <= 0 {
+		timeout = defaultExecTimeout
+	}
 	sess, err := c.c.NewSession()
 	if err != nil {
 		return ExecResult{}, ErrUnreachable
@@ -54,8 +62,10 @@ func (c *Client) RunSplit(ctx context.Context, cmd string, limit int, timeout ti
 		}
 		return res, nil
 	case <-timer.C:
+		_ = sess.Signal(ssh.SIGTERM)
 		return ExecResult{}, ErrTimeout
 	case <-ctx.Done():
+		_ = sess.Signal(ssh.SIGTERM)
 		return ExecResult{}, ErrTimeout
 	}
 }
@@ -72,11 +82,9 @@ type ExecOptions struct {
 // Exec connects against the pinned key, proves with the canary that the account's shell reads quoted words like a POSIX
 // shell, runs the command line and closes the connection. Only one connection per host is open at a time.
 func (s *Service) Exec(ctx context.Context, hostID int64, t Target, cred Credential, pinLine, cmd string, o ExecOptions) (ExecResult, error) {
-	if o.Limit <= 0 {
-		o.Limit = defaultExecLimit
-	}
-	if o.Timeout <= 0 {
-		o.Timeout = defaultExecTimeout
+	// Without a canary every shell would pass (an empty command prints nothing and exits 0): refuse before any login.
+	if o.CanaryCommand == "" || o.CanaryWant == "" {
+		return ExecResult{}, ErrShell
 	}
 	defer s.lock(hostID)()
 	cl, err := Dial(ctx, t, cred, pinLine)
