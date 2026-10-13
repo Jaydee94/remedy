@@ -1,7 +1,10 @@
 package sshhost_test
 
 import (
+	"errors"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -93,8 +96,84 @@ func TestTheDockerfileInstallsWhatTheTestbedNeeds(t *testing.T) {
 			t.Error(err)
 		}
 	}
+	if !strings.Contains(df, "COPY fakes/journalctl /usr/bin/journalctl") {
+		t.Error("dev/ssh/Dockerfile lacks the COPY of fakes/journalctl")
+	}
+	if _, err := os.Stat("../../dev/ssh/fakes/journalctl"); err != nil {
+		t.Error(err)
+	}
 	// The sudoers file is only read by sudo when its mode is 0440 and visudo accepts it.
 	if !strings.Contains(df, "chmod 0440 /etc/sudoers.d/remedy") {
 		t.Error("the sudoers file must be mode 0440")
+	}
+}
+
+// up.sh must never touch a key or a directory that is not its own: it refuses a state directory that is ~/.ssh or holds a file it
+// did not make, before it starts Docker (so this test needs no Docker).
+func TestUpScriptRefusesAStateDirectoryThatIsNotItsOwn(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh")
+	}
+	home := t.TempDir()
+	cases := map[string]func(t *testing.T) string{
+		"the ssh directory of the user": func(t *testing.T) string {
+			d := filepath.Join(home, ".ssh")
+			if err := os.MkdirAll(d, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			return d
+		},
+	}
+	for _, name := range []string{"known_hosts", "authorized_keys", "id_ed25519", "id_rsa.pub"} {
+		cases["a directory with "+name] = func(t *testing.T) string {
+			d := t.TempDir()
+			if err := os.WriteFile(filepath.Join(d, name), []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return d
+		}
+	}
+	for what, mk := range cases {
+		t.Run(what, func(t *testing.T) {
+			dir := mk(t)
+			cmd := exec.Command("sh", "../../dev/ssh/up.sh")
+			cmd.Env = []string{"HOME=" + home, "PATH=/usr/bin:/bin", "REMEDY_SSH_DIR=" + dir}
+			out, err := cmd.CombinedOutput()
+			var ee *exec.ExitError
+			if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+				t.Fatalf("err = %v, want exit status 1; output:\n%s", err, out)
+			}
+			if !strings.Contains(string(out), "not made by the testbed") {
+				t.Errorf("the refusal does not say why:\n%s", out)
+			}
+		})
+	}
+}
+
+// The key of the testbed has a name of its own, env.sh quotes its paths, and a timeout removes the container.
+func TestUpScriptMakesItsOwnKeyAndCleansUp(t *testing.T) {
+	b, err := os.ReadFile("../../dev/ssh/up.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, want := range []string{
+		"remedy_testbed_ed25519",
+		"export REMEDY_SSH_KEY_FILE='$out/remedy_testbed_ed25519'",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("dev/ssh/up.sh lacks %q", want)
+		}
+	}
+	if strings.Contains(s, "id_ed25519") {
+		t.Error("dev/ssh/up.sh still names id_ed25519")
+	}
+	i := strings.Index(s, "does not answer")
+	if i < 0 {
+		t.Fatal("dev/ssh/up.sh has no timeout message")
+	}
+	rest := s[i:]
+	if rm, ex := strings.Index(rest, "docker rm -f"), strings.Index(rest, "exit 1"); rm < 0 || ex < 0 || rm > ex {
+		t.Error("dev/ssh/up.sh must remove the container before it exits on a timeout")
 	}
 }

@@ -156,6 +156,10 @@ func TestLiveWhatSudoAllowsBeyondTheTableIsNeverARead(t *testing.T) {
 		res, err := l.run(t, argv, true)
 		t.Logf("%q: Classify %v; the real sudo: exit %d, err %v (%s)", argv, v.Kind, res.ExitCode, err, strings.TrimSpace(res.Stderr))
 	}
+	// The sudoers pattern lets a restart of two containers through; ChangeCheck is the barrier that holds: one container at a time.
+	if hostexec.ChangeCheck([]string{"docker", "restart", "remedy-drill", "other"}, liveRules) == nil {
+		t.Error("ChangeCheck allows a restart of two containers, which the sudoers pattern would let through")
+	}
 }
 
 // Hostile words stay words through a real sshd and a real bash.
@@ -190,7 +194,7 @@ func TestLiveAShellThatIsNotPOSIXFailsTheCanary(t *testing.T) {
 	if !errors.Is(err, sshhost.ErrShell) {
 		t.Fatalf("err = %v, want ErrShell: fish must not be sent a command", err)
 	}
-	// The same account, with bash, proves that the marker would have been made had the command run.
+	// The bash account of the same container shows that the marker is not there (it does not prove the command would have made it).
 	b := live(t, "remedy")
 	if res, err := b.run(t, []string{"ls", "/tmp/fishy-was-sent-a-command"}, false); err != nil || res.ExitCode == 0 {
 		t.Fatalf("the file exists or the check failed: %+v, %v", res, err)
@@ -333,7 +337,7 @@ func TestLiveTheHostKeyPin(t *testing.T) {
 	}
 }
 
-// Another account's login (the key is the same for both) works, and a wrong account is refused as a login.
+// An account that does not exist is refused as a login.
 func TestLiveAWrongAccountIsRefused(t *testing.T) {
 	l := live(t, "remedy")
 	l.target.Account = "nobody-here"
