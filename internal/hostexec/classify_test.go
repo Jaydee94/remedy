@@ -218,3 +218,44 @@ func TestTheDockerFormsHaveSudoersLines(t *testing.T) {
 		}
 	}
 }
+
+// Docker resolves a container argument as an exact ID, then an exact name, then an ID prefix. A name made only of hex
+// digits can therefore name a container outside the pattern, so it is never allowed.
+func TestAHexNameIsNeverAContainer(t *testing.T) {
+	for _, c := range []struct {
+		argv    []string
+		pattern string
+	}{
+		{[]string{"docker", "logs", "--tail", "50", "dbe1f0"}, "db*"},
+		{[]string{"docker", "inspect", "cafe"}, "cafe"},
+	} {
+		v := hostexec.Classify(c.argv, hostexec.Rules{DockerPattern: c.pattern})
+		if v.Kind == hostexec.Read {
+			t.Errorf("Classify(%q) with pattern %q = %+v, a hex name must not be a read", c.argv, c.pattern, v)
+		}
+	}
+	for _, c := range []struct {
+		name, pattern string
+		want          bool
+	}{
+		{"deadbeef", "dead*", false},
+		{"cafe", "cafe", false},
+		{"CAFE", "CAFE", false},
+		{"dbe1f0", "db*", false},
+		{"remedy-web", "remedy-*", true},
+		{"remedy-cafe", "remedy-*", true},
+		{"x", "*", false},
+		{"remedy-web", "*", false},
+		{"x", "", false},
+	} {
+		if got := hostexec.ContainerAllowed(c.name, c.pattern); got != c.want {
+			t.Errorf("ContainerAllowed(%q, %q) = %v, want %v", c.name, c.pattern, got, c.want)
+		}
+	}
+	if v := hostexec.Classify([]string{"docker", "logs", "--tail", "50", "remedy-web"}, rules); v.Kind != hostexec.Read {
+		t.Errorf("docker logs of remedy-web with remedy-* = %+v, want a read", v)
+	}
+	if err := hostexec.ChangeCheck([]string{"docker", "restart", "cafe"}, hostexec.Rules{DockerPattern: "cafe"}); err == nil {
+		t.Error("ChangeCheck(docker restart cafe) with pattern cafe = nil, want a refusal")
+	}
+}

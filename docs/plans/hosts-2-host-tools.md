@@ -1190,6 +1190,47 @@ func TestAContainerMatchesTheWholePattern(t *testing.T) {
 	}
 }
 
+// Docker resolves a container argument as an exact ID, then an exact name, then an ID prefix. A name made only of hex
+// digits can therefore name a container outside the pattern, so it is never allowed.
+func TestAHexNameIsNeverAContainer(t *testing.T) {
+	for _, c := range []struct {
+		argv    []string
+		pattern string
+	}{
+		{[]string{"docker", "logs", "--tail", "50", "dbe1f0"}, "db*"},
+		{[]string{"docker", "inspect", "cafe"}, "cafe"},
+	} {
+		v := hostexec.Classify(c.argv, hostexec.Rules{DockerPattern: c.pattern})
+		if v.Kind == hostexec.Read {
+			t.Errorf("Classify(%q) with pattern %q = %+v, a hex name must not be a read", c.argv, c.pattern, v)
+		}
+	}
+	for _, c := range []struct {
+		name, pattern string
+		want          bool
+	}{
+		{"deadbeef", "dead*", false},
+		{"cafe", "cafe", false},
+		{"CAFE", "CAFE", false},
+		{"dbe1f0", "db*", false},
+		{"remedy-web", "remedy-*", true},
+		{"remedy-cafe", "remedy-*", true},
+		{"x", "*", false},
+		{"remedy-web", "*", false},
+		{"x", "", false},
+	} {
+		if got := hostexec.ContainerAllowed(c.name, c.pattern); got != c.want {
+			t.Errorf("ContainerAllowed(%q, %q) = %v, want %v", c.name, c.pattern, got, c.want)
+		}
+	}
+	if v := hostexec.Classify([]string{"docker", "logs", "--tail", "50", "remedy-web"}, rules); v.Kind != hostexec.Read {
+		t.Errorf("docker logs of remedy-web with remedy-* = %+v, want a read", v)
+	}
+	if err := hostexec.ChangeCheck([]string{"docker", "restart", "cafe"}, hostexec.Rules{DockerPattern: "cafe"}); err == nil {
+		t.Error("ChangeCheck(docker restart cafe) with pattern cafe = nil, want a refusal")
+	}
+}
+
 func TestChangeCheck(t *testing.T) {
 	ok := [][]string{
 		{"docker", "restart", "remedy-drill"},
@@ -1305,6 +1346,10 @@ type Rules struct {
 
 var (
 	containerRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$`)
+	// patternRE is the same expression as sshhost's dockerRE, which the onboarding checks a pattern with (defence in depth).
+	patternRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}\*?$`)
+	// hexRE matches a name that docker could read as an ID or an ID prefix.
+	hexRE = regexp.MustCompile(`^[0-9A-Fa-f]+$`)
 	// unitRE is the same check as sshhost's, which decides which units the sudoers snippet may name; a test pins both.
 	unitRE   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@-]{0,100}\.(service|timer|socket)$`)
 	numberRE = regexp.MustCompile(`^[0-9]{1,4}$`)
@@ -1314,9 +1359,10 @@ var (
 func ValidUnit(u string) bool { return unitRE.MatchString(u) }
 
 // ContainerAllowed says whether a container name matches the host's pattern as a whole: a name that ends in one star is a
-// prefix, any other pattern must match exactly. An empty pattern allows nothing.
+// prefix, any other pattern must match exactly. An empty pattern allows nothing, and so does a name made only of hex
+// digits: docker reads such a name as an ID prefix too, so it could name a container outside the pattern.
 func ContainerAllowed(name, pattern string) bool {
-	if pattern == "" || !containerRE.MatchString(name) {
+	if pattern == "" || !patternRE.MatchString(pattern) || !containerRE.MatchString(name) || hexRE.MatchString(name) {
 		return false
 	}
 	if prefix, ok := strings.CutSuffix(pattern, "*"); ok {
