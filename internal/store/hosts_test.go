@@ -319,3 +319,40 @@ func TestSaveHostTestDropsAResultForAChangedPin(t *testing.T) {
 		t.Fatalf("unknown host = %v, want ErrNotFound", err)
 	}
 }
+
+func TestTheHostRowNoticesEveryChangeThatCouldMakeAnApprovalStale(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	h, _ := s.CreateHost(ctx, hostFields("nas"))
+	updated := func() time.Time {
+		t.Helper()
+		e, err := s.GetHost(ctx, h.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e.Host.UpdatedAt
+	}
+	last := updated()
+	step := func(name string, change func() error, moves bool) {
+		t.Helper()
+		time.Sleep(3 * time.Millisecond)
+		if err := change(); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		now := updated()
+		if moves && !now.After(last) {
+			t.Errorf("%s: updated_at did not move (%v -> %v)", name, last, now)
+		}
+		if !moves && !now.Equal(last) {
+			t.Errorf("%s: updated_at moved (%v -> %v), a test result must not invalidate an approval", name, last, now)
+		}
+		last = now
+	}
+	cred := store.HostCredential{HostID: h.ID, Kind: "password", Ciphertext: []byte{1}, Hint: "set"}
+	step("saving a login", func() error { return s.SaveHostCredential(ctx, cred) }, true)
+	step("pinning a key", func() error { return s.PinHostKey(ctx, h.ID, "ssh-ed25519 AAAA", time.Now()) }, true)
+	step("saving a test result", func() error {
+		return s.SaveHostTest(ctx, h.ID, "ssh-ed25519 AAAA", store.HostOK, "", `{"sudo":"limited"}`, time.Now())
+	}, false)
+	step("unpinning a key", func() error { return s.UnpinHostKey(ctx, h.ID) }, true)
+	step("removing the login", func() error { return s.DeleteHostCredential(ctx, h.ID) }, true)
+}

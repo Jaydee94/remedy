@@ -263,6 +263,12 @@ func (s *Store) DeleteHost(ctx context.Context, id int64) error {
 	})
 }
 
+// touchHost moves updated_at of a host. An approval that was asked for before is stale after it.
+func touchHost(ctx context.Context, tx *sql.Tx, id int64) error {
+	_, err := tx.ExecContext(ctx, `UPDATE hosts SET updated_at = ? WHERE id = ?`, formatTS(time.Now()), id)
+	return err
+}
+
 // SaveHostCredential sets or replaces a host's login. A host whose last test was ok, failed or could not decrypt the old login
 // is untested again: that result does not describe the new login.
 func (s *Store) SaveHostCredential(ctx context.Context, c HostCredential) error {
@@ -279,6 +285,9 @@ func (s *Store) SaveHostCredential(ctx context.Context, c HostCredential) error 
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, resetStaleStatus, c.HostID); err != nil {
+			return err
+		}
+		if err := touchHost(ctx, tx, c.HostID); err != nil {
 			return err
 		}
 		return insertActivity(ctx, tx, NewActivity{Kind: KindHostChanged, Summary: "Credential of " + name + " replaced"})
@@ -299,6 +308,9 @@ func (s *Store) DeleteHostCredential(ctx context.Context, hostID int64) error {
 		if _, err := tx.ExecContext(ctx, resetStaleStatus, hostID); err != nil {
 			return err
 		}
+		if err := touchHost(ctx, tx, hostID); err != nil {
+			return err
+		}
 		return insertActivity(ctx, tx, NewActivity{Kind: KindHostChanged, Summary: "Credential of " + name + " removed"})
 	})
 }
@@ -315,6 +327,9 @@ func (s *Store) PinHostKey(ctx context.Context, id int64, line string, at time.T
 			line, formatTS(at), id); err != nil {
 			return err
 		}
+		if err := touchHost(ctx, tx, id); err != nil {
+			return err
+		}
 		return insertActivity(ctx, tx, NewActivity{Kind: KindHostChanged, Summary: "Host key of " + name + " pinned"})
 	})
 }
@@ -327,6 +342,9 @@ func (s *Store) UnpinHostKey(ctx context.Context, id int64) error {
 		}
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE hosts SET pinned_key = '', pinned_at = NULL, status = 'untrusted', status_detail = '', report = '' WHERE id = ?`, id); err != nil {
+			return err
+		}
+		if err := touchHost(ctx, tx, id); err != nil {
 			return err
 		}
 		return insertActivity(ctx, tx, NewActivity{Kind: KindHostChanged, Summary: "Host key of " + name + " unpinned"})

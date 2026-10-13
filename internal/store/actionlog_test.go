@@ -49,3 +49,23 @@ func TestAnActionThatCannotBeFinishedLeavesNoActivity(t *testing.T) {
 		t.Fatalf("%d cluster actions were logged for a call that did not succeed", n)
 	}
 }
+
+func TestFinishToolCallWithActivityKindLogsThePassedKind(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	r := claimedToolRun(t, s)
+	call, _, _ := s.BeginToolCall(ctx, newCall(r.ID, "t1", "host_change", store.CallKindRead))
+
+	if err := s.FinishToolCallWithActivityKind(ctx, call.ID, "done", "Ran docker restart x on nas", store.KindHostAction); err != nil {
+		t.Fatal(err)
+	}
+	log, err := s.ListActivity(ctx, store.ActivityQuery{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(log) != 1 || log[0].Kind != store.KindHostAction || log[0].Summary != "Ran docker restart x on nas" || log[0].RunID != r.ID {
+		t.Fatalf("activity = %+v", log)
+	}
+	if store.KindHostAction != "host_action" {
+		t.Fatalf("KindHostAction = %q", store.KindHostAction)
+	}
+}

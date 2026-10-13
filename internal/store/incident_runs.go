@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"time"
 
@@ -30,29 +29,10 @@ func (s *Store) CreateIncidentRun(ctx context.Context, incidentID int64, provide
 // question, and the incident is linked so that its thread can show the run. It is not a responder run. It returns
 // ErrNotFound for an unknown incident and then creates nothing.
 func (s *Store) CreateQuestionRun(ctx context.Context, provider, prompt string, incidentID int64, cluster bool) (run.Run, error) {
-	id := run.NewID()
-	clusterFlag := 0
-	if cluster {
-		clusterFlag = 1
+	if incidentID == 0 {
+		return run.Run{}, ErrNotFound
 	}
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
-		var n int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM incidents WHERE id = ?`, incidentID).Scan(&n); err != nil {
-			return err
-		}
-		if n == 0 {
-			return ErrNotFound
-		}
-		_, err := tx.ExecContext(ctx, `
-			INSERT INTO runs (id, provider, prompt, status, mcp, cluster, incident_id, created_at)
-			VALUES (?, ?, ?, 'queued', 1, ?, ?, ?)`,
-			id, provider, prompt, clusterFlag, incidentID, formatTS(time.Now()))
-		return err
-	})
-	if err != nil {
-		return run.Run{}, err
-	}
-	return s.GetRun(ctx, id)
+	return s.CreateRunWith(ctx, RunOptions{Provider: provider, Prompt: prompt, IncidentID: incidentID, Cluster: cluster})
 }
 
 // ListIncidentRuns returns the runs of an incident of every role, newest first. The list is never nil.

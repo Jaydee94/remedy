@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 const tsLayout = "2006-01-02T15:04:05.000000000Z"
 
 const runCols = `id, provider, prompt, status, exit_code, result, session_id, cost_usd, created_at, started_at, finished_at,
-	role, incident_id, output, failure_reason, head_sha, automatic, mcp, cancel_requested, cluster`
+	role, incident_id, output, failure_reason, head_sha, automatic, mcp, cancel_requested, cluster, host_count`
 
 type Store struct{ db *sql.DB }
 
@@ -146,12 +146,13 @@ func scanRun(sc scanner) (run.Run, error) {
 		output            sql.NullString
 		automatic         int
 	)
-	var mcp, cancelRequested, cluster int
+	var mcp, cancelRequested, cluster, hostCount int
 	if err := sc.Scan(&r.ID, &r.Provider, &r.Prompt, &status, &exit, &r.Result, &r.SessionID,
 		&r.CostUSD, &created, &started, &finished, &role, &incident, &output, &r.FailureReason,
-		&r.HeadSHA, &automatic, &mcp, &cancelRequested, &cluster); err != nil {
+		&r.HeadSHA, &automatic, &mcp, &cancelRequested, &cluster, &hostCount); err != nil {
 		return run.Run{}, err
 	}
+	r.HostCount = hostCount
 	r.Status = run.Status(status)
 	r.Automatic = automatic != 0
 	r.MCP, r.CancelRequested = mcp != 0, cancelRequested != 0
@@ -189,14 +190,7 @@ func scanRun(sc scanner) (run.Run, error) {
 }
 
 func (s *Store) CreateRun(ctx context.Context, provider, prompt string) (run.Run, error) {
-	id := run.NewID()
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO runs (id, provider, prompt, status, created_at) VALUES (?, ?, ?, 'queued', ?)`,
-		id, provider, prompt, formatTS(time.Now()))
-	if err != nil {
-		return run.Run{}, err
-	}
-	return s.GetRun(ctx, id)
+	return s.CreateRunWith(ctx, RunOptions{Provider: provider, Prompt: prompt})
 }
 
 func (s *Store) GetRun(ctx context.Context, id string) (run.Run, error) {
