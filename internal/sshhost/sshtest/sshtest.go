@@ -44,6 +44,7 @@ type Server struct {
 	attempts int
 	serving  int
 	maxServe int
+	seen     []string
 	conns    map[net.Conn]struct{}
 }
 
@@ -88,6 +89,13 @@ func (s *Server) Attempts() int { s.mu.Lock(); defer s.mu.Unlock(); return s.att
 // MaxConcurrent is the highest number of exec sessions that were being served at the same time. A session stops counting
 // before its exit status is sent, so a client that has seen the exit status never races the count of the next one.
 func (s *Server) MaxConcurrent() int { s.mu.Lock(); defer s.mu.Unlock(); return s.maxServe }
+
+// Seen returns the command lines the server received, in order. A canary that failed means the next line never arrives.
+func (s *Server) Seen() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.seen...)
+}
 
 func (s *Server) attempt() { s.mu.Lock(); s.attempts++; s.mu.Unlock() }
 
@@ -169,6 +177,7 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 		}
 		_ = req.Reply(true, nil)
 		s.mu.Lock()
+		s.seen = append(s.seen, p.Command)
 		s.serving++
 		if s.serving > s.maxServe {
 			s.maxServe = s.serving
