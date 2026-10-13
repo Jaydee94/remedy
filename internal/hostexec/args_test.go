@@ -76,6 +76,7 @@ func TestValidateProgram(t *testing.T) {
 		"a trailing slash":        {"/usr/bin/"},
 		"a double slash":          {"//usr/bin/x"},
 		"a space":                 {"my program"},
+		"a relative path with /":  {"bin/x"},
 	} {
 		if err := hostexec.ValidateProgram(argv); err == nil {
 			t.Errorf("%s: ValidateProgram(%q) = nil, want an error", name, argv)

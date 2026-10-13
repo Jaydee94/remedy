@@ -131,6 +131,54 @@ func TestNeverListFalsePositivesAreKnown(t *testing.T) {
 	}
 }
 
+// TestNeverListReviewGaps pins the gaps a review found: paths that name a protected or system place only after cleaning,
+// long options given by a prefix, commands inside one string word, root shells through sudo, su, doas, nsenter and chroot.
+func TestNeverListReviewGaps(t *testing.T) {
+	refused := map[string][]string{
+		"rm dot-dot onto /etc":       {"rm", "-rf", "/tmp/../etc"},
+		"rm double slash onto /etc":  {"rm", "-rf", "//etc"},
+		"chmod dot-dot onto /etc":    {"chmod", "-R", "777", "/tmp/../etc"},
+		"protected file with ./":     {"chmod", "644", "/etc/./shadow"},
+		"protected file with //":     {"chmod", "644", "/etc//shadow"},
+		"rm long option prefix":      {"rm", "--rec", "/etc/x"},
+		"curl long option prefix":    {"curl", "--out", "/tmp/x", "http://a"},
+		"curl long option with =":    {"curl", "--output=/tmp/x", "http://a"},
+		"rm no-preserve-root prefix": {"rm", "--no-pre", "-rf", "/"},
+		"su -c with a shell string":  {"su", "-c", "sh -c id"},
+		"su root -c with rm in it":   {"su", "root", "-c", "rm -rf /"},
+		"env -S with a shell string": {"env", "-S", "sh -c id"},
+		"sudo -s":                    {"sudo", "-s"},
+		"sudo -i":                    {"sudo", "-i"},
+		"sudo -e a file":             {"sudo", "-e", "/etc/hosts"},
+		"sudo --shell prefix":        {"sudo", "--sh"},
+		"sudo -u root then -i":       {"sudo", "-u", "root", "-i"},
+		"nsenter into pid 1":         {"nsenter", "-t", "1", "-a"},
+		"chroot /":                   {"chroot", "/"},
+		"doas alone":                 {"doas"},
+		"doas with a command":        {"doas", "systemctl", "restart", "x"},
+		"su alone":                   {"su"},
+		"su - (a login shell)":       {"su", "-"},
+		"ssh with a bare argument":   {"ssh", "x"},
+		"systemctl restart ssh -q":   {"systemctl", "restart", "ssh", "-q"}, // a known false positive: the word ssh has arguments after it
+	}
+	for name, argv := range refused {
+		if why := hostexec.NeverReason(argv); why == "" {
+			t.Errorf("%s: %q is allowed, want it refused", name, argv)
+		}
+	}
+	allowed := [][]string{
+		{"systemctl", "restart", "ssh"},   // a restart keeps the access
+		{"echo", "hello world"},           // a word with a space is only data
+		{"su", "root", "-c", "uptime"},    // a root command with no shell string is not refused by the su rule
+		{"chmod", "644", "/tmp/dir/../x"}, // cleaned, it stays under /tmp
+	}
+	for _, argv := range allowed {
+		if why := hostexec.NeverReason(argv); why != "" {
+			t.Errorf("%q is refused (%s), want it allowed", argv, why)
+		}
+	}
+}
+
 func TestEveryRefusalSaysWhy(t *testing.T) {
 	why := hostexec.NeverReason([]string{"rm", "-rf", "/"})
 	if why == "" || strings.HasSuffix(why, ".") || strings.ContainsAny(why, "\n") {

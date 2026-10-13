@@ -50,7 +50,9 @@ func ValidateArgv(argv []string) error {
 	return nil
 }
 
-var programName = regexp.MustCompile(`^/?[A-Za-z0-9][A-Za-z0-9._+-]*(/[A-Za-z0-9][A-Za-z0-9._+-]*)*$`)
+// programName is an absolute path (every part a name, no empty part) or a bare program name; a relative path with a slash
+// (bin/x) is neither.
+var programName = regexp.MustCompile(`^(/[A-Za-z0-9][A-Za-z0-9._+-]*(/[A-Za-z0-9][A-Za-z0-9._+-]*)*|[A-Za-z0-9][A-Za-z0-9._+-]*)$`)
 
 // ValidateProgram checks the first word of a change: a program name or an absolute path. A leading dash would be an option
 // of sudo, a word with = an environment assignment for sudo, a relative path something that depends on the directory.

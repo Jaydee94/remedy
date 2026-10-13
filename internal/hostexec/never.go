@@ -1,6 +1,9 @@
 package hostexec
 
-import "strings"
+import (
+	"path"
+	"strings"
+)
 
 // protectedNames are files that grant access. A command that has one of them among its words is refused.
 var protectedNames = []string{"authorized_keys", "sudoers", "/etc/passwd", "/etc/shadow", "sshd_config"}
@@ -33,10 +36,41 @@ func hasWord(words []string, set ...string) bool {
 	return false
 }
 
+// longMatch says whether a word is one of the long options, or a prefix of one that getopt would accept (--rec for
+// --recursive, --out=/x for --output). At least two letters after the dashes, so -- and --r match nothing.
+func longMatch(w string, longs []string) bool {
+	if !strings.HasPrefix(w, "--") {
+		return false
+	}
+	name := w[2:]
+	if i := strings.IndexByte(name, '='); i >= 0 {
+		name = name[:i]
+	}
+	if len(name) < 2 {
+		return false
+	}
+	for _, l := range longs {
+		if strings.HasPrefix(l[2:], name) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasLong says whether one of the words is one of the long options (or an unambiguous-enough prefix of one).
+func hasLong(words []string, longs ...string) bool {
+	for _, w := range words {
+		if longMatch(w, longs) {
+			return true
+		}
+	}
+	return false
+}
+
 // hasFlag says whether the words contain one of the long flags, or a short-flag cluster with one of the letters (-rf has r).
 func hasFlag(words []string, letters string, longs ...string) bool {
 	for _, w := range words {
-		if in(w, longs...) {
+		if longMatch(w, longs) {
 			return true
 		}
 		if strings.HasPrefix(w, "-") && !strings.HasPrefix(w, "--") && strings.ContainsAny(w[1:], letters) {
@@ -46,41 +80,73 @@ func hasFlag(words []string, letters string, longs ...string) bool {
 	return false
 }
 
+// forms returns a word as it was given and, for an absolute path, as path.Clean makes it (// runs, ./ and ../ resolved), so
+// that /tmp/../etc and /etc//shadow are seen as the paths they name. Both forms are checked.
+func forms(word string) []string {
+	if !strings.HasPrefix(word, "/") {
+		return []string{word}
+	}
+	if c := path.Clean(word); c != word {
+		return []string{word, c}
+	}
+	return []string{word}
+}
+
 // touchesSystem says whether a path among the words is / or lies in a system directory.
 func touchesSystem(words []string) bool {
 	for _, w := range words {
 		if strings.HasPrefix(w, "-") {
 			continue
 		}
-		if w == "/" || w == "/*" {
-			return true
-		}
-		for _, d := range systemDirs {
-			if w == d || strings.HasPrefix(w, d+"/") {
+		for _, f := range forms(w) {
+			if f == "/" || f == "/*" {
 				return true
+			}
+			for _, d := range systemDirs {
+				if f == d || strings.HasPrefix(f, d+"/") {
+					return true
+				}
 			}
 		}
 	}
 	return false
 }
 
+// expand returns the words of argv and, for a word with several whitespace-separated tokens, its tokens after it. A shell
+// string handed to su -c or env -S is a command line, so each of its tokens is seen as a possible program as well.
+func expand(argv []string) []string {
+	out := append([]string(nil), argv...)
+	for _, w := range argv {
+		if f := strings.Fields(w); len(f) > 1 {
+			out = append(out, f...)
+		}
+	}
+	return out
+}
+
 // NeverReason says why a command is never run, or "" when the list has nothing against it. The list is in code, applies to
 // `host_change` before an approval is asked for and again when the call runs, and holds also when the maintainer would approve.
 //
-// It looks at EVERY word as a possible program (with the words after it as its arguments), so a program behind sudo, env,
-// nohup, timeout or xargs is seen as well. The price is a false positive for a container or unit named like a dangerous
-// program; that direction is safe. A reason is one short sentence without a final period.
+// It looks at EVERY word as a possible program (with the words after it as its arguments), and at every whitespace token of a
+// word, so a program behind sudo, env, nohup, timeout, xargs or inside a shell string is seen as well. Paths are checked as
+// given and as cleaned. The price is a false positive for a container or unit named like a dangerous program; that direction
+// is safe. A reason is one short sentence without a final period.
 func NeverReason(argv []string) string {
-	for _, w := range argv {
-		for _, p := range protectedNames {
-			if strings.Contains(w, p) {
-				return "it names " + p + ", a file that grants access, which Remedy never touches"
+	words := expand(argv)
+	for _, w := range words {
+		for _, f := range forms(w) {
+			for _, p := range protectedNames {
+				if strings.Contains(f, p) {
+					return "it names " + p + ", a file that grants access, which Remedy never touches"
+				}
 			}
 		}
 	}
-	for i, w := range argv {
-		if why := programReason(base(w), argv[i+1:]); why != "" {
-			return why
+	for i, w := range words {
+		for _, f := range forms(w) {
+			if why := programReason(base(f), words[i+1:]); why != "" {
+				return why
+			}
 		}
 	}
 	return ""
@@ -94,12 +160,12 @@ func programReason(prog string, rest []string) string {
 		return "it changes or destroys a disk"
 	case prog == "dd":
 		for _, w := range rest {
-			if strings.HasPrefix(w, "of=/dev/") {
+			if strings.HasPrefix(w, "of=") && touchesDevice(strings.TrimPrefix(w, "of=")) {
 				return "it writes onto a device"
 			}
 		}
 	case prog == "rm":
-		if hasWord(rest, "--no-preserve-root") || (hasFlag(rest, "rR", "--recursive") && touchesSystem(rest)) {
+		if hasLong(rest, "--no-preserve-root") || (hasFlag(rest, "rR", "--recursive") && touchesSystem(rest)) {
 			return "it removes a system path recursively"
 		}
 	case in(prog, "chmod", "chown", "chgrp"):
@@ -108,6 +174,16 @@ func programReason(prog string, rest []string) string {
 		}
 	case in(prog, "sh", "bash", "dash", "zsh", "ksh", "fish", "csh", "tcsh", "ash", "mksh"):
 		return "it starts a shell, which would run code that cannot be shown or judged"
+	case in(prog, "su", "doas"):
+		if !hasFlag(rest, "c", "--command") {
+			return "it starts a root shell, since no -c command follows"
+		}
+	case in(prog, "nsenter", "chroot"):
+		return "it enters another namespace or root, which is a shell by another name"
+	case prog == "sudo":
+		if hasFlag(rest, "sie", "--shell", "--login", "--edit") {
+			return "sudo -s, -i or -e gives a root shell or an editor that can run commands"
+		}
 	case strings.HasPrefix(prog, "python") || in(prog, "perl", "ruby", "node", "nodejs", "php", "lua", "luajit", "tclsh"):
 		if hasFlag(rest, "cerE", "--eval", "--command", "--exec", "--print") {
 			return "it runs code given as a string"
@@ -140,6 +216,7 @@ func programReason(prog string, rest []string) string {
 	case in(prog, "iptables", "ip6tables", "nft", "ufw", "firewall-cmd"):
 		return "it changes the firewall, which could lock everyone out or open the host"
 	case in(prog, "ssh", "scp", "sftp", "rsync", "nc", "ncat", "netcat", "socat", "telnet"):
+		// The words after the program are its arguments; a bare word such as ssh in systemctl restart ssh is a name.
 		if len(rest) > 0 {
 			return "it opens a connection to another machine"
 		}
@@ -157,4 +234,14 @@ func programReason(prog string, rest []string) string {
 		return "it changes accounts or their access"
 	}
 	return ""
+}
+
+// touchesDevice says whether a dd target is a device file, as given or cleaned (//dev/sda names /dev/sda).
+func touchesDevice(target string) bool {
+	for _, f := range forms(target) {
+		if strings.HasPrefix(f, "/dev/") {
+			return true
+		}
+	}
+	return false
 }
