@@ -1,0 +1,3 @@
+#!/bin/sh
+# A fake journalctl for the SSH testbed (a container has no journal). journalctl -u UNIT -n N --no-pager
+printf 'Oct 13 10:00:00 testbed %s[1]: started\n' "$2"

@@ -1,0 +1,10 @@
+# Save as /etc/sudoers.d/remedy with: sudo visudo -f /etc/sudoers.d/remedy
+# Read every line. Check the paths first: command -v docker; command -v systemctl
+# Reading the journal needs the group systemd-journal, not sudo.
+# In sudoers a * also matches spaces and further arguments, so a pattern with a star limits less than it looks.
+# A name without a star is an exact match.
+remedy ALL=(root) NOPASSWD: /usr/bin/docker ps -a
+remedy ALL=(root) NOPASSWD: /usr/bin/docker logs --tail * remedy-*
+remedy ALL=(root) NOPASSWD: /usr/bin/docker inspect remedy-*
+remedy ALL=(root) NOPASSWD: /usr/bin/docker start remedy-*, /usr/bin/docker restart remedy-*, /usr/bin/docker stop remedy-*
+remedy ALL=(root) NOPASSWD: /usr/bin/systemctl start node_exporter.service, /usr/bin/systemctl restart node_exporter.service, /usr/bin/systemctl stop node_exporter.service

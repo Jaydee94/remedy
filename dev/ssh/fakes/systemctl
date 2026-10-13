@@ -1,0 +1,11 @@
+#!/bin/sh
+# A fake systemctl for the SSH testbed.
+case "$1" in
+status | is-active) echo active ;;
+start | stop | restart) echo "$2" ;;
+list-units) echo "0 loaded units listed." ;;
+*)
+  echo "fake systemctl: not supported: $*" >&2
+  exit 1
+  ;;
+esac
