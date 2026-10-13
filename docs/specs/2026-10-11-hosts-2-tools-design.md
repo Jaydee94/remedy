@@ -114,10 +114,11 @@ CREATE TABLE run_hosts (
   PRIMARY KEY (run_id, host_id)
 );
 CREATE INDEX run_hosts_host ON run_hosts (host_id);
+ALTER TABLE runs ADD COLUMN host_count INTEGER NOT NULL DEFAULT 0;
 ```
 
 - A run gets its hosts when it is created and never changes them. Deleting a host removes the binding; the `tool_calls` rows keep the host **name** in their arguments, so the audit stays readable.
-- `run.Run` gets `HostCount` (a subquery in the run columns, used by `offeredTo`); `GET /api/runs/{id}` also answers `hosts: [{id, name}]`. The lists answer the count only.
+- `run.Run` gets `HostCount`, from a new column `runs.host_count` (a copy of the number of bindings at creation, used by `offeredTo`; a column and not a subquery of the run columns, because `ClaimNext` reads the run back with `UPDATE ... RETURNING`; deleting a host removes its binding and not the count, and the host tools then find no usable host); `GET /api/runs/{id}` also answers `hosts: [{id, name}]`. The lists answer the count only.
 - The store has four creators of runs (`CreateRun`, `CreateToolRun`, `CreateClusterRun`, `CreateQuestionRun`), each a variant of the other. A fifth would be one too many: they are replaced by **one** `CreateRunWith(ctx, RunOptions{Provider, Prompt, Tools, Cluster, IncidentID, HostIDs})` in the same transaction as the `run_hosts` rows, and the old four become thin wrappers or go. Their tests move with them.
 - `PinHostKey`, `UnpinHostKey`, `SaveHostCredential` and `DeleteHostCredential` also set `hosts.updated_at` (they do not today). A migration test (in the manner of `migrate010_test.go`) runs on a database built from 001 to 010.
 - `KindHostAction = "host_action"`; the generalised `FinishToolCallWithActivity` takes the kind from the tool (`Tool.ActivityKind`, empty means the cluster kind, so the cluster tools do not change).
