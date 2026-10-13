@@ -1238,7 +1238,6 @@ func TestChangeCheck(t *testing.T) {
 		{"docker", "stop", "remedy-drill"},
 		{"systemctl", "restart", "node_exporter.service"},
 		{"apt", "update"},                      // another shape: the OS decides
-		{"docker", "restart", "-t", "5", "x"},  // not a known shape
 	}
 	for _, argv := range ok {
 		if err := hostexec.ChangeCheck(argv, rules); err != nil {
@@ -1250,6 +1249,12 @@ func TestChangeCheck(t *testing.T) {
 		"no container rule":               {"docker", "stop", "remedy-a"},
 		"a unit that is not listed":       {"systemctl", "restart", "unknown.service"},
 		"a unit without its suffix":       {"systemctl", "restart", "node_exporter"},
+		// sudo's docker and systemctl rules take more words than the pattern checks: one container or unit at a time.
+		"a second container":         {"docker", "restart", "remedy-a", "other"},
+		"a flag before the name":     {"docker", "stop", "-t", "5", "remedy-a"},
+		"two containers to start":    {"docker", "start", "remedy-a", "remedy-b"},
+		"a second unit":              {"systemctl", "restart", "nginx", "other.service"},
+		"a flag after the container": {"docker", "restart", "remedy-a", "-t", "5"},
 	}
 	for name, argv := range bad {
 		r := rules
@@ -1511,7 +1516,13 @@ var changeVerbs = []string{"start", "stop", "restart"}
 // `docker start|stop|restart NAME` (the name must match the container pattern) and `systemctl start|stop|restart UNIT`
 // (the unit must be one the host lists, with its suffix). A change of any other shape passes: the sudoers file decides.
 func ChangeCheck(argv []string, r Rules) error {
-	if len(argv) != 3 || !slices.Contains(changeVerbs, argv[1]) {
+	if len(argv) < 2 || !slices.Contains(changeVerbs, argv[1]) {
+		return nil
+	}
+	if (argv[0] == "docker" || argv[0] == "systemctl") && len(argv) > 3 {
+		return ArgError("one container (or unit) at a time")
+	}
+	if len(argv) != 3 {
 		return nil
 	}
 	switch argv[0] {

@@ -205,9 +205,17 @@ var changeVerbs = []string{"start", "stop", "restart"}
 
 // ChangeCheck looks at the two shapes of a change that a host's rules can judge before an approval is asked for:
 // `docker start|stop|restart NAME` (the name must match the container pattern) and `systemctl start|stop|restart UNIT`
-// (the unit must be one the host lists, with its suffix). A change of any other shape passes: the sudoers file decides.
+// (the unit must be one the host lists, with its suffix). The sudoers rule takes more words than the pattern checks, so a
+// docker or systemctl start|stop|restart with more than one name (or with a flag) is refused: one container or unit at a
+// time. A change of any other shape passes: the sudoers file decides.
 func ChangeCheck(argv []string, r Rules) error {
-	if len(argv) != 3 || !slices.Contains(changeVerbs, argv[1]) {
+	if len(argv) < 2 || !slices.Contains(changeVerbs, argv[1]) {
+		return nil
+	}
+	if (argv[0] == "docker" || argv[0] == "systemctl") && len(argv) > 3 {
+		return ArgError("one container (or unit) at a time")
+	}
+	if len(argv) != 3 {
 		return nil
 	}
 	switch argv[0] {

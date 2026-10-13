@@ -163,8 +163,7 @@ func TestChangeCheck(t *testing.T) {
 		{"docker", "start", "remedy-drill"},
 		{"docker", "stop", "remedy-drill"},
 		{"systemctl", "restart", "node_exporter.service"},
-		{"apt", "update"},                     // another shape: the OS decides
-		{"docker", "restart", "-t", "5", "x"}, // not a known shape
+		{"apt", "update"}, // another shape: the OS decides
 	}
 	for _, argv := range ok {
 		if err := hostexec.ChangeCheck(argv, rules); err != nil {
@@ -176,6 +175,12 @@ func TestChangeCheck(t *testing.T) {
 		"no container rule":               {"docker", "stop", "remedy-a"},
 		"a unit that is not listed":       {"systemctl", "restart", "unknown.service"},
 		"a unit without its suffix":       {"systemctl", "restart", "node_exporter"},
+		// sudo's docker and systemctl rules take more words than the pattern checks: one container or unit at a time.
+		"a second container":         {"docker", "restart", "remedy-a", "other"},
+		"a flag before the name":     {"docker", "stop", "-t", "5", "remedy-a"},
+		"two containers to start":    {"docker", "start", "remedy-a", "remedy-b"},
+		"a second unit":              {"systemctl", "restart", "nginx", "other.service"},
+		"a flag after the container": {"docker", "restart", "remedy-a", "-t", "5"},
 	}
 	for name, argv := range bad {
 		r := rules
