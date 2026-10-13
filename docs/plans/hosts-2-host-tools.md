@@ -1554,7 +1554,7 @@ git commit -m "feat(hostexec): the table of reads, the classification and the ch
 - Create: `internal/hostexec/result.go`, `internal/hostexec/result_test.go`
 
 **Interfaces:**
-- Produces: `hostexec.Result{Stdout, Stderr string; ExitCode int; StdoutCut, StderrCut bool}`, `hostexec.StreamLimit = 24 << 10`, `hostexec.DataLine(host string) string`, `hostexec.FormatResult(host string, r Result) string`, `hostexec.FilterInspect(out string) (string, bool)`, `hostexec.IsInspect(argv []string) bool`.
+- Produces: `hostexec.Result{Stdout, Stderr string; ExitCode int; StdoutCut, StderrCut bool}`, `hostexec.StreamLimit = 24 << 10`, `hostexec.DataLine(host string) string`, `hostexec.FormatResult(host string, r Result) string`, `hostexec.FilterInspect(out string) (string, bool)`, `hostexec.IsInspect(argv []string) bool`, `hostexec.InspectHasFormat(argv []string) bool` (an inspect with a template is never shown).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1626,6 +1626,65 @@ func TestFilterInspect(t *testing.T) {
 	}
 }
 
+// Shapes that are JSON but not what docker inspect prints for a container. Their environment values could reach the
+// agent unfiltered, so they are refused (the values are never shown).
+func TestFilterInspectRefusesOtherShapes(t *testing.T) {
+	for name, bad := range map[string]string{
+		"Env is a string":     `[{"Config":{"Env":"DB_PASSWORD=hunter2"}}]`,
+		"Env holds an object": `[{"Config":{"Env":[{"name":"DB_PASSWORD","value":"hunter2"}]}}]`,
+		"Config is a string":  `[{"Config":"DB_PASSWORD=hunter2"}]`,
+		"an item is a string": `["DB_PASSWORD=hunter2"]`,
+		"an item is a number": `[1]`,
+		"an item is an array": `[["DB_PASSWORD=hunter2"]]`,
+		"Env holds a number":  `[{"Config":{"Env":[7]}}]`,
+	} {
+		if out, ok := hostexec.FilterInspect(bad); ok || out != "" {
+			t.Errorf("%s: FilterInspect = %q, %v; a document of another shape must not be shown", name, out, ok)
+		}
+	}
+	// A null Env or Config has nothing in it.
+	if _, ok := hostexec.FilterInspect(`[{"Config":null},{"Config":{"Env":null}}]`); !ok {
+		t.Error("null Config or Env was refused")
+	}
+}
+
+func TestFilterInspectAlsoStripsContainerConfig(t *testing.T) {
+	out, ok := hostexec.FilterInspect(`[{"ContainerConfig":{"Env":["DB_PASSWORD=hunter2","PATH=/usr/bin"]},"Config":{"Env":["A=b"]}}]`)
+	if !ok || strings.Contains(out, "hunter2") || strings.Contains(out, "/usr/bin") || strings.Contains(out, "A=b") ||
+		!strings.Contains(out, "DB_PASSWORD=<value removed>") {
+		t.Fatalf("FilterInspect = %q, %v", out, ok)
+	}
+	for name, bad := range map[string]string{
+		"ContainerConfig is a string":      `[{"ContainerConfig":"DB_PASSWORD=hunter2"}]`,
+		"ContainerConfig.Env is a string":  `[{"ContainerConfig":{"Env":"DB_PASSWORD=hunter2"}}]`,
+		"ContainerConfig.Env has a number": `[{"ContainerConfig":{"Env":[7]}}]`,
+	} {
+		if out, ok := hostexec.FilterInspect(bad); ok || out != "" {
+			t.Errorf("%s: FilterInspect = %q, %v", name, out, ok)
+		}
+	}
+}
+
+func TestInspectHasFormat(t *testing.T) {
+	for _, argv := range [][]string{
+		{"docker", "inspect", "-f", "{{.Id}}", "x"},
+		{"docker", "inspect", "--format", "{{.Id}}", "x"},
+		{"docker", "inspect", "--format={{.Id}}", "x"},
+		{"docker", "inspect", "-f{{.Id}}", "x"},
+		{"docker", "inspect", "-sf", "{{.Id}}", "x"},
+		{"docker", "inspect", "x", "--format", "{{.Id}}"},
+	} {
+		if !hostexec.InspectHasFormat(argv) {
+			t.Errorf("InspectHasFormat(%q) = false", argv)
+		}
+	}
+	for _, argv := range [][]string{{"docker", "inspect", "remedy-a"}, {"docker", "inspect", "-s", "remedy-a"}, {"docker", "inspect", "--size", "remedy-a"}, {"docker", "inspect", "--type", "container", "x"}} {
+		if hostexec.InspectHasFormat(argv) {
+			t.Errorf("InspectHasFormat(%q) = true", argv)
+		}
+	}
+}
+
 func TestIsInspectCoversEveryWayToSpellIt(t *testing.T) {
 	for _, argv := range [][]string{
 		{"docker", "container", "inspect", "remedy-a"},
@@ -1635,12 +1694,17 @@ func TestIsInspectCoversEveryWayToSpellIt(t *testing.T) {
 		{"docker", "--context", "inspect", "x"},
 		{"/usr/bin/docker", "inspect", "remedy-a"},
 		{"docker", "-H", "inspect", "inspect"},
+		{"docker", "-H", "x", "container", "inspect", "y"},
+		{"docker", "--config", "/x", "container", "inspect", "y"},
+		{"sudo", "docker", "inspect", "y"},
+		{"env", "docker", "inspect", "y"},
+		{"docker", "a", "b", "c", "inspect"},
 	} {
 		if !hostexec.IsInspect(argv) {
 			t.Errorf("IsInspect(%q) = false", argv)
 		}
 	}
-	for _, argv := range [][]string{{"docker", "ps"}, {"docker", "logs", "--tail", "50", "x", "inspect"}, {"docker"}, {"echo", "inspect"}} {
+	for _, argv := range [][]string{{"docker", "ps"}, {"docker"}, {"echo", "inspect"}, {"inspect", "docker"}} {
 		if hostexec.IsInspect(argv) {
 			t.Errorf("IsInspect(%q) = true", argv)
 		}
@@ -1675,6 +1739,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -1716,25 +1781,74 @@ func FormatResult(host string, r Result) string {
 	return b.String()
 }
 
-// IsInspect says whether a command is a docker inspect, whose output is filtered: `docker inspect`, `docker container
-// inspect` and the other management groups, and any docker command with the word inspect among its first four words (a
-// global option can come before it). It over-matches on purpose: a command taken for an inspect has its output filtered,
-// or not shown when it cannot be filtered. The program may be an absolute path.
-func IsInspect(argv []string) bool {
-	if len(argv) < 2 || path.Base(argv[0]) != "docker" {
+// stripEnv replaces the values in the Env of one config object (a Config or a ContainerConfig of an inspect item) by a
+// marker. A missing config or env is fine; a config or env of another shape is not, and false is returned.
+func stripEnv(cfgRaw any) bool {
+	if cfgRaw == nil {
+		return true
+	}
+	cfg, ok := cfgRaw.(map[string]any)
+	if !ok {
 		return false
 	}
-	for _, w := range argv[1:min(len(argv), 4)] {
-		if w == "inspect" {
+	envRaw := cfg["Env"]
+	if envRaw == nil {
+		return true
+	}
+	env, ok := envRaw.([]any)
+	if !ok {
+		return false
+	}
+	for i, e := range env {
+		if e == nil {
+			continue
+		}
+		s, ok := e.(string)
+		if !ok {
+			return false
+		}
+		name, _, _ := strings.Cut(s, "=")
+		env[i] = name + "=<value removed>"
+	}
+	return true
+}
+
+// IsInspect says whether a command is a docker inspect, whose output is filtered: some word is the program docker (the
+// program may be an absolute path, and sudo or env may come before it) and a later word is exactly inspect (`docker
+// inspect`, `docker container inspect`, with any global option in between). It over-matches on purpose: a command taken
+// for an inspect has its output filtered, or not shown when it cannot be filtered.
+func IsInspect(argv []string) bool {
+	for i, w := range argv {
+		if path.Base(w) != "docker" {
+			continue
+		}
+		if slices.Contains(argv[i+1:], "inspect") {
 			return true
 		}
 	}
 	return false
 }
 
-// FilterInspect parses the JSON `docker inspect` printed and removes the VALUES of Config.Env (the names stay), as the
-// cluster tools do for environment variables. Output that is not a JSON list of objects, or has anything after it, is not
-// shown at all: false is returned and the text is empty.
+// InspectHasFormat says whether an inspect has a template: -f, --format, --format=..., or a short flag cluster that holds f
+// (-sf, -f{{.Id}}). A template can print the environment under any key, so the output of such a command cannot be
+// filtered. It looks at every word and over-matches: a refusal to show is the safe direction.
+func InspectHasFormat(argv []string) bool {
+	for _, w := range argv {
+		switch {
+		case w == "--format" || strings.HasPrefix(w, "--format="):
+			return true
+		case strings.HasPrefix(w, "-") && !strings.HasPrefix(w, "--") && strings.Contains(w, "f"):
+			return true
+		}
+	}
+	return false
+}
+
+// FilterInspect parses the JSON `docker inspect` printed and removes the VALUES of Config.Env and ContainerConfig.Env (the names stay), as the
+// cluster tools do for environment variables. Output that is not a JSON list of objects, has anything after it, or has an
+// Env or Config of another shape (a string where a list or an object should be, an entry that is not a string) is not
+// shown at all: false is returned and the text is empty. A value that cannot be recognised as a name=value pair is
+// never printed.
 func FilterInspect(out string) (string, bool) {
 	dec := json.NewDecoder(strings.NewReader(out))
 	var items []map[string]any
@@ -1744,13 +1858,11 @@ func FilterInspect(out string) (string, bool) {
 	if _, err := dec.Token(); err != io.EOF {
 		return "", false
 	}
+	// ContainerConfig is what older images and containers carry besides Config.
 	for _, item := range items {
-		cfg, _ := item["Config"].(map[string]any)
-		env, _ := cfg["Env"].([]any)
-		for i, e := range env {
-			if s, ok := e.(string); ok {
-				name, _, _ := strings.Cut(s, "=")
-				env[i] = name + "=<value removed>"
+		for _, key := range []string{"Config", "ContainerConfig"} {
+			if !stripEnv(item[key]) {
+				return "", false
 			}
 		}
 	}
@@ -3069,6 +3181,34 @@ func TestAnApprovedInspectNeverShowsEnvironmentValues(t *testing.T) {
 	}
 }
 
+// A template can put the environment under any key, which a filter that knows only Config.Env cannot see: the output of
+// an inspect with a format is never shown, whatever it looks like.
+func TestAnInspectWithAFormatIsNeverShown(t *testing.T) {
+	fake := newFake()
+	fake.set(func(f *fakeHosts) { f.result = hostexec.Result{Stdout: `[{"x":["DB_PASSWORD=HUNTER9"]}]`} })
+	e := newHostRig(t, fake)
+	for i, argv := range [][]string{
+		{"docker", "inspect", "remedy-a", "--format", `[{"x":{{json .Config.Env}}}]`},
+		{"docker", "inspect", "-f", `[{"x":{{json .Config.Env}}}]`, "remedy-a"},
+		{"docker", "inspect", `--format=[{"x":{{json .Config.Env}}}]`, "remedy-a"},
+		{"docker", "inspect", `-f[{"x":{{json .Config.Env}}}]`, "remedy-a"},
+		{"docker", "container", "inspect", "-sf", `[{"x":{{json .Config.Env}}}]`, "remedy-a"},
+		{"docker", "-H", "x", "inspect", `--format=[{"x":{{json .Config.Env}}}]`, "remedy-a"},
+	} {
+		text, isErr := approveChange(t, e, fmt.Sprintf("toolu_f_%d", i), argv...)
+		if isErr || strings.Contains(text, "HUNTER9") || !strings.Contains(text, "could not be filtered") {
+			t.Errorf("%q: answer = %q (%v)", argv, text, isErr)
+		}
+	}
+	// Without a format the filter decides, and a document of the right shape is shown, filtered.
+	fake.set(func(f *fakeHosts) {
+		f.result = hostexec.Result{Stdout: `[{"ContainerConfig":{"Env":["DB_PASSWORD=HUNTER8"]}}]`}
+	})
+	if text, _ := approveChange(t, e, "toolu_cc", "docker", "inspect", "remedy-a"); strings.Contains(text, "HUNTER8") || !strings.Contains(text, "DB_PASSWORD=") {
+		t.Errorf("ContainerConfig: %q", text)
+	}
+}
+
 // A change in the second the question was asked in counts as after it: the time of the call has second resolution.
 func TestAHostChangedInTheSecondOfTheQuestionIsStale(t *testing.T) {
 	fake := newFake()
@@ -3588,7 +3728,8 @@ func filterInspectResult(argv []string, res hostexec.Result) hostexec.Result {
 	if !hostexec.IsInspect(argv) || res.Stdout == "" {
 		return res
 	}
-	if filtered, ok := hostexec.FilterInspect(res.Stdout); ok && !res.StdoutCut {
+	// A template can print the environment under any key, so the output of an inspect with a format is never shown.
+	if filtered, ok := hostexec.FilterInspect(res.Stdout); ok && !res.StdoutCut && !hostexec.InspectHasFormat(argv) {
 		res.Stdout = filtered
 	} else {
 		res.Stdout = inspectNotShown

@@ -453,6 +453,34 @@ func TestAnApprovedInspectNeverShowsEnvironmentValues(t *testing.T) {
 	}
 }
 
+// A template can put the environment under any key, which a filter that knows only Config.Env cannot see: the output of
+// an inspect with a format is never shown, whatever it looks like.
+func TestAnInspectWithAFormatIsNeverShown(t *testing.T) {
+	fake := newFake()
+	fake.set(func(f *fakeHosts) { f.result = hostexec.Result{Stdout: `[{"x":["DB_PASSWORD=HUNTER9"]}]`} })
+	e := newHostRig(t, fake)
+	for i, argv := range [][]string{
+		{"docker", "inspect", "remedy-a", "--format", `[{"x":{{json .Config.Env}}}]`},
+		{"docker", "inspect", "-f", `[{"x":{{json .Config.Env}}}]`, "remedy-a"},
+		{"docker", "inspect", `--format=[{"x":{{json .Config.Env}}}]`, "remedy-a"},
+		{"docker", "inspect", `-f[{"x":{{json .Config.Env}}}]`, "remedy-a"},
+		{"docker", "container", "inspect", "-sf", `[{"x":{{json .Config.Env}}}]`, "remedy-a"},
+		{"docker", "-H", "x", "inspect", `--format=[{"x":{{json .Config.Env}}}]`, "remedy-a"},
+	} {
+		text, isErr := approveChange(t, e, fmt.Sprintf("toolu_f_%d", i), argv...)
+		if isErr || strings.Contains(text, "HUNTER9") || !strings.Contains(text, "could not be filtered") {
+			t.Errorf("%q: answer = %q (%v)", argv, text, isErr)
+		}
+	}
+	// Without a format the filter decides, and a document of the right shape is shown, filtered.
+	fake.set(func(f *fakeHosts) {
+		f.result = hostexec.Result{Stdout: `[{"ContainerConfig":{"Env":["DB_PASSWORD=HUNTER8"]}}]`}
+	})
+	if text, _ := approveChange(t, e, "toolu_cc", "docker", "inspect", "remedy-a"); strings.Contains(text, "HUNTER8") || !strings.Contains(text, "DB_PASSWORD=") {
+		t.Errorf("ContainerConfig: %q", text)
+	}
+}
+
 // A change in the second the question was asked in counts as after it: the time of the call has second resolution.
 func TestAHostChangedInTheSecondOfTheQuestionIsStale(t *testing.T) {
 	fake := newFake()

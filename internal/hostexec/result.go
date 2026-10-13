@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -47,23 +48,70 @@ func FormatResult(host string, r Result) string {
 	return b.String()
 }
 
-// IsInspect says whether a command is a docker inspect, whose output is filtered: `docker inspect`, `docker container
-// inspect` and the other management groups, and any docker command with the word inspect among its first four words (a
-// global option can come before it). It over-matches on purpose: a command taken for an inspect has its output filtered,
-// or not shown when it cannot be filtered. The program may be an absolute path.
-func IsInspect(argv []string) bool {
-	if len(argv) < 2 || path.Base(argv[0]) != "docker" {
+// stripEnv replaces the values in the Env of one config object (a Config or a ContainerConfig of an inspect item) by a
+// marker. A missing config or env is fine; a config or env of another shape is not, and false is returned.
+func stripEnv(cfgRaw any) bool {
+	if cfgRaw == nil {
+		return true
+	}
+	cfg, ok := cfgRaw.(map[string]any)
+	if !ok {
 		return false
 	}
-	for _, w := range argv[1:min(len(argv), 4)] {
-		if w == "inspect" {
+	envRaw := cfg["Env"]
+	if envRaw == nil {
+		return true
+	}
+	env, ok := envRaw.([]any)
+	if !ok {
+		return false
+	}
+	for i, e := range env {
+		if e == nil {
+			continue
+		}
+		s, ok := e.(string)
+		if !ok {
+			return false
+		}
+		name, _, _ := strings.Cut(s, "=")
+		env[i] = name + "=<value removed>"
+	}
+	return true
+}
+
+// IsInspect says whether a command is a docker inspect, whose output is filtered: some word is the program docker (the
+// program may be an absolute path, and sudo or env may come before it) and a later word is exactly inspect (`docker
+// inspect`, `docker container inspect`, with any global option in between). It over-matches on purpose: a command taken
+// for an inspect has its output filtered, or not shown when it cannot be filtered.
+func IsInspect(argv []string) bool {
+	for i, w := range argv {
+		if path.Base(w) != "docker" {
+			continue
+		}
+		if slices.Contains(argv[i+1:], "inspect") {
 			return true
 		}
 	}
 	return false
 }
 
-// FilterInspect parses the JSON `docker inspect` printed and removes the VALUES of Config.Env (the names stay), as the
+// InspectHasFormat says whether an inspect has a template: -f, --format, --format=..., or a short flag cluster that holds f
+// (-sf, -f{{.Id}}). A template can print the environment under any key, so the output of such a command cannot be
+// filtered. It looks at every word and over-matches: a refusal to show is the safe direction.
+func InspectHasFormat(argv []string) bool {
+	for _, w := range argv {
+		switch {
+		case w == "--format" || strings.HasPrefix(w, "--format="):
+			return true
+		case strings.HasPrefix(w, "-") && !strings.HasPrefix(w, "--") && strings.Contains(w, "f"):
+			return true
+		}
+	}
+	return false
+}
+
+// FilterInspect parses the JSON `docker inspect` printed and removes the VALUES of Config.Env and ContainerConfig.Env (the names stay), as the
 // cluster tools do for environment variables. Output that is not a JSON list of objects, has anything after it, or has an
 // Env or Config of another shape (a string where a list or an object should be, an entry that is not a string) is not
 // shown at all: false is returned and the text is empty. A value that cannot be recognised as a name=value pair is
@@ -77,33 +125,12 @@ func FilterInspect(out string) (string, bool) {
 	if _, err := dec.Token(); err != io.EOF {
 		return "", false
 	}
+	// ContainerConfig is what older images and containers carry besides Config.
 	for _, item := range items {
-		cfgRaw := item["Config"]
-		if cfgRaw == nil {
-			continue
-		}
-		cfg, ok := cfgRaw.(map[string]any)
-		if !ok {
-			return "", false
-		}
-		envRaw := cfg["Env"]
-		if envRaw == nil {
-			continue
-		}
-		env, ok := envRaw.([]any)
-		if !ok {
-			return "", false
-		}
-		for i, e := range env {
-			if e == nil {
-				continue
-			}
-			s, ok := e.(string)
-			if !ok {
+		for _, key := range []string{"Config", "ContainerConfig"} {
+			if !stripEnv(item[key]) {
 				return "", false
 			}
-			name, _, _ := strings.Cut(s, "=")
-			env[i] = name + "=<value removed>"
 		}
 	}
 	var buf bytes.Buffer

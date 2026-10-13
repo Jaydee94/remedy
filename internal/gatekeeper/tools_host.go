@@ -252,7 +252,8 @@ func filterInspectResult(argv []string, res hostexec.Result) hostexec.Result {
 	if !hostexec.IsInspect(argv) || res.Stdout == "" {
 		return res
 	}
-	if filtered, ok := hostexec.FilterInspect(res.Stdout); ok && !res.StdoutCut {
+	// A template can print the environment under any key, so the output of an inspect with a format is never shown.
+	if filtered, ok := hostexec.FilterInspect(res.Stdout); ok && !res.StdoutCut && !hostexec.InspectHasFormat(argv) {
 		res.Stdout = filtered
 	} else {
 		res.Stdout = inspectNotShown

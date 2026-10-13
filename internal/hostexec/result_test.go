@@ -85,6 +85,43 @@ func TestFilterInspectRefusesOtherShapes(t *testing.T) {
 	}
 }
 
+func TestFilterInspectAlsoStripsContainerConfig(t *testing.T) {
+	out, ok := hostexec.FilterInspect(`[{"ContainerConfig":{"Env":["DB_PASSWORD=hunter2","PATH=/usr/bin"]},"Config":{"Env":["A=b"]}}]`)
+	if !ok || strings.Contains(out, "hunter2") || strings.Contains(out, "/usr/bin") || strings.Contains(out, "A=b") ||
+		!strings.Contains(out, "DB_PASSWORD=<value removed>") {
+		t.Fatalf("FilterInspect = %q, %v", out, ok)
+	}
+	for name, bad := range map[string]string{
+		"ContainerConfig is a string":      `[{"ContainerConfig":"DB_PASSWORD=hunter2"}]`,
+		"ContainerConfig.Env is a string":  `[{"ContainerConfig":{"Env":"DB_PASSWORD=hunter2"}}]`,
+		"ContainerConfig.Env has a number": `[{"ContainerConfig":{"Env":[7]}}]`,
+	} {
+		if out, ok := hostexec.FilterInspect(bad); ok || out != "" {
+			t.Errorf("%s: FilterInspect = %q, %v", name, out, ok)
+		}
+	}
+}
+
+func TestInspectHasFormat(t *testing.T) {
+	for _, argv := range [][]string{
+		{"docker", "inspect", "-f", "{{.Id}}", "x"},
+		{"docker", "inspect", "--format", "{{.Id}}", "x"},
+		{"docker", "inspect", "--format={{.Id}}", "x"},
+		{"docker", "inspect", "-f{{.Id}}", "x"},
+		{"docker", "inspect", "-sf", "{{.Id}}", "x"},
+		{"docker", "inspect", "x", "--format", "{{.Id}}"},
+	} {
+		if !hostexec.InspectHasFormat(argv) {
+			t.Errorf("InspectHasFormat(%q) = false", argv)
+		}
+	}
+	for _, argv := range [][]string{{"docker", "inspect", "remedy-a"}, {"docker", "inspect", "-s", "remedy-a"}, {"docker", "inspect", "--size", "remedy-a"}, {"docker", "inspect", "--type", "container", "x"}} {
+		if hostexec.InspectHasFormat(argv) {
+			t.Errorf("InspectHasFormat(%q) = true", argv)
+		}
+	}
+}
+
 func TestIsInspectCoversEveryWayToSpellIt(t *testing.T) {
 	for _, argv := range [][]string{
 		{"docker", "container", "inspect", "remedy-a"},
@@ -94,12 +131,17 @@ func TestIsInspectCoversEveryWayToSpellIt(t *testing.T) {
 		{"docker", "--context", "inspect", "x"},
 		{"/usr/bin/docker", "inspect", "remedy-a"},
 		{"docker", "-H", "inspect", "inspect"},
+		{"docker", "-H", "x", "container", "inspect", "y"},
+		{"docker", "--config", "/x", "container", "inspect", "y"},
+		{"sudo", "docker", "inspect", "y"},
+		{"env", "docker", "inspect", "y"},
+		{"docker", "a", "b", "c", "inspect"},
 	} {
 		if !hostexec.IsInspect(argv) {
 			t.Errorf("IsInspect(%q) = false", argv)
 		}
 	}
-	for _, argv := range [][]string{{"docker", "ps"}, {"docker", "logs", "--tail", "50", "x", "inspect"}, {"docker"}, {"echo", "inspect"}} {
+	for _, argv := range [][]string{{"docker", "ps"}, {"docker"}, {"echo", "inspect"}, {"inspect", "docker"}} {
 		if hostexec.IsInspect(argv) {
 			t.Errorf("IsInspect(%q) = true", argv)
 		}
