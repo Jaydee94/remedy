@@ -76,3 +76,13 @@ export const validDockerPattern = (s: string) => s.trim() === '' || (/^[A-Za-z0-
 /** How to compare the fingerprint the page shows with the host's own. */
 export const FINGERPRINT_HELP =
   'On the host, run: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub (use the file of the key type shown here). The fingerprints must be identical.'
+
+/** A host a run can be given: enabled, with a login and a pinned key. The server checks it again. */
+export const usableHost = (h: Host) => h.enabled && h.credential !== undefined && h.pinnedFingerprint !== undefined && h.pinnedFingerprint !== ''
+
+/**
+ * What the form of a host is keyed by: its editable fields only. The server moves `updatedAt` for a pin, an unpin and a login as
+ * well, and a form that remounted for those would throw away what the maintainer is typing.
+ */
+export const editableKey = (h: Host) =>
+  [h.name, h.address, h.port, h.account, h.notes, h.dockerPattern, h.systemdUnits.join(','), h.enabled].join('\u0000')

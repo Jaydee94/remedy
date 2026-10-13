@@ -19,14 +19,33 @@ export function toggleCluster(s: AskSwitches): AskSwitches {
   return { cluster, tools: cluster ? true : s.tools }
 }
 
+/** A host in or out of the selection, in the order it was chosen. */
+export function toggleHost(selected: readonly number[], id: number): number[] {
+  return selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]
+}
+
+/** "nas", "nas and alpha", "a, b and c". */
+export function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) return names.join('')
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
 /** What the agent can do with the switches as they are, from real data. */
-export function askHint(s: AskSwitches, caps: Capabilities | null): string {
+function baseHint(s: AskSwitches, caps: Capabilities | null): string {
   if (!s.tools) return 'I can only read the files of my workspace.'
   if (!s.cluster) return 'I can read incidents and ask to add a note to one. Every note waits for your decision under Needs you, and I wait with it.'
   if (caps?.cluster.write) {
     return `I can read the cluster. Actions in the cluster wait for your decision under Needs you; they are possible in: ${caps.cluster.namespaces.join(', ')}.`
   }
   return 'I can read the cluster. No action in the cluster is possible: no write access is configured.'
+}
+
+/** What the agent can do with the switches as they are, from real data, and with the hosts that were chosen. */
+export function askHint(s: AskSwitches, caps: Capabilities | null, hosts: readonly string[] = []): string {
+  const base = baseHint(s, caps)
+  return hosts.length === 0
+    ? base
+    : `${base} I can look at ${joinNames(hosts)}: reading is free, every change waits for your decision under Needs you, and you see the exact command.`
 }
 
 const TITLE_MAX = 140

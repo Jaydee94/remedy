@@ -203,6 +203,26 @@ describe('runFailure', () => {
   })
 })
 
+describe('stepLabel for the host tools', () => {
+  it('names them in Remedy words, with the command as it is typed', () => {
+    assert.equal(stepLabel('mcp__remedy__host_list', {}), 'Looked at the hosts')
+    assert.equal(stepLabel('mcp__remedy__host_read', { host: 'nas', argv: ['docker', 'ps', '-a'] }), 'Read on nas: docker ps -a')
+    assert.equal(stepLabel('mcp__remedy__host_read', {}), 'Read from a host')
+    assert.equal(stepLabel('mcp__remedy__host_change', { host: 'nas', argv: ['docker', 'restart', 'remedy-drill'] }), 'Asked to run docker restart remedy-drill on nas')
+    assert.equal(stepLabel('mcp__remedy__host_change', { host: 'nas' }), 'Asked to run a command on a host')
+  })
+})
+
+describe('runMeta with hosts', () => {
+  it('names the hosts of a run, or counts them in a list', () => {
+    const base = { id: 'r', role: 'adhoc', mcp: true } as Run
+    assert.equal(runMeta({ ...base, hosts: [{ id: 1, name: 'nas' }, { id: 2, name: 'alpha' }], hostCount: 2 }, '5m ago'), 'Ad-hoc · tools · hosts nas, alpha · 5m ago')
+    assert.equal(runMeta({ ...base, hostCount: 2 }, '5m ago'), 'Ad-hoc · tools · 2 hosts · 5m ago')
+    assert.equal(runMeta({ ...base, hostCount: 1 }, '5m ago'), 'Ad-hoc · tools · 1 host · 5m ago')
+    assert.equal(runMeta(base, '5m ago'), 'Ad-hoc · tools · 5m ago')
+  })
+})
+
 describe('runMeta', () => {
   it('lists the kind of the run and its tools', () => {
     assert.equal(runMeta({ role: 'responder', mcp: true, cluster: true } as Run, '08:38'), 'Responder · tools · cluster · 08:38')

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, describe, it } from 'node:test'
-import { ApiError, api, setUnauthorizedHandler } from './api.ts'
+import { ApiError, api, runBody, setUnauthorizedHandler } from './api.ts'
 
 const realFetch = globalThis.fetch
 
@@ -86,5 +86,14 @@ describe('request and the unauthorized handler', () => {
     stubFetch(() => respond(401))
     await Promise.allSettled([api.listRuns(), api.listApprovals('pending')])
     assert.equal(calls, 2)
+  })
+})
+
+describe('runBody', () => {
+  it('keeps the old bodies byte for byte and adds hosts only when there are some', () => {
+    assert.equal(JSON.stringify(runBody('q', true, false)), '{"prompt":"q","tools":true,"cluster":false}')
+    assert.equal(JSON.stringify(runBody('q', true, true, 7)), '{"prompt":"q","tools":true,"cluster":true,"incidentId":7}')
+    assert.equal(JSON.stringify(runBody('q', true, false, undefined, [2, 3])), '{"prompt":"q","tools":true,"cluster":false,"hosts":[2,3]}')
+    assert.equal(JSON.stringify(runBody('q', true, false, undefined, [])), '{"prompt":"q","tools":true,"cluster":false}')
   })
 })

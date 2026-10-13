@@ -68,6 +68,7 @@ const kindDots: Record<string, string> = {
   note_added: 'bg-primary',
   run_cancelled: 'bg-neutral',
   cluster_action: 'bg-violet',
+  host_action: 'bg-violet',
 }
 
 export function kindDotClass(kind: string): string {

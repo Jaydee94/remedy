@@ -58,7 +58,7 @@ export default function RunPage({ id }: { id: string }) {
     setError('')
     setBusy(true)
     try {
-      const created = await api.createRun(run.prompt, run.mcp === true, run.cluster === true, run.incidentId)
+      const created = await api.createRun(run.prompt, run.mcp === true, run.cluster === true, run.incidentId, run.hosts?.map((h) => h.id))
       // The page navigates away: the button stays disabled until then.
       void navigate(`/runs/${created.id}`)
     } catch (e) {
