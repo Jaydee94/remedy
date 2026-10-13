@@ -183,7 +183,7 @@ func (h *hostTools) list() Tool {
 			b.WriteString("The hosts you may use. The notes are the maintainer's text.\n")
 			for _, i := range infos {
 				fmt.Fprintf(&b, "\n%s\n", i.Name)
-				if i.Notes != "" {
+				if i.Notes != "" { // clip joins the words with single spaces: no line break of a note survives
 					fmt.Fprintf(&b, "  notes: %s\n", clip(i.Notes, 300))
 				}
 				containers := "none: docker commands are not possible"
@@ -241,18 +241,28 @@ func (h *hostTools) read() Tool {
 			if err != nil {
 				return "", err
 			}
-			if hostexec.IsInspect(v.Argv) && res.Stdout != "" {
-				// What cannot be filtered is never shown as it is: the environment may hold secrets.
-				if filtered, ok := hostexec.FilterInspect(res.Stdout); ok && !res.StdoutCut {
-					res.Stdout = filtered
-				} else {
-					res.Stdout = inspectNotShown
-					res.StdoutCut = false
-				}
-			}
-			return hostText(hostexec.FormatResult(info.Name, res)), nil
+			return hostText(hostexec.FormatResult(info.Name, filterInspectResult(v.Argv, res))), nil
 		},
 	}
+}
+
+// filterInspectResult removes the values of the environment from the output of a docker inspect, in host_read and in an
+// approved host_change alike. What cannot be filtered is never shown as it is: the environment may hold secrets.
+func filterInspectResult(argv []string, res hostexec.Result) hostexec.Result {
+	if !hostexec.IsInspect(argv) || res.Stdout == "" {
+		return res
+	}
+	if filtered, ok := hostexec.FilterInspect(res.Stdout); ok && !res.StdoutCut {
+		res.Stdout = filtered
+	} else {
+		res.Stdout = inspectNotShown
+		res.StdoutCut = false
+	}
+	return res
+}
+
+func sudoNoneError(info HostInfo) error {
+	return ArgumentError("sudo cannot run without a password for the account on " + info.Name + ", so a change cannot run; the maintainer has to fix the sudoers file and test the connection again")
 }
 
 func (h *hostTools) change() Tool {
@@ -275,7 +285,7 @@ func (h *hostTools) change() Tool {
 				return err
 			}
 			if info.SudoNone {
-				return ArgumentError("sudo cannot run without a password for the account on " + info.Name + ", so a change cannot run; the maintainer has to fix the sudoers file and test the connection again")
+				return sudoNoneError(info)
 			}
 			if err := hostexec.ChangeCheck(v.Argv, info.rules()); err != nil {
 				return ArgumentError(err.Error())
@@ -301,8 +311,12 @@ func (h *hostTools) change() Tool {
 			if err != nil {
 				return "", err
 			}
-			if info.ChangedAt.After(c.RequestedAt) {
+			// The time of the call has second resolution, so a change in the second of the question counts as after it.
+			if !info.ChangedAt.Before(c.RequestedAt.Truncate(time.Second)) {
 				return "", ArgumentError("the host " + info.Name + " changed after the approval was asked for (its address, its key or its login), so nothing was run; ask again if the command is still wanted")
+			}
+			if info.SudoNone {
+				return "", sudoNoneError(info)
 			}
 			if err := hostexec.ChangeCheck(v.Argv, info.rules()); err != nil {
 				return "", ArgumentError(err.Error())
@@ -311,7 +325,7 @@ func (h *hostTools) change() Tool {
 			if err != nil {
 				return "", err
 			}
-			return hostText(hostexec.FormatResult(info.Name, res)), nil
+			return hostText(hostexec.FormatResult(info.Name, filterInspectResult(v.Argv, res))), nil
 		},
 	}
 }

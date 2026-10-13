@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 )
 
@@ -46,9 +47,20 @@ func FormatResult(host string, r Result) string {
 	return b.String()
 }
 
-// IsInspect says whether a command is `docker inspect ...`, whose output is filtered.
+// IsInspect says whether a command is a docker inspect, whose output is filtered: `docker inspect`, `docker container
+// inspect` and the other management groups, and any docker command with the word inspect among its first four words (a
+// global option can come before it). It over-matches on purpose: a command taken for an inspect has its output filtered,
+// or not shown when it cannot be filtered. The program may be an absolute path.
 func IsInspect(argv []string) bool {
-	return len(argv) >= 2 && argv[0] == "docker" && argv[1] == "inspect"
+	if len(argv) < 2 || path.Base(argv[0]) != "docker" {
+		return false
+	}
+	for _, w := range argv[1:min(len(argv), 4)] {
+		if w == "inspect" {
+			return true
+		}
+	}
+	return false
 }
 
 // FilterInspect parses the JSON `docker inspect` printed and removes the VALUES of Config.Env (the names stay), as the

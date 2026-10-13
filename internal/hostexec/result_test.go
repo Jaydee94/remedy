@@ -85,6 +85,27 @@ func TestFilterInspectRefusesOtherShapes(t *testing.T) {
 	}
 }
 
+func TestIsInspectCoversEveryWayToSpellIt(t *testing.T) {
+	for _, argv := range [][]string{
+		{"docker", "container", "inspect", "remedy-a"},
+		{"docker", "image", "inspect", "x"},
+		{"docker", "network", "inspect", "x"},
+		{"docker", "inspect", "--format", "{{json .Config.Env}}", "remedy-a"},
+		{"docker", "--context", "inspect", "x"},
+		{"/usr/bin/docker", "inspect", "remedy-a"},
+		{"docker", "-H", "inspect", "inspect"},
+	} {
+		if !hostexec.IsInspect(argv) {
+			t.Errorf("IsInspect(%q) = false", argv)
+		}
+	}
+	for _, argv := range [][]string{{"docker", "ps"}, {"docker", "logs", "--tail", "50", "x", "inspect"}, {"docker"}, {"echo", "inspect"}} {
+		if hostexec.IsInspect(argv) {
+			t.Errorf("IsInspect(%q) = true", argv)
+		}
+	}
+}
+
 func TestIsInspect(t *testing.T) {
 	if !hostexec.IsInspect([]string{"docker", "inspect", "remedy-a"}) {
 		t.Error("docker inspect is not recognised")

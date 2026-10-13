@@ -1626,6 +1626,27 @@ func TestFilterInspect(t *testing.T) {
 	}
 }
 
+func TestIsInspectCoversEveryWayToSpellIt(t *testing.T) {
+	for _, argv := range [][]string{
+		{"docker", "container", "inspect", "remedy-a"},
+		{"docker", "image", "inspect", "x"},
+		{"docker", "network", "inspect", "x"},
+		{"docker", "inspect", "--format", "{{json .Config.Env}}", "remedy-a"},
+		{"docker", "--context", "inspect", "x"},
+		{"/usr/bin/docker", "inspect", "remedy-a"},
+		{"docker", "-H", "inspect", "inspect"},
+	} {
+		if !hostexec.IsInspect(argv) {
+			t.Errorf("IsInspect(%q) = false", argv)
+		}
+	}
+	for _, argv := range [][]string{{"docker", "ps"}, {"docker", "logs", "--tail", "50", "x", "inspect"}, {"docker"}, {"echo", "inspect"}} {
+		if hostexec.IsInspect(argv) {
+			t.Errorf("IsInspect(%q) = true", argv)
+		}
+	}
+}
+
 func TestIsInspect(t *testing.T) {
 	if !hostexec.IsInspect([]string{"docker", "inspect", "remedy-a"}) {
 		t.Error("docker inspect is not recognised")
@@ -1653,6 +1674,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 )
 
@@ -1694,9 +1716,20 @@ func FormatResult(host string, r Result) string {
 	return b.String()
 }
 
-// IsInspect says whether a command is `docker inspect ...`, whose output is filtered.
+// IsInspect says whether a command is a docker inspect, whose output is filtered: `docker inspect`, `docker container
+// inspect` and the other management groups, and any docker command with the word inspect among its first four words (a
+// global option can come before it). It over-matches on purpose: a command taken for an inspect has its output filtered,
+// or not shown when it cannot be filtered. The program may be an absolute path.
 func IsInspect(argv []string) bool {
-	return len(argv) >= 2 && argv[0] == "docker" && argv[1] == "inspect"
+	if len(argv) < 2 || path.Base(argv[0]) != "docker" {
+		return false
+	}
+	for _, w := range argv[1:min(len(argv), 4)] {
+		if w == "inspect" {
+			return true
+		}
+	}
+	return false
 }
 
 // FilterInspect parses the JSON `docker inspect` printed and removes the VALUES of Config.Env (the names stay), as the
@@ -2574,7 +2607,7 @@ git commit -m "feat(store): hosts of a run, one creator of runs, a host row that
 
 **Interfaces:**
 - Consumes: `hostexec.*` (Tasks 1 to 4), `store.CreateRunWith`, `run.Run.HostCount`, `store.KindHostAction`, `store.FinishToolCallWithActivityKind` (Task 6).
-- Produces: `gatekeeper.GroupHost = "host"`, `Tool.ActivityKind string`, `Tool.CheckRun func(ctx context.Context, runID string, args json.RawMessage) error`, `gatekeeper.HostInfo{Name, Notes, DockerPattern string; Units []string; SudoNone bool; ChangedAt time.Time}`, `gatekeeper.HostAccess` (`Hosts(ctx, runID) ([]HostInfo, error)`; `Exec(ctx, runID, host string, sudo bool, argv []string) (hostexec.Result, error)`), `gatekeeper.HostTools(HostAccess) []Tool`.
+- Produces: `gatekeeper.GroupHost = "host"`, `gatekeeper.ErrHostTimeout` (what `HostAccess.Exec` returns on a timeout; a change that timed out has an unknown outcome), `Tool.ActivityKind string`, `Tool.CheckRun func(ctx context.Context, runID string, args json.RawMessage) error`, `gatekeeper.HostInfo{Name, Notes, DockerPattern string; Units []string; SudoNone bool; ChangedAt time.Time}`, `gatekeeper.HostAccess` (`Hosts(ctx, runID) ([]HostInfo, error)`; `Exec(ctx, runID, host string, sudo bool, argv []string) (hostexec.Result, error)`), `gatekeeper.HostTools(HostAccess) []Tool`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2593,6 +2626,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Jaydee94/remedy/internal/gatekeeper"
 	"github.com/Jaydee94/remedy/internal/hostexec"
@@ -2689,6 +2723,17 @@ func askHost(t *testing.T, e *env, useID, tool string, args any) (string, bool) 
 	return resultText(t, e.call(t, useID, tool, args))
 }
 
+func hostTool(t *testing.T, a gatekeeper.HostAccess, name string) gatekeeper.Tool {
+	t.Helper()
+	for _, tool := range gatekeeper.HostTools(a) {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	t.Fatalf("no host tool %s", name)
+	return gatekeeper.Tool{}
+}
+
 func TestTheHostToolsAreInTheirGroupAndOnlyTheChangeNeedsAnApproval(t *testing.T) {
 	tools := gatekeeper.HostTools(nil)
 	want := []string{"host_list", "host_read", "host_change"}
@@ -2767,6 +2812,9 @@ func TestHostReadRunsAFormOfTheTableWithoutAnApproval(t *testing.T) {
 		!slices.Equal(fake.execs[0].argv, []string{"docker", "ps", "-a"}) {
 		t.Fatalf("execs = %+v: docker reads run with sudo, the others without", fake.execs)
 	}
+	if fake.execs[1].host != "nas" {
+		t.Fatalf("the command ran on %q: the host is the one the table lists, not the spelling of the agent", fake.execs[1].host)
+	}
 }
 
 func TestHostReadRefusesWhatIsNotInTheTableAndSendsNothing(t *testing.T) {
@@ -2777,13 +2825,13 @@ func TestHostReadRefusesWhatIsNotInTheTableAndSendsNothing(t *testing.T) {
 		argv []string
 		want string
 	}{
-		"a change":                    {"nas", []string{"docker", "restart", "remedy-a"}, "host_change"},
-		"a file reader":               {"nas", []string{"cat", "/etc/hostname"}, "host_change"},
-		"a form with an extra flag":   {"nas", []string{"df", "-h", "/"}, "host_change"},
+		"a change":                        {"nas", []string{"docker", "restart", "remedy-a"}, "host_change"},
+		"a file reader":                   {"nas", []string{"cat", "/etc/hostname"}, "host_change"},
+		"a form with an extra flag":       {"nas", []string{"df", "-h", "/"}, "host_change"},
 		"a container outside the pattern": {"nas", []string{"docker", "logs", "--tail", "50", "other"}, "does not match"},
-		"a never-listed command":      {"nas", []string{"rm", "-rf", "/"}, "never run"},
-		"a shell":                     {"nas", []string{"sh", "-c", "id"}, "never run"},
-		"a host the run does not have": {"other", []string{"uptime"}, "no host"},
+		"a never-listed command":          {"nas", []string{"rm", "-rf", "/"}, "never run"},
+		"a shell":                         {"nas", []string{"sh", "-c", "id"}, "never run"},
+		"a host the run does not have":    {"other", []string{"uptime"}, "no host"},
 	} {
 		text, isErr := askHost(t, e, "toolu_"+strings.ReplaceAll(name, " ", "_"), "host_read", map[string]any{"host": c.host, "argv": c.argv})
 		if !isErr || !strings.Contains(text, c.want) {
@@ -2804,13 +2852,13 @@ func TestHostReadRefusesBadWordsAndSendsNothing(t *testing.T) {
 	fake := newFake()
 	e := newHostRig(t, fake)
 	for name, argv := range map[string][]string{
-		"a newline":      {"df", "-h\n"},
-		"a NUL":          {"df", "-h\x00"},
-		"an escape":      {"df", "\x1b[31m"},
-		"an empty word":  {"df", ""},
-		"invalid UTF-8":  {"df", "\xff"},
-		"no words":       {},
-		"a long word":    {strings.Repeat("x", 2000)},
+		"a newline":     {"df", "-h\n"},
+		"a NUL":         {"df", "-h\x00"},
+		"an escape":     {"df", "\x1b[31m"},
+		"an empty word": {"df", ""},
+		"invalid UTF-8": {"df", "\xff"},
+		"no words":      {},
+		"a long word":   {strings.Repeat("x", 2000)},
 	} {
 		text, isErr := askHost(t, e, "toolu_"+strings.ReplaceAll(name, " ", "_"), "host_read", map[string]any{"host": "nas", "argv": argv})
 		if !isErr || strings.Contains(text, "the tool failed") {
@@ -2843,12 +2891,14 @@ func TestDockerInspectNeverShowsEnvironmentValues(t *testing.T) {
 	})
 	e := newHostRig(t, fake)
 	text, isErr := askHost(t, e, "toolu_1", "host_read", map[string]any{"host": "nas", "argv": []string{"docker", "inspect", "remedy-a"}})
-	if isErr || strings.Contains(text, "hunter2") || !strings.Contains(text, "DB_PASSWORD=<value removed>") || !strings.Contains(text, `"Running": true`) {
+	if isErr || strings.Contains(text, "hunter2") || !strings.Contains(text, "DB_PASSWORD=") || !strings.Contains(text, "PATH=<value removed>") || !strings.Contains(text, `"Running": true`) {
 		t.Fatalf("filtered answer = %q (%v)", text, isErr)
 	}
 	for name, res := range map[string]hostexec.Result{
 		"output that is not JSON": {Stdout: "Error: something HUNTER3"},
 		"a cut document":          {Stdout: `[{"Config":{"Env":["A=HUNTER4"`, StdoutCut: true},
+		"an env of another shape": {Stdout: `[{"Config":{"Env":"A=HUNTER5"}}]`},
+		"a complete cut document": {Stdout: `[{"Config":{"Env":["A=HUNTER6"]}}]`, StdoutCut: true},
 	} {
 		fake.set(func(f *fakeHosts) { f.result = res })
 		text, _ := askHost(t, e, "toolu_"+strings.ReplaceAll(name, " ", "_"), "host_read", map[string]any{"host": "nas", "argv": []string{"docker", "inspect", "remedy-a"}})
@@ -2865,11 +2915,32 @@ func TestDockerInspectNeverShowsEnvironmentValues(t *testing.T) {
 
 func TestTheResultOfAHostIsRedacted(t *testing.T) {
 	fake := newFake()
-	fake.set(func(f *fakeHosts) { f.result = hostexec.Result{Stdout: "token ghp_DISTINCTIVE0123456789abcdefghijklmnopqrst here"} })
+	fake.set(func(f *fakeHosts) {
+		f.result = hostexec.Result{Stdout: "token ghp_DISTINCTIVE0123456789abcdefghijklmnopqrst here"}
+	})
 	e := newHostRig(t, fake)
 	text, isErr := askHost(t, e, "toolu_1", "host_read", map[string]any{"host": "nas", "argv": []string{"uptime"}})
 	if isErr || strings.Contains(text, "ghp_DISTINCTIVE") {
 		t.Fatalf("answer = %q (%v)", text, isErr)
+	}
+}
+
+// What a host prints is not trusted to be UTF-8 or to be short: the tool makes it valid text and the gatekeeper limits it.
+func TestTheResultOfAHostIsValidTextAndLimited(t *testing.T) {
+	fake := newFake()
+	fake.set(func(f *fakeHosts) { f.result = hostexec.Result{Stdout: "ok \xff\xfe bad \xc3", Stderr: "err \x80"} })
+	read := hostTool(t, fake, "host_read")
+	text, err := read.Run(context.Background(), gatekeeper.Call{RunID: "r", Args: json.RawMessage(`{"host":"nas","argv":["uptime"]}`)})
+	if err != nil || !utf8.ValidString(text) || !strings.Contains(text, "ok ") {
+		t.Fatalf("Run = %q, %v: the text must be valid UTF-8", text, err)
+	}
+
+	big := strings.Repeat("0123456789abcdef", 1500) // 24000 bytes on each stream
+	fake.set(func(f *fakeHosts) { f.result = hostexec.Result{Stdout: big, Stderr: big} })
+	e := newHostRig(t, fake)
+	answer, isErr := askHost(t, e, "toolu_big", "host_read", map[string]any{"host": "nas", "argv": []string{"uptime"}})
+	if isErr || len(answer) > gatekeeper.MaxResultBytes+100 || !strings.Contains(answer, "[cut: the result is longer than 32 KB]") {
+		t.Fatalf("a result of %d bytes (%v) is not limited", len(answer), isErr)
 	}
 }
 
@@ -2902,6 +2973,158 @@ func TestHostChangeWaitsForTheApprovalAndThenRunsWithSudo(t *testing.T) {
 	}
 }
 
+// The words the maintainer reads on the card are the words that run: the stored arguments are the one source of both.
+func TestWhatIsShownForTheApprovalIsWhatRuns(t *testing.T) {
+	fake := newFake()
+	e := newHostRig(t, fake)
+	argv := []string{"echo", "it's a b", `say "x"`}
+	s := e.open(t, "toolu_1", "host_change", map[string]any{"host": "nas", "argv": argv})
+	call := e.pending(t)
+	var stored struct {
+		Host string
+		Argv []string
+	}
+	if err := json.Unmarshal(call.Arguments, &stored); err != nil || !slices.Equal(stored.Argv, argv) {
+		t.Fatalf("stored = %s, %v: the card is built from the stored arguments, which must be the words as sent", call.Arguments, err)
+	}
+	if _, err := e.g.Decide(context.Background(), call.ID, true, "go on"); err != nil {
+		t.Fatal(err)
+	}
+	if text, isErr := s.result(); isErr {
+		t.Fatal(text)
+	}
+	fake.mu.Lock()
+	ran := slices.Clone(fake.execs)
+	fake.mu.Unlock()
+	if len(ran) != 1 || !slices.Equal(ran[0].argv, stored.Argv) {
+		t.Fatalf("ran %+v, approved %v", ran, stored.Argv)
+	}
+	acts := activityOf(t, e.st, store.KindHostAction)
+	if len(acts) != 1 || acts[0].Summary != "Ran "+hostexec.Display(ran[0].argv)+" on nas" {
+		t.Fatalf("activity = %+v", acts)
+	}
+}
+
+// Display does not escape characters that are invisible or look like others (a right-to-left override, a no-break space),
+// so a change that has one is refused: the card must show exactly what runs.
+func TestAChangeWithInvisibleCharactersIsRefused(t *testing.T) {
+	fake := newFake()
+	e := newHostRig(t, fake)
+	for name, word := range map[string]string{
+		"a right-to-left override": "remedy-a\u202e",
+		"a zero-width space":       "remedy\u200b-a",
+		"a no-break space":         "remedy\u00a0a",
+		"a line separator":         "remedy\u2028a",
+		"a private use character":  "remedy\ue000a",
+	} {
+		text, isErr := askHost(t, e, "toolu_"+strings.ReplaceAll(name, " ", "_"), "host_change", map[string]any{"host": "nas", "argv": []string{"echo", word}})
+		if !isErr || !strings.Contains(text, "not printable") {
+			t.Errorf("%s: answer = %q (%v)", name, text, isErr)
+		}
+	}
+	// Letters of other scripts are fine.
+	s := e.open(t, "toolu_ok", "host_change", map[string]any{"host": "nas", "argv": []string{"echo", "größe 日本"}})
+	call := e.pending(t)
+	if _, err := e.g.Decide(context.Background(), call.ID, false, "no"); err != nil {
+		t.Fatal(err)
+	}
+	s.result()
+	if n := fake.execCount(); n != 0 {
+		t.Fatalf("%d commands reached the host", n)
+	}
+}
+
+// approveChange makes a host_change call, approves it and returns the answer.
+func approveChange(t *testing.T, e *env, useID string, argv ...string) (string, bool) {
+	t.Helper()
+	s := e.open(t, useID, "host_change", map[string]any{"host": "nas", "argv": argv})
+	call := e.pending(t)
+	if _, err := e.g.Decide(context.Background(), call.ID, true, "go on"); err != nil {
+		t.Fatal(err)
+	}
+	return s.result()
+}
+
+// An approved docker inspect is filtered like the one of host_read: one approval must not show the values of the environment.
+func TestAnApprovedInspectNeverShowsEnvironmentValues(t *testing.T) {
+	fake := newFake()
+	fake.set(func(f *fakeHosts) {
+		f.result = hostexec.Result{Stdout: `[{"Id":"abc","Config":{"Env":["DB_PASSWORD=hunter2","PATH=/usr/bin"]},"State":{"Running":true}}]`}
+	})
+	e := newHostRig(t, fake)
+	for i, argv := range [][]string{
+		{"docker", "inspect", "remedy-a"},
+		{"docker", "container", "inspect", "remedy-a"},
+	} {
+		text, isErr := approveChange(t, e, fmt.Sprintf("toolu_ok_%d", i), argv...)
+		if isErr || strings.Contains(text, "hunter2") || !strings.Contains(text, "PATH=<value removed>") {
+			t.Errorf("%v: answer = %q (%v)", argv, text, isErr)
+		}
+	}
+	// A format string prints something that is not the list of objects: the fixed text, never the raw output.
+	fake.set(func(f *fakeHosts) { f.result = hostexec.Result{Stdout: `["DB_PASSWORD=HUNTER9"]` + "\n"} })
+	text, isErr := approveChange(t, e, "toolu_fmt", "docker", "inspect", "--format", "{{json .Config.Env}}", "remedy-a")
+	if isErr || strings.Contains(text, "HUNTER9") || !strings.Contains(text, "could not be filtered") {
+		t.Errorf("a format string: answer = %q (%v)", text, isErr)
+	}
+}
+
+// A change in the second the question was asked in counts as after it: the time of the call has second resolution.
+func TestAHostChangedInTheSecondOfTheQuestionIsStale(t *testing.T) {
+	fake := newFake()
+	change := hostTool(t, fake, "host_change")
+	asked := time.Date(2026, 10, 13, 12, 0, 0, 700_000_000, time.UTC)
+	args := json.RawMessage(`{"host":"nas","argv":["docker","restart","remedy-a"]}`)
+	for name, c := range map[string]struct {
+		changed time.Time
+		runs    bool
+	}{
+		"in the same second, before": {asked.Add(-600 * time.Millisecond), false},
+		"in the same second, after":  {asked.Add(200 * time.Millisecond), false},
+		"well before the question":   {asked.Add(-time.Minute), true},
+		"in the second before":       {time.Date(2026, 10, 13, 11, 59, 59, 999_000_000, time.UTC), true},
+	} {
+		fake.set(func(f *fakeHosts) { f.execs = nil; f.infos[0].ChangedAt = c.changed })
+		_, err := change.Run(context.Background(), gatekeeper.Call{RunID: "r", Args: args, RequestedAt: asked})
+		if (err == nil) != c.runs {
+			t.Errorf("%s: Run = %v, want it to run: %v", name, err, c.runs)
+		}
+	}
+}
+
+func TestAnApprovedChangeIsNotRunWhereSudoDoesNotWork(t *testing.T) {
+	fake := newFake()
+	fake.set(func(f *fakeHosts) { f.infos[0].SudoNone = true })
+	change := hostTool(t, fake, "host_change")
+	args := json.RawMessage(`{"host":"nas","argv":["docker","restart","remedy-a"]}`)
+	_, err := change.Run(context.Background(), gatekeeper.Call{RunID: "r", Args: args, RequestedAt: time.Now()})
+	var arg gatekeeper.ArgumentError
+	if !errors.As(err, &arg) || !strings.Contains(err.Error(), "sudo cannot run") || fake.execCount() != 0 {
+		t.Fatalf("Run = %v (%d commands sent)", err, fake.execCount())
+	}
+}
+
+// The notes are the maintainer's text, but a line break in them must not look like a new entry of the list.
+func TestHostNotesCannotImitateTheStructureOfTheList(t *testing.T) {
+	fake := newFake()
+	fake.set(func(f *fakeHosts) {
+		f.infos[0].Notes = "fine\n\nother-host\n  containers: *\r\n  units: all   sudo: works\tend"
+	})
+	list := hostTool(t, fake, "host_list")
+	text, err := list.Run(context.Background(), gatekeeper.Call{RunID: "r"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(text, "\n  containers:") != 1 || strings.Count(text, "\n  units:") != 1 || strings.ContainsAny(text, "\r\t ") {
+		t.Fatalf("a note imitates the list:\n%q", text)
+	}
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "other-host") {
+			t.Fatalf("a note starts a line of its own: %q", text)
+		}
+	}
+}
+
 func TestAChangeThatCannotWorkIsRefusedBeforeAnApprovalIsAskedFor(t *testing.T) {
 	fake := newFake()
 	e := newHostRig(t, fake)
@@ -2909,16 +3132,17 @@ func TestAChangeThatCannotWorkIsRefusedBeforeAnApprovalIsAskedFor(t *testing.T) 
 		args map[string]any
 		want string
 	}{
-		"a container outside the pattern": {map[string]any{"host": "nas", "argv": []string{"docker", "restart", "other"}}, "does not match"},
-		"a unit the host does not list":   {map[string]any{"host": "nas", "argv": []string{"systemctl", "restart", "unknown.service"}}, "not one this host lists"},
-		"a unit without its suffix":       {map[string]any{"host": "nas", "argv": []string{"systemctl", "restart", "node_exporter"}}, "suffix"},
-		"a never-listed command":          {map[string]any{"host": "nas", "argv": []string{"rm", "-rf", "/"}}, "never runs this command"},
-		"a shell":                         {map[string]any{"host": "nas", "argv": []string{"bash", "-c", "id"}}, "never runs this command"},
+		"a container outside the pattern":  {map[string]any{"host": "nas", "argv": []string{"docker", "restart", "other"}}, "does not match"},
+		"a container that is only hex":     {map[string]any{"host": "nas", "argv": []string{"docker", "restart", "abc123"}}, "does not match"},
+		"a unit the host does not list":    {map[string]any{"host": "nas", "argv": []string{"systemctl", "restart", "unknown.service"}}, "not one this host lists"},
+		"a unit without its suffix":        {map[string]any{"host": "nas", "argv": []string{"systemctl", "restart", "node_exporter"}}, "suffix"},
+		"a never-listed command":           {map[string]any{"host": "nas", "argv": []string{"rm", "-rf", "/"}}, "never runs this command"},
+		"a shell":                          {map[string]any{"host": "nas", "argv": []string{"bash", "-c", "id"}}, "never runs this command"},
 		"an option of sudo as the program": {map[string]any{"host": "nas", "argv": []string{"-s", "docker"}}, "first word"},
-		"an environment assignment":       {map[string]any{"host": "nas", "argv": []string{"FOO=bar", "docker", "ps"}}, "first word"},
-		"a relative program":              {map[string]any{"host": "nas", "argv": []string{"./x"}}, "first word"},
-		"a host the run does not have":    {map[string]any{"host": "other", "argv": []string{"docker", "restart", "remedy-a"}}, "no host"},
-		"a newline":                       {map[string]any{"host": "nas", "argv": []string{"docker", "restart", "a\nb"}}, "control character"},
+		"an environment assignment":        {map[string]any{"host": "nas", "argv": []string{"FOO=bar", "docker", "ps"}}, "first word"},
+		"a relative program":               {map[string]any{"host": "nas", "argv": []string{"./x"}}, "first word"},
+		"a host the run does not have":     {map[string]any{"host": "other", "argv": []string{"docker", "restart", "remedy-a"}}, "no host"},
+		"a newline":                        {map[string]any{"host": "nas", "argv": []string{"docker", "restart", "a\nb"}}, "control character"},
 	} {
 		text, isErr := askHost(t, e, "toolu_"+strings.ReplaceAll(name, " ", "_"), "host_change", c.args)
 		if !isErr || !strings.Contains(text, c.want) {
@@ -2976,17 +3200,17 @@ func TestAnApprovedChangeIsNotRunWhenTheHostChangedMeanwhile(t *testing.T) {
 // A call that reached the database some other way is still not run: Run checks the never-list again.
 func TestAnApprovedChangeStillHonoursTheNeverList(t *testing.T) {
 	fake := newFake()
-	var change gatekeeper.Tool
-	for _, tool := range gatekeeper.HostTools(fake) {
-		if tool.Name == "host_change" {
-			change = tool
-		}
-	}
+	change := hostTool(t, fake, "host_change")
 	args, _ := json.Marshal(map[string]any{"host": "nas", "argv": []string{"rm", "-rf", "/"}})
 	_, err := change.Run(context.Background(), gatekeeper.Call{RunID: "r", Args: args, RequestedAt: time.Now()})
 	var arg gatekeeper.ArgumentError
 	if !errors.As(err, &arg) || fake.execCount() != 0 {
 		t.Fatalf("Run = %v (%d commands sent): a never-listed command must not run, approved or not", err, fake.execCount())
+	}
+	// Also words that are no words at all.
+	args, _ = json.Marshal(map[string]any{"host": "nas", "argv": []string{"docker", "restart", "remedy-a\n"}})
+	if _, err := change.Run(context.Background(), gatekeeper.Call{RunID: "r", Args: args, RequestedAt: time.Now()}); !errors.As(err, &arg) || fake.execCount() != 0 {
+		t.Fatalf("Run = %v (%d commands sent): words with a control character must not run", err, fake.execCount())
 	}
 }
 
@@ -3013,10 +3237,42 @@ func TestAFailureOfTheConnectionIsAFixedSentenceAndNothingElse(t *testing.T) {
 	if text, isErr := askHost(t, e, "toolu_1", "host_read", map[string]any{"host": "nas", "argv": []string{"uptime"}}); !isErr || text != "the host did not answer in time" {
 		t.Errorf("a sentence of the implementation: %q (%v)", text, isErr)
 	}
-	fake.set(func(f *fakeHosts) { f.err = errors.New("dial tcp 10.1.2.3:22: connect: connection refused for user remedy") })
+	fake.set(func(f *fakeHosts) {
+		f.err = errors.New("dial tcp 10.1.2.3:22: connect: connection refused for user remedy")
+	})
 	text, isErr := askHost(t, e, "toolu_2", "host_read", map[string]any{"host": "nas", "argv": []string{"uptime"}})
 	if !isErr || strings.Contains(text, "10.1.2.3") || strings.Contains(text, "remedy") || !strings.Contains(text, "the tool failed") {
 		t.Errorf("an unexpected error reached the agent as %q", text)
+	}
+}
+
+// The SIGTERM of a command that timed out is best effort, so the change may have happened. The agent is told that, and is
+// not told to run it again.
+func TestAChangeThatTimedOutHasAnUnknownOutcome(t *testing.T) {
+	fake := newFake()
+	e := newHostRig(t, fake)
+	fake.set(func(f *fakeHosts) { f.err = fmt.Errorf("exec: %w", gatekeeper.ErrHostTimeout) })
+	s := e.open(t, "toolu_1", "host_change", map[string]any{"host": "nas", "argv": []string{"docker", "restart", "remedy-drill"}})
+	call := e.pending(t)
+	if _, err := e.g.Decide(context.Background(), call.ID, true, "go on"); err != nil {
+		t.Fatal(err)
+	}
+	text, isErr := s.result()
+	if !isErr || !strings.Contains(text, "did not answer in time") || !strings.Contains(text, "may or may not have") {
+		t.Fatalf("answer = %q (%v): a timed-out change has an unknown outcome", text, isErr)
+	}
+	for _, retry := range []string{"retry", "try again", "run it again", "again"} {
+		if strings.Contains(strings.ToLower(text), retry) {
+			t.Errorf("the answer suggests a retry (%q): %q", retry, text)
+		}
+	}
+	if acts := activityOf(t, e.st, store.KindHostAction); len(acts) != 0 {
+		t.Fatalf("activity = %+v: the change is not known to have run", acts)
+	}
+
+	// A read that timed out is simply a read that timed out.
+	if text, isErr := askHost(t, e, "toolu_2", "host_read", map[string]any{"host": "nas", "argv": []string{"uptime"}}); !isErr || text != "the host did not answer in time" {
+		t.Errorf("a read that timed out: %q (%v)", text, isErr)
 	}
 }
 ```
@@ -3083,10 +3339,12 @@ package gatekeeper
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Jaydee94/remedy/internal/hostexec"
 	"github.com/Jaydee94/remedy/internal/store"
@@ -3105,20 +3363,30 @@ type HostInfo struct {
 	ChangedAt time.Time
 }
 
+// ErrHostTimeout is what HostAccess.Exec returns (it may be wrapped) when the host did not answer in time. For a read it
+// is a plain failure. For a change it means that the outcome is unknown: the command was sent, and the signal that asks it
+// to stop is best effort, so it may have run, wholly or in part.
+var ErrHostTimeout = errors.New("the host did not answer in time")
+
 // HostAccess is what the host tools need. Its implementation opens the sealed login and talks to the host; this package
 // never sees a credential.
 type HostAccess interface {
 	// Hosts returns the hosts of a run that can be used now: enabled, with a login and a pinned key. A host that was deleted
 	// or lost one of those is not in it.
 	Hosts(ctx context.Context, runID string) ([]HostInfo, error)
-	// Exec runs the argv on a host of the run, with sudo -n when sudo is set. It returns an ArgumentError with a fixed
-	// sentence for a failure of the connection; any other error is the control plane's and is not shown to the agent.
+	// Exec runs the argv on a host of the run, with sudo -n when sudo is set. A timeout is ErrHostTimeout. It returns an
+	// ArgumentError with a fixed sentence for any other failure of the connection; any other error is the control plane's
+	// and is not shown to the agent.
 	Exec(ctx context.Context, runID, host string, sudo bool, argv []string) (hostexec.Result, error)
 }
 
 const (
 	hostWaits       = " This changes the host, so the maintainer has to approve the call first, word for word; the call waits until they decide."
 	inspectNotShown = "[docker inspect printed something that could not be filtered, so it is not shown]"
+	readTimedOut    = "the host did not answer in time"
+	// changeTimedOut says what is known: nothing. It does not suggest to repeat the command.
+	changeTimedOut = "the host did not answer in time. The command was sent, so the change may or may not have happened, wholly or in part. " +
+		"Do not repeat it before you have looked at the host with host_read, and tell the maintainer what you know."
 )
 
 var hostNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$`)
@@ -3154,7 +3422,54 @@ func (h *hostTools) host(ctx context.Context, runID, name string) (HostInfo, err
 	return HostInfo{}, ArgumentError(fmt.Sprintf("there is no host %q available to you; host_list shows the hosts you may use", name))
 }
 
-func (i HostInfo) rules() hostexec.Rules { return hostexec.Rules{DockerPattern: i.DockerPattern, Units: i.Units} }
+func (i HostInfo) rules() hostexec.Rules {
+	return hostexec.Rules{DockerPattern: i.DockerPattern, Units: i.Units}
+}
+
+// exec runs the words and turns a timeout into what the agent may be told. The words of a change that timed out have an
+// unknown outcome. Every other error is passed on: an ArgumentError is shown, any other is "the tool failed".
+func (h *hostTools) exec(ctx context.Context, runID string, info HostInfo, sudo bool, argv []string, change bool) (hostexec.Result, error) {
+	res, err := h.a.Exec(ctx, runID, info.Name, sudo, argv)
+	switch {
+	case errors.Is(err, ErrHostTimeout) && change:
+		return hostexec.Result{}, ArgumentError(changeTimedOut)
+	case errors.Is(err, ErrHostTimeout):
+		return hostexec.Result{}, ArgumentError(readTimedOut)
+	}
+	return res, err
+}
+
+// visible checks that the words show as what they are: Display does not escape a right-to-left override, a zero-width
+// character, a no-break space or a line separator, and none of them is a control character. What the maintainer reads on the
+// approval card has to be the command that runs, so a change that has one is refused.
+func visible(argv []string) error {
+	for i, w := range argv {
+		for _, r := range w {
+			if !unicode.IsPrint(r) && r != ' ' {
+				return ArgumentError(fmt.Sprintf("word %d has a character that is invisible or not printable (a zero-width or right-to-left mark, a no-break space, a line separator, a private-use character); the maintainer reads the command as text, so such characters are refused", i+1))
+			}
+		}
+	}
+	return nil
+}
+
+// checkChange is everything about the words of a change that needs no host. It is applied when the call is made and again
+// before the approved call runs.
+func checkChange(argv []string) error {
+	if err := hostexec.ValidateArgv(argv); err != nil {
+		return ArgumentError(err.Error())
+	}
+	if err := visible(argv); err != nil {
+		return err
+	}
+	if err := hostexec.ValidateProgram(argv); err != nil {
+		return ArgumentError(err.Error())
+	}
+	if why := hostexec.NeverReason(argv); why != "" {
+		return ArgumentError("Remedy never runs this command, not even after an approval: " + why)
+	}
+	return nil
+}
 
 // decodeHostCall is the Decode of host_read and host_change. For a change it also applies the rules that need no host.
 func decodeHostCall(raw json.RawMessage, change bool) (json.RawMessage, error) {
@@ -3165,19 +3480,19 @@ func decodeHostCall(raw json.RawMessage, change bool) (json.RawMessage, error) {
 	if !hostNameRE.MatchString(v.Host) {
 		return nil, ArgumentError("host must be the name of one of your hosts; host_list shows them")
 	}
-	if err := hostexec.ValidateArgv(v.Argv); err != nil {
-		return nil, ArgumentError(err.Error())
-	}
 	if change {
-		if err := hostexec.ValidateProgram(v.Argv); err != nil {
-			return nil, ArgumentError(err.Error())
+		if err := checkChange(v.Argv); err != nil {
+			return nil, err
 		}
-		if why := hostexec.NeverReason(v.Argv); why != "" {
-			return nil, ArgumentError("Remedy never runs this command, not even after an approval: " + why)
-		}
+	} else if err := hostexec.ValidateArgv(v.Argv); err != nil {
+		return nil, ArgumentError(err.Error())
 	}
 	return json.Marshal(v)
 }
+
+// hostText is the text of a result for the model: valid UTF-8 (a host prints bytes). The caller's sanitize redacts it and
+// limits its size.
+func hostText(s string) string { return strings.ToValidUTF8(s, "�") }
 
 func (h *hostTools) list() Tool {
 	return Tool{
@@ -3204,7 +3519,7 @@ func (h *hostTools) list() Tool {
 			b.WriteString("The hosts you may use. The notes are the maintainer's text.\n")
 			for _, i := range infos {
 				fmt.Fprintf(&b, "\n%s\n", i.Name)
-				if i.Notes != "" {
+				if i.Notes != "" { // clip joins the words with single spaces: no line break of a note survives
 					fmt.Fprintf(&b, "  notes: %s\n", clip(i.Notes, 300))
 				}
 				containers := "none: docker commands are not possible"
@@ -3221,7 +3536,7 @@ func (h *hostTools) list() Tool {
 					b.WriteString("  sudo: does not work for this account, so host_change cannot run here\n")
 				}
 			}
-			return b.String(), nil
+			return hostText(b.String()), nil
 		},
 	}
 }
@@ -3258,20 +3573,32 @@ func (h *hostTools) read() Tool {
 				}
 				return "", ArgumentError(msg + " For anything else use host_change, which waits for the maintainer's approval.")
 			}
-			res, err := h.a.Exec(ctx, c.RunID, info.Name, verdict.Sudo, v.Argv)
+			res, err := h.exec(ctx, c.RunID, info, verdict.Sudo, v.Argv, false)
 			if err != nil {
 				return "", err
 			}
-			if hostexec.IsInspect(v.Argv) && res.Stdout != "" {
-				if filtered, ok := hostexec.FilterInspect(res.Stdout); ok && !res.StdoutCut {
-					res.Stdout = filtered
-				} else {
-					res.Stdout = inspectNotShown
-				}
-			}
-			return hostexec.FormatResult(info.Name, res), nil
+			return hostText(hostexec.FormatResult(info.Name, filterInspectResult(v.Argv, res))), nil
 		},
 	}
+}
+
+// filterInspectResult removes the values of the environment from the output of a docker inspect, in host_read and in an
+// approved host_change alike. What cannot be filtered is never shown as it is: the environment may hold secrets.
+func filterInspectResult(argv []string, res hostexec.Result) hostexec.Result {
+	if !hostexec.IsInspect(argv) || res.Stdout == "" {
+		return res
+	}
+	if filtered, ok := hostexec.FilterInspect(res.Stdout); ok && !res.StdoutCut {
+		res.Stdout = filtered
+	} else {
+		res.Stdout = inspectNotShown
+		res.StdoutCut = false
+	}
+	return res
+}
+
+func sudoNoneError(info HostInfo) error {
+	return ArgumentError("sudo cannot run without a password for the account on " + info.Name + ", so a change cannot run; the maintainer has to fix the sudoers file and test the connection again")
 }
 
 func (h *hostTools) change() Tool {
@@ -3294,7 +3621,7 @@ func (h *hostTools) change() Tool {
 				return err
 			}
 			if info.SudoNone {
-				return ArgumentError("sudo cannot run without a password for the account on " + info.Name + ", so a change cannot run; the maintainer has to fix the sudoers file and test the connection again")
+				return sudoNoneError(info)
 			}
 			if err := hostexec.ChangeCheck(v.Argv, info.rules()); err != nil {
 				return ArgumentError(err.Error())
@@ -3311,22 +3638,30 @@ func (h *hostTools) change() Tool {
 			if err := json.Unmarshal(c.Args, &v); err != nil {
 				return "", err
 			}
-			// Checked again on the stored arguments: a call that reached the database some other way is still not run.
-			if why := hostexec.NeverReason(v.Argv); why != "" {
-				return "", ArgumentError("Remedy never runs this command, not even after an approval: " + why)
+			// Checked again on the stored arguments: a call that reached the database some other way is still not run, and
+			// the words are the ones the maintainer read.
+			if err := checkChange(v.Argv); err != nil {
+				return "", err
 			}
 			info, err := h.host(ctx, c.RunID, v.Host)
 			if err != nil {
 				return "", err
 			}
-			if info.ChangedAt.After(c.RequestedAt) {
+			// The time of the call has second resolution, so a change in the second of the question counts as after it.
+			if !info.ChangedAt.Before(c.RequestedAt.Truncate(time.Second)) {
 				return "", ArgumentError("the host " + info.Name + " changed after the approval was asked for (its address, its key or its login), so nothing was run; ask again if the command is still wanted")
 			}
-			res, err := h.a.Exec(ctx, c.RunID, info.Name, true, v.Argv)
+			if info.SudoNone {
+				return "", sudoNoneError(info)
+			}
+			if err := hostexec.ChangeCheck(v.Argv, info.rules()); err != nil {
+				return "", ArgumentError(err.Error())
+			}
+			res, err := h.exec(ctx, c.RunID, info, true, v.Argv, true)
 			if err != nil {
 				return "", err
 			}
-			return hostexec.FormatResult(info.Name, res), nil
+			return hostText(hostexec.FormatResult(info.Name, filterInspectResult(v.Argv, res))), nil
 		},
 	}
 }
@@ -3691,6 +4026,10 @@ func (a *HostAccess) Exec(ctx context.Context, runID, host string, sudo bool, ar
 		Limit: hostexec.StreamLimit, Timeout: hostCommandTimeout,
 		CanaryCommand: hostexec.CanaryCommand(), CanaryWant: hostexec.CanaryWant(),
 	})
+	if errors.Is(err, sshhost.ErrTimeout) {
+		// The host tools tell a timed-out change apart from a timed-out read: its outcome is unknown.
+		return hostexec.Result{}, gatekeeper.ErrHostTimeout
+	}
 	if err != nil {
 		return hostexec.Result{}, gatekeeper.ArgumentError(hostFailure(err))
 	}
