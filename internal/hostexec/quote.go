@@ -43,8 +43,10 @@ func Display(argv []string) string {
 	return strings.Join(words, " ")
 }
 
-// canaryText has every character a shell treats as special, but no control character (arguments may not have one).
-const canaryText = "a b'c\"d$(e)`f`;g|h&i>j<k*l?m\\n~#{}!"
+// canaryText has every character a shell treats as special, but no control character (arguments may not have one). It ends
+// with a backslash pair, a backslash before a quote and a trailing backslash: shells such as fish read those differently
+// inside single quotes, so a shell that does not print the canary exactly is refused.
+const canaryText = "a b'c\"d$(e)`f`;g|h&i>j<k*l?m\\n~#{}!" + "\\\\x" + "\\'y" + "\\"
 
 // CanaryCommand is run first in every connection. The account's shell must print the canary exactly: a shell that does not
 // (fish, csh, a restricted shell) does not read quoted words the way the rest of this package assumes.

@@ -60,6 +60,8 @@ var corpus = [][]string{
 	{"a b", "c'd", `e"f`},
 	{"$HOME", "$(id)", "`id`", "${x}", "$1", "$$"},
 	{`a\b`, `\`, `\\`, `\'`, `\n`},
+	{"x\\"},
+	{"a\nb"},
 	{"*", "?", "[a-z]", "~", "~root", "{a,b}", "#", "!", "a;b", "a&&b", "a|b", "a>b", "a<b", "&", "(", ")"},
 	{"-n", "--", "-e", "="},
 	{"ünïcode ✓", "日本語"},
@@ -121,6 +123,28 @@ func TestTheCanaryRoundTripsThroughARealShell(t *testing.T) {
 		if err != nil || string(out) != hostexec.CanaryWant() {
 			t.Errorf("%s: canary printed %q, %v; want %q", shell, out, err, hostexec.CanaryWant())
 		}
+	}
+}
+
+// The canary must contain what separates a POSIX shell from one that reads single quotes differently (fish, csh).
+func TestTheCanaryHasWhatSeparatesPOSIXFromOtherShells(t *testing.T) {
+	want := hostexec.CanaryWant()
+	if !strings.Contains(want, `\\`) {
+		t.Error("the canary has no backslash pair")
+	}
+	if !strings.Contains(want, `\'`) {
+		t.Error("the canary has no backslash directly before a single quote")
+	}
+	if !strings.HasSuffix(want, `\`) {
+		t.Error("the canary does not end with a backslash")
+	}
+	for i := 0; i < len(want); i++ {
+		if c := want[i]; c < 0x20 || c == 0x7f {
+			t.Errorf("the canary has control byte %#x at offset %d", c, i)
+		}
+	}
+	if got, wantCmd := hostexec.CanaryCommand(), "printf %s "+hostexec.Quote(want); got != wantCmd {
+		t.Errorf("CanaryCommand() = %q, want %q", got, wantCmd)
 	}
 }
 

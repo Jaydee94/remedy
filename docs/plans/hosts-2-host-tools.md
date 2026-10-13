@@ -137,6 +137,8 @@ var corpus = [][]string{
 	{"a b", "c'd", `e"f`},
 	{"$HOME", "$(id)", "`id`", "${x}", "$1", "$$"},
 	{`a\b`, `\`, `\\`, `\'`, `\n`},
+	{"x\\"},
+	{"a\nb"},
 	{"*", "?", "[a-z]", "~", "~root", "{a,b}", "#", "!", "a;b", "a&&b", "a|b", "a>b", "a<b", "&", "(", ")"},
 	{"-n", "--", "-e", "="},
 	{"ünïcode ✓", "日本語"},
@@ -198,6 +200,28 @@ func TestTheCanaryRoundTripsThroughARealShell(t *testing.T) {
 		if err != nil || string(out) != hostexec.CanaryWant() {
 			t.Errorf("%s: canary printed %q, %v; want %q", shell, out, err, hostexec.CanaryWant())
 		}
+	}
+}
+
+// The canary must contain what separates a POSIX shell from one that reads single quotes differently (fish, csh).
+func TestTheCanaryHasWhatSeparatesPOSIXFromOtherShells(t *testing.T) {
+	want := hostexec.CanaryWant()
+	if !strings.Contains(want, `\\`) {
+		t.Error("the canary has no backslash pair")
+	}
+	if !strings.Contains(want, `\'`) {
+		t.Error("the canary has no backslash directly before a single quote")
+	}
+	if !strings.HasSuffix(want, `\`) {
+		t.Error("the canary does not end with a backslash")
+	}
+	for i := 0; i < len(want); i++ {
+		if c := want[i]; c < 0x20 || c == 0x7f {
+			t.Errorf("the canary has control byte %#x at offset %d", c, i)
+		}
+	}
+	if got, wantCmd := hostexec.CanaryCommand(), "printf %s "+hostexec.Quote(want); got != wantCmd {
+		t.Errorf("CanaryCommand() = %q, want %q", got, wantCmd)
 	}
 }
 
@@ -274,8 +298,10 @@ func Display(argv []string) string {
 	return strings.Join(words, " ")
 }
 
-// canaryText has every character a shell treats as special, but no control character (arguments may not have one).
-const canaryText = "a b'c\"d$(e)`f`;g|h&i>j<k*l?m\\n~#{}!"
+// canaryText has every character a shell treats as special, but no control character (arguments may not have one). It ends
+// with a backslash pair, a backslash before a quote and a trailing backslash: shells such as fish read those differently
+// inside single quotes, so a shell that does not print the canary exactly is refused.
+const canaryText = "a b'c\"d$(e)`f`;g|h&i>j<k*l?m\\n~#{}!" + "\\\\x" + "\\'y" + "\\"
 
 // CanaryCommand is run first in every connection. The account's shell must print the canary exactly: a shell that does not
 // (fish, csh, a restricted shell) does not read quoted words the way the rest of this package assumes.
