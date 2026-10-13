@@ -12,6 +12,11 @@ import (
 // the quoting that keeps a word a word cannot be trusted. Nothing but the canary was sent.
 var ErrShell = errors.New("the account's shell does not treat quoted words like a POSIX shell")
 
+// ErrLostAfterStart means the command was started on the host and the connection then broke before its exit status
+// arrived: the command may have run, may still run, or may have failed, so the outcome is unknown. It is not a dial
+// failure (ErrUnreachable) and not a timeout (ErrTimeout).
+var ErrLostAfterStart = errors.New("the connection broke after the command started")
+
 const (
 	defaultExecLimit   = 24 << 10
 	defaultExecTimeout = 30 * time.Second
@@ -44,20 +49,34 @@ func (c *Client) RunSplit(ctx context.Context, cmd string, limit int, timeout ti
 	defer sess.Close()
 	out, errw := &capWriter{max: limit}, &capWriter{max: limit}
 	sess.Stdout, sess.Stderr = out, errw
-	done := make(chan error, 1)
-	go func() { done <- sess.Run(cmd) }()
+	// Start and Wait apart, so that a failure to start (nothing ran) differs from a connection that breaks while the
+	// command runs (unknown outcome).
+	type ended struct {
+		err     error
+		started bool
+	}
+	done := make(chan ended, 1)
+	go func() {
+		if err := sess.Start(cmd); err != nil {
+			done <- ended{err: err}
+			return
+		}
+		done <- ended{err: sess.Wait(), started: true}
+	}()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
-	case err := <-done:
+	case e := <-done:
 		res := ExecResult{}
 		res.Stdout, res.StdoutCut = out.result()
 		res.Stderr, res.StderrCut = errw.result()
 		var ee *ssh.ExitError
 		switch {
-		case errors.As(err, &ee):
+		case errors.As(e.err, &ee):
 			res.ExitCode = ee.ExitStatus()
-		case err != nil:
+		case e.err != nil && e.started:
+			return res, ErrLostAfterStart
+		case e.err != nil:
 			return res, ErrUnreachable
 		}
 		return res, nil
@@ -93,6 +112,10 @@ func (s *Service) Exec(ctx context.Context, hostID int64, t Target, cred Credent
 	}
 	defer cl.Close()
 	canary, err := cl.RunSplit(ctx, o.CanaryCommand, canaryLimit, canaryTimeout)
+	if errors.Is(err, ErrLostAfterStart) {
+		// Only the canary had started: nothing that changes a host has run yet.
+		return ExecResult{}, ErrUnreachable
+	}
 	if err != nil {
 		return ExecResult{}, err
 	}

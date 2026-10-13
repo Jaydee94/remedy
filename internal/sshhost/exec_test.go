@@ -206,6 +206,35 @@ func TestExecAsksTheRemoteCommandToStopWhenTheContextEnds(t *testing.T) {
 	waitForTerm(t, srv, "after the context ended")
 }
 
+func TestExecSaysSoWhenTheConnectionBreaksAfterTheCommandStarted(t *testing.T) {
+	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{
+		canaryCmd: {Out: canaryWant}, "the change": {Drop: true},
+	}})
+	var svc sshhost.Service
+	_, err := svc.Exec(context.Background(), 1, targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv), "the change", execOpts())
+	if !errors.Is(err, sshhost.ErrLostAfterStart) {
+		t.Fatalf("err = %v, want ErrLostAfterStart", err)
+	}
+	if errors.Is(err, sshhost.ErrUnreachable) || errors.Is(err, sshhost.ErrTimeout) {
+		t.Fatalf("err = %v: the outcome is unknown, which is neither unreachable nor a timeout", err)
+	}
+	if seen := srv.Seen(); !reflect.DeepEqual(seen, []string{canaryCmd, "the change"}) {
+		t.Fatalf("the server received %q", seen)
+	}
+}
+
+func TestExecCallsAConnectionThatBreaksDuringTheCanaryUnreachable(t *testing.T) {
+	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{canaryCmd: {Drop: true}}})
+	var svc sshhost.Service
+	_, err := svc.Exec(context.Background(), 1, targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv), "the change", execOpts())
+	if !errors.Is(err, sshhost.ErrUnreachable) {
+		t.Fatalf("err = %v, want ErrUnreachable: nothing of ours had run yet", err)
+	}
+	if seen := srv.Seen(); !reflect.DeepEqual(seen, []string{canaryCmd}) {
+		t.Fatalf("the server received %q: the command must not follow a canary that broke", seen)
+	}
+}
+
 func TestRunSplitUsesTheDefaultsForAZeroLimitAndTimeout(t *testing.T) {
 	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: map[string]sshtest.Reply{"quick": {Out: "out", Stderr: "err"}}})
 	cl, err := sshhost.Dial(context.Background(), targetOf(srv), passwordCred(t, "pw"), lineOf(t, srv))

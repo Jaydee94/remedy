@@ -24,6 +24,7 @@ type Reply struct {
 	Stderr string // written to the channel's stderr stream
 	Exit   int
 	Delay  time.Duration // how long the server waits before it answers
+	Drop   bool          // break the connection once the command has started: no output, no exit status
 }
 
 type Config struct {
@@ -166,12 +167,12 @@ func (s *Server) handle(nc net.Conn) {
 		if err != nil {
 			return
 		}
-		s.session(ch, creqs)
+		s.session(ch, creqs, nc)
 	}
 }
 
 // session answers one exec request per session, then closes the channel.
-func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
+func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request, nc net.Conn) {
 	defer ch.Close()
 	for req := range reqs {
 		if req.Type != "exec" {
@@ -197,6 +198,13 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 			r = Reply{Out: "unknown command: " + p.Command + "\n", Exit: 127}
 		}
 		time.Sleep(r.Delay)
+		if r.Drop {
+			s.mu.Lock()
+			s.serving--
+			s.mu.Unlock()
+			_ = nc.Close()
+			return
+		}
 		if r.Stderr != "" {
 			_, _ = io.WriteString(ch.Stderr(), r.Stderr)
 		}

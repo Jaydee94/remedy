@@ -15,8 +15,10 @@ import (
 // an action that nobody receives the result of.
 var ErrNoWaiter = errors.New("the agent is no longer waiting for this call")
 
-// executeTimeout bounds the execution of an approved tool.
-const executeTimeout = 30 * time.Second
+// executeTimeout bounds the execution of an approved tool. A host tool needs a dial (10 s), the canary (10 s) and the
+// command (30 s), so a slow change would otherwise end as an unknown outcome here before sshhost's own limits apply;
+// 75 s is their sum with slack.
+const executeTimeout = 75 * time.Second
 
 // waiterSet is the handlers that wait for the decision of one call, and the timer that abandons the call when the last
 // of them has gone.
