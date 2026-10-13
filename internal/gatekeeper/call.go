@@ -94,8 +94,13 @@ func (g *Gatekeeper) callTool(w http.ResponseWriter, r *http.Request, rn run.Run
 	var refused error
 	if known {
 		args, refused = tool.Decode(p.Arguments)
-		if refused == nil && tool.Mutating && tool.Check != nil {
-			refused = tool.Check(r.Context(), args)
+		if refused == nil && tool.Mutating {
+			if tool.Check != nil {
+				refused = tool.Check(r.Context(), args)
+			}
+			if refused == nil && tool.CheckRun != nil {
+				refused = tool.CheckRun(r.Context(), rn.ID, args)
+			}
 		}
 	} else {
 		refused = ArgumentError("unknown tool " + p.Name)

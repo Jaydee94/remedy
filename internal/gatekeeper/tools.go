@@ -13,9 +13,12 @@ import (
 	"github.com/Jaydee94/remedy/internal/run"
 )
 
-// GroupCluster is the group of the Kubernetes tools. A tool of a group is offered only to runs that have it; a tool
+// GroupCluster is the group of the Kubernetes tools; GroupHost is the group of the host tools. A tool of a group is offered only to runs that have it; a tool
 // without a group is offered to every run with gatekeeper access.
 const GroupCluster = "cluster"
+
+// GroupHost is the group of the host tools. They are offered only to runs that were started with hosts.
+const GroupHost = "host"
 
 // Tool is something an agent can call. Its arguments are validated by Decode, strictly: a tool never sees an argument
 // that Decode did not return.
@@ -37,12 +40,17 @@ type Tool struct {
 	// for: asking the maintainer to approve something that cannot work wastes their attention. Its error is shown to
 	// the agent like an argument error.
 	Check func(ctx context.Context, args json.RawMessage) error
+	// CheckRun is Check with the run's id, for a tool whose precondition depends on the run (the hosts it was given). It
+	// runs after Check, before an approval is asked for, and its error is shown to the agent like an argument error.
+	CheckRun func(ctx context.Context, runID string, args json.RawMessage) error
 	// Incident returns the incident a call with these (decoded) arguments is about, or 0. Optional.
 	Incident func(args json.RawMessage) int64
 	// Activity is optional and for a mutating tool: the text of the entry the activity log gets when the approved call
 	// succeeded. The entry is written in the transaction that records the result, so an action is logged or it did not
 	// happen.
 	Activity func(args json.RawMessage) string
+	// ActivityKind is the kind of the activity entry that Activity's text gets. Empty means store.KindClusterAction.
+	ActivityKind string
 	// Run executes the tool with decoded arguments and returns the text for the model.
 	Run func(ctx context.Context, c Call) (string, error)
 }
@@ -86,6 +94,8 @@ func (t Tool) offeredTo(r run.Run) bool {
 		return true
 	case GroupCluster:
 		return r.Cluster
+	case GroupHost:
+		return r.HostCount > 0
 	}
 	return false
 }
@@ -98,7 +108,7 @@ func validateTool(t Tool) error {
 		return fmt.Errorf("tool name %q is not lower case letters, digits and underscores", t.Name)
 	case t.Decode == nil || t.Run == nil:
 		return fmt.Errorf("tool %q needs Decode and Run", t.Name)
-	case t.Group != "" && t.Group != GroupCluster:
+	case t.Group != "" && t.Group != GroupCluster && t.Group != GroupHost:
 		return fmt.Errorf("tool %q is in the group %q, which does not exist", t.Name, t.Group)
 	}
 	return nil

@@ -220,7 +220,11 @@ func (g *Gatekeeper) execute(ctx context.Context, tool Tool, call store.ToolCall
 	text = sanitize(text)
 	var recorded error
 	if tool.Activity != nil {
-		recorded = g.store.FinishToolCallWithActivity(ctx, call.ID, text, tool.Activity(call.Arguments))
+		kind := tool.ActivityKind
+		if kind == "" {
+			kind = store.KindClusterAction
+		}
+		recorded = g.store.FinishToolCallWithActivityKind(ctx, call.ID, text, tool.Activity(call.Arguments), kind)
 	} else {
 		recorded = g.store.FinishToolCall(ctx, call.ID, store.CallSucceeded, text, "")
 	}
