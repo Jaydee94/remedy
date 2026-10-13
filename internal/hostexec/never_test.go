@@ -160,6 +160,20 @@ func TestNeverListReviewGaps(t *testing.T) {
 		"su - (a login shell)":       {"su", "-"},
 		"ssh with a bare argument":   {"ssh", "x"},
 		"systemctl restart ssh -q":   {"systemctl", "restart", "ssh", "-q"}, // a known false positive: the word ssh has arguments after it
+		"su root -c uptime":          {"su", "root", "-c", "uptime"},        // su is refused always: its -c runs a shell string
+		"su -c with ;sh":             {"su", "-c", "id;sh"},
+		"su -c with ;rm -rf /":       {"su", "-c", "id;rm -rf /"},
+		"su -c with &&sh":            {"su", "-c", "true&&sh"},
+		"su -c with |sh":             {"su", "-c", "id|sh"},
+		"su -c with $(sh)":           {"su", "-c", "$(sh)"},
+		"su -c with (sh)":            {"su", "-c", "(sh)"},
+		"su -c with backtick sh":     {"su", "-c", "`sh`"},
+		"su -c id":                   {"su", "-c", "id"},
+		"env -S":                     {"env", "-S", "x"},
+		"env -iS (cluster)":          {"env", "-iS", "x"},
+		"env --split-string=":        {"env", "--split-string=x"},
+		"env --sp prefix":            {"env", "--sp", "x"},
+		"doas -u root id":            {"doas", "-u", "root", "id"},
 	}
 	for name, argv := range refused {
 		if why := hostexec.NeverReason(argv); why == "" {
@@ -169,7 +183,7 @@ func TestNeverListReviewGaps(t *testing.T) {
 	allowed := [][]string{
 		{"systemctl", "restart", "ssh"},   // a restart keeps the access
 		{"echo", "hello world"},           // a word with a space is only data
-		{"su", "root", "-c", "uptime"},    // a root command with no shell string is not refused by the su rule
+		{"env", "-i", "FOO=1", "uptime"},  // env without -S is not refused
 		{"chmod", "644", "/tmp/dir/../x"}, // cleaned, it stays under /tmp
 	}
 	for _, argv := range allowed {

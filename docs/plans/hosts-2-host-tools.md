@@ -333,7 +333,7 @@ git commit -m "feat(hostexec): quoting, the command line and the shell canary" -
 **Interfaces:**
 - Produces: `hostexec.ArgError` (a string type with `Error()`), `hostexec.MaxWords = 64`, `MaxWordBytes = 1024`, `MaxLineBytes = 4096`, `hostexec.ValidateArgv(argv []string) error`, `hostexec.ValidateProgram(argv []string) error`, `hostexec.NeverReason(argv []string) string` (empty when allowed).
 
-> Implementation note (review fix round 1): the code below is the committed code. Two rules differ from the first draft of this brief: the ssh-family rule refuses only when an argument follows (so `systemctl restart ssh` is allowed and `systemctl restart ssh -q` is a documented false positive), and the paths, long options, shell strings and root-shell rules of the review are pinned in `TestNeverListReviewGaps`.
+> Implementation note (review fix rounds 1 and 2): the code below is the committed code. Differences from the first draft of this brief: the ssh-family rule refuses only when an argument follows (so `systemctl restart ssh` is allowed and `systemctl restart ssh -q` is a documented false positive); the review rules are pinned in `TestNeverListReviewGaps` (path cleaning, long-option prefixes, shell strings split on shell metacharacters, sudo -s/-i/-e, nsenter, chroot, su and doas always refused, env -S refused, dd targets cleaned).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -592,6 +592,20 @@ func TestNeverListReviewGaps(t *testing.T) {
 		"su - (a login shell)":       {"su", "-"},
 		"ssh with a bare argument":   {"ssh", "x"},
 		"systemctl restart ssh -q":   {"systemctl", "restart", "ssh", "-q"}, // a known false positive: the word ssh has arguments after it
+		"su root -c uptime":          {"su", "root", "-c", "uptime"},        // su is refused always: its -c runs a shell string
+		"su -c with ;sh":             {"su", "-c", "id;sh"},
+		"su -c with ;rm -rf /":       {"su", "-c", "id;rm -rf /"},
+		"su -c with &&sh":            {"su", "-c", "true&&sh"},
+		"su -c with |sh":             {"su", "-c", "id|sh"},
+		"su -c with $(sh)":           {"su", "-c", "$(sh)"},
+		"su -c with (sh)":            {"su", "-c", "(sh)"},
+		"su -c with backtick sh":     {"su", "-c", "`sh`"},
+		"su -c id":                   {"su", "-c", "id"},
+		"env -S":                     {"env", "-S", "x"},
+		"env -iS (cluster)":          {"env", "-iS", "x"},
+		"env --split-string=":        {"env", "--split-string=x"},
+		"env --sp prefix":            {"env", "--sp", "x"},
+		"doas -u root id":            {"doas", "-u", "root", "id"},
 	}
 	for name, argv := range refused {
 		if why := hostexec.NeverReason(argv); why == "" {
@@ -601,7 +615,7 @@ func TestNeverListReviewGaps(t *testing.T) {
 	allowed := [][]string{
 		{"systemctl", "restart", "ssh"},   // a restart keeps the access
 		{"echo", "hello world"},           // a word with a space is only data
-		{"su", "root", "-c", "uptime"},    // a root command with no shell string is not refused by the su rule
+		{"env", "-i", "FOO=1", "uptime"},  // env without -S is not refused
 		{"chmod", "644", "/tmp/dir/../x"}, // cleaned, it stays under /tmp
 	}
 	for _, argv := range allowed {
@@ -701,6 +715,7 @@ package hostexec
 import (
 	"path"
 	"strings"
+	"unicode"
 )
 
 // protectedNames are files that grant access. A command that has one of them among its words is refused.
@@ -810,12 +825,19 @@ func touchesSystem(words []string) bool {
 	return false
 }
 
-// expand returns the words of argv and, for a word with several whitespace-separated tokens, its tokens after it. A shell
-// string handed to su -c or env -S is a command line, so each of its tokens is seen as a possible program as well.
+// shellSeparator says whether a rune ends a token of a shell line: white space, or a character a shell reads as an operator,
+// a quote, an expansion or an escape.
+func shellSeparator(r rune) bool {
+	return unicode.IsSpace(r) || strings.ContainsRune(";&|()<>`$'\"\\", r)
+}
+
+// expand returns the words of argv and, for a word that a shell would split (white space, ; & | ( ) < > ` $ ' " \), its
+// tokens after it. A shell string handed to su -c or env -S is a command line, so each of its tokens is seen as a possible
+// program as well.
 func expand(argv []string) []string {
 	out := append([]string(nil), argv...)
 	for _, w := range argv {
-		if f := strings.Fields(w); len(f) > 1 {
+		if f := strings.FieldsFunc(w, shellSeparator); len(f) != 1 || f[0] != w {
 			out = append(out, f...)
 		}
 	}
@@ -872,9 +894,13 @@ func programReason(prog string, rest []string) string {
 		}
 	case in(prog, "sh", "bash", "dash", "zsh", "ksh", "fish", "csh", "tcsh", "ash", "mksh"):
 		return "it starts a shell, which would run code that cannot be shown or judged"
-	case in(prog, "su", "doas"):
-		if !hasFlag(rest, "c", "--command") {
-			return "it starts a root shell, since no -c command follows"
+	case prog == "su":
+		return "su starts a shell as another user, and its -c runs a string as a shell line; sudo -n is the only privilege path"
+	case prog == "doas":
+		return "doas runs commands as another user; sudo -n is the only privilege path"
+	case prog == "env":
+		if hasFlag(rest, "S", "--split-string") {
+			return "env -S runs a string as a command line, which cannot be shown or judged"
 		}
 	case in(prog, "nsenter", "chroot"):
 		return "it enters another namespace or root, which is a shell by another name"

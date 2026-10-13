@@ -3,6 +3,7 @@ package hostexec
 import (
 	"path"
 	"strings"
+	"unicode"
 )
 
 // protectedNames are files that grant access. A command that has one of them among its words is refused.
@@ -112,12 +113,19 @@ func touchesSystem(words []string) bool {
 	return false
 }
 
-// expand returns the words of argv and, for a word with several whitespace-separated tokens, its tokens after it. A shell
-// string handed to su -c or env -S is a command line, so each of its tokens is seen as a possible program as well.
+// shellSeparator says whether a rune ends a token of a shell line: white space, or a character a shell reads as an operator,
+// a quote, an expansion or an escape.
+func shellSeparator(r rune) bool {
+	return unicode.IsSpace(r) || strings.ContainsRune(";&|()<>`$'\"\\", r)
+}
+
+// expand returns the words of argv and, for a word that a shell would split (white space, ; & | ( ) < > ` $ ' " \), its
+// tokens after it. A shell string handed to su -c or env -S is a command line, so each of its tokens is seen as a possible
+// program as well.
 func expand(argv []string) []string {
 	out := append([]string(nil), argv...)
 	for _, w := range argv {
-		if f := strings.Fields(w); len(f) > 1 {
+		if f := strings.FieldsFunc(w, shellSeparator); len(f) != 1 || f[0] != w {
 			out = append(out, f...)
 		}
 	}
@@ -174,9 +182,13 @@ func programReason(prog string, rest []string) string {
 		}
 	case in(prog, "sh", "bash", "dash", "zsh", "ksh", "fish", "csh", "tcsh", "ash", "mksh"):
 		return "it starts a shell, which would run code that cannot be shown or judged"
-	case in(prog, "su", "doas"):
-		if !hasFlag(rest, "c", "--command") {
-			return "it starts a root shell, since no -c command follows"
+	case prog == "su":
+		return "su starts a shell as another user, and its -c runs a string as a shell line; sudo -n is the only privilege path"
+	case prog == "doas":
+		return "doas runs commands as another user; sudo -n is the only privilege path"
+	case prog == "env":
+		if hasFlag(rest, "S", "--split-string") {
+			return "env -S runs a string as a command line, which cannot be shown or judged"
 		}
 	case in(prog, "nsenter", "chroot"):
 		return "it enters another namespace or root, which is a shell by another name"
