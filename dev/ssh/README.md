@@ -12,6 +12,10 @@ in-process test can fake. `docker` and `systemctl` (and `journalctl`) are small 
 `dev/ssh/sudoers-remedy` is exactly the output of `sshhost.Snippet` for those rules. `TestTheTestbedSudoersFileIsWhatTheSnippetWrites`
 (no Docker needed) fails when the snippet changes and prints the text to put in the file.
 
+Remedy runs `sudo -n -- docker ...` by name, so sudo finds `docker` through its own `secure_path`, not through the login's `PATH`. The
+path in a sudoers line (`/usr/bin/docker`) must be where sudo finds it: check with `sudo -l` and `sudo command -v docker`. The testbed's
+fakes are in `/usr/bin` for that reason.
+
 You need `docker` and `ssh-keygen`.
 
 ```sh
