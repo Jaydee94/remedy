@@ -14,6 +14,7 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/app"
 	"github.com/Jaydee94/remedy/internal/config"
+	"github.com/Jaydee94/remedy/internal/settings"
 	"github.com/Jaydee94/remedy/internal/store"
 	"github.com/Jaydee94/remedy/web"
 )
@@ -96,7 +97,7 @@ func main() {
 		}
 	}()
 
-	log.Info("control plane listening", "addr", cfg.Addr, "db", cfg.DBPath, "pollInterval", cfg.PollInterval)
+	log.Info("control plane listening", "addr", cfg.Addr, "db", cfg.DBPath, "pollInterval", a.Settings.Duration(settings.PollInterval))
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("server failed", "err", err)
 		os.Exit(1)
