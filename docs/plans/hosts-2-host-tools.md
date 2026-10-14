@@ -10,6 +10,8 @@
 
 **Spec:** [`docs/specs/2026-10-11-hosts-2-tools-design.md`](../specs/2026-10-11-hosts-2-tools-design.md); umbrella [`docs/specs/2026-10-09-hosts-and-skills-design.md`](../specs/2026-10-09-hosts-and-skills-design.md).
 
+> **Status:** executed. The code blocks below are the plan as it was executed; review fixes changed some of them afterwards (the never-list, `ChangeCheck` with absolute program paths, the `docker inspect` filter, the timeout phases in `sshhost.Exec`, `HostAccess`, the snippet's `secure_path` note). The code and the spec are the authority; the plan is kept as the record of how the work was cut.
+
 ## Global Constraints
 
 - Everything in the repo is English: code, comments, docs, commit messages, UI copy. Commit messages end with the line `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`; pull request titles are conventional commits.
