@@ -38,6 +38,8 @@ const (
 	KindRunCancelled      = "run_cancelled"
 	// KindClusterAction is an action in the cluster that was approved and done.
 	KindClusterAction = "cluster_action"
+	// KindHostAction is an approved command on a host that was run.
+	KindHostAction = "host_action"
 )
 
 const (
@@ -266,6 +268,11 @@ func (s *Store) FinishToolCall(ctx context.Context, id int64, status, result, er
 // is in the audit log of its run and in the activity log, or in neither. It returns ErrNotFound when the call is not
 // running.
 func (s *Store) FinishToolCallWithActivity(ctx context.Context, id int64, result, summary string) error {
+	return s.FinishToolCallWithActivityKind(ctx, id, result, summary, KindClusterAction)
+}
+
+// FinishToolCallWithActivityKind is FinishToolCallWithActivity with the kind of the activity entry passed in.
+func (s *Store) FinishToolCallWithActivityKind(ctx context.Context, id int64, result, summary, kind string) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		if err := oneRow(tx.ExecContext(ctx, `
 			UPDATE tool_calls SET status = ?, result = ?, error = '', finished_at = ?
@@ -276,7 +283,7 @@ func (s *Store) FinishToolCallWithActivity(ctx context.Context, id int64, result
 		if err != nil {
 			return err
 		}
-		return callActivity(ctx, tx, KindClusterAction, summary, c)
+		return callActivity(ctx, tx, kind, summary, c)
 	})
 }
 

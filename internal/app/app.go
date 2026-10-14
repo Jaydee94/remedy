@@ -107,6 +107,8 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 			tools = append(tools, gatekeeper.ClusterActionTools(kubeReader, kubeWriter, cfg.Cluster, nil)...)
 		}
 	}
+	hostSvc := &sshhost.Service{} // one lock per host, shared by the host routes and the host tools
+	tools = append(tools, gatekeeper.HostTools(&HostAccess{Store: st, Key: cfg.MasterKey, SSH: hostSvc, Log: log})...)
 	gate := gatekeeper.New(gatekeeper.Config{
 		Store: st,
 		Tools: tools,
@@ -132,7 +134,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		Gatekeeper:   gate,
 		Cluster:      clusterCapabilities(cfg.Cluster, kubeReader, kubeWriter),
 		RunnerStatus: server.NewRunnerStatus(),
-		Hosts:        &sshhost.Service{},
+		Hosts:        hostSvc,
 	}
 	var handler, internalHandler http.Handler
 	if cfg.InternalAddr != "" {

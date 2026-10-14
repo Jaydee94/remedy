@@ -39,7 +39,7 @@ func nasCommands() map[string]sshtest.Reply {
 }
 
 // newHostEnv starts a server over st (a new store if nil) that seals with key, next to an SSH test server, and logs in.
-func newHostEnv(t *testing.T, st *store.Store, dbPath string, key secret.Key, ssh *sshtest.Server) *hostEnv {
+func newHostEnv(t *testing.T, st *store.Store, dbPath string, key secret.Key, ssh *sshtest.Server, opts ...func(*server.Deps)) *hostEnv {
 	t.Helper()
 	if st == nil {
 		dbPath = filepath.Join(t.TempDir(), "test.db")
@@ -49,9 +49,13 @@ func newHostEnv(t *testing.T, st *store.Store, dbPath string, key secret.Key, ss
 		}
 		t.Cleanup(func() { _ = st.Close() })
 	}
-	ts := httptest.NewServer(server.New(server.Deps{
+	d := server.Deps{
 		Store: st, Auth: auth.New(password), RunnerToken: runnerToken, Key: key, Hosts: &sshhost.Service{},
-	}))
+	}
+	for _, o := range opts {
+		o(&d)
+	}
+	ts := httptest.NewServer(server.New(d))
 	t.Cleanup(ts.Close)
 	jar, _ := cookiejar.New(nil)
 	e := &hostEnv{ts: ts, store: st, dbPath: dbPath, ssh: ssh, client: &http.Client{Jar: jar}}

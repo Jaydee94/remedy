@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Host } from './api.ts'
 import { timeAgo } from './incidents.ts'
-import { credentialText, hostLine, parseUnits, statusSentence, statusView, sudoText, validAddress, validDockerPattern, validHostName } from './hosts.ts'
+import { credentialText, hostLine, parseUnits, editableKey, statusSentence, statusView, sudoText, usableHost, validAddress, validDockerPattern, validHostName } from './hosts.ts'
 
 function host(over: Partial<Host> = {}): Host {
   return {
@@ -88,5 +88,23 @@ describe('input checks', () => {
     assert.equal(validDockerPattern('remedy-*'), true)
     assert.equal(validDockerPattern('a*b'), false)
     assert.equal(validDockerPattern('a b'), false)
+  })
+})
+
+describe('usableHost and editableKey', () => {
+  const cred = { kind: 'password' as const, hint: 'set', updatedAt: 'x' }
+  it('a host is usable when it is enabled, has a login and a pinned key', () => {
+    assert.equal(usableHost(host({ credential: cred, pinnedFingerprint: 'SHA256:a' })), true)
+    assert.equal(usableHost(host({ credential: cred })), false)
+    assert.equal(usableHost(host({ pinnedFingerprint: 'SHA256:a' })), false)
+    assert.equal(usableHost(host({ credential: cred, pinnedFingerprint: 'SHA256:a', enabled: false })), false)
+  })
+
+  it('the key of the form changes with the fields and not with the pin or the login', () => {
+    const a = host()
+    assert.equal(editableKey(a), editableKey({ ...a, updatedAt: 'later', pinnedFingerprint: 'SHA256:a', credential: cred, status: 'ok' }))
+    assert.notEqual(editableKey(a), editableKey({ ...a, notes: 'changed' }))
+    assert.notEqual(editableKey(a), editableKey({ ...a, systemdUnits: ['x.service'] }))
+    assert.notEqual(editableKey(a), editableKey({ ...a, port: 2222 }))
   })
 })

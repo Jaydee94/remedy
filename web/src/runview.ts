@@ -1,4 +1,5 @@
 import type { Run, RunEvent, RunStatus } from './api.ts'
+import { argvOf, commandText } from './hostcmd.ts'
 
 /** One thing the agent did: what it did in words, the raw line, and whether it has an answer yet. */
 export interface Step {
@@ -83,6 +84,16 @@ export function stepLabel(tool: string, input: unknown): string {
       return v('app') ? `Asked to refresh the application ${v('app')}` : 'Asked to refresh an application'
     case 'argo_sync':
       return v('app') ? `Asked to sync the application ${v('app')}` : 'Asked to sync an application'
+    case 'host_list':
+      return 'Looked at the hosts'
+    case 'host_read': {
+      const words = argvOf(input)
+      return v('host') && words ? `Read on ${v('host')}: ${commandText(words)}` : 'Read from a host'
+    }
+    case 'host_change': {
+      const words = argvOf(input)
+      return v('host') && words ? `Asked to run ${commandText(words)} on ${v('host')}` : 'Asked to run a command on a host'
+    }
     case 'Read':
       return v('file_path') ? `Read ${v('file_path')}` : 'Read a file'
     case 'Grep':
@@ -185,7 +196,12 @@ export function runFailure(run: Run): { title: string; text: string } | undefine
 
 /** The line under the status of a run: its kind, its tools and its time. */
 export function runMeta(run: Run, time: string): string {
-  return [run.role === 'responder' ? 'Responder' : 'Ad-hoc', run.mcp && 'tools', run.cluster && 'cluster', time].filter(Boolean).join(' · ')
+  const hosts = run.hosts?.length
+    ? `hosts ${run.hosts.map((h) => h.name).join(', ')}`
+    : run.hostCount
+      ? `${run.hostCount} host${run.hostCount === 1 ? '' : 's'}`
+      : false
+  return [run.role === 'responder' ? 'Responder' : 'Ad-hoc', run.mcp && 'tools', run.cluster && 'cluster', hosts, time].filter(Boolean).join(' · ')
 }
 
 /** One line of text for the raw output: the text of a result, a plain string, or the start of the JSON. */

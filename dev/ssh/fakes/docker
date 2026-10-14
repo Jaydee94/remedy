@@ -1,0 +1,21 @@
+#!/bin/sh
+# A fake docker for the SSH testbed. It knows the verbs the host tools use and nothing else.
+case "$1" in
+ps)
+  printf 'CONTAINER ID   NAMES\nabc123         remedy-drill\ndef456         other\n'
+  ;;
+logs)
+  # docker logs --tail N NAME
+  printf 'log line 1 of %s\nlog line 2 of %s\n' "$4" "$4"
+  ;;
+inspect)
+  printf '[{"Id":"abc123","Name":"/%s","Config":{"Env":["DB_PASSWORD=hunter2","PATH=/usr/bin"]},"State":{"Running":true}}]\n' "$2"
+  ;;
+start | stop | restart)
+  printf '%s\n' "$2"
+  ;;
+*)
+  echo "fake docker: not supported: $*" >&2
+  exit 1
+  ;;
+esac

@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -14,11 +15,12 @@ const maxPromptBytes = 20_000
 
 func (s *srv) createRun(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Provider   string `json:"provider"`
-		Prompt     string `json:"prompt"`
-		Tools      bool   `json:"tools"`
-		Cluster    bool   `json:"cluster"`
-		IncidentID *int64 `json:"incidentId"`
+		Provider   string  `json:"provider"`
+		Prompt     string  `json:"prompt"`
+		Tools      bool    `json:"tools"`
+		Cluster    bool    `json:"cluster"`
+		IncidentID *int64  `json:"incidentId"`
+		Hosts      []int64 `json:"hosts"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid request body")
@@ -52,32 +54,76 @@ func (s *srv) createRun(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "a question about an incident needs the gatekeeper tools")
 		return
 	}
-	if req.IncidentID != nil {
-		created, err := s.d.Store.CreateQuestionRun(r.Context(), req.Provider, req.Prompt, *req.IncidentID, req.Cluster)
-		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "incident not found")
-			return
-		}
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "could not create run")
-			return
-		}
-		writeJSON(w, http.StatusCreated, created)
+	if req.IncidentID != nil && *req.IncidentID <= 0 {
+		writeErr(w, http.StatusNotFound, "incident not found")
 		return
 	}
-	create := s.d.Store.CreateRun
-	switch {
-	case req.Cluster:
-		create = s.d.Store.CreateClusterRun
-	case req.Tools:
-		create = s.d.Store.CreateToolRun
+	if len(req.Hosts) > 0 {
+		switch {
+		case !req.Tools:
+			writeErr(w, http.StatusBadRequest, "hosts need the gatekeeper tools")
+			return
+		case len(req.Hosts) > maxRunHosts:
+			writeErr(w, http.StatusBadRequest, "at most 8 hosts")
+			return
+		case s.d.Hosts == nil:
+			writeErr(w, http.StatusConflict, "no hosts are configured")
+			return
+		}
+		for _, id := range req.Hosts {
+			e, err := s.d.Store.GetHost(r.Context(), id)
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusConflict, fmt.Sprintf("the host %d does not exist", id))
+				return
+			}
+			if err != nil {
+				writeErr(w, http.StatusInternalServerError, "could not load the host")
+				return
+			}
+			if why := notReady(e); why != "" {
+				writeErr(w, http.StatusConflict, fmt.Sprintf("the host %s is not ready: %s", e.Host.Name, why))
+				return
+			}
+		}
 	}
-	created, err := create(r.Context(), req.Provider, req.Prompt)
-	if err != nil {
+	opts := store.RunOptions{Provider: req.Provider, Prompt: req.Prompt, Tools: req.Tools, Cluster: req.Cluster, HostIDs: req.Hosts}
+	if req.IncidentID != nil {
+		opts.IncidentID = *req.IncidentID
+	}
+	created, err := s.d.Store.CreateRunWith(r.Context(), opts)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeErr(w, http.StatusNotFound, "incident not found")
+		return
+	case errors.Is(err, store.ErrNoSuchHost):
+		writeErr(w, http.StatusConflict, "a host does not exist")
+		return
+	case err != nil:
 		writeErr(w, http.StatusInternalServerError, "could not create run")
 		return
 	}
 	writeJSON(w, http.StatusCreated, created)
+}
+
+const maxRunHosts = 8
+
+// runHost is all a run's answer says about a host: no address, account, key or login.
+type runHost struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// notReady says why a host cannot be given to a run, or "" when it can.
+func notReady(e store.HostEntry) string {
+	switch {
+	case !e.Host.Enabled:
+		return "it is disabled"
+	case e.Credential == nil:
+		return "it has no login"
+	case e.Host.PinnedKey == "":
+		return "its key is not pinned"
+	}
+	return ""
 }
 
 func (s *srv) listRuns(w http.ResponseWriter, r *http.Request) {
@@ -123,10 +169,18 @@ func (s *srv) getRun(w http.ResponseWriter, r *http.Request) {
 	// A run that waits for an approval says which one, so that the UI can link to it.
 	view := struct {
 		run.Run
-		WaitingApproval int64 `json:"waitingApproval,omitempty"`
+		WaitingApproval int64     `json:"waitingApproval,omitempty"`
+		Hosts           []runHost `json:"hosts,omitempty"`
 	}{Run: got}
 	if got.MCP {
 		view.WaitingApproval, _ = s.d.Store.PendingApprovalForRun(r.Context(), got.ID)
+	}
+	if got.HostCount > 0 {
+		if entries, err := s.d.Store.RunHosts(r.Context(), got.ID); err == nil {
+			for _, e := range entries {
+				view.Hosts = append(view.Hosts, runHost{ID: e.Host.ID, Name: e.Host.Name})
+			}
+		}
 	}
 	writeJSON(w, http.StatusOK, view)
 }

@@ -66,6 +66,7 @@ type Run struct {
 	MCP             bool            `json:"mcp,omitempty"`             // the run has access to the gatekeeper
 	CancelRequested bool            `json:"cancelRequested,omitempty"` // the maintainer cancelled the run
 	Cluster         bool            `json:"cluster,omitempty"`         // the run has the cluster tools of the gatekeeper
+	HostCount       int             `json:"hostCount,omitempty"`       // the number of hosts the run was started with
 }
 
 type Event struct {

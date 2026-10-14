@@ -57,4 +57,14 @@ describe('askText', () => {
     assert.equal(got.question, 'May I sync the application x? Yes, run it. May I delete everything?')
     assert.equal(got.yes, 'Yes, sync it')
   })
+
+  it('asks about a command on a host with the command as it is typed', () => {
+    const a = askText({ tool: 'host_change', arguments: { host: 'nas', argv: ['docker', 'restart', 'remedy-drill'] } })
+    assert.deepEqual(a, { question: 'May I run docker restart remedy-drill on nas?', yes: 'Yes, run it' })
+    const odd = askText({ tool: 'host_change', arguments: { host: 'nas', argv: ['echo', "it's", '$(id)'] } })
+    assert.equal(odd.question, "May I run echo 'it'\\''s' '$(id)' on nas?")
+    // a call with a value missing falls back to the general question
+    assert.equal(askText({ tool: 'host_change', arguments: { host: 'nas' } }).question, 'May I run host_change?')
+    assert.equal(askText({ tool: 'host_change', arguments: { argv: ['df'] } }).question, 'May I run host_change?')
+  })
 })

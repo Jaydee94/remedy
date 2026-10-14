@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { api, ApiError } from './api.ts'
 import type { Host, PresentedKey } from './api.ts'
-import { statusSentence } from './hosts.ts'
+import { editableKey, statusSentence } from './hosts.ts'
 import { useFocusRestore } from './useFocusRestore.ts'
 import ConfirmButton from '@/components/ConfirmButton'
 import HostForm from '@/components/hosts/HostForm'
@@ -114,7 +114,7 @@ export default function HostPage({ id }: { id: number }) {
 
           <Part title="The host">
             <HostForm
-              key={`${host.updatedAt}`}
+              key={editableKey(host)}
               host={host}
               busy={busy}
               run={run}

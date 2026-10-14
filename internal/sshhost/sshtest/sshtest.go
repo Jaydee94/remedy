@@ -24,6 +24,10 @@ type Reply struct {
 	Stderr string // written to the channel's stderr stream
 	Exit   int
 	Delay  time.Duration // how long the server waits before it answers
+	Drop   bool          // break the connection once the command has started: no output, no exit status
+	// Reject answers the exec request with "no": the command does not run. DropAtRequest breaks the connection instead of
+	// answering it: the client cannot know whether the command started.
+	Reject, DropAtRequest bool
 }
 
 type Config struct {
@@ -44,6 +48,8 @@ type Server struct {
 	attempts int
 	serving  int
 	maxServe int
+	seen     []string
+	signals  []string
 	conns    map[net.Conn]struct{}
 }
 
@@ -88,6 +94,20 @@ func (s *Server) Attempts() int { s.mu.Lock(); defer s.mu.Unlock(); return s.att
 // MaxConcurrent is the highest number of exec sessions that were being served at the same time. A session stops counting
 // before its exit status is sent, so a client that has seen the exit status never races the count of the next one.
 func (s *Server) MaxConcurrent() int { s.mu.Lock(); defer s.mu.Unlock(); return s.maxServe }
+
+// Seen returns the command lines the server received, in order. A canary that failed means the next line never arrives.
+func (s *Server) Seen() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.seen...)
+}
+
+// Signals returns the names of the signals (such as "TERM") the client sent to a running command, in order.
+func (s *Server) Signals() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.signals...)
+}
 
 func (s *Server) attempt() { s.mu.Lock(); s.attempts++; s.mu.Unlock() }
 
@@ -150,12 +170,12 @@ func (s *Server) handle(nc net.Conn) {
 		if err != nil {
 			return
 		}
-		s.session(ch, creqs)
+		s.session(ch, creqs, nc)
 	}
 }
 
 // session answers one exec request per session, then closes the channel.
-func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
+func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request, nc net.Conn) {
 	defer ch.Close()
 	for req := range reqs {
 		if req.Type != "exec" {
@@ -167,18 +187,38 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 			_ = req.Reply(false, nil)
 			return
 		}
+		r, ok := s.cfg.Commands[p.Command]
+		if !ok {
+			r = Reply{Out: "unknown command: " + p.Command + "\n", Exit: 127}
+		}
+		if r.Reject { // the server says no to the exec request itself: the command does not run
+			_ = req.Reply(false, nil)
+			return
+		}
+		if r.DropAtRequest { // the connection breaks before the exec request is answered
+			s.mu.Lock()
+			s.seen = append(s.seen, p.Command)
+			s.mu.Unlock()
+			_ = nc.Close()
+			return
+		}
 		_ = req.Reply(true, nil)
+		go s.watch(reqs) // the requests that arrive while the command is being served, such as a signal
 		s.mu.Lock()
+		s.seen = append(s.seen, p.Command)
 		s.serving++
 		if s.serving > s.maxServe {
 			s.maxServe = s.serving
 		}
 		s.mu.Unlock()
-		r, ok := s.cfg.Commands[p.Command]
-		if !ok {
-			r = Reply{Out: "unknown command: " + p.Command + "\n", Exit: 127}
-		}
 		time.Sleep(r.Delay)
+		if r.Drop {
+			s.mu.Lock()
+			s.serving--
+			s.mu.Unlock()
+			_ = nc.Close()
+			return
+		}
 		if r.Stderr != "" {
 			_, _ = io.WriteString(ch.Stderr(), r.Stderr)
 		}
@@ -188,6 +228,23 @@ func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 		s.mu.Unlock()
 		_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{uint32(r.Exit)}))
 		return
+	}
+}
+
+// watch records the signal requests of a session until its channel closes. The server does not act on them.
+func (s *Server) watch(reqs <-chan *ssh.Request) {
+	for req := range reqs {
+		if req.Type == "signal" {
+			var p struct{ Signal string }
+			if ssh.Unmarshal(req.Payload, &p) == nil {
+				s.mu.Lock()
+				s.signals = append(s.signals, p.Signal)
+				s.mu.Unlock()
+			}
+		}
+		if req.WantReply {
+			_ = req.Reply(false, nil)
+		}
 	}
 }
 

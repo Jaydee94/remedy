@@ -20,6 +20,10 @@ export interface Run {
   mcp?: boolean
   /** The run has the cluster tools of the gatekeeper (it was started with the chip "Read the cluster"). */
   cluster?: boolean
+  /** The number of hosts the run was started with. */
+  hostCount?: number
+  /** The hosts of the run by name. Only `GET /api/runs/{id}` has them. */
+  hosts?: { id: number; name: string }[]
   /** The maintainer cancelled the run; the runner is stopping the agent. */
   cancelRequested?: boolean
   /** The id of the approval the run waits for. Only `GET /api/runs/{id}` has it, and only while there is one. */
@@ -289,6 +293,11 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler
 }
 
+/** The body of POST /api/runs. Hosts are left out when there are none, so that every older body stays the same. */
+export function runBody(prompt: string, tools = false, cluster = false, incidentId?: number, hosts: number[] = []) {
+  return { prompt, tools, cluster, ...(incidentId === undefined ? {} : { incidentId }), ...(hosts.length > 0 ? { hosts } : {}) }
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const epoch = handlerEpoch
   const res = await fetch(path, {
@@ -311,8 +320,8 @@ export const api = {
   logout: () => request<void>('POST', '/api/logout'),
   me: () => request<{ user: string }>('GET', '/api/me'),
   listRuns: () => request<Run[]>('GET', '/api/runs'),
-  createRun: (prompt: string, tools = false, cluster = false, incidentId?: number) =>
-    request<Run>('POST', '/api/runs', incidentId === undefined ? { prompt, tools, cluster } : { prompt, tools, cluster, incidentId }),
+  createRun: (prompt: string, tools = false, cluster = false, incidentId?: number, hosts: number[] = []) =>
+    request<Run>('POST', '/api/runs', runBody(prompt, tools, cluster, incidentId, hosts)),
   getCapabilities: () => request<Capabilities>('GET', '/api/capabilities'),
   getRun: (id: string) => request<Run>('GET', `/api/runs/${id}`),
   listToolCalls: (runId: string) => request<ToolCall[]>('GET', `/api/runs/${runId}/tool-calls`),

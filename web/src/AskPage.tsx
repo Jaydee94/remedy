@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { api, ApiError } from './api.ts'
-import type { Capabilities, Run } from './api.ts'
-import { askHint, recentRun, toggleCluster, toggleTools } from './askpage.ts'
+import type { Capabilities, Host, Run } from './api.ts'
+import { askHint, recentRun, toggleCluster, toggleHost, toggleTools } from './askpage.ts'
 import type { AskSwitches } from './askpage.ts'
+import { usableHost } from './hosts.ts'
 import { useShellState } from './shellContext.ts'
 import RecentRunRow from '@/components/ask/RecentRunRow'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -28,12 +29,18 @@ export default function AskPage() {
   const [prompt, setPrompt] = useState('')
   const [switches, setSwitches] = useState<AskSwitches>({ tools: false, cluster: false })
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
+  const [hostList, setHostList] = useState<Host[]>([])
+  const [hosts, setHosts] = useState<number[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [listError, setListError] = useState('')
 
   useEffect(() => {
     api.getCapabilities().then(setCapabilities).catch(() => setCapabilities(null))
+  }, [])
+
+  useEffect(() => {
+    api.listHosts().then((l) => setHostList(l.filter(usableHost))).catch(() => setHostList([]))
   }, [])
 
   useEffect(() => {
@@ -66,7 +73,7 @@ export default function AskPage() {
     setBusy(true)
     setError('')
     try {
-      const created = await api.createRun(prompt.trim(), switches.tools, switches.cluster)
+      const created = await api.createRun(prompt.trim(), switches.tools, switches.cluster, undefined, hosts)
       void navigate(`/runs/${created.id}`)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not start the run')
@@ -104,7 +111,10 @@ export default function AskPage() {
           className="w-full resize-y border-0 bg-transparent font-serif text-[17px] leading-relaxed text-foreground outline-none placeholder:text-subtle"
         />
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" aria-pressed={switches.tools} onClick={() => setSwitches(toggleTools)} className={chipClass(switches.tools)}>
+          <button type="button" aria-pressed={switches.tools} onClick={() => {
+              if (switches.tools) setHosts([])
+              setSwitches(toggleTools)
+            }} className={chipClass(switches.tools)}>
             Use gatekeeper tools
           </button>
           {capabilities?.cluster.read && (
@@ -112,6 +122,20 @@ export default function AskPage() {
               Read the cluster
             </button>
           )}
+          {hostList.map((h) => (
+            <button
+              key={h.id}
+              type="button"
+              aria-pressed={hosts.includes(h.id)}
+              onClick={() => {
+                setHosts((s) => toggleHost(s, h.id))
+                setSwitches((s) => (s.tools ? s : { ...s, tools: true }))
+              }}
+              className={chipClass(hosts.includes(h.id))}
+            >
+              Look at {h.name}
+            </button>
+          ))}
           <button
             type="submit"
             aria-disabled={!ready}
@@ -125,7 +149,7 @@ export default function AskPage() {
           </button>
         </div>
       </form>
-      <p className="-mt-3 pl-1 text-[13px] text-muted-foreground">{askHint(switches, capabilities)}<span className="hidden sm:inline"> Cmd or Ctrl and Enter send.</span></p>
+      <p className="-mt-3 pl-1 text-[13px] text-muted-foreground">{askHint(switches, capabilities, hostList.filter((h) => hosts.includes(h.id)).map((h) => h.name))}<span className="hidden sm:inline"> Cmd or Ctrl and Enter send.</span></p>
       {error && (
         <span role="alert" className="-mt-3 pl-1 text-[13px] text-destructive">
           {error}

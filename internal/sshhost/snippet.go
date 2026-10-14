@@ -52,6 +52,7 @@ func Snippet(in SnippetInput) (SnippetOutput, error) {
 	var b strings.Builder
 	b.WriteString("# Save as /etc/sudoers.d/remedy with: sudo visudo -f /etc/sudoers.d/remedy\n")
 	b.WriteString("# Read every line. Check the paths first: command -v docker; command -v systemctl\n")
+	b.WriteString("# Remedy runs sudo -n -- docker ... by name; sudo finds it through its own secure_path, so the path in these lines must be where sudo finds docker.\n")
 	b.WriteString("# Reading the journal needs the group systemd-journal, not sudo.\n")
 	if p := in.DockerPattern; p != "" {
 		b.WriteString("# In sudoers a * also matches spaces and further arguments, so a pattern with a star limits less than it looks.\n")

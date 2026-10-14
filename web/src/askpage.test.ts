@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Capabilities, Run, ToolCall } from './api.ts'
-import { askHint, recentRun, toggleCluster, toggleTools } from './askpage.ts'
+import { askHint, joinNames, recentRun, toggleCluster, toggleHost, toggleTools } from './askpage.ts'
 
 const caps = (over: Partial<Capabilities['cluster']> = {}): Capabilities => ({ cluster: { read: true, write: true, namespaces: ['guestbook', 'monitoring'], ...over } })
 const run = (over: Partial<Run> = {}): Run => ({ id: 'r1', provider: 'claude', prompt: 'why is it slow?', status: 'succeeded', result: '', sessionId: '', costUsd: 0, createdAt: '2026-10-05T09:00:00Z', role: 'adhoc', ...over }) as Run
@@ -65,5 +65,27 @@ describe('recentRun', () => {
     const r = recentRun(run({ mcp: true, cluster: true }), [])
     assert.deepEqual([r.tools, r.cluster, r.at], [true, true, '2026-10-05T09:00:00Z'])
     assert.deepEqual([recentRun(run(), []).tools, recentRun(run(), []).cluster], [false, false])
+  })
+})
+
+describe('hosts on the ask page', () => {
+  it('toggles a host in the selection without touching the others', () => {
+    assert.deepEqual(toggleHost([], 3), [3])
+    assert.deepEqual(toggleHost([3], 4), [3, 4])
+    assert.deepEqual(toggleHost([3, 4], 3), [4])
+  })
+
+  it('joins names in words', () => {
+    assert.equal(joinNames(['nas']), 'nas')
+    assert.equal(joinNames(['nas', 'alpha']), 'nas and alpha')
+    assert.equal(joinNames(['a', 'b', 'c']), 'a, b and c')
+  })
+
+  it('says what is possible with a host: reading is free, a change waits', () => {
+    const hint = askHint({ tools: true, cluster: false }, null, ['nas'])
+    assert.match(hint, /I can look at nas/)
+    assert.match(hint, /every change waits for your decision under Needs you/)
+    assert.match(hint, /exact command/)
+    assert.equal(askHint({ tools: true, cluster: false }, null, []), askHint({ tools: true, cluster: false }, null))
   })
 })

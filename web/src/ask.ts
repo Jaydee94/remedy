@@ -1,4 +1,5 @@
 import type { ToolCall } from './api.ts'
+import { argvOf, commandText } from './hostcmd.ts'
 
 /** What Remedy says when a call waits for a decision: the question, and the label of the Yes button. */
 export interface Ask {
@@ -43,6 +44,12 @@ export function askText(call: Pick<ToolCall, 'tool' | 'arguments'>): Ask {
     case 'argo_sync': {
       const app = a('app')
       if (app) return { question: `May I sync the application ${app}?`, yes: 'Yes, sync it' }
+      break
+    }
+    case 'host_change': {
+      const host = a('host')
+      const words = argvOf(call.arguments)
+      if (host && words) return { question: `May I run ${commandText(words)} on ${host}?`, yes: 'Yes, run it' }
       break
     }
     case 'incident_add_note': {
