@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/Jaydee94/remedy/internal/hostexec"
+	"github.com/Jaydee94/remedy/internal/redact"
 	"github.com/Jaydee94/remedy/internal/store"
 )
 
@@ -47,7 +48,9 @@ type HostAccess interface {
 const (
 	hostWaits       = " This changes the host, so the maintainer has to approve the call first, word for word; the call waits until they decide."
 	inspectNotShown = "[docker inspect printed something that could not be filtered, so it is not shown]"
-	readTimedOut    = "the host did not answer in time"
+	// maxActivityCommand is the most characters of a command that the activity log shows.
+	maxActivityCommand = 200
+	readTimedOut       = "the host did not answer in time"
 	// changeTimedOut says what is known: nothing. It does not suggest to repeat the command.
 	changeTimedOut = "the host did not answer in time. The command was sent, so the change may or may not have happened, wholly or in part. " +
 		"Do not repeat it before you have looked at the host with host_read, and tell the maintainer what you know."
@@ -296,7 +299,13 @@ func (h *hostTools) change() Tool {
 		Activity: func(args json.RawMessage) string {
 			var v hostCall
 			_ = json.Unmarshal(args, &v)
-			return fmt.Sprintf("Ran %s on %s", hostexec.Display(v.Argv), v.Host)
+			// The words are the agent's: redacted like a result, and clipped. Only the host's name as the agent spelled it is
+			// known here (it is a plain name; the lookup that ran the command ignored the case).
+			cmd := []rune(redact.Redact(hostexec.Display(v.Argv)))
+			if len(cmd) > maxActivityCommand {
+				cmd = append(cmd[:maxActivityCommand], '.', '.', '.')
+			}
+			return fmt.Sprintf("Ran %s on %s", string(cmd), v.Host)
 		},
 		Run: func(ctx context.Context, c Call) (string, error) {
 			var v hostCall

@@ -481,6 +481,28 @@ func TestAnInspectWithAFormatIsNeverShown(t *testing.T) {
 	}
 }
 
+// The activity entry is built from the agent's words: it is clipped and redacted like a result.
+func TestTheActivityOfAChangeIsClippedAndRedacted(t *testing.T) {
+	fake := newFake()
+	e := newHostRig(t, fake)
+	approveChange(t, e, "toolu_long", "echo", strings.Repeat("x", 600))
+	approveChange(t, e, "toolu_secret", "echo", "ghp_DISTINCTIVE0123456789abcdefghijklmnopqrst")
+	acts := activityOf(t, e.st, store.KindHostAction)
+	if len(acts) != 2 {
+		t.Fatalf("activity = %+v", acts)
+	}
+	long, secret := acts[0].Summary, acts[1].Summary
+	if strings.Contains(secret, "xxxx") {
+		long, secret = secret, long // the newest entry comes first
+	}
+	if len(long) > len("Ran ")+200+len("...")+len(" on nas") || !strings.HasSuffix(long, "... on nas") {
+		t.Errorf("a long command is not clipped (%d bytes): %q", len(long), long)
+	}
+	if strings.Contains(secret, "ghp_DISTINCTIVE") || !strings.HasPrefix(secret, "Ran echo ") {
+		t.Errorf("a secret in the command reached the activity log: %q", secret)
+	}
+}
+
 // A change in the second the question was asked in counts as after it: the time of the call has second resolution.
 func TestAHostChangedInTheSecondOfTheQuestionIsStale(t *testing.T) {
 	fake := newFake()

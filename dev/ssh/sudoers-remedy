@@ -1,5 +1,6 @@
 # Save as /etc/sudoers.d/remedy with: sudo visudo -f /etc/sudoers.d/remedy
 # Read every line. Check the paths first: command -v docker; command -v systemctl
+# Remedy runs sudo -n -- docker ... by name; sudo finds it through its own secure_path, so the path in these lines must be where sudo finds docker.
 # Reading the journal needs the group systemd-journal, not sudo.
 # In sudoers a * also matches spaces and further arguments, so a pattern with a star limits less than it looks.
 # A name without a star is an exact match.

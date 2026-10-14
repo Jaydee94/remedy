@@ -108,7 +108,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		}
 	}
 	hostSvc := &sshhost.Service{} // one lock per host, shared by the host routes and the host tools
-	tools = append(tools, gatekeeper.HostTools(&HostAccess{Store: st, Key: cfg.MasterKey, SSH: hostSvc})...)
+	tools = append(tools, gatekeeper.HostTools(&HostAccess{Store: st, Key: cfg.MasterKey, SSH: hostSvc, Log: log})...)
 	gate := gatekeeper.New(gatekeeper.Config{
 		Store: st,
 		Tools: tools,

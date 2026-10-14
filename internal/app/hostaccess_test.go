@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"log/slog"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -225,6 +227,7 @@ func TestExecFailuresAreFixedSentencesThatNameNothingOfTheHost(t *testing.T) {
 	bad := newAccessRig(t, map[string]sshtest.Reply{hostexec.CanaryCommand(): {Out: "not the canary"}})
 	_, err = bad.access.Exec(ctx, bad.runID, "nas", false, []string{"uptime"})
 	check("a shell that fails the canary", err, "shell is not supported")
+	check("a shell that fails the canary", err, "startup file")
 	if seen := bad.srv.Seen(); len(seen) != 1 {
 		t.Fatalf("the server received %q: only the canary may be sent", seen)
 	}
@@ -377,5 +380,42 @@ func TestExecWithALoginOrPinThatCannotBeUsedIsAFixedSentence(t *testing.T) {
 	check("a pin that is not a key", exec(), "not set up for use")
 	if r.srv.Attempts() != 0 {
 		t.Fatal("a login was offered with a pin that is not a key")
+	}
+}
+
+// The failure of a command is logged for the maintainer at debug level: its category and the host's name, and nothing the
+// library or the host said (an address, an account, a credential, a port).
+func TestExecLogsOnlyTheCategoryOfAFailure(t *testing.T) {
+	ctx := context.Background()
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	r := newAccessRig(t, okCmds())
+	r.access.Log = log
+	r.setPassword(t, "wrong-secret-pw")
+	_, _ = r.access.Exec(ctx, r.runID, "nas", false, []string{"uptime"})
+	r.srv.SetHostSigner(sshtest.NewSigner(t))
+	r.setPassword(t, "pw")
+	_, _ = r.access.Exec(ctx, r.runID, "nas", false, []string{"uptime"})
+
+	bad := newAccessRig(t, map[string]sshtest.Reply{hostexec.CanaryCommand(): {Out: "not the canary"}})
+	bad.access.Log = log
+	_, _ = bad.access.Exec(ctx, bad.runID, "nas", false, []string{"uptime"})
+
+	gone := newAccessRig(t, okCmds())
+	gone.access.Log = log
+	gone.srv.Close()
+	_, _ = gone.access.Exec(ctx, gone.runID, "nas", false, []string{"uptime"})
+
+	out := buf.String()
+	for _, want := range []string{"category=auth", "category=hostkey", "category=shell", "category=refused", "host=nas"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the log lacks %q:\n%s", want, out)
+		}
+	}
+	for _, leak := range []string{"127.0.0.1", "wrong-secret-pw", "pw", "remedy", "tcp", "ssh:", "unable to authenticate", "dial", r.srv.Host, strconv.Itoa(r.srv.Port), strconv.Itoa(gone.srv.Port)} {
+		if strings.Contains(out, leak) {
+			t.Errorf("%q is in the log:\n%s", leak, out)
+		}
 	}
 }

@@ -209,13 +209,15 @@ func (g *Gatekeeper) awaitDecision(w http.ResponseWriter, r *http.Request, req r
 // execute runs an approved call with the arguments that were stored when the approval was asked for, and records the
 // outcome.
 func (g *Gatekeeper) execute(ctx context.Context, tool Tool, call store.ToolCall) toolResult {
-	ctx, cancel := context.WithTimeout(ctx, executeTimeout)
+	ctx, cancel := context.WithTimeout(ctx, g.execTimeout)
 	defer cancel()
+	// What the tool did is recorded also when its time ran out: the row must not stay running until the run ends.
+	done := context.WithoutCancel(ctx)
 	text, err := tool.Run(ctx, Call{RunID: call.RunID, CallID: call.ID, Args: call.Arguments, RequestedAt: call.CreatedAt})
 	if err != nil {
 		g.log.Warn("an approved tool failed", "run", call.RunID, "tool", call.Tool, "err", err)
 		msg := toolErrorMessage(err)
-		_ = g.store.FinishToolCall(ctx, call.ID, store.CallFailed, "", msg)
+		_ = g.store.FinishToolCall(done, call.ID, store.CallFailed, "", msg)
 		g.notify(call.ID)
 		return errorResult(msg)
 	}
@@ -226,9 +228,9 @@ func (g *Gatekeeper) execute(ctx context.Context, tool Tool, call store.ToolCall
 		if kind == "" {
 			kind = store.KindClusterAction
 		}
-		recorded = g.store.FinishToolCallWithActivityKind(ctx, call.ID, text, tool.Activity(call.Arguments), kind)
+		recorded = g.store.FinishToolCallWithActivityKind(done, call.ID, text, tool.Activity(call.Arguments), kind)
 	} else {
-		recorded = g.store.FinishToolCall(ctx, call.ID, store.CallSucceeded, text, "")
+		recorded = g.store.FinishToolCall(done, call.ID, store.CallSucceeded, text, "")
 	}
 	if recorded != nil {
 		g.log.Error("could not record the result of an approved tool", "call", call.ID, "err", recorded)

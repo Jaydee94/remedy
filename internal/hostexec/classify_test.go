@@ -163,6 +163,8 @@ func TestChangeCheck(t *testing.T) {
 		{"docker", "start", "remedy-drill"},
 		{"docker", "stop", "remedy-drill"},
 		{"systemctl", "restart", "node_exporter.service"},
+		{"/usr/bin/docker", "restart", "remedy-drill"},
+		{"/usr/bin/systemctl", "restart", "node_exporter.service"},
 		{"apt", "update"}, // another shape: the OS decides
 	}
 	for _, argv := range ok {
@@ -181,6 +183,11 @@ func TestChangeCheck(t *testing.T) {
 		"two containers to start":    {"docker", "start", "remedy-a", "remedy-b"},
 		"a second unit":              {"systemctl", "restart", "nginx", "other.service"},
 		"a flag after the container": {"docker", "restart", "remedy-a", "-t", "5"},
+		// The program may be an absolute path (the stock sudoers line names /usr/bin/docker): the same rules apply.
+		"a second container by path":              {"/usr/bin/docker", "restart", "remedy-a", "other"},
+		"a container outside the pattern by path": {"/usr/bin/docker", "restart", "other"},
+		"a second unit by path":                   {"/usr/bin/systemctl", "restart", "nginx", "other.service"},
+		"a unit that is not listed by path":       {"/usr/bin/systemctl", "restart", "unknown.service"},
 	}
 	for name, argv := range bad {
 		r := rules

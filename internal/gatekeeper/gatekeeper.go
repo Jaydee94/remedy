@@ -30,16 +30,19 @@ type Config struct {
 	ProgressInterval time.Duration
 	// Grace is how long a call that nobody waits for stays open for a replay to attach to it. Default 30 seconds.
 	Grace time.Duration
-	Log   *slog.Logger
+	// ExecuteTimeout bounds the execution of an approved tool. Default 75 seconds.
+	ExecuteTimeout time.Duration
+	Log            *slog.Logger
 }
 
 type Gatekeeper struct {
-	store    *store.Store
-	tools    []Tool
-	byName   map[string]Tool
-	progress time.Duration
-	grace    time.Duration
-	log      *slog.Logger
+	store       *store.Store
+	tools       []Tool
+	byName      map[string]Tool
+	progress    time.Duration
+	grace       time.Duration
+	execTimeout time.Duration
+	log         *slog.Logger
 
 	mu      sync.Mutex
 	waiters map[int64]*waiterSet // by tool call ID
@@ -50,7 +53,7 @@ type Gatekeeper struct {
 func New(c Config) *Gatekeeper {
 	g := &Gatekeeper{
 		store: c.Store, tools: c.Tools, byName: map[string]Tool{},
-		progress: c.ProgressInterval, grace: c.Grace, log: c.Log,
+		progress: c.ProgressInterval, grace: c.Grace, execTimeout: c.ExecuteTimeout, log: c.Log,
 		waiters: map[int64]*waiterSet{},
 	}
 	if g.progress <= 0 {
@@ -58,6 +61,9 @@ func New(c Config) *Gatekeeper {
 	}
 	if g.grace <= 0 {
 		g.grace = 30 * time.Second
+	}
+	if g.execTimeout <= 0 {
+		g.execTimeout = executeTimeout
 	}
 	if g.log == nil {
 		g.log = slog.New(slog.NewTextHandler(io.Discard, nil))

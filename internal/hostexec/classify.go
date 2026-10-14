@@ -2,6 +2,7 @@ package hostexec
 
 import (
 	"fmt"
+	"path"
 	"regexp"
 	"slices"
 	"strconv"
@@ -212,13 +213,15 @@ func ChangeCheck(argv []string, r Rules) error {
 	if len(argv) < 2 || !slices.Contains(changeVerbs, argv[1]) {
 		return nil
 	}
-	if (argv[0] == "docker" || argv[0] == "systemctl") && len(argv) > 3 {
+	// The program may be an absolute path (the stock sudoers rule names /usr/bin/docker): sudo resolves the same rule.
+	prog := path.Base(argv[0])
+	if (prog == "docker" || prog == "systemctl") && len(argv) > 3 {
 		return ArgError("one container (or unit) at a time")
 	}
 	if len(argv) != 3 {
 		return nil
 	}
-	switch argv[0] {
+	switch prog {
 	case "docker":
 		if r.DockerPattern == "" {
 			return ArgError("this host has no container rules, so docker commands are not possible")

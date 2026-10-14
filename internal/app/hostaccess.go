@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -23,6 +24,38 @@ type HostAccess struct {
 	SSH   *sshhost.Service
 	// CommandTimeout bounds the command itself (not the dial or the canary). Zero means 30 seconds.
 	CommandTimeout time.Duration
+	// Log receives one debug line for a failed command: the host and the category of the failure, never the text of the
+	// error. Nil means slog.Default().
+	Log *slog.Logger
+}
+
+func (a *HostAccess) log() *slog.Logger {
+	if a.Log != nil {
+		return a.Log
+	}
+	return slog.Default()
+}
+
+// failureCategory names the kind of a failed command for the log. The set is closed: nothing the library or the host said,
+// no address, no account.
+func failureCategory(err error) string {
+	switch {
+	case errors.Is(err, sshhost.ErrTimeout):
+		return "timeout"
+	case errors.Is(err, sshhost.ErrLostAfterStart):
+		return "lost_after_start"
+	case errors.Is(err, sshhost.ErrHostKeyChanged):
+		return "hostkey"
+	case errors.Is(err, sshhost.ErrAuth):
+		return "auth"
+	case errors.Is(err, sshhost.ErrRefused):
+		return "refused"
+	case errors.Is(err, sshhost.ErrShell):
+		return "shell"
+	case errors.Is(err, sshhost.ErrNoPin), errors.Is(err, sshhost.ErrBadCredential):
+		return "not_set_up"
+	}
+	return "unreachable"
 }
 
 const defaultHostCommandTimeout = 30 * time.Second
@@ -90,6 +123,9 @@ func (a *HostAccess) Exec(ctx context.Context, runID, host string, sudo bool, ar
 		Limit: hostexec.StreamLimit, Timeout: timeout,
 		CanaryCommand: hostexec.CanaryCommand(), CanaryWant: hostexec.CanaryWant(),
 	})
+	if err != nil {
+		a.log().Debug("a command on a host failed", "host", e.Host.Name, "category", failureCategory(err))
+	}
 	if errors.Is(err, sshhost.ErrTimeout) || errors.Is(err, sshhost.ErrLostAfterStart) {
 		// The host tools tell a timed-out change apart from a failed one: its outcome is unknown.
 		return hostexec.Result{}, gatekeeper.ErrHostTimeout
@@ -137,7 +173,7 @@ func hostFailure(err error) string {
 	case errors.Is(err, sshhost.ErrRefused):
 		return "the host refused the connection"
 	case errors.Is(err, sshhost.ErrShell):
-		return "the account's shell is not supported: it does not treat quoted words like a POSIX shell, so nothing was run"
+		return "the account's shell is not supported: it does not treat quoted words like a POSIX shell, or a startup file of the account (.bashrc, profile) prints something, so nothing was run"
 	case errors.Is(err, sshhost.ErrNoPin), errors.Is(err, sshhost.ErrBadCredential):
 		return "the host is not set up for use: the maintainer has to check its login and its pinned key"
 	}
