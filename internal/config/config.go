@@ -8,27 +8,18 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Jaydee94/remedy/internal/kube"
 	"github.com/Jaydee94/remedy/internal/secret"
+	"github.com/Jaydee94/remedy/internal/settings"
 )
 
 const (
 	minPasswordLen = 12
 	minTokenLen    = 24
 	defaultGitHub  = "https://api.github.com"
-
-	defaultPollInterval = time.Minute
-	minPollInterval     = 10 * time.Second
-
-	defaultRunTimeout = 10 * time.Minute
-	minRunTimeout     = 10 * time.Second
-
-	defaultDiagnoseCooldown = 15 * time.Minute
-	minDiagnoseCooldown     = time.Minute
 )
 
 type Server struct {
@@ -39,11 +30,14 @@ type Server struct {
 	RunnerToken            string        // REMEDY_RUNNER_TOKEN, required, min 24 chars
 	MasterKey              secret.Key    // REMEDY_MASTER_KEY, required, 32 random bytes in Base64
 	GitHubAPIURL           string        // REMEDY_GITHUB_API_URL, default "https://api.github.com"
-	PollInterval           time.Duration // REMEDY_POLL_INTERVAL, a Go duration, default 60s, at least 10s
-	DiagnoseCooldown       time.Duration // REMEDY_DIAGNOSE_COOLDOWN, per incident, default 15m, at least 1m
-	DiagnoseMaxPerIncident int           // REMEDY_DIAGNOSE_MAX_PER_INCIDENT, automatic diagnoses, default 3, 0 to 20
-	DiagnoseMaxPerDay      int           // REMEDY_DIAGNOSE_MAX_PER_DAY, automatic runs in 24 hours, default 20, 0 to 200; 0 turns it off
+	PollInterval           time.Duration // REMEDY_POLL_INTERVAL: the environment's value or the default; the registry in internal/settings has the bounds
+	DiagnoseCooldown       time.Duration // REMEDY_DIAGNOSE_COOLDOWN
+	DiagnoseMaxPerIncident int           // REMEDY_DIAGNOSE_MAX_PER_INCIDENT
+	DiagnoseMaxPerDay      int           // REMEDY_DIAGNOSE_MAX_PER_DAY
 	Cluster                kube.Config   // REMEDY_K8S_*: how to reach the cluster; the zero value means no cluster
+	// Env holds the variables of the registry that were set (poll interval, diagnosis limits, namespaces, run timeout). They are
+	// the defaults of the settings, which the Setup page can override.
+	Env settings.Layer
 }
 
 func ServerFromEnv(get func(string) string) (Server, error) {
@@ -84,59 +78,28 @@ func ServerFromEnv(get func(string) string) (Server, error) {
 		}
 	}
 
-	c.PollInterval = defaultPollInterval
-	if v := get("REMEDY_POLL_INTERVAL"); v != "" {
-		d, err := time.ParseDuration(v)
-		if err != nil || d < minPollInterval {
-			return Server{}, errors.New("REMEDY_POLL_INTERVAL must be a duration of at least 10s, for example 60s or 2m")
-		}
-		c.PollInterval = d
-	}
-
-	c.DiagnoseCooldown = defaultDiagnoseCooldown
-	if v := get("REMEDY_DIAGNOSE_COOLDOWN"); v != "" {
-		d, err := time.ParseDuration(v)
-		if err != nil || d < minDiagnoseCooldown {
-			return Server{}, errors.New("REMEDY_DIAGNOSE_COOLDOWN must be a duration of at least 1m, for example 15m")
-		}
-		c.DiagnoseCooldown = d
-	}
-	if c.DiagnoseMaxPerIncident, err = wholeNumber(get, "REMEDY_DIAGNOSE_MAX_PER_INCIDENT", 3, 20); err != nil {
-		return Server{}, err
-	}
-	if c.DiagnoseMaxPerDay, err = wholeNumber(get, "REMEDY_DIAGNOSE_MAX_PER_DAY", 20, 200); err != nil {
-		return Server{}, err
-	}
-
-	namespaces, err := kube.ParseNamespaces(get("REMEDY_K8S_WRITE_NAMESPACES"))
+	layer, err := settings.EnvLayer(get)
 	if err != nil {
-		return Server{}, fmt.Errorf("REMEDY_K8S_WRITE_NAMESPACES: %w", err)
+		return Server{}, err
 	}
+	c.Env = layer
+	c.PollInterval = layer.Duration(settings.PollInterval)
+	c.DiagnoseCooldown = layer.Duration(settings.DiagnoseCooldown)
+	c.DiagnoseMaxPerIncident = layer.Int(settings.DiagnoseMaxPerIncident)
+	c.DiagnoseMaxPerDay = layer.Int(settings.DiagnoseMaxPerDay)
+
 	c.Cluster = kube.Config{
 		API:             get("REMEDY_K8S_API"),
 		CAFile:          get("REMEDY_K8S_CA_FILE"),
 		ReadTokenFile:   get("REMEDY_K8S_READ_TOKEN_FILE"),
 		WriteTokenFile:  get("REMEDY_K8S_WRITE_TOKEN_FILE"),
-		WriteNamespaces: namespaces,
+		WriteNamespaces: layer.List(settings.K8sWriteNamespaces),
 		ArgoNamespace:   get("REMEDY_K8S_ARGO_NAMESPACE"),
 	}
 	if err := c.Cluster.Validate(); err != nil {
 		return Server{}, err
 	}
 	return c, nil
-}
-
-// wholeNumber reads a whole number from 0 to max, or returns def when the variable is empty.
-func wholeNumber(get func(string) string, name string, def, max int) (int, error) {
-	v := get(name)
-	if v == "" {
-		return def, nil
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n < 0 || n > max {
-		return 0, fmt.Errorf("%s must be a whole number from 0 to %d", name, max)
-	}
-	return n, nil
 }
 
 type Runner struct {
@@ -167,13 +130,11 @@ func RunnerFromEnv(get func(string) string) (Runner, error) {
 		}
 	}
 
-	c.RunTimeout = defaultRunTimeout
-	if v := get("REMEDY_RUN_TIMEOUT"); v != "" {
-		d, err := time.ParseDuration(v)
-		if err != nil || d < minRunTimeout {
-			return Runner{}, errors.New("REMEDY_RUN_TIMEOUT must be a duration of at least 10s, for example 10m")
-		}
-		c.RunTimeout = d
+	c.RunTimeout = settings.Layer(nil).Duration(settings.RunTimeout) // the default
+	if v, set, err := settings.EnvValue(settings.RunTimeout, get); err != nil {
+		return Runner{}, err
+	} else if set {
+		c.RunTimeout = v.Dur
 	}
 	return c, nil
 }
