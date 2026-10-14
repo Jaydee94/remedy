@@ -60,7 +60,7 @@ listener stays bootstrap (Helm and the environment) and is shown, if at all, as 
 | `poll_interval` | `poller.Poller` | `Interval` becomes `func() time.Duration`; the loop reads it before each wait and resets the ticker when it changed. |
 | `diagnose_cooldown`, `diagnose_max_per_incident`, `diagnose_max_per_day` | `responder.Responder` | `Limits` becomes `func() store.DiagnosisLimits`, read at every automatic start. `StartDiagnosis` still receives the limits as a parameter and checks them inside its transaction; it does not read the reader. |
 | `k8s_write_namespaces` | `kube.Writer`, `gatekeeper` cluster action tools, `server.Cluster` | A `func() []string`; `Writer` refuses a namespace outside the current list, the tools check before the approval and again at execution. |
-| `run_timeout` | the claim handler, `runner.Loop` | The control plane puts `runTimeoutSeconds` into the claim; the runner uses it for that run. |
+| `run_timeout` | the claim handler, `runner.Loop` | The control plane puts `run_timeout_seconds` into the claim; the runner uses it for that run. |
 | reaper threshold | `reaper.Reaper` | A `func() time.Duration`, derived as in section 2. |
 
 `GET /api/limits` keeps its shape (it also carries the use of the last 24 hours); its values now come from the reader.
@@ -113,7 +113,7 @@ is in `web/src/settings.ts` and is tested with `node --test`.
 - A row with an unknown key or a value that no longer passes (after a downgrade, say) is **ignored at start-up** with a warning in the log. `GET /api/settings` gives that key a
   `problem`, the Setup page shows it on the row, and the value falls back to the environment or the default.
 - A failed write leaves the snapshot as it was; it is rebuilt only after the commit.
-- A runner that gets a claim without `runTimeoutSeconds` (an older control plane) uses `REMEDY_RUN_TIMEOUT`.
+- A runner that gets a claim without `run_timeout_seconds` (an older control plane) uses `REMEDY_RUN_TIMEOUT`.
 
 ## 9. Tests
 
