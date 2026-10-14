@@ -116,7 +116,7 @@ func TestTheSettingsRoutesNeedASessionAndTheCSRFHeader(t *testing.T) {
 		t.Errorf("GET without a session = %d", got)
 	}
 	c := e.adminClient(t, true)
-	if got := e.do(t, c, http.MethodPut, "/api/settings/poll_interval", `{"value":"30s"}`, false).StatusCode; got != http.StatusForbidden && got != http.StatusUnauthorized {
+	if got := e.do(t, c, http.MethodPut, "/api/settings/poll_interval", `{"value":"30s"}`, false).StatusCode; got != http.StatusForbidden {
 		t.Errorf("PUT without the CSRF header = %d", got)
 	}
 }

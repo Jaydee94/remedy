@@ -183,6 +183,14 @@ func TestAnAllowlistThatChangesCountsAtOnceAndAgainWhenTheActionRuns(t *testing.
 	}
 }
 
+func TestAnEmptyAllowlistIsNamedInTheRefusal(t *testing.T) {
+	r := newLiveRig(t, &liveList{})
+	text, isErr := r.ask(t, "cluster_rollout_restart", map[string]any{"kind": "deployment", "namespace": "demo", "name": "web"})
+	if want := `actions are not allowed in the namespace "demo": the allowlist is empty`; !isErr || text != want {
+		t.Fatalf("answer = %q (%v), want %q", text, isErr, want)
+	}
+}
+
 func TestARestartOutsideTheAllowlistIsRefusedBeforeAnApprovalIsAskedFor(t *testing.T) {
 	r := newActionRig(t, "demo")
 	text, isErr := r.ask(t, "cluster_rollout_restart", map[string]any{"kind": "deployment", "namespace": "other", "name": "web"})

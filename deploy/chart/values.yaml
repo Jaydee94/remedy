@@ -71,7 +71,7 @@ cluster:
   argoNamespace: argocd   # where Argo CD keeps its Application objects
   write:
     enabled: false     # approved actions: restart a workload, delete a pod, refresh and sync an Argo CD application
-    namespaces: []     # where actions may be used. Never the release namespace: Remedy may read itself, never change itself
+    namespaces: []     # where actions may be used; only the default of the allowlist: a value set on the Setup page wins (the cluster RBAC still bounds it). Never the release namespace: Remedy may read itself, never change itself
     tokenRefresh:
       schedule: "*/30 * * * *"   # the write token is minted again this often ...
       lifetime: 2h                # ... and is valid this long, so a stopped job leaves at most this much
