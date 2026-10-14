@@ -52,8 +52,10 @@ type Responder struct {
 	NewSource func(token secret.Value) Source
 	Provider  string // the provider that runs diagnoses, default "claude"
 	Limits    store.DiagnosisLimits
-	Log       *slog.Logger
-	Now       func() time.Time // default time.Now
+	// LimitsFunc, when set, is asked at every use instead of Limits.
+	LimitsFunc func() store.DiagnosisLimits
+	Log        *slog.Logger
+	Now        func() time.Time // default time.Now
 
 	mu      sync.Mutex
 	backoff map[int64]time.Time // automatic starts that could not read GitHub: do not retry before
@@ -139,11 +141,18 @@ func (r *Responder) start(ctx context.Context, incidentID int64, automatic bool)
 	}
 	return r.Store.StartDiagnosis(ctx, store.StartParams{
 		IncidentID: in.ID, Provider: r.provider(), Prompt: text, HeadSHA: in.HeadSHA,
-		Automatic: automatic, Limits: r.Limits, Now: r.now(),
+		Automatic: automatic, Limits: r.limits(), Now: r.now(),
 	}, store.NewActivity{
 		Kind:    store.KindDiagnosisStarted,
 		Summary: fmt.Sprintf("Diagnosis of %s started %s", label(in), how),
 	})
+}
+
+func (r *Responder) limits() store.DiagnosisLimits {
+	if r.LimitsFunc != nil {
+		return r.LimitsFunc()
+	}
+	return r.Limits
 }
 
 func label(in store.Incident) string {
@@ -233,14 +242,15 @@ func pickCheck(checks []github.CheckRun, name string) *github.CheckRun {
 // calls it after every cycle. The limits are checked again inside the store, atomically.
 func (r *Responder) AutoStart(ctx context.Context) {
 	now := r.now()
+	limits := r.limits() // once, so that one cycle uses one set of numbers
 	if busy, err := r.Store.HasActiveRun(ctx); err != nil || busy {
 		return
 	}
 	// A daily limit of 0 switches automatic diagnosis off: zero runs are already too many.
-	if n, err := r.Store.AutoRunsSince(ctx, now.Add(-24*time.Hour)); err != nil || n >= r.Limits.MaxPerDay {
+	if n, err := r.Store.AutoRunsSince(ctx, now.Add(-24*time.Hour)); err != nil || n >= limits.MaxPerDay {
 		return
 	}
-	candidates, err := r.Store.ListAutoCandidates(ctx, now, r.Limits)
+	candidates, err := r.Store.ListAutoCandidates(ctx, now, limits)
 	if err != nil {
 		r.Log.Error("cannot list the incidents to diagnose", "err", err)
 		return
@@ -260,7 +270,7 @@ func (r *Responder) AutoStart(ctx context.Context) {
 			continue
 		default:
 			r.Log.Warn("could not start a diagnosis", "incident", in.ID, "err", err)
-			r.backOff(in.ID, now.Add(max(r.Limits.Cooldown, time.Minute)))
+			r.backOff(in.ID, now.Add(max(limits.Cooldown, time.Minute)))
 		}
 	}
 }

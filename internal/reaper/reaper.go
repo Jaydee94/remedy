@@ -22,11 +22,18 @@ const (
 	DefaultHeartbeatMaxAge = 2 * time.Minute
 )
 
+// MaxAgeFor is how long a run without gatekeeper access may stay running before it is failed: DefaultMaxAge, or five minutes more
+// than the run timeout when that is longer, so the reaper never overtakes a run's own limit.
+func MaxAgeFor(runTimeout time.Duration) time.Duration {
+	return max(DefaultMaxAge, runTimeout+5*time.Minute)
+}
+
 type Reaper struct {
 	Store           *store.Store
-	MaxAge          time.Duration // default DefaultMaxAge
-	HeartbeatMaxAge time.Duration // default DefaultHeartbeatMaxAge
-	Interval        time.Duration // default DefaultInterval
+	MaxAge          time.Duration        // default DefaultMaxAge
+	MaxAgeFunc      func() time.Duration // when set, asked at every sweep instead of MaxAge
+	HeartbeatMaxAge time.Duration        // default DefaultHeartbeatMaxAge
+	Interval        time.Duration        // default DefaultInterval
 	Log             *slog.Logger
 	Now             func() time.Time // default time.Now
 
@@ -39,6 +46,9 @@ type Reaper struct {
 // runner has been silent for longer than HeartbeatMaxAge. It returns how many it failed.
 func (r *Reaper) Sweep(ctx context.Context) (int, error) {
 	maxAge := r.MaxAge
+	if r.MaxAgeFunc != nil {
+		maxAge = r.MaxAgeFunc()
+	}
 	if maxAge <= 0 {
 		maxAge = DefaultMaxAge
 	}
