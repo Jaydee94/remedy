@@ -252,6 +252,35 @@ export interface Limits {
   diagnosesLast24h: number
 }
 
+export type SettingValue = string | number | string[]
+
+/** One setting of the Setup page. `fallback` is where the value comes from after a reset. */
+export interface Setting {
+  key: string
+  group: string
+  label: string
+  kind: 'duration' | 'number' | 'list'
+  value: SettingValue
+  source: 'default' | 'environment' | 'set here'
+  fallback: 'default' | 'environment'
+  env: string
+  rule: string
+  effect: string
+  /** A stored value that cannot be used; the value shown is then the environment's or the default. */
+  problem?: string
+}
+
+/** Something about the process that is set outside the page. */
+export interface Fact {
+  label: string
+  value: string
+}
+
+export interface SettingsPage {
+  settings: Setting[]
+  facts: Fact[]
+}
+
 /** One line of the timeline. The summary may contain text from GitHub: show it as text, never as HTML. */
 export interface TimelineEntry {
   id: number
@@ -365,6 +394,9 @@ export const api = {
   listIncidentRuns: (incidentId: number) => request<Run[]>('GET', `/api/runs?incident=${incidentId}`),
   diagnoseIncident: (id: number) => request<{ runId: string }>('POST', `/api/incidents/${id}/diagnose`),
   getLimits: () => request<Limits>('GET', '/api/limits'),
+  getSettings: () => request<SettingsPage>('GET', '/api/settings'),
+  putSetting: (key: string, value: SettingValue) => request<Setting>('PUT', `/api/settings/${key}`, { value }),
+  deleteSetting: (key: string) => request<void>('DELETE', `/api/settings/${key}`),
   getRunner: () => request<RunnerStatus>('GET', '/api/runner'),
 
   /** The newest entries, or the ones before the entry with the id `before`. */

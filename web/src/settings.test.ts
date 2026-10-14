@@ -1,0 +1,96 @@
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+import type { Setting } from './api.ts'
+import { groupSettings, inputText, parseInput, resetLabel, sourceBadge, unchanged, valueText } from './settings.ts'
+
+const setting = (over: Partial<Setting> = {}): Setting => ({
+  key: 'poll_interval',
+  group: 'Polling',
+  label: 'How often I check GitHub',
+  kind: 'duration',
+  value: '1m',
+  source: 'default',
+  fallback: 'default',
+  env: 'REMEDY_POLL_INTERVAL',
+  rule: 'At least 10s.',
+  effect: 'Takes effect at the next check.',
+  ...over,
+})
+
+describe('groupSettings', () => {
+  it('keeps the order of the server and puts settings of one group together', () => {
+    const groups = groupSettings([
+      setting({ key: 'a', group: 'Polling' }),
+      setting({ key: 'b', group: 'Diagnosis limits' }),
+      setting({ key: 'c', group: 'Diagnosis limits' }),
+      setting({ key: 'd', group: 'Runs' }),
+    ])
+    assert.deepEqual(groups.map((g) => [g.title, g.settings.map((s) => s.key)]), [
+      ['Polling', ['a']],
+      ['Diagnosis limits', ['b', 'c']],
+      ['Runs', ['d']],
+    ])
+  })
+})
+
+describe('valueText and inputText', () => {
+  it('shows a duration and a number as they are, and a list with its names or "none"', () => {
+    assert.equal(valueText(setting({ value: '15m' })), '15m')
+    assert.equal(valueText(setting({ kind: 'number', value: 3 })), '3')
+    assert.equal(valueText(setting({ kind: 'list', value: ['demo', 'staging'] })), 'demo, staging')
+    assert.equal(valueText(setting({ kind: 'list', value: [] })), 'none')
+  })
+  it('puts a list into the input field as comma separated names, empty for none', () => {
+    assert.equal(inputText(setting({ kind: 'list', value: ['demo', 'staging'] })), 'demo, staging')
+    assert.equal(inputText(setting({ kind: 'list', value: [] })), '')
+    assert.equal(inputText(setting({ kind: 'number', value: 0 })), '0')
+  })
+})
+
+describe('sourceBadge and resetLabel', () => {
+  it('names the three sources', () => {
+    assert.equal(sourceBadge('default'), 'Default')
+    assert.equal(sourceBadge('environment'), 'Environment')
+    assert.equal(sourceBadge('set here'), 'Set here')
+  })
+  it('says what a reset falls back to, and offers none unless the value is set here', () => {
+    assert.equal(resetLabel(setting({ source: 'set here', fallback: 'environment' })), 'Reset to environment')
+    assert.equal(resetLabel(setting({ source: 'set here', fallback: 'default' })), 'Reset to default')
+    assert.equal(resetLabel(setting({ source: 'environment', fallback: 'environment' })), null)
+    assert.equal(resetLabel(setting({ source: 'default' })), null)
+  })
+})
+
+describe('parseInput', () => {
+  it('turns a duration into the string the server wants and refuses what is not one', () => {
+    assert.deepEqual(parseInput(setting(), ' 30s '), { ok: true, value: '30s' })
+    assert.deepEqual(parseInput(setting(), '1h30m'), { ok: true, value: '1h30m' })
+    for (const bad of ['', 'soon', '30', '-5s', '1.5']) assert.equal(parseInput(setting(), bad).ok, false, bad)
+  })
+  it('turns a number into a number and refuses what is not a whole number', () => {
+    assert.deepEqual(parseInput(setting({ kind: 'number' }), '12'), { ok: true, value: 12 })
+    assert.deepEqual(parseInput(setting({ kind: 'number' }), '0'), { ok: true, value: 0 })
+    for (const bad of ['', '-1', '3.5', 'x']) assert.equal(parseInput(setting({ kind: 'number' }), bad).ok, false, bad)
+  })
+  it('splits a list at commas, trims it and drops empty entries; an empty field is the empty list', () => {
+    assert.deepEqual(parseInput(setting({ kind: 'list' }), 'demo, staging ,,'), { ok: true, value: ['demo', 'staging'] })
+    assert.deepEqual(parseInput(setting({ kind: 'list' }), ''), { ok: true, value: [] })
+  })
+  it('takes whitespace only as the empty list', () => {
+    assert.deepEqual(parseInput(setting({ kind: 'list' }), '   '), { ok: true, value: [] })
+  })
+  it('gives a message that names what is wrong', () => {
+    const r = parseInput(setting(), 'soon')
+    assert.equal(r.ok, false)
+    if (!r.ok) assert.match(r.message, /duration/)
+  })
+})
+
+describe('unchanged', () => {
+  it('compares the field with what the setting shows now, ignoring spaces around list entries', () => {
+    assert.equal(unchanged(setting({ value: '1m' }), '1m'), true)
+    assert.equal(unchanged(setting({ value: '1m' }), '90s'), false)
+    assert.equal(unchanged(setting({ kind: 'list', value: ['a', 'b'] }), 'a,b'), true)
+    assert.equal(unchanged(setting({ kind: 'list', value: ['a', 'b'] }), 'a, b, c'), false)
+  })
+})
