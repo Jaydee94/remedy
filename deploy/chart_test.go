@@ -754,6 +754,33 @@ func TestTheRunnerDisablesTheCLIUpdater(t *testing.T) {
 	}
 }
 
+func TestTheRunTimeoutReachesTheServerAsWellAsTheRunner(t *testing.T) {
+	v := baseValues()
+	set(v, "runner.runTimeout", "20m")
+	d := mustRender(t, v)
+	server := env(container(t, podSpec(t, d.find("Deployment", "remedy-server")), "server"))
+	if server["REMEDY_RUN_TIMEOUT"]["value"] != "20m" {
+		t.Errorf("the server's REMEDY_RUN_TIMEOUT = %v, want 20m: the Setup page shows the runner's default", server["REMEDY_RUN_TIMEOUT"]["value"])
+	}
+	runner := env(container(t, podSpec(t, d.find("StatefulSet", "remedy-runner")), "runner"))
+	if runner["REMEDY_RUN_TIMEOUT"]["value"] != "20m" {
+		t.Errorf("the runner's REMEDY_RUN_TIMEOUT = %v", runner["REMEDY_RUN_TIMEOUT"]["value"])
+	}
+
+	none := env(container(t, podSpec(t, mustRender(t, baseValues()).find("Deployment", "remedy-server")), "server"))
+	if _, found := none["REMEDY_RUN_TIMEOUT"]; found {
+		t.Error("without runner.runTimeout the server has no REMEDY_RUN_TIMEOUT")
+	}
+
+	both := baseValues()
+	set(both, "runner.runTimeout", "20m")
+	set(both, "server.env", map[string]any{"REMEDY_RUN_TIMEOUT": "15m"})
+	got := env(container(t, podSpec(t, mustRender(t, both).find("Deployment", "remedy-server")), "server"))
+	if got["REMEDY_RUN_TIMEOUT"]["value"] != "15m" {
+		t.Errorf("server.env must win over runner.runTimeout: %v", got["REMEDY_RUN_TIMEOUT"]["value"])
+	}
+}
+
 func TestServerEnvRefusesTheNamesTheChartSetsItself(t *testing.T) {
 	for _, name := range []string{"REMEDY_ADDR", "REMEDY_INTERNAL_ADDR", "REMEDY_DB", "REMEDY_K8S_API", "REMEDY_K8S_WRITE_NAMESPACES", "REMEDY_K8S_READ_TOKEN_FILE"} {
 		values := baseValues()

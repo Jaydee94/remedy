@@ -32,7 +32,8 @@ server:
     type: ClusterIP
     nodePort: null     # only for type NodePort
   # Extra environment variables for the control plane, for example REMEDY_POLL_INTERVAL or REMEDY_LOG_LEVEL. A name that
-  # contains PASSWORD, TOKEN or KEY is refused: secrets do not belong in values.
+  # contains PASSWORD, TOKEN or KEY is refused: secrets do not belong in values. REMEDY_POLL_INTERVAL, REMEDY_DIAGNOSE_* and
+  # REMEDY_RUN_TIMEOUT are only defaults: the Setup page can override them.
   env: {}
 
 ingress:
@@ -46,7 +47,7 @@ ingress:
 runner:
   enabled: true
   model: ""            # REMEDY_CLAUDE_MODEL; the CLI runs with --restricted, which ignores user settings: pin it
-  runTimeout: ""       # REMEDY_RUN_TIMEOUT, for example 10m
+  runTimeout: ""       # REMEDY_RUN_TIMEOUT, for example 10m. The control plane gets it too, as the default of the Setup page's setting
   resources:
     requests: {cpu: 100m, memory: 256Mi}
     limits: {memory: 1Gi}
