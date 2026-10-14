@@ -103,6 +103,58 @@ func TestTheActionsFollowTheAllowlistOfTheSettings(t *testing.T) {
 	}
 }
 
+// A stored empty list overrides the environment's list: every action is refused. It is not the same as no override.
+func TestAStoredEmptyAllowlistOverridesTheEnvironment(t *testing.T) {
+	a := appWithEnv(t, map[string]string{
+		"REMEDY_K8S_API": "http://127.0.0.1:1", "REMEDY_K8S_READ_TOKEN_FILE": tokenOf(t, "read"),
+		"REMEDY_K8S_WRITE_TOKEN_FILE": tokenOf(t, "write"), "REMEDY_K8S_WRITE_NAMESPACES": "a,b",
+	})
+	ts := httptest.NewServer(a.Handler)
+	t.Cleanup(ts.Close)
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	do := func(method, path, body string) string {
+		req, _ := http.NewRequest(method, ts.URL+path, strings.NewReader(body))
+		req.Header.Set("X-Remedy-CSRF", "1")
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+	do(http.MethodPost, "/api/login", `{"password":"`+password+`"}`)
+	if got := do(http.MethodGet, "/api/capabilities", ""); got != `{"cluster":{"read":true,"write":true,"namespaces":["a","b"]}}`+"\n" {
+		t.Fatalf("before: %s", got)
+	}
+	do(http.MethodPut, "/api/settings/k8s_write_namespaces", `{"value":[]}`)
+	if got := do(http.MethodGet, "/api/capabilities", ""); got != `{"cluster":{"read":true,"write":true,"namespaces":[]}}`+"\n" {
+		t.Fatalf("after: %s", got)
+	}
+	var out struct {
+		Settings []struct {
+			Key    string `json:"key"`
+			Source string `json:"source"`
+		} `json:"settings"`
+	}
+	if err := json.Unmarshal([]byte(do(http.MethodGet, "/api/settings", "")), &out); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, s := range out.Settings {
+		if s.Key == "k8s_write_namespaces" {
+			found = true
+			if s.Source != "set here" {
+				t.Errorf("source = %q, want set here", s.Source)
+			}
+		}
+	}
+	if !found {
+		t.Error("k8s_write_namespaces is not in /api/settings")
+	}
+}
+
 func appWithEnv(t *testing.T, extra map[string]string) *app.App {
 	t.Helper()
 	env := map[string]string{

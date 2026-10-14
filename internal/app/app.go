@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"net/url"
 	"slices"
 	"time"
 
@@ -39,8 +40,9 @@ type App struct {
 	Responder  *responder.Responder
 	Gatekeeper *gatekeeper.Gatekeeper
 
-	// KubeReader reads the cluster; nil when no cluster is configured. KubeWriter does the approved actions; nil unless
-	// a write token and an allowlist are configured. The cluster tools are built on them.
+	// KubeReader reads the cluster; nil when no cluster is configured. KubeWriter does the approved actions; it is built
+	// whenever a write token is set. The allowlist is read at every use and may be empty (every action is then refused).
+	// The cluster tools are built on them.
 	KubeReader *kube.Reader
 	KubeWriter *kube.Writer
 
@@ -210,6 +212,15 @@ func envLayer(cfg config.Server) settings.Layer {
 	return layer
 }
 
+// displayURL keeps scheme, host and path of an address: userinfo, query and fragment could hold a credential.
+func displayURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "(not shown)"
+	}
+	return (&url.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path}).String()
+}
+
 // facts are what the Setup page shows as read-only: set outside the page, never a secret.
 func facts(cfg config.Server, reader *kube.Reader, writer *kube.Writer) []server.Fact {
 	yesNo := func(b bool) string {
@@ -225,7 +236,7 @@ func facts(cfg config.Server, reader *kube.Reader, writer *kube.Writer) []server
 	return []server.Fact{
 		{Label: "Listener", Value: cfg.Addr},
 		{Label: "Internal listener (runner and tools)", Value: internal},
-		{Label: "GitHub API", Value: cfg.GitHubAPIURL},
+		{Label: "GitHub API", Value: displayURL(cfg.GitHubAPIURL)},
 		{Label: "Cluster, reading", Value: yesNo(reader != nil)},
 		{Label: "Cluster, actions", Value: yesNo(writer != nil)},
 	}
