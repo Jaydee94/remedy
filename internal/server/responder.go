@@ -11,6 +11,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/reaper"
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/run"
+	"github.com/Jaydee94/remedy/internal/settings"
 	"github.com/Jaydee94/remedy/internal/snapshot"
 	"github.com/Jaydee94/remedy/internal/store"
 )
@@ -74,14 +75,23 @@ func (s *srv) getLimits(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not count the diagnoses")
 		return
 	}
-	writeJSON(w, http.StatusOK, limitsView{
+	view := limitsView{
 		PollIntervalSeconds:     int(s.d.PollInterval.Seconds()),
 		DiagnoseCooldownSeconds: int(l.Cooldown.Seconds()),
 		DiagnoseMaxPerIncident:  l.MaxPerIncident,
 		DiagnoseMaxPerDay:       l.MaxPerDay,
 		StaleRunMinutes:         int(reaper.DefaultMaxAge.Minutes()),
 		DiagnosesLast24h:        used,
-	})
+	}
+	if set := s.d.Settings; set != nil {
+		limits := set.DiagnosisLimits()
+		view.PollIntervalSeconds = int(set.Duration(settings.PollInterval).Seconds())
+		view.DiagnoseCooldownSeconds = int(limits.Cooldown.Seconds())
+		view.DiagnoseMaxPerIncident = limits.MaxPerIncident
+		view.DiagnoseMaxPerDay = limits.MaxPerDay
+		view.StaleRunMinutes = int(reaper.MaxAgeFor(set.Duration(settings.RunTimeout)).Minutes())
+	}
+	writeJSON(w, http.StatusOK, view)
 }
 
 // snapshot streams the repository snapshot of a running responder run to the runner. The runner holds no

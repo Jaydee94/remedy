@@ -58,6 +58,9 @@ type Deps struct {
 	// Settings holds the values the maintainer changes in the Setup page. When it is nil the settings routes are not registered and
 	// the claim carries no run timeout.
 	Settings *settings.Settings
+
+	// Facts are shown on the Setup page as read-only facts of the process (listeners, the GitHub address, whether the cluster is set up).
+	Facts []Fact
 }
 
 type srv struct {
@@ -131,6 +134,12 @@ func (s *srv) routes(public, internal *http.ServeMux) {
 		public.HandleFunc("POST /api/repos", s.session(s.addRepo))
 		public.HandleFunc("PATCH /api/repos/{id}", s.session(s.patchRepo))
 		public.HandleFunc("DELETE /api/repos/{id}", s.session(s.deleteRepo))
+	}
+
+	if d.Settings != nil {
+		public.HandleFunc("GET /api/settings", s.session(s.getSettings))
+		public.HandleFunc("PUT /api/settings/{key}", s.session(s.putSetting))
+		public.HandleFunc("DELETE /api/settings/{key}", s.session(s.deleteSetting))
 	}
 
 	if d.Hosts != nil {

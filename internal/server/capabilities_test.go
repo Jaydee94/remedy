@@ -57,6 +57,18 @@ func TestCapabilitiesSayWhatIsConfigured(t *testing.T) {
 	}
 }
 
+func TestCapabilitiesAskTheNamespaceFunctionAtEveryRequest(t *testing.T) {
+	ns := []string{"demo"}
+	e, c := capsEnv(t, server.Cluster{Read: true, Write: true, Namespaces: []string{"ignored"}, NamespacesFunc: func() []string { return ns }})
+	if got, want := bodyOf(t, e.do(t, c, http.MethodGet, "/api/capabilities", "", false)), `{"cluster":{"read":true,"write":true,"namespaces":["demo"]}}`+"\n"; got != want {
+		t.Fatalf("body = %q, want %q", got, want)
+	}
+	ns = []string{"demo", "staging"}
+	if got, want := bodyOf(t, e.do(t, c, http.MethodGet, "/api/capabilities", "", false)), `{"cluster":{"read":true,"write":true,"namespaces":["demo","staging"]}}`+"\n"; got != want {
+		t.Fatalf("body = %q, want %q", got, want)
+	}
+}
+
 func TestCapabilitiesNeedASession(t *testing.T) {
 	e, _ := capsEnv(t, server.Cluster{Read: true})
 	anonymous := &http.Client{}
