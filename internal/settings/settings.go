@@ -51,6 +51,17 @@ type Settings struct {
 	log   *slog.Logger
 	mu    sync.Mutex // serialises Set and Delete together with the rebuild
 	snap  atomic.Pointer[snapshot]
+
+	afterCommit func() // a test seam: called after a store write succeeded and before the reload; nil in production
+}
+
+// reloadCommitted rebuilds the snapshot after a committed write. It does not use the request's context: a client that
+// disconnects (or a server that shuts down) between the commit and the rebuild must not leave the snapshot behind the table.
+func (s *Settings) reloadCommitted(ctx context.Context) error {
+	if s.afterCommit != nil {
+		s.afterCommit()
+	}
+	return s.reload(context.WithoutCancel(ctx))
 }
 
 // New reads the table once. It never fails: when the table cannot be read, that is logged and the environment and the defaults
@@ -177,7 +188,7 @@ func (s *Settings) Set(ctx context.Context, key string, raw json.RawMessage) (En
 	if err := s.store.SetSetting(ctx, key, string(v.JSON(sp.Kind)), act); err != nil {
 		return Entry{}, err
 	}
-	if err := s.reload(ctx); err != nil {
+	if err := s.reloadCommitted(ctx); err != nil {
 		return Entry{}, err
 	}
 	return s.must(key), nil
@@ -198,7 +209,7 @@ func (s *Settings) Delete(ctx context.Context, key string) (Entry, error) {
 		return Entry{}, err
 	}
 	if removed {
-		if err := s.reload(ctx); err != nil {
+		if err := s.reloadCommitted(ctx); err != nil {
 			return Entry{}, err
 		}
 	}
