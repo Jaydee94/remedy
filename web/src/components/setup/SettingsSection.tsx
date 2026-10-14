@@ -204,7 +204,8 @@ function Row({ setting: s, busy, run }: { setting: Setting; busy: boolean; run: 
           className="h-11 max-w-64 text-base md:text-sm"
         />
         {isList ? (
-          <ConfirmButton label="Save" confirmLabel="Confirm: change where I may act" className="h-10" disabled={busy || same} onConfirm={() => void save()} />
+          // Never `disabled`: a disabled button drops the keyboard focus. save() already does nothing while busy or unchanged.
+          <ConfirmButton label="Save" confirmLabel="Confirm: change where I may act" className="h-10" onConfirm={() => void save()} />
         ) : (
           <Button type="submit" aria-disabled={busy || same} className={cn('h-10', ariaDisabled)}>
             Save
