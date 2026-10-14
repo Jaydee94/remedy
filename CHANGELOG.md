@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.0](https://github.com/Jaydee94/remedy/compare/v0.2.0...v0.3.0) (2026-10-14)
+
+### Features
+
+* hosts, cycle 2 (host tools in the gatekeeper) ([#144](https://github.com/Jaydee94/remedy/issues/144)) ([c227128](https://github.com/Jaydee94/remedy/commit/c227128295fbd953b3616a4f92bd58eda56fa626))
+
 ## [0.2.0](https://github.com/Jaydee94/remedy/compare/v0.1.1...v0.2.0) (2026-10-11)
 
 ### Features
