@@ -131,6 +131,11 @@ running as a service for other people's homelabs.
   master key, the listener addresses and the cluster token files (the write token is short-lived by design and
   must not go into the database). Everything else is configured in the UI and stored in the database, with the
   environment as the default, and the UI shows the source of each value.
+  **Built 2026-10-14 (cycle 3,
+  [spec](specs/2026-10-14-settings-3-design.md)).** Six values are settings: the poll interval, the three limits
+  of automatic diagnosis, the cluster action namespaces and the run timeout. The environment (and the chart's
+  values) only gives their defaults; the Setup page overrides them without a restart and shows the source of each
+  value (default, environment or set here). The bootstrap above stays in Helm and the environment.
 
 ### 2.8 Web UI (branch 8)
 

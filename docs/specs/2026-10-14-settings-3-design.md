@@ -1,6 +1,6 @@
 # Settings, cycle 3: settings in the database
 
-Status: proposed 2026-10-14. Implementation plan: not written yet.
+Status: implemented 2026-10-14 (pull request pending). Implementation plan: docs/plans/settings-3-settings-in-db.md.
 Parent documents: [`2026-10-09-hosts-and-skills-design.md`](2026-10-09-hosts-and-skills-design.md) (the umbrella: sections 2, 6 and 11 are binding here),
 [`2026-10-04-phase-2c-cluster-design.md`](2026-10-04-phase-2c-cluster-design.md) (the namespace allowlist and the write identity),
 [`2026-10-02-phase-1-detect-and-diagnose-design.md`](2026-10-02-phase-1-detect-and-diagnose-design.md) (the limits of automatic diagnosis).
