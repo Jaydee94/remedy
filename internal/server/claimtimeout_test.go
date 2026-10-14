@@ -35,6 +35,48 @@ func newSettingsEnv(t *testing.T, tune func(*server.Deps)) (*env, *settings.Sett
 	return &env{ts: ts, store: st}, set
 }
 
+func claimTimeoutSeconds(t *testing.T, e *env) (int, bool) {
+	t.Helper()
+	if _, err := e.store.CreateRun(context.Background(), "claude", "hello"); err != nil {
+		t.Fatal(err)
+	}
+	resp := e.runnerDo(t, http.MethodPost, "/runner/v1/claim", "", runnerToken)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("claim = %d", resp.StatusCode)
+	}
+	got := decode[map[string]any](t, resp)
+	v, ok := got["run_timeout_seconds"]
+	if !ok {
+		return 0, false
+	}
+	return int(v.(float64)), true
+}
+
+// A runner whose own REMEDY_RUN_TIMEOUT is set must keep it while the control plane has nothing set for it.
+func TestTheClaimLeavesTheRunTimeoutOutWhileTheSettingIsTheDefault(t *testing.T) {
+	e, _ := newSettingsEnv(t, nil)
+	if secs, ok := claimTimeoutSeconds(t, e); ok {
+		t.Fatalf("run_timeout_seconds = %d, want the field left out", secs)
+	}
+}
+
+func TestTheClaimCarriesARunTimeoutFromTheEnvironmentLayer(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	set := settings.New(context.Background(), st, settings.Layer{settings.RunTimeout: {Dur: 20 * time.Minute}},
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ts := httptest.NewServer(server.New(server.Deps{Store: st, Auth: auth.New(password), RunnerToken: runnerToken, Settings: set}))
+	t.Cleanup(ts.Close)
+	e := &env{ts: ts, store: st}
+	secs, ok := claimTimeoutSeconds(t, e)
+	if !ok || secs != 1200 {
+		t.Fatalf("run_timeout_seconds = %d (present %v), want 1200", secs, ok)
+	}
+}
+
 func TestTheClaimCarriesTheRunTimeoutOfTheSettings(t *testing.T) {
 	e, set := newSettingsEnv(t, nil)
 	if _, err := set.Set(context.Background(), settings.RunTimeout, json.RawMessage(`"25m"`)); err != nil {

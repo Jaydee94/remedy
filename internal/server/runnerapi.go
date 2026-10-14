@@ -60,8 +60,12 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			c := claimFor(*claimed, token)
+			// Only a value somebody chose (the environment of the control plane or the Setup page) goes to the runner: while
+			// the setting is at its default the field stays out, so a runner with its own REMEDY_RUN_TIMEOUT keeps it.
 			if s.d.Settings != nil {
-				c.RunTimeoutSeconds = int(s.d.Settings.Duration(settings.RunTimeout) / time.Second)
+				if e, ok := s.d.Settings.Entry(settings.RunTimeout); ok && e.Source != settings.SourceDefault {
+					c.RunTimeoutSeconds = int(e.Value.Dur / time.Second)
+				}
 			}
 			writeJSON(w, http.StatusOK, c)
 			return
