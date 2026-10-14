@@ -55,15 +55,14 @@ func (v Value) Text(k Kind) string {
 	return strings.Join(v.List, ",")
 }
 
-// formatDuration writes a duration the way it is typed: 15m, 90s, 1h; an odd one in Go's own form (1m1s). Whole seconds are
-// written as seconds only below a minute and for 90s, which people say as "90s" and not as "1m30s".
+// formatDuration writes a duration in whole units: 1h, 15m, 90s; one that is not a whole number of seconds in Go's own form.
 func formatDuration(d time.Duration) string {
 	switch {
 	case d > 0 && d%time.Hour == 0:
 		return strconv.Itoa(int(d/time.Hour)) + "h"
 	case d > 0 && d%time.Minute == 0:
 		return strconv.Itoa(int(d/time.Minute)) + "m"
-	case d > 0 && d%time.Second == 0 && (d < time.Minute || d == 90*time.Second):
+	case d > 0 && d%time.Second == 0:
 		return strconv.Itoa(int(d/time.Second)) + "s"
 	}
 	return d.String()

@@ -90,7 +90,7 @@ func TestTheJSONFormIsAStringForADurationANumberAndAnArray(t *testing.T) {
 }
 
 func TestADurationIsWrittenTheWayAPersonWritesIt(t *testing.T) {
-	for d, want := range map[time.Duration]string{90 * time.Second: `"90s"`, 15 * time.Minute: `"15m"`, time.Hour: `"1h"`, 61 * time.Second: `"1m1s"`} {
+	for d, want := range map[time.Duration]string{90 * time.Second: `"90s"`, 15 * time.Minute: `"15m"`, time.Hour: `"1h"`, 61 * time.Second: `"61s"`, 150 * time.Second: `"150s"`} {
 		if got := string((settings.Value{Dur: d}).JSON(settings.KindDuration)); got != want {
 			t.Errorf("%s = %s, want %s", d, got, want)
 		}
