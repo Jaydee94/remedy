@@ -43,7 +43,7 @@ func TestWhatIsEnabled(t *testing.T) {
 	}{
 		{"nothing", Config{}, false, false},
 		{"read only", Config{ReadTokenFile: "r"}, true, false},
-		{"write token without namespaces", Config{ReadTokenFile: "r", WriteTokenFile: "w"}, true, false},
+		{"write token without namespaces", Config{ReadTokenFile: "r", WriteTokenFile: "w"}, true, true}, // the allowlist may be empty or filled later: every action is refused until then
 		{"namespaces without a write token", Config{ReadTokenFile: "r", WriteNamespaces: []string{"demo"}}, true, false},
 		{"all", Config{ReadTokenFile: "r", WriteTokenFile: "w", WriteNamespaces: []string{"demo"}}, true, true},
 	}
@@ -55,6 +55,23 @@ func TestWhatIsEnabled(t *testing.T) {
 	c := Config{WriteNamespaces: []string{"demo"}}
 	if !c.NamespaceAllowed("demo") || c.NamespaceAllowed("other") || c.NamespaceAllowed("") {
 		t.Fatal("NamespaceAllowed is not exactly the list")
+	}
+}
+
+func TestAConfigReadsItsAllowlistFromTheFunctionWhenThereIsOne(t *testing.T) {
+	c := Config{WriteNamespaces: []string{"static"}}
+	if !c.NamespaceAllowed("static") || c.NamespaceAllowed("live") {
+		t.Fatal("the static list")
+	}
+	c.Namespaces = func() []string { return []string{"live"} }
+	if c.NamespaceAllowed("static") || !c.NamespaceAllowed("live") {
+		t.Fatal("the function must replace the static list")
+	}
+	if got := c.AllowedNamespaces(); len(got) != 1 || got[0] != "live" {
+		t.Fatalf("AllowedNamespaces = %v", got)
+	}
+	if !(Config{WriteTokenFile: "/x"}).WriteEnabled() || (Config{}).WriteEnabled() {
+		t.Fatal("WriteEnabled follows the write token file alone")
 	}
 }
 
@@ -103,8 +120,8 @@ func TestValidateNeverShowsATokenInItsError(t *testing.T) {
 func TestWarnings(t *testing.T) {
 	read := writeFile(t, "read", "r")
 	write := writeFile(t, "write", "w")
-	if w := (Config{ReadTokenFile: read, WriteTokenFile: write}).Warnings(); len(w) != 1 || !strings.Contains(w[0], "REMEDY_K8S_WRITE_NAMESPACES") {
-		t.Fatalf("warnings = %v", w)
+	if w := (Config{ReadTokenFile: read, WriteTokenFile: write}).Warnings(); len(w) != 0 {
+		t.Fatalf("warnings = %v: an empty allowlist may be filled in the Setup page, so it is no warning here", w)
 	}
 	if w := (Config{ReadTokenFile: read, WriteTokenFile: write, WriteNamespaces: []string{"demo"}}).Warnings(); len(w) != 0 {
 		t.Fatalf("warnings = %v", w)

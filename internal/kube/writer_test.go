@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -183,8 +184,12 @@ func TestANewWriterNeedsTheWriteSideToBeConfigured(t *testing.T) {
 	if _, err := NewWriter(Config{API: "http://k8s", ReadTokenFile: read}); err == nil {
 		t.Fatal("a writer without a write token")
 	}
-	if _, err := NewWriter(Config{API: "http://k8s", ReadTokenFile: read, WriteTokenFile: writeFile(t, "w", "w")}); err == nil {
-		t.Fatal("a writer without namespaces")
+	w, err := NewWriter(Config{API: "http://k8s", ReadTokenFile: read, WriteTokenFile: writeFile(t, "w", "w")})
+	if err != nil {
+		t.Fatalf("a writer with a token and no namespaces: %v", err)
+	}
+	if err := w.DeletePod(context.Background(), "demo", "web"); !errors.Is(err, ErrNamespaceNotAllowed) {
+		t.Fatalf("an empty allowlist: %v, want ErrNamespaceNotAllowed", err)
 	}
 	if _, err := NewReader(Config{API: "http://k8s"}); err == nil {
 		t.Fatal("a reader without a read token")
@@ -218,5 +223,28 @@ func TestAnActionFailsClosedUntilTheWriteTokenExists(t *testing.T) {
 	got := api.requests()
 	if len(got) != 1 || got[0].Method != "DELETE" || got[0].Auth != "Bearer write-token" {
 		t.Fatalf("requests = %+v", got)
+	}
+}
+
+func TestTheWriterReadsTheAllowlistAtEveryCall(t *testing.T) {
+	api := newFakeAPI(t, okReply()) // the helpers of the other writer tests
+	var mu sync.Mutex
+	list := []string{"demo"}
+	get := func() []string { mu.Lock(); defer mu.Unlock(); return append([]string(nil), list...) }
+	w, err := NewWriter(Config{API: api.URL, ReadTokenFile: writeFile(t, "r", "r"), WriteTokenFile: writeFile(t, "w", "w"), Namespaces: get})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.target("other", "web"); !errors.Is(err, ErrNamespaceNotAllowed) {
+		t.Fatalf("before: %v", err)
+	}
+	mu.Lock()
+	list = []string{"other"}
+	mu.Unlock()
+	if err := w.target("other", "web"); err != nil {
+		t.Fatalf("after the list changed: %v", err)
+	}
+	if err := w.target("demo", "web"); !errors.Is(err, ErrNamespaceNotAllowed) {
+		t.Fatalf("a namespace that was removed: %v", err)
 	}
 }

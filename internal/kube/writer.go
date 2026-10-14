@@ -18,21 +18,21 @@ const mergePatch = "application/merge-patch+json"
 // namespaces of the allowlist; the Argo CD methods work in the Argo CD namespace.
 type Writer struct {
 	*client
-	namespaces []string
-	argo       string
+	allowed func() []string
+	argo    string
 }
 
-// NewWriter builds a Writer for a configuration whose write side is on: a write token and at least one namespace.
+// NewWriter builds a Writer for a configuration whose write side is on: a write token. The allowlist is read at every call.
 func NewWriter(c Config, opts ...Option) (*Writer, error) {
 	if !c.WriteEnabled() {
-		return nil, errors.New("kube: the write side is not configured (REMEDY_K8S_WRITE_TOKEN_FILE and REMEDY_K8S_WRITE_NAMESPACES)")
+		return nil, errors.New("kube: the write side is not configured (REMEDY_K8S_WRITE_TOKEN_FILE)")
 	}
 	cl, err := newClient(c, c.WriteTokenFile, func(m string) bool { return m == http.MethodPatch || m == http.MethodDelete },
 		"this client only patches and deletes", opts)
 	if err != nil {
 		return nil, err
 	}
-	return &Writer{client: cl, namespaces: slices.Clone(c.WriteNamespaces), argo: c.argoNamespace()}, nil
+	return &Writer{client: cl, allowed: c.AllowedNamespaces, argo: c.argoNamespace()}, nil
 }
 
 // A name that goes into a request path: a DNS subdomain. Nothing in it can add a path segment or a query.
@@ -50,7 +50,7 @@ func ValidName(s string) bool { return validName(s) == nil }
 
 // target checks the namespace against the allowlist and the name against the name rules, before anything is sent.
 func (w *Writer) target(namespace, name string) error {
-	if !slices.Contains(w.namespaces, namespace) {
+	if !slices.Contains(w.allowed(), namespace) {
 		return fmt.Errorf("%w: %q", ErrNamespaceNotAllowed, namespace)
 	}
 	return validName(name)

@@ -32,18 +32,30 @@ type Config struct {
 	ReadTokenFile   string   // REMEDY_K8S_READ_TOKEN_FILE: turns the read side on
 	WriteTokenFile  string   // REMEDY_K8S_WRITE_TOKEN_FILE
 	WriteNamespaces []string // REMEDY_K8S_WRITE_NAMESPACES: where actions may be used
-	ArgoNamespace   string   // REMEDY_K8S_ARGO_NAMESPACE
+	// Namespaces, when set, is the allowlist: it is asked at every use and replaces WriteNamespaces, so that a change in the Setup page
+	// counts at once.
+	Namespaces    func() []string
+	ArgoNamespace string // REMEDY_K8S_ARGO_NAMESPACE
 }
 
 // ReadEnabled says whether the read side is configured.
 func (c Config) ReadEnabled() bool { return c.ReadTokenFile != "" }
 
-// WriteEnabled says whether actions are possible: a write token and at least one namespace to use them in.
-func (c Config) WriteEnabled() bool { return c.WriteTokenFile != "" && len(c.WriteNamespaces) > 0 }
+// WriteEnabled says whether actions are possible at all: a write token. Where they may be used is the allowlist, which can be empty
+// (then every action is refused) and can change while the control plane runs.
+func (c Config) WriteEnabled() bool { return c.WriteTokenFile != "" }
+
+// AllowedNamespaces is the allowlist now.
+func (c Config) AllowedNamespaces() []string {
+	if c.Namespaces != nil {
+		return c.Namespaces()
+	}
+	return c.WriteNamespaces
+}
 
 // NamespaceAllowed says whether an action may be used in the namespace.
 func (c Config) NamespaceAllowed(namespace string) bool {
-	return namespace != "" && slices.Contains(c.WriteNamespaces, namespace)
+	return namespace != "" && slices.Contains(c.AllowedNamespaces(), namespace)
 }
 
 func (c Config) api() string {
@@ -141,9 +153,6 @@ func (c Config) Warnings() []string {
 		if _, err := readToken(c.WriteTokenFile); err != nil && tokenNotThereYet(err) {
 			w = append(w, "REMEDY_K8S_WRITE_TOKEN_FILE holds no token yet: every cluster action fails until it does (the token refresher fills it)")
 		}
-	}
-	if c.WriteTokenFile != "" && len(c.WriteNamespaces) == 0 {
-		w = append(w, "REMEDY_K8S_WRITE_TOKEN_FILE is set but REMEDY_K8S_WRITE_NAMESPACES is empty: no cluster action can be used")
 	}
 	return w
 }

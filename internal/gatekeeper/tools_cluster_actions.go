@@ -38,7 +38,7 @@ func (a *actionTools) allowed(namespace string) error {
 	if a.cfg.NamespaceAllowed(namespace) {
 		return nil
 	}
-	return ArgumentError(fmt.Sprintf("actions are not allowed in the namespace %q; they are allowed in: %s", namespace, strings.Join(a.cfg.WriteNamespaces, ", ")))
+	return ArgumentError(fmt.Sprintf("actions are not allowed in the namespace %q; they are allowed in: %s", namespace, strings.Join(a.cfg.AllowedNamespaces(), ", ")))
 }
 
 // actionErr is what the agent is told when the Writer or the Reader failed during an approved action.
@@ -192,7 +192,7 @@ func (a *actionTools) application(ctx context.Context, name string) (kube.Applic
 			return kube.Application{}, ArgumentError(fmt.Sprintf("the application %s has no destination namespace, so actions on it are not allowed", name))
 		}
 		return kube.Application{}, ArgumentError(fmt.Sprintf("the application %s deploys to the namespace %q, where actions are not allowed; they are allowed in: %s",
-			name, app.DestinationNamespace, strings.Join(a.cfg.WriteNamespaces, ", ")))
+			name, app.DestinationNamespace, strings.Join(a.cfg.AllowedNamespaces(), ", ")))
 	}
 	return app, nil
 }
