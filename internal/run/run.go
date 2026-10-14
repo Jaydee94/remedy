@@ -97,6 +97,9 @@ type Claim struct {
 	// MCPToken is the token of a run with gatekeeper access: the bearer token for the MCP endpoint of the control
 	// plane. It exists only in this answer; the control plane keeps a hash.
 	MCPToken string `json:"mcp_token,omitempty"`
+	// RunTimeoutSeconds is the longest the run may take while it does not wait for an approval, from the control plane's settings.
+	// Zero (an older control plane) means the runner's own limit.
+	RunTimeoutSeconds int `json:"run_timeout_seconds,omitempty"`
 }
 
 // NewID returns a random 128-bit identifier as 32 hex characters.

@@ -104,6 +104,9 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 	if timeout <= 0 {
 		timeout = DefaultRunTimeout
 	}
+	if c.RunTimeoutSeconds > 0 {
+		timeout = time.Duration(c.RunTimeoutSeconds) * time.Second
+	}
 	// The time limit is a budget of running time. A run that waits for an approval does not use it up, and the
 	// control plane can cancel the run: both reach the runner through the heartbeat of a run with tools.
 	execCtx, cancel := context.WithCancel(ctx)

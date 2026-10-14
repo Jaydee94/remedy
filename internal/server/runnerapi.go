@@ -11,6 +11,7 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/run"
+	"github.com/Jaydee94/remedy/internal/settings"
 	"github.com/Jaydee94/remedy/internal/store"
 )
 
@@ -58,7 +59,11 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			writeJSON(w, http.StatusOK, claimFor(*claimed, token))
+			c := claimFor(*claimed, token)
+			if s.d.Settings != nil {
+				c.RunTimeoutSeconds = int(s.d.Settings.Duration(settings.RunTimeout) / time.Second)
+			}
+			writeJSON(w, http.StatusOK, c)
 			return
 		}
 		select {
