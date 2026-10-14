@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from '@/api.ts'
 import type { Fact, Limits, Setting } from '@/api.ts'
-import { groupSettings, inputText, parseInput, resetLabel, sourceBadge, unchanged, valueText } from '@/settings.ts'
+import { groupSettings, inputText, parseInput, replaceSetting, resetLabel, sourceBadge, unchanged, valueText } from '@/settings.ts'
 import { diagnosisBar, limitsText } from '@/setup.ts'
 import ConfirmButton from '@/components/ConfirmButton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -17,7 +17,13 @@ interface Outcome {
   error: string
 }
 
-type RunFn = (key: string, action: () => Promise<unknown>, said: (s: Setting) => string) => Promise<Outcome>
+/** `action` returns the setting the server answered with, or nothing (a reset). `unrefreshed` is announced when the write worked and the refresh did not. */
+type RunFn = (
+  key: string,
+  action: () => Promise<Setting | undefined>,
+  said: (s: Setting) => string,
+  unrefreshed: string,
+) => Promise<Outcome>
 
 const ariaDisabled = 'aria-disabled:pointer-events-none aria-disabled:opacity-50'
 
@@ -47,21 +53,36 @@ export default function SettingsSection() {
   }, [loadLimits])
 
   /** One request at a time. A failure goes back to the row that asked, which shows it under its field, not for the whole page. */
-  const run: RunFn = async (key, action, said) => {
+  const run: RunFn = async (key, action, said, unrefreshed) => {
     if (busyRef.current) return { ok: false, error: '' }
     busyRef.current = true
     setBusy(true)
     try {
-      await action()
-      const fresh = await api.getSettings()
-      setSettings(fresh.settings)
-      setFacts(fresh.facts)
-      loadLimits()
-      const s = fresh.settings.find((x) => x.key === key)
-      setNotice((prev) => ({ n: (prev?.n ?? 0) + 1, text: s ? said(s) : 'Done.' }))
+      let written: Setting | undefined
+      try {
+        written = await action()
+      } catch (e) {
+        return { ok: false, error: e instanceof ApiError ? e.message : 'Request failed' }
+      }
+      // The write worked. What the server answered is applied at once, so the page never keeps an older (possibly wider) value; the
+      // refresh that follows is best effort, and when it fails that is said in the live region, not at the row.
+      if (written) {
+        const next = written
+        setSettings((prev) => (prev ? replaceSetting(prev, next) : prev))
+      }
+      let text = unrefreshed
+      try {
+        const fresh = await api.getSettings()
+        setSettings(fresh.settings)
+        setFacts(fresh.facts)
+        const s = fresh.settings.find((x) => x.key === key)
+        text = s ? said(s) : 'Done.'
+        loadLimits()
+      } catch {
+        // keep `unrefreshed`
+      }
+      setNotice((prev) => ({ n: (prev?.n ?? 0) + 1, text }))
       return { ok: true, error: '' }
-    } catch (e) {
-      return { ok: false, error: e instanceof ApiError ? e.message : 'Request failed' }
     } finally {
       busyRef.current = false
       setBusy(false)
@@ -157,13 +178,23 @@ function Row({ setting: s, busy, run }: { setting: Setting; busy: boolean; run: 
       setProblem(parsed.message)
       return
     }
-    const out = await run(s.key, () => api.putSetting(s.key, parsed.value), (n) => `${n.label}: now ${valueText(n)}.`)
+    const out = await run(
+      s.key,
+      () => api.putSetting(s.key, parsed.value),
+      (n) => `${n.label}: now ${valueText(n)}.`,
+      `${s.label}: saved. I could not refresh the page; reload it to be sure.`,
+    )
     setProblem(out.error)
   }
 
   async function reset() {
     if (busy) return
-    const out = await run(s.key, () => api.deleteSetting(s.key), (n) => `${n.label}: back to ${valueText(n)} (${n.source}).`)
+    const out = await run(
+      s.key,
+      () => api.deleteSetting(s.key).then(() => undefined),
+      (n) => `${n.label}: back to ${valueText(n)} (${n.source}).`,
+      `${s.label}: reset. I could not refresh the page; reload it to be sure.`,
+    )
     setProblem(out.error)
     // The reset button is gone once the value is no longer set here: the focus goes to the field, not to the page.
     if (out.ok) inputRef.current?.focus()

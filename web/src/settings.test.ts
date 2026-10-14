@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Setting } from './api.ts'
-import { groupSettings, inputText, parseInput, resetLabel, sourceBadge, unchanged, valueText } from './settings.ts'
+import { groupSettings, inputText, parseInput, replaceSetting, resetLabel, sourceBadge, unchanged, valueText } from './settings.ts'
 
 const setting = (over: Partial<Setting> = {}): Setting => ({
   key: 'poll_interval',
@@ -15,6 +15,23 @@ const setting = (over: Partial<Setting> = {}): Setting => ({
   rule: 'At least 10s.',
   effect: 'Takes effect at the next check.',
   ...over,
+})
+
+describe('replaceSetting', () => {
+  it('replaces the entry with the same key and keeps the order and the other entries', () => {
+    const a = setting({ key: 'a', value: '1m' })
+    const b = setting({ key: 'b', value: '2m' })
+    const list = [a, b]
+    const out = replaceSetting(list, setting({ key: 'a', value: '5m', source: 'set here' }))
+    assert.deepEqual(out.map((s) => [s.key, s.value]), [['a', '5m'], ['b', '2m']])
+    assert.equal(out[1], b)
+    assert.equal(list[0], a, 'the old list is not changed')
+  })
+
+  it('leaves the list as it is when the key is not in it', () => {
+    const list = [setting({ key: 'a' })]
+    assert.deepEqual(replaceSetting(list, setting({ key: 'zz' })), list)
+  })
 })
 
 describe('groupSettings', () => {

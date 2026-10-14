@@ -16,6 +16,11 @@ export function groupSettings(settings: Setting[]): SettingGroup[] {
   return groups
 }
 
+/** A new list in which the entry with the key of `next` is `next`; the order and the other entries stay. */
+export function replaceSetting(settings: Setting[], next: Setting): Setting[] {
+  return settings.map((s) => (s.key === next.key ? next : s))
+}
+
 /** The value as a person reads it. */
 export function valueText(s: Setting): string {
   if (Array.isArray(s.value)) return s.value.length === 0 ? 'none' : s.value.join(', ')
