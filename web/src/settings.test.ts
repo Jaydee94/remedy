@@ -62,6 +62,12 @@ describe('valueText and inputText', () => {
     assert.equal(inputText(setting({ kind: 'list', value: [] })), '')
     assert.equal(inputText(setting({ kind: 'number', value: 0 })), '0')
   })
+  it('shows a text as it is, "none" when it is empty, and puts it into the input field', () => {
+    assert.equal(valueText(setting({ kind: 'text', value: 'http://am:9093' })), 'http://am:9093')
+    assert.equal(valueText(setting({ kind: 'text', value: '' })), 'none')
+    assert.equal(inputText(setting({ kind: 'text', value: 'http://am:9093' })), 'http://am:9093')
+    assert.equal(inputText(setting({ kind: 'text', value: '' })), '')
+  })
 })
 
 describe('sourceBadge and resetLabel', () => {
@@ -92,6 +98,10 @@ describe('parseInput', () => {
   it('splits a list at commas, trims it and drops empty entries; an empty field is the empty list', () => {
     assert.deepEqual(parseInput(setting({ kind: 'list' }), 'demo, staging ,,'), { ok: true, value: ['demo', 'staging'] })
     assert.deepEqual(parseInput(setting({ kind: 'list' }), ''), { ok: true, value: [] })
+  })
+  it('takes a text trimmed and lets the server have the last word; an empty field is the empty text', () => {
+    assert.deepEqual(parseInput(setting({ kind: 'text' }), '  http://x  '), { ok: true, value: 'http://x' })
+    assert.deepEqual(parseInput(setting({ kind: 'text' }), ''), { ok: true, value: '' })
   })
   it('takes whitespace only as the empty list', () => {
     assert.deepEqual(parseInput(setting({ kind: 'list' }), '   '), { ok: true, value: [] })

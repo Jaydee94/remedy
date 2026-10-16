@@ -24,6 +24,7 @@ export function replaceSetting(settings: Setting[], next: Setting): Setting[] {
 /** The value as a person reads it. */
 export function valueText(s: Setting): string {
   if (Array.isArray(s.value)) return s.value.length === 0 ? 'none' : s.value.join(', ')
+  if (s.kind === 'text' && s.value === '') return 'none'
   return String(s.value)
 }
 
@@ -55,6 +56,7 @@ export function parseInput(s: Setting, text: string): Parsed {
   if (s.kind === 'number') {
     return /^\d+$/.test(t) ? { ok: true, value: Number(t) } : { ok: false, message: 'Enter a whole number.' }
   }
+  if (s.kind === 'text') return { ok: true, value: t }
   return {
     ok: true,
     value: t

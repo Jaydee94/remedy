@@ -50,7 +50,8 @@ func TestTheSettingsAreListedWithTheirSourceAndTheBootstrapFacts(t *testing.T) {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 	page := decode[settingsPage](t, resp)
-	if len(page.Settings) != 6 || page.Settings[0].Key != "poll_interval" || string(page.Settings[0].Value) != `"1m"` ||
+	// 6 settings of cycle 3 and 2 of the Alertmanager source
+	if len(page.Settings) != 8 || page.Settings[0].Key != "poll_interval" || string(page.Settings[0].Value) != `"1m"` ||
 		page.Settings[0].Source != "default" || page.Settings[0].Env != "REMEDY_POLL_INTERVAL" || page.Settings[0].Kind != "duration" {
 		t.Fatalf("settings = %+v", page.Settings)
 	}

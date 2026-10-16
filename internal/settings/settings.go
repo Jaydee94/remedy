@@ -141,6 +141,9 @@ func (s *Settings) Int(key string) int { return s.must(key).Value.Num }
 // List is the value of a list setting. The caller owns the slice.
 func (s *Settings) List(key string) []string { return slices.Clone(s.must(key).Value.List) }
 
+// Text is the value of a text setting.
+func (s *Settings) Text(key string) string { return s.must(key).Value.Str }
+
 // Entries returns every setting in the order of the registry.
 func (s *Settings) Entries() []Entry {
 	snap := s.snap.Load()

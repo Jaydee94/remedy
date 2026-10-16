@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,8 @@ const (
 	DiagnoseMaxPerDay      = "diagnose_max_per_day"
 	K8sWriteNamespaces     = "k8s_write_namespaces"
 	RunTimeout             = "run_timeout"
+	AlertmanagerURL        = "alertmanager_url"
+	AlertmanagerAutoMaxAge = "alertmanager_auto_max_age"
 )
 
 // Spec says what one setting is. problem is the sentence that follows the variable's name when a value is refused; check is the
@@ -31,13 +34,15 @@ type Spec struct {
 	Key     string
 	Group   string // the heading on the Setup page
 	Label   string
-	Env     string // the environment variable that gives the default
+	Env     string // the environment variable that gives the default; empty: the setting has none
 	Kind    Kind
 	Default Value
 	Rule    string // the bounds, for the Setup page
 	Effect  string // when a change takes effect, for the Setup page
 	problem string
 	check   func(Value) bool
+	// normalize writes a value that passed check in its one canonical form (a trailing slash removed); nil: as it is.
+	normalize func(Value) Value
 }
 
 var specs = []Spec{
@@ -81,6 +86,36 @@ var specs = []Spec{
 		problem: "must be a duration of at least 10s, for example 10m",
 		check:   func(v Value) bool { return v.Dur >= 10*time.Second },
 	},
+	{
+		Key: AlertmanagerURL, Group: "Alertmanager", Label: "Alertmanager address", Env: "REMEDY_ALERTMANAGER_URL",
+		Kind: KindText, Rule: "An http or https address without a user name, for example http://alertmanager:9093. Empty: I do not ask Alertmanager.",
+		Effect:    "Takes effect at the next check.",
+		problem:   "must be an http or https address without a user name, a query or a fragment, for example http://alertmanager:9093",
+		check:     func(v Value) bool { return validAlertmanagerURL(v.Str) },
+		normalize: func(v Value) Value { v.Str = strings.TrimRight(v.Str, "/"); return v },
+	},
+	{
+		Key: AlertmanagerAutoMaxAge, Group: "Alertmanager", Label: "Oldest alert I diagnose on my own",
+		Kind: KindDuration, Default: Value{Dur: time.Hour}, Rule: "At least 1m, for example 1h. An older alert is shown, and a click diagnoses it.",
+		Effect:  "Takes effect when an incident opens.",
+		problem: "must be a duration of at least 1m, for example 1h",
+		check:   func(v Value) bool { return v.Dur >= time.Minute },
+	},
+}
+
+// validAlertmanagerURL says whether s is empty or an http or https address that carries no credential, query or fragment.
+func validAlertmanagerURL(s string) bool {
+	if s == "" {
+		return true
+	}
+	if len(s) > 2048 || strings.ContainsAny(s, " \t\r\n\x00") {
+		return false
+	}
+	u, err := url.Parse(s)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return false
+	}
+	return u.User == nil && u.RawQuery == "" && u.Fragment == "" && !u.ForceQuery
 }
 
 // Specs returns the registry in the order the Setup page shows it.
@@ -113,6 +148,8 @@ func (s Spec) ParseText(text string) (Value, error) {
 			return Value{}, errors.New(s.problem)
 		}
 		v.Num = n
+	case KindText:
+		v.Str = strings.TrimSpace(text)
 	default:
 		list, err := kube.ParseNamespaces(text)
 		if err != nil {
@@ -122,6 +159,9 @@ func (s Spec) ParseText(text string) (Value, error) {
 	}
 	if s.check != nil && !s.check(v) {
 		return Value{}, errors.New(s.problem)
+	}
+	if s.normalize != nil {
+		v = s.normalize(v)
 	}
 	return v, nil
 }
@@ -143,6 +183,12 @@ func (s Spec) ParseJSON(raw json.RawMessage) (Value, error) {
 			return Value{}, errors.New(s.problem)
 		}
 		return s.ParseText(strconv.Itoa(n))
+	case KindText:
+		var text string
+		if err := json.Unmarshal(raw, &text); err != nil || isNull {
+			return Value{}, fmt.Errorf("%s (write it as a string)", s.problem)
+		}
+		return s.ParseText(text)
 	}
 	var list []string
 	if err := json.Unmarshal(raw, &list); err != nil || isNull {
@@ -182,10 +228,17 @@ func (l Layer) Int(key string) int { return l.value(key).Num }
 // List is the layer's value of a key, or the default.
 func (l Layer) List(key string) []string { return append([]string(nil), l.value(key).List...) }
 
-// EnvLayer reads every variable of the registry. An empty variable counts as not set. A value that is refused stops the start.
+// Text is the layer's value of a key, or the default.
+func (l Layer) Text(key string) string { return l.value(key).Str }
+
+// EnvLayer reads every variable of the registry. An empty variable counts as not set, and a setting without a variable is skipped.
+// A value that is refused stops the start.
 func EnvLayer(get func(string) string) (Layer, error) {
 	l := Layer{}
 	for _, s := range specs {
+		if s.Env == "" {
+			continue
+		}
 		text := get(s.Env)
 		if text == "" {
 			continue
@@ -204,6 +257,9 @@ func EnvValue(key string, get func(string) string) (Value, bool, error) {
 	s, ok := Lookup(key)
 	if !ok {
 		panic("settings: unknown key " + key)
+	}
+	if s.Env == "" {
+		return Value{}, false, nil
 	}
 	text := get(s.Env)
 	if text == "" {

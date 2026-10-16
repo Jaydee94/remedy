@@ -259,7 +259,7 @@ export interface Setting {
   key: string
   group: string
   label: string
-  kind: 'duration' | 'number' | 'list'
+  kind: 'duration' | 'number' | 'list' | 'text'
   value: SettingValue
   source: 'default' | 'environment' | 'set here'
   fallback: 'default' | 'environment'
