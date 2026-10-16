@@ -205,6 +205,8 @@ func TestAnAlertBecomesAnIncidentMappedToAHostAndResolvesWhenItIsGone(t *testing
 	}
 	if got := signalStates(t, do); len(got) != 1 || got[0].State != "error" || got[0].Error == "" {
 		t.Fatalf("after a failed fetch: %+v", got)
+	} else if strings.Contains(got[0].Error, alertmanagerToken) {
+		t.Fatalf("the error text shows the token: %q", got[0].Error)
 	}
 
 	// An empty, complete answer resolves both.

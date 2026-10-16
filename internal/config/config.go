@@ -2,6 +2,7 @@
 package config
 
 import (
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -102,8 +103,12 @@ func ServerFromEnv(get func(string) string) (Server, error) {
 	}
 	c.AlertmanagerCAFile = get("REMEDY_ALERTMANAGER_CA_FILE")
 	if c.AlertmanagerCAFile != "" {
-		if _, err := os.ReadFile(c.AlertmanagerCAFile); err != nil {
+		pemBytes, err := os.ReadFile(c.AlertmanagerCAFile)
+		if err != nil {
 			return Server{}, fmt.Errorf("REMEDY_ALERTMANAGER_CA_FILE: %w", err)
+		}
+		if !x509.NewCertPool().AppendCertsFromPEM(pemBytes) {
+			return Server{}, errors.New("REMEDY_ALERTMANAGER_CA_FILE: the file holds no certificate")
 		}
 	}
 	return c, nil

@@ -83,6 +83,19 @@ func TestTheGettersAnswerForEveryKind(t *testing.T) {
 	}
 }
 
+func TestThePollIntervalRuleSaysItAlsoPacesAlertmanager(t *testing.T) {
+	for _, sp := range settings.Specs() {
+		if sp.Key != settings.PollInterval {
+			continue
+		}
+		if sp.Label != "How often I check GitHub" || !strings.HasPrefix(sp.Rule, "At least 10s") || !strings.Contains(sp.Rule, "It is also how often I ask Alertmanager.") {
+			t.Fatalf("label %q, rule %q", sp.Label, sp.Rule)
+		}
+		return
+	}
+	t.Fatal("no poll interval spec")
+}
+
 func TestEntriesComeInTheOrderOfTheRegistry(t *testing.T) {
 	s, _ := newReader(t, nil)
 	var got, want []string

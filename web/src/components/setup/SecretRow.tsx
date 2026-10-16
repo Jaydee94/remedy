@@ -5,6 +5,7 @@ import { secretLine, sourceBadge } from '@/settings.ts'
 import ConfirmButton from '@/components/ConfirmButton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ariaDisabled } from '@/components/setup/ariaDisabled.ts'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -14,8 +15,6 @@ interface Props {
   onSave: (value: string) => Promise<string>
   onRemove: () => Promise<string>
 }
-
-const ariaDisabled = 'aria-disabled:pointer-events-none aria-disabled:opacity-50'
 
 /**
  * The row of a secret setting. The token is write-only: the field is uncontrolled, so React never mirrors it (not into state, not into the

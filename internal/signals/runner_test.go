@@ -412,22 +412,48 @@ func TestAFailedObservationFailsTheCycleAndResolvesNothing(t *testing.T) {
 	}
 }
 
-func TestTheHostListIsAskedOncePerCycleAndItsFailureDoesNotStopTheCycle(t *testing.T) {
+func TestTheHostListIsAskedOncePerCycleAndItsFailureFailsTheCycle(t *testing.T) {
 	g := newRig(t)
+	h := g.addHost(t, "nas", `job="x"`)
+	g.cycle(sig("Old/1", "warning", false, map[string]string{"job": "x"}))
+	if got := g.incidents(t)["Old/1"]; got.HostID != h.ID {
+		t.Fatalf("setup: Old/1 host = %d, want %d", got.HostID, h.ID)
+	}
+	before := g.activityCount(t)
+
 	asked := 0
+	working := g.r.Hosts
 	g.r.Hosts = func(context.Context) ([]signals.HostRules, error) {
 		asked++
 		return nil, errors.New("database is locked")
 	}
+	// Old/1 is absent from this answer and A/1 is new: neither may be resolved or opened.
 	g.cycle(sig("A/1", "warning", false, map[string]string{"job": "x"}), sig("B/2", "warning", false, nil))
 	if asked != 1 {
 		t.Errorf("the hosts were asked %d times in one cycle, want 1", asked)
 	}
 	got := g.incidents(t)
-	if len(got) != 2 || got["A/1"].HostID != 0 {
-		t.Fatalf("incidents = %+v", got)
+	if len(got) != 1 || got["Old/1"].State == store.IncResolved || got["Old/1"].HostID != h.ID {
+		t.Fatalf("incidents = %+v, want only the untouched Old/1", got)
+	}
+	if n := g.activityCount(t); n != before {
+		t.Errorf("activity %d -> %d: a failed cycle changed something", before, n)
+	}
+	st := g.r.States()[0]
+	if st.State != signals.StateError || !strings.Contains(st.Error, "the hosts could not be read") || !strings.Contains(st.Error, "database is locked") {
+		t.Fatalf("state = %+v, want an error that names the hosts", st)
 	}
 	if n := strings.Count(g.logs.String(), "the hosts could not be read"); n != 1 {
 		t.Errorf("%d warnings, want 1: %s", n, g.logs)
+	}
+
+	g.r.Hosts = working
+	g.cycle(sig("A/1", "warning", false, map[string]string{"job": "x"}), sig("B/2", "warning", false, nil))
+	if st := g.r.States()[0]; st.State != signals.StateOK {
+		t.Fatalf("the next cycle did not recover: %+v", st)
+	}
+	got = g.incidents(t)
+	if got["Old/1"].State != store.IncResolved || got["A/1"].HostID != h.ID || got["B/2"].State != store.IncOpen {
+		t.Fatalf("after recovery: %+v", got)
 	}
 }

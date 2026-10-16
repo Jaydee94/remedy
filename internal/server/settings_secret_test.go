@@ -17,7 +17,8 @@ import (
 	"github.com/Jaydee94/remedy/internal/store"
 )
 
-func TestTheTokenIsWrittenOnceAndNeverComesBack(t *testing.T) {
+func keyedSettingsServer(t *testing.T) (*env, *http.Client) {
+	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -28,7 +29,23 @@ func TestTheTokenIsWrittenOnceAndNeverComesBack(t *testing.T) {
 	ts := httptest.NewServer(server.New(server.Deps{Store: st, Auth: auth.New(password), RunnerToken: runnerToken, Settings: set}))
 	t.Cleanup(ts.Close)
 	e := &env{ts: ts, store: st}
-	c := e.adminClient(t, true)
+	return e, e.adminClient(t, true)
+}
+
+func TestAMaximumLengthTokenFitsAndAHugeBodyIsRefused(t *testing.T) {
+	e, c := keyedSettingsServer(t)
+	full := e.do(t, c, http.MethodPut, "/api/settings/alertmanager_token", `{"value":"`+strings.Repeat("a", 4096)+`"}`, true)
+	if body := string(mustReadAll(t, full)); full.StatusCode != http.StatusOK {
+		t.Errorf("a 4096-byte token: %d %s", full.StatusCode, body)
+	}
+	huge := e.do(t, c, http.MethodPut, "/api/settings/alertmanager_token", `{"value":"`+strings.Repeat("a", 20<<10)+`"}`, true)
+	if huge.StatusCode != http.StatusBadRequest {
+		t.Errorf("a 20 KB body: %d", huge.StatusCode)
+	}
+}
+
+func TestTheTokenIsWrittenOnceAndNeverComesBack(t *testing.T) {
+	e, c := keyedSettingsServer(t)
 
 	const token = "tok-0123456789abcdef-SECRET"
 	resp := e.do(t, c, http.MethodPut, "/api/settings/alertmanager_token", `{"value":"`+token+`"}`, true)

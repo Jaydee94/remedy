@@ -8,6 +8,7 @@ import { signalLine } from '@/signals.ts'
 import { useClock } from '@/useClock.ts'
 import ConfirmButton from '@/components/ConfirmButton'
 import SecretRow from '@/components/setup/SecretRow'
+import { ariaDisabled } from '@/components/setup/ariaDisabled.ts'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,8 +31,6 @@ type RunFn = (
 
 /** The title of the group of the Alertmanager settings; a change in it refreshes the line about what I last heard from Alertmanager. */
 const alertmanagerGroup = 'Alertmanager'
-
-const ariaDisabled ='aria-disabled:pointer-events-none aria-disabled:opacity-50'
 
 /** What Remedy does on its own, how much of it, and the values behind it. The environment gives the defaults; a value set here wins. */
 export default function SettingsSection() {

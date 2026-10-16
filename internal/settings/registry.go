@@ -49,7 +49,7 @@ type Spec struct {
 var specs = []Spec{
 	{
 		Key: PollInterval, Group: "Polling", Label: "How often I check GitHub", Env: "REMEDY_POLL_INTERVAL",
-		Kind: KindDuration, Default: Value{Dur: time.Minute}, Rule: "At least 10s, for example 60s or 2m.",
+		Kind: KindDuration, Default: Value{Dur: time.Minute}, Rule: "At least 10s, for example 60s or 2m. It is also how often I ask Alertmanager.",
 		Effect:  "Takes effect at the next check.",
 		problem: "must be a duration of at least 10s, for example 60s or 2m",
 		check:   func(v Value) bool { return v.Dur >= 10*time.Second },

@@ -3,6 +3,7 @@ package signals
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sort"
 	"sync"
@@ -138,18 +139,19 @@ func (r *Runner) States() []State {
 	return out
 }
 
-func (r *Runner) hostRules(ctx context.Context) []compiledHost {
+// hostRules reads the hosts once per cycle. When it cannot, the cycle fails: without the rules every incident
+// touched in it would lose its host.
+func (r *Runner) hostRules(ctx context.Context) ([]compiledHost, error) {
 	hosts, err := r.Hosts(ctx)
 	if err != nil {
-		r.Log.Warn("the hosts could not be read; the signals of this cycle have no host", "err", err)
-		return nil
+		return nil, fmt.Errorf("the hosts could not be read: %w", err)
 	}
 	ok, skipped := compile(hosts)
 	if len(skipped) > 0 {
 		sort.Strings(skipped)
 		r.Log.Warn("the alert rules of these hosts cannot be read and are skipped", "hosts", skipped)
 	}
-	return ok
+	return ok, nil
 }
 
 func (r *Runner) runSource(ctx context.Context, src Source) {
@@ -163,7 +165,11 @@ func (r *Runner) runSource(ctx context.Context, src Source) {
 		r.fail(name, err)
 		return
 	}
-	hosts := r.hostRules(ctx)
+	hosts, err := r.hostRules(ctx)
+	if err != nil {
+		r.fail(name, err)
+		return
+	}
 	present := make(map[string]bool, len(sigs))
 	opened, deferred := 0, 0
 	for _, sg := range sigs {

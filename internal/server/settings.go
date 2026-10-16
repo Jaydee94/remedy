@@ -8,7 +8,8 @@ import (
 	"github.com/Jaydee94/remedy/internal/settings"
 )
 
-const maxSettingBody = 4 << 10
+// maxSettingBody leaves room for the longest secret (4096 bytes, twice that when every byte is escaped in JSON).
+const maxSettingBody = 16 << 10
 
 // Fact is something about the process that is set outside the Setup page, shown there as a read-only fact. It never holds a secret.
 type Fact struct {
