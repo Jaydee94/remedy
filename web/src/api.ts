@@ -219,6 +219,18 @@ export interface Incident {
   diagnosedSha?: string
   /** The latest responder run. */
   runId?: string
+  /** The host an alert was mapped to by the rules of the hosts, and the names of the other hosts whose rules matched too. */
+  hostId?: number
+  hostName?: string
+  alsoMatches?: string[]
+}
+
+export interface SignalSource {
+  name: string
+  state: 'off' | 'ok' | 'error' | 'pending'
+  checkedAt?: string
+  active: number
+  error?: string
 }
 
 export interface ActivityEntry {
@@ -400,6 +412,7 @@ export const api = {
   listIncidentRuns: (incidentId: number) => request<Run[]>('GET', `/api/runs?incident=${incidentId}`),
   diagnoseIncident: (id: number) => request<{ runId: string }>('POST', `/api/incidents/${id}/diagnose`),
   getLimits: () => request<Limits>('GET', '/api/limits'),
+  getSignals: () => request<{ sources: SignalSource[] }>('GET', '/api/signals'),
   getSettings: () => request<SettingsPage>('GET', '/api/settings'),
   putSetting: (key: string, value: SettingValue) => request<Setting>('PUT', `/api/settings/${key}`, { value }),
   deleteSetting: (key: string) => request<void>('DELETE', `/api/settings/${key}`),

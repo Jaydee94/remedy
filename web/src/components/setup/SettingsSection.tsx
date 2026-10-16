@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from '@/api.ts'
-import type { Fact, Limits, Setting } from '@/api.ts'
-import { groupSettings, inputText, parseInput, replaceSetting, resetLabel, sourceBadge, unchanged, valueText } from '@/settings.ts'
+import type { Fact, Limits, Setting, SignalSource } from '@/api.ts'
+import { groupSettings, inputText, isSecret, parseInput, replaceSetting, resetLabel, sourceBadge, unchanged, valueText } from '@/settings.ts'
 import { diagnosisBar, limitsText } from '@/setup.ts'
+import { signalLine } from '@/signals.ts'
+import { useClock } from '@/useClock.ts'
 import ConfirmButton from '@/components/ConfirmButton'
+import SecretRow from '@/components/setup/SecretRow'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,7 +28,10 @@ type RunFn = (
   unrefreshed: string,
 ) => Promise<Outcome>
 
-const ariaDisabled = 'aria-disabled:pointer-events-none aria-disabled:opacity-50'
+/** The title of the group of the Alertmanager settings; a change in it refreshes the line about what I last heard from Alertmanager. */
+const alertmanagerGroup = 'Alertmanager'
+
+const ariaDisabled ='aria-disabled:pointer-events-none aria-disabled:opacity-50'
 
 /** What Remedy does on its own, how much of it, and the values behind it. The environment gives the defaults; a value set here wins. */
 export default function SettingsSection() {
@@ -35,13 +41,24 @@ export default function SettingsSection() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState<{ n: number; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [signal, setSignal] = useState<SignalSource | undefined>()
   const busyRef = useRef(false)
+  const now = useClock()
 
   const loadLimits = useCallback(() => {
     api.getLimits().then(setLimits).catch(() => undefined)
   }, [])
 
+  /** A failure to load shows nothing: the line is an extra, and the rows work without it. */
+  const loadSignals = useCallback(() => {
+    api
+      .getSignals()
+      .then((p) => setSignal(p.sources.find((x) => x.name === 'alertmanager')))
+      .catch(() => undefined)
+  }, [])
+
   useEffect(() => {
+    loadSignals()
     api
       .getSettings()
       .then((p) => {
@@ -50,7 +67,7 @@ export default function SettingsSection() {
       })
       .catch((e: unknown) => setError(e instanceof ApiError ? e.message : 'Could not load the settings'))
     loadLimits()
-  }, [loadLimits])
+  }, [loadLimits, loadSignals])
 
   /** One request at a time. A failure goes back to the row that asked, which shows it under its field, not for the whole page. */
   const run: RunFn = async (key, action, said, unrefreshed) => {
@@ -81,6 +98,8 @@ export default function SettingsSection() {
       } catch {
         // keep `unrefreshed`
       }
+      // What I know about Alertmanager follows its settings (the address and the token).
+      if (settings?.find((x) => x.key === key)?.group === alertmanagerGroup) loadSignals()
       setNotice((prev) => ({ n: (prev?.n ?? 0) + 1, text }))
       return { ok: true, error: '' }
     } finally {
@@ -132,9 +151,38 @@ export default function SettingsSection() {
         groupSettings(settings).map((g) => (
           <div key={g.title} className="flex flex-col gap-3 rounded-3xl border border-border bg-card p-5">
             <h3 className="text-[13px] font-semibold text-muted-foreground">{g.title}</h3>
-            {g.settings.map((s) => (
-              <Row key={s.key} setting={s} busy={busy} run={run} />
-            ))}
+            {g.settings.map((s) =>
+              isSecret(s) ? (
+                <SecretRow
+                  key={s.key}
+                  setting={s}
+                  busy={busy}
+                  onSave={async (value) =>
+                    (
+                      await run(
+                        s.key,
+                        () => api.putSetting(s.key, value),
+                        (n) => `${n.label}: saved.`,
+                        `${s.label}: saved. I could not refresh the page; reload it to be sure.`,
+                      )
+                    ).error
+                  }
+                  onRemove={async () =>
+                    (
+                      await run(
+                        s.key,
+                        () => api.deleteSetting(s.key).then(() => undefined),
+                        (n) => `${n.label}: removed.`,
+                        `${s.label}: removed. I could not refresh the page; reload it to be sure.`,
+                      )
+                    ).error
+                  }
+                />
+              ) : (
+                <Row key={s.key} setting={s} busy={busy} run={run} />
+              ),
+            )}
+            {g.title === alertmanagerGroup && signal && <p className="border-t border-border pt-3 text-[13px] text-muted-foreground">{signalLine(signal, now)}</p>}
           </div>
         ))}
 

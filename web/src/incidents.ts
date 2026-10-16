@@ -1,4 +1,4 @@
-import type { IncidentSource, IncidentState } from './api.ts'
+import type { Incident, IncidentSource, IncidentState } from './api.ts'
 
 export const incidentStateColor: Record<IncidentState, string> = {
   open: 'bg-destructive',
@@ -94,6 +94,15 @@ export function shortSha(sha: string): string {
 /** Only http(s) links become links. Anything else that comes from GitHub's data is shown as text. */
 export function safeUrl(url?: string): string | undefined {
   return url && /^https?:\/\//i.test(url) ? url : undefined
+}
+
+export function hostLine(i: Incident): { name: string; id: number } | null {
+  return i.hostId && i.hostName ? { name: i.hostName, id: i.hostId } : null
+}
+
+/** "also matches: a, b", or '' when no other host matched. */
+export function alsoLine(i: Incident): string {
+  return i.alsoMatches && i.alsoMatches.length > 0 ? `also matches: ${i.alsoMatches.join(', ')}` : ''
 }
 
 export function timeAgo(iso: string, now: number = Date.now()): string {

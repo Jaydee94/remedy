@@ -16,6 +16,15 @@ export function groupSettings(settings: Setting[]): SettingGroup[] {
   return groups
 }
 
+export const isSecret = (s: Setting) => s.kind === 'secret'
+
+/** What a secret setting says about itself: whether a value is stored, never the value. */
+export function secretLine(s: Setting): string {
+  if (s.problem) return s.problem
+  if (s.source !== 'set here') return 'No token is stored.'
+  return s.hint && s.hint !== '…' ? `A token is stored (${s.hint}).` : 'A token is stored.'
+}
+
 /** A new list in which the entry with the key of `next` is `next`; the order and the other entries stay. */
 export function replaceSetting(settings: Setting[], next: Setting): Setting[] {
   return settings.map((s) => (s.key === next.key ? next : s))

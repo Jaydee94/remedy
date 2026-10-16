@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Setting } from './api.ts'
-import { groupSettings, inputText, parseInput, replaceSetting, resetLabel, sourceBadge, unchanged, valueText } from './settings.ts'
+import { groupSettings, inputText, isSecret, parseInput, secretLine, replaceSetting, resetLabel, sourceBadge, unchanged, valueText } from './settings.ts'
 
 const setting = (over: Partial<Setting> = {}): Setting => ({
   key: 'poll_interval',
@@ -135,5 +135,23 @@ describe('a secret setting', () => {
   it('counts a typed token as a change and an empty field as none', () => {
     assert.equal(unchanged(secret(), ''), true)
     assert.equal(unchanged(secret(), 'tok-1'), false)
+  })
+})
+
+describe('secretLine', () => {
+  const secret = (over: Partial<Setting> = {}) => setting({ kind: 'secret', value: null, hint: '…CRET', source: 'set here', ...over })
+  it('says whether a token is stored, with its last characters', () => {
+    assert.equal(secretLine(secret()), 'A token is stored (…CRET).')
+    assert.equal(secretLine(secret({ hint: '…' })), 'A token is stored.')
+    assert.equal(secretLine(secret({ hint: undefined })), 'A token is stored.')
+    assert.equal(secretLine(secret({ source: 'default', hint: undefined })), 'No token is stored.')
+    assert.equal(secretLine(secret({ source: 'environment' })), 'No token is stored.')
+  })
+  it('prefers the problem of the stored value', () => {
+    assert.equal(secretLine(secret({ problem: 'It cannot be read.' })), 'It cannot be read.')
+  })
+  it('is recognised by isSecret', () => {
+    assert.equal(isSecret(secret()), true)
+    assert.equal(isSecret(setting()), false)
   })
 })
