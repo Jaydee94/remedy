@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"maps"
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Jaydee94/remedy/internal/alertmanager"
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/config"
 	"github.com/Jaydee94/remedy/internal/gatekeeper"
@@ -25,6 +27,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/settings"
+	"github.com/Jaydee94/remedy/internal/signals"
 	"github.com/Jaydee94/remedy/internal/sshhost"
 	"github.com/Jaydee94/remedy/internal/store"
 )
@@ -48,6 +51,9 @@ type App struct {
 
 	// Settings are the values the Setup page changes.
 	Settings *settings.Settings
+
+	// Signals asks the signal sources (Alertmanager) and gives what they find to the incident engine.
+	Signals *signals.Runner
 
 	log *slog.Logger
 }
@@ -134,8 +140,11 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		log.Warn("abandoned the approvals a restart left behind", "count", n)
 	}
 
+	sigs := signalRunner(cfg, st, engine, set, log)
+
 	deps := server.Deps{
 		Store:        st,
+		Signals:      sigs.States,
 		Auth:         auth.New(cfg.AdminPassword),
 		RunnerToken:  cfg.RunnerToken,
 		Web:          web,
@@ -166,6 +175,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		KubeReader:      kubeReader,
 		KubeWriter:      kubeWriter,
 		Settings:        set,
+		Signals:         sigs,
 		log:             log,
 		Poller: &poller.Poller{
 			Store:        st,
@@ -185,6 +195,49 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 					diagnoser.Complete(ctx, id)
 				}
 			},
+		},
+	}
+}
+
+// signalRunner builds the runner of the signal sources. The Alertmanager's address and token are settings read at every
+// request. When the client cannot be set up (a CA bundle without a certificate) the source gets no client at all: its Client
+// stays a nil interface, never a nil *alertmanager.Client inside one, so it is off and never fetches.
+func signalRunner(cfg config.Server, st *store.Store, engine *incident.Engine, set *settings.Settings, log *slog.Logger) *signals.Runner {
+	am := &signals.Alertmanager{
+		MaxAge: func() time.Duration { return set.Duration(settings.AlertmanagerAutoMaxAge) },
+	}
+	client, err := alertmanager.New(func() (string, secret.Value, error) {
+		base := set.Text(settings.AlertmanagerURL)
+		tok, err := set.Secret(settings.AlertmanagerToken)
+		switch {
+		case errors.Is(err, settings.ErrNotSet):
+			return base, secret.Value{}, nil
+		case err != nil:
+			return "", secret.Value{}, err
+		}
+		return base, tok, nil
+	}, cfg.AlertmanagerCAFile, alertmanager.WithLog(log))
+	if err != nil {
+		log.Error("the Alertmanager source is off: cannot set up its client", "err", err)
+	} else {
+		am.Client = client
+		am.On = func() bool { return set.Text(settings.AlertmanagerURL) != "" }
+	}
+	return &signals.Runner{
+		Sources:  []signals.Source{am},
+		Engine:   engine,
+		Interval: func() time.Duration { return set.Duration(settings.PollInterval) },
+		Log:      log,
+		Hosts: func(ctx context.Context) ([]signals.HostRules, error) {
+			entries, err := st.ListHosts(ctx)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]signals.HostRules, 0, len(entries))
+			for _, e := range entries {
+				out = append(out, signals.HostRules{ID: e.Host.ID, Name: e.Host.Name, Matchers: e.Host.Matchers})
+			}
+			return out, nil
 		},
 	}
 }
@@ -233,11 +286,15 @@ func facts(cfg config.Server, reader *kube.Reader, writer *kube.Writer) []server
 	if internal == "" {
 		internal = "none: one port serves everything"
 	}
-	return []server.Fact{
+	out := []server.Fact{
 		{Label: "Listener", Value: cfg.Addr},
 		{Label: "Internal listener (runner and tools)", Value: internal},
 		{Label: "GitHub API", Value: displayURL(cfg.GitHubAPIURL)},
 		{Label: "Cluster, reading", Value: yesNo(reader != nil)},
 		{Label: "Cluster, actions", Value: yesNo(writer != nil)},
 	}
+	if cfg.AlertmanagerCAFile != "" {
+		out = append(out, server.Fact{Label: "Alertmanager CA file", Value: cfg.AlertmanagerCAFile})
+	}
+	return out
 }

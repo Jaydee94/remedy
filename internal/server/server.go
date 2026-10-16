@@ -15,6 +15,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/settings"
+	"github.com/Jaydee94/remedy/internal/signals"
 	"github.com/Jaydee94/remedy/internal/sshhost"
 	"github.com/Jaydee94/remedy/internal/store"
 )
@@ -61,6 +62,9 @@ type Deps struct {
 
 	// Facts are shown on the Setup page as read-only facts of the process (listeners, the GitHub address, whether the cluster is set up).
 	Facts []Fact
+
+	// Signals reports the state of the signal sources. When it is nil there is no GET /api/signals.
+	Signals func() []signals.State
 }
 
 type srv struct {
@@ -140,6 +144,10 @@ func (s *srv) routes(public, internal *http.ServeMux) {
 		public.HandleFunc("GET /api/settings", s.session(s.getSettings))
 		public.HandleFunc("PUT /api/settings/{key}", s.session(s.putSetting))
 		public.HandleFunc("DELETE /api/settings/{key}", s.session(s.deleteSetting))
+	}
+
+	if d.Signals != nil {
+		public.HandleFunc("GET /api/signals", s.session(s.getSignals))
 	}
 
 	if d.Hosts != nil {
