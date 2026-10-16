@@ -2,7 +2,6 @@ package gatekeeper_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"math/rand"
@@ -14,8 +13,6 @@ import (
 	"github.com/Jaydee94/remedy/internal/gatekeeper"
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/store"
-
-	_ "modernc.org/sqlite" // the driver of giveGatewayAccess
 )
 
 // slowTool is a mutating tool whose Run takes a while.
@@ -58,7 +55,7 @@ func automaticEnv(t *testing.T, timeout func() time.Duration, extra ...gatekeepe
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.st.StartDiagnosis(ctx, store.StartParams{IncidentID: in.ID, Provider: "claude", Prompt: "p", Automatic: true, Limits: store.DefaultLimits(), Now: time.Now()},
+	if _, err := e.st.StartDiagnosis(ctx, store.StartParams{IncidentID: in.ID, Provider: "claude", Prompt: "p", Automatic: true, Limits: store.DefaultLimits(), Now: time.Now(), Tools: true},
 		store.NewActivity{Kind: store.KindDiagnosisStarted, Summary: "started"}); err != nil {
 		t.Fatal(err)
 	}
@@ -67,25 +64,10 @@ func automaticEnv(t *testing.T, timeout func() time.Duration, extra ...gatekeepe
 		t.Fatalf("ClaimNext = %+v, %v", claimed, err)
 	}
 	e.run = *claimed
-	giveGatewayAccess(t, e)
 	if e.token, err = e.st.MintRunToken(ctx, claimed.ID); err != nil {
 		t.Fatal(err)
 	}
 	return e, in
-}
-
-// giveGatewayAccess sets mcp = 1 on the env's run. A responder run does not have gatekeeper access in the store yet (a later task of the
-// plan adds StartParams.Tools); until then the test changes the row itself, through a second connection that is closed again.
-func giveGatewayAccess(t *testing.T, e *env) {
-	t.Helper()
-	db, err := sql.Open("sqlite", e.dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.Exec(`UPDATE runs SET mcp = 1 WHERE id = ?`, e.run.ID); err != nil {
-		t.Fatal(err)
-	}
 }
 
 // atomicDuration is a timeout that a test changes while the gatekeeper reads it.

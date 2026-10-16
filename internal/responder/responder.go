@@ -250,7 +250,7 @@ func (r *Responder) AutoStart(ctx context.Context) {
 	if n, err := r.Store.AutoRunsSince(ctx, now.Add(-24*time.Hour)); err != nil || n >= limits.MaxPerDay {
 		return
 	}
-	candidates, err := r.Store.ListAutoCandidates(ctx, now, limits)
+	candidates, err := r.Store.ListAutoCandidates(ctx, now, limits, 10*time.Minute)
 	if err != nil {
 		r.Log.Error("cannot list the incidents to diagnose", "err", err)
 		return
