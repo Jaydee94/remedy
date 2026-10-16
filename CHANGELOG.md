@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.0](https://github.com/Jaydee94/remedy/compare/v0.3.0...v0.4.0) (2026-10-16)
+
+### Features
+
+* settings in the database (cycle 3) ([#145](https://github.com/Jaydee94/remedy/issues/145)) ([c0fb335](https://github.com/Jaydee94/remedy/commit/c0fb3350bd1b5ac8bd6fa98e9cb9329413a7d41a))
+
 ## [0.3.0](https://github.com/Jaydee94/remedy/compare/v0.2.0...v0.3.0) (2026-10-14)
 
 ### Features
