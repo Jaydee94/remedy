@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.0](https://github.com/Jaydee94/remedy/compare/v0.4.0...v0.5.0) (2026-10-16)
+
+### Features
+
+* Alertmanager source and host rules (cycle 4a) ([#146](https://github.com/Jaydee94/remedy/issues/146)) ([449212b](https://github.com/Jaydee94/remedy/commit/449212bd9527899fda56ad3183e7be0be14785a8))
+
 ## [0.4.0](https://github.com/Jaydee94/remedy/compare/v0.3.0...v0.4.0) (2026-10-16)
 
 ### Features
