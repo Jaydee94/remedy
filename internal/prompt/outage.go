@@ -8,10 +8,17 @@ import (
 
 const (
 	// maxOutageTitle leaves room for the truncation note that head appends (about 40 characters), so that a title stays within 200.
-	maxOutageTitle      = 150
+	maxOutageTitle = 150
+	maxOutageKey   = 64
+	// maxOutageLabel bounds a whole `key=value` line of a label, maxOutageAnnotation a whole annotation.
 	maxOutageLabel      = 300
 	maxOutageAnnotation = 1000
 	maxOutageURL        = 500
+
+	// A block is bounded as a whole as well: at most this many entries and bytes, then one line says how many were left out.
+	maxOutageEntries         = 50
+	maxOutageLabelsBytes     = 8 << 10
+	maxOutageAnnotationBytes = 16 << 10
 )
 
 // OutageInput is what the prompt of an alert is made of. Severity, StartsAt and the two flags are facts Remedy checked itself; everything
@@ -77,31 +84,50 @@ func availability(ok bool) string {
 	return "not available"
 }
 
-// keyValues writes one `key=value` line per entry, sorted by key, every value on one line and at most max characters.
-func keyValues(m map[string]string, max int) string {
+// sortedKeys returns the keys of m in order, so that the same alert always gives the same prompt.
+func sortedKeys(m map[string]string) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	var b strings.Builder
-	for _, k := range keys {
-		fmt.Fprintf(&b, "%s=%s\n", oneLine(k, 64), oneLine(m[k], max))
-	}
-	return b.String()
+	return keys
 }
 
-// annotations writes the annotations sorted by key; a value may span lines but is cleaned and bounded.
-func annotations(m map[string]string) string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
+// keyValues writes one `key=value` line per entry, sorted by key, each on one line and at most max characters. The line is redacted as a
+// whole: the rule for `password=...` needs the key and the value in one string.
+func keyValues(m map[string]string, max int) string {
+	var lines []string
+	for _, k := range sortedKeys(m) {
+		lines = append(lines, oneLine(oneLine(k, maxOutageKey)+"="+m[k], max))
 	}
-	sort.Strings(keys)
+	return capEntries(lines, maxOutageEntries, maxOutageLabelsBytes)
+}
+
+// annotations writes the annotations sorted by key; a value may span lines but is cleaned and bounded. Each entry is redacted as a whole
+// (key and value in one string).
+func annotations(m map[string]string) string {
+	var lines []string
+	for _, k := range sortedKeys(m) {
+		lines = append(lines, head(removeControl(clean(oneLine(k, maxOutageKey)+": "+m[k])), maxOutageAnnotation))
+	}
+	return capEntries(lines, maxOutageEntries, maxOutageAnnotationBytes)
+}
+
+// capEntries joins entries, one per line, and stops at maxEntries or maxBytes, whichever comes first. A line says how many entries were
+// left out. The first entry is always kept (it is already bounded on its own).
+func capEntries(entries []string, maxEntries, maxBytes int) string {
 	var b strings.Builder
-	for _, k := range keys {
-		v := head(removeControl(clean(m[k])), maxOutageAnnotation)
-		fmt.Fprintf(&b, "%s: %s\n", oneLine(k, 64), v)
+	shown := 0
+	for _, e := range entries {
+		if shown >= maxEntries || shown > 0 && b.Len()+len(e)+1 > maxBytes {
+			break
+		}
+		b.WriteString(e + "\n")
+		shown++
+	}
+	if shown < len(entries) {
+		fmt.Fprintf(&b, "[... %d more entries not shown ...]\n", len(entries)-shown)
 	}
 	return b.String()
 }

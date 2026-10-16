@@ -1,6 +1,7 @@
 package prompt_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -97,6 +98,73 @@ func TestAnAlertCannotEscapeItsBlockOrGiveInstructions(t *testing.T) {
 	}
 	if n := strings.Count(text, "\n<<<REMEDY-DATA "+d+" "); n != len(blocks(t, text)) {
 		t.Fatalf("%d start markers for %d blocks: an alert forged one", n, len(blocks(t, text)))
+	}
+	// Counted anywhere, mid-line included: the blocks' own markers plus the one mention in the fixed instructions.
+	if n := strings.Count(text, "<<<END "+d+">>>"); n != len(blocks(t, text))+1 {
+		t.Errorf("%d end markers in all, want %d blocks and one mention in the instructions", n, len(blocks(t, text)))
+	}
+	if n := strings.Count(text, "<<<REMEDY-DATA "+d); n != len(blocks(t, text))+1 {
+		t.Errorf("%d start markers in all, want %d blocks and one mention in the instructions", n, len(blocks(t, text)))
+	}
+}
+
+func TestASecretSplitBetweenAKeyAndItsValueIsRedacted(t *testing.T) {
+	in := input()
+	in.Labels = map[string]string{"alertname": "A", "password": "hunter2hunter2", "db_secret": `"quoted secret value"`}
+	in.Annotations = map[string]string{"token": "abcd1234efgh5678", "api_key": "zyxw9876vuts5432", "summary": "fine"}
+	text := prompt.Outage(in, d)
+	for _, secret := range []string{"hunter2hunter2", "quoted secret value", "abcd1234efgh5678", "zyxw9876vuts5432"} {
+		if strings.Contains(text, secret) {
+			t.Errorf("%q reached the prompt:\n%s", secret, text)
+		}
+	}
+	if !strings.Contains(text, "summary: fine") || !strings.Contains(text, "alertname=A") {
+		t.Errorf("harmless entries were lost:\n%s", text)
+	}
+}
+
+func TestTheNumberOfLabelsAndAnnotationsIsBoundedAndTheOmissionStated(t *testing.T) {
+	in := input()
+	in.Labels, in.Annotations = map[string]string{}, map[string]string{}
+	for i := 0; i < 1000; i++ {
+		in.Labels[fmt.Sprintf("label%04d", i)] = strings.Repeat("v", 200)
+		in.Annotations[fmt.Sprintf("note%04d", i)] = strings.Repeat("a", 900)
+	}
+	text := prompt.Outage(in, d)
+	if text != prompt.Outage(in, d) {
+		t.Error("the same alert gave two different prompts")
+	}
+	b := blocks(t, text)
+	// A block may exceed its cap by the one line that states the omission.
+	if n := len(b["alert_labels"]); n > 8<<10+80 {
+		t.Errorf("the labels block has %d bytes", n)
+	}
+	if n := len(b["alert_annotations"]); n > 16<<10+80 {
+		t.Errorf("the annotations block has %d bytes", n)
+	}
+	for name, prefix := range map[string]string{"alert_labels": "label", "alert_annotations": "note"} {
+		lines := strings.Split(b[name], "\n")
+		if !strings.HasPrefix(lines[0], prefix+"0000") {
+			t.Errorf("%s does not start with the first key: %q", name, lines[0])
+		}
+		last := lines[len(lines)-1]
+		var more int
+		if _, err := fmt.Sscanf(last, "[... %d more entries not shown ...]", &more); err != nil || more < 1 {
+			t.Errorf("%s ends with %q, not the omission note", name, last)
+			continue
+		}
+		shown := 0
+		for _, l := range lines[:len(lines)-1] {
+			if strings.HasPrefix(l, prefix+"0") {
+				shown++
+			}
+		}
+		if shown+more != 1000 || shown > 50 {
+			t.Errorf("%s: %d shown + %d omitted, want 1000 in total and at most 50 shown", name, shown, more)
+		}
+	}
+	if strings.Contains(prompt.Outage(input(), d), "more entries not shown") {
+		t.Error("an omission note for a small alert")
 	}
 }
 
