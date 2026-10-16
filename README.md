@@ -112,13 +112,17 @@ token, shown only as its last four characters afterwards) and add repositories. 
 Remedy polls the enabled repositories with that token every 60 seconds (`REMEDY_POLL_INTERVAL`, a Go
 duration of at least `10s`) and never writes to GitHub. A failed check becomes an incident under
 **Conversations**, and it resolves when the check is green again or the pull request is closed. The runner stops a
-run that takes longer than 10 minutes (`REMEDY_RUN_TIMEOUT`, set on the runner); the server fails runs that
-stay `running` for more than 15 minutes, for example because the runner died (a run with gatekeeper tools is
-failed after 2 minutes without a heartbeat from the runner, and its time budget stops while it waits for an approval).
+run that takes longer than 10 minutes. `REMEDY_RUN_TIMEOUT` belongs on the control plane as well as on the runner (the
+chart sets both from `runner.runTimeout`); it is only the default of a setting that the Setup page can change. A
+value set on the control plane or on the Setup page wins over the runner's own. The server fails a run that stays
+`running` for 15 minutes or the run timeout plus 5 minutes, whichever is longer, for example because the runner died
+(a run with gatekeeper tools is failed after 2 minutes without a heartbeat from the runner, and its time budget stops
+while it waits for an approval). These are defaults; you can change them on the Setup page without a restart.
 
 For a failed check (`failure`, `timed_out`, `startup_failure`) Remedy starts a read-only diagnosis on its own,
 within limits: at most 3 per incident (`REMEDY_DIAGNOSE_MAX_PER_INCIDENT`), 15 minutes apart
 (`REMEDY_DIAGNOSE_COOLDOWN`), 20 per 24 hours (`REMEDY_DIAGNOSE_MAX_PER_DAY`, `0` turns it off), one run at a time.
+These are defaults; you can change them on the Setup page without a restart.
 **Setup** shows these limits and how much of the daily one is used. **Diagnose now** or **Diagnose again** in an
 incident's thread starts one by hand and ignores the limits. The agent runs on your subscription login
 through the runner. It gets the job log, the pull request and a copy of the repository at the failing commit, can

@@ -35,10 +35,14 @@ const waitsForApproval = " This changes the cluster, so the maintainer has to ap
 
 // allowed refuses a namespace outside the allowlist and says where actions are allowed.
 func (a *actionTools) allowed(namespace string) error {
-	if a.cfg.NamespaceAllowed(namespace) {
+	list := a.cfg.AllowedNamespaces() // read once: the list may change while this runs, and the decision and the message must agree
+	if namespace != "" && slices.Contains(list, namespace) {
 		return nil
 	}
-	return ArgumentError(fmt.Sprintf("actions are not allowed in the namespace %q; they are allowed in: %s", namespace, strings.Join(a.cfg.WriteNamespaces, ", ")))
+	if len(list) == 0 {
+		return ArgumentError(fmt.Sprintf("actions are not allowed in the namespace %q: the allowlist is empty", namespace))
+	}
+	return ArgumentError(fmt.Sprintf("actions are not allowed in the namespace %q; they are allowed in: %s", namespace, strings.Join(list, ", ")))
 }
 
 // actionErr is what the agent is told when the Writer or the Reader failed during an approved action.
@@ -187,12 +191,17 @@ func (a *actionTools) application(ctx context.Context, name string) (kube.Applic
 	if err != nil {
 		return kube.Application{}, actionErr(err)
 	}
-	if !a.cfg.NamespaceAllowed(app.DestinationNamespace) {
+	list := a.cfg.AllowedNamespaces() // read once, see allowed
+	if app.DestinationNamespace == "" || !slices.Contains(list, app.DestinationNamespace) {
 		if app.DestinationNamespace == "" {
 			return kube.Application{}, ArgumentError(fmt.Sprintf("the application %s has no destination namespace, so actions on it are not allowed", name))
 		}
+		if len(list) == 0 {
+			return kube.Application{}, ArgumentError(fmt.Sprintf("the application %s deploys to the namespace %q, where actions are not allowed: the allowlist is empty",
+				name, app.DestinationNamespace))
+		}
 		return kube.Application{}, ArgumentError(fmt.Sprintf("the application %s deploys to the namespace %q, where actions are not allowed; they are allowed in: %s",
-			name, app.DestinationNamespace, strings.Join(a.cfg.WriteNamespaces, ", ")))
+			name, app.DestinationNamespace, strings.Join(list, ", ")))
 	}
 	return app, nil
 }

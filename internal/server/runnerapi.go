@@ -11,6 +11,7 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/run"
+	"github.com/Jaydee94/remedy/internal/settings"
 	"github.com/Jaydee94/remedy/internal/store"
 )
 
@@ -58,7 +59,15 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			writeJSON(w, http.StatusOK, claimFor(*claimed, token))
+			c := claimFor(*claimed, token)
+			// Only a value somebody chose (the environment of the control plane or the Setup page) goes to the runner: while
+			// the setting is at its default the field stays out, so a runner with its own REMEDY_RUN_TIMEOUT keeps it.
+			if s.d.Settings != nil {
+				if e, ok := s.d.Settings.Entry(settings.RunTimeout); ok && e.Source != settings.SourceDefault {
+					c.RunTimeoutSeconds = int(e.Value.Dur / time.Second)
+				}
+			}
+			writeJSON(w, http.StatusOK, c)
 			return
 		}
 		select {

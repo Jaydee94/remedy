@@ -30,8 +30,10 @@ type Poller struct {
 	Key       secret.Key
 	NewSource func(token secret.Value) Source
 	Interval  time.Duration // default one minute
-	Log       *slog.Logger
-	Now       func() time.Time // default time.Now
+	// IntervalFunc, when set, is asked before each wait instead of Interval, so that a new interval counts at once.
+	IntervalFunc func() time.Duration
+	Log          *slog.Logger
+	Now          func() time.Time // default time.Now
 
 	// AfterCycle is called at the end of every cycle that reached GitHub, for example to start automatic
 	// diagnoses. It is not called when the cycle was paused or stopped by a rate limit or a rejected token.
@@ -49,21 +51,40 @@ func (p *Poller) now() time.Time {
 	return time.Now()
 }
 
-// Run polls at once and then every Interval until ctx ends.
-func (p *Poller) Run(ctx context.Context) {
-	interval := p.Interval
-	if interval <= 0 {
-		interval = time.Minute
+// pollTick is the longest Run sleeps before it looks at the clock and at the interval again.
+const pollTick = 5 * time.Second
+
+// pause is how long Run sleeps before it checks whether the interval has passed: the interval itself while it is short, otherwise
+// a short tick, so that a shorter interval is noticed soon.
+func pause(interval time.Duration) time.Duration { return min(interval, pollTick) }
+
+func (p *Poller) interval() time.Duration {
+	d := p.Interval
+	if p.IntervalFunc != nil {
+		d = p.IntervalFunc()
 	}
+	if d <= 0 {
+		d = time.Minute
+	}
+	return d
+}
+
+// Run polls at once and then whenever the interval has passed since the last cycle, until ctx ends. The interval is asked for again
+// before every wait.
+func (p *Poller) Run(ctx context.Context) {
 	p.PollOnce(ctx)
-	t := time.NewTicker(interval)
-	defer t.Stop()
+	last := time.Now()
 	for {
+		t := time.NewTimer(pause(p.interval()))
 		select {
 		case <-ctx.Done():
+			t.Stop()
 			return
 		case <-t.C:
+		}
+		if time.Since(last) >= p.interval() {
 			p.PollOnce(ctx)
+			last = time.Now()
 		}
 	}
 }

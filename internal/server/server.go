@@ -14,6 +14,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/secret"
+	"github.com/Jaydee94/remedy/internal/settings"
 	"github.com/Jaydee94/remedy/internal/sshhost"
 	"github.com/Jaydee94/remedy/internal/store"
 )
@@ -53,6 +54,13 @@ type Deps struct {
 
 	// Hosts connects to the machines in the inventory. When it is nil the host routes are not registered.
 	Hosts *sshhost.Service
+
+	// Settings holds the values the maintainer changes in the Setup page. When it is nil the settings routes are not registered and
+	// the claim carries no run timeout.
+	Settings *settings.Settings
+
+	// Facts are shown on the Setup page as read-only facts of the process (listeners, the GitHub address, whether the cluster is set up).
+	Facts []Fact
 }
 
 type srv struct {
@@ -126,6 +134,12 @@ func (s *srv) routes(public, internal *http.ServeMux) {
 		public.HandleFunc("POST /api/repos", s.session(s.addRepo))
 		public.HandleFunc("PATCH /api/repos/{id}", s.session(s.patchRepo))
 		public.HandleFunc("DELETE /api/repos/{id}", s.session(s.deleteRepo))
+	}
+
+	if d.Settings != nil {
+		public.HandleFunc("GET /api/settings", s.session(s.getSettings))
+		public.HandleFunc("PUT /api/settings/{key}", s.session(s.putSetting))
+		public.HandleFunc("DELETE /api/settings/{key}", s.session(s.deleteSetting))
 	}
 
 	if d.Hosts != nil {

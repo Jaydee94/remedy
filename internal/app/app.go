@@ -7,7 +7,9 @@ import (
 	"context"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net/http"
+	"net/url"
 	"slices"
 	"time"
 
@@ -22,6 +24,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/server"
+	"github.com/Jaydee94/remedy/internal/settings"
 	"github.com/Jaydee94/remedy/internal/sshhost"
 	"github.com/Jaydee94/remedy/internal/store"
 )
@@ -37,10 +40,14 @@ type App struct {
 	Responder  *responder.Responder
 	Gatekeeper *gatekeeper.Gatekeeper
 
-	// KubeReader reads the cluster; nil when no cluster is configured. KubeWriter does the approved actions; nil unless
-	// a write token and an allowlist are configured. The cluster tools are built on them.
+	// KubeReader reads the cluster; nil when no cluster is configured. KubeWriter does the approved actions; it is built
+	// whenever a write token is set. The allowlist is read at every use and may be empty (every action is then refused).
+	// The cluster tools are built on them.
 	KubeReader *kube.Reader
 	KubeWriter *kube.Writer
+
+	// Settings are the values the Setup page changes.
+	Settings *settings.Settings
 
 	log *slog.Logger
 }
@@ -86,25 +93,31 @@ func (a *App) CheckCluster(ctx context.Context) {
 // New wires everything for a configuration. web is the built UI, or nil.
 func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	engine := &incident.Engine{Store: st}
+	set := settings.New(context.Background(), st, envLayer(cfg), log)
 	reader := func(token secret.Value) *github.Client {
 		return github.New(cfg.GitHubAPIURL, token, nil, github.WithLog(log))
 	}
 
 	diagnoser := &responder.Responder{
-		Store:     st,
-		Key:       cfg.MasterKey,
-		NewSource: func(token secret.Value) responder.Source { return reader(token) },
-		Limits: store.DiagnosisLimits{
-			Cooldown: cfg.DiagnoseCooldown, MaxPerIncident: cfg.DiagnoseMaxPerIncident, MaxPerDay: cfg.DiagnoseMaxPerDay,
-		},
-		Log: log,
+		Store:      st,
+		Key:        cfg.MasterKey,
+		NewSource:  func(token secret.Value) responder.Source { return reader(token) },
+		LimitsFunc: set.DiagnosisLimits,
+		Log:        log,
 	}
-	kubeReader, kubeWriter := clusterClients(cfg.Cluster, log)
+	// One configuration, with the live allowlist, for the writer, the action tools and the capabilities: the tool, the
+	// writer and the UI read the same list.
+	cluster := cfg.Cluster
+	cluster.Namespaces = func() []string { return set.List(settings.K8sWriteNamespaces) }
+	kubeReader, kubeWriter := clusterClients(cluster, log)
+	if kubeWriter != nil && len(set.List(settings.K8sWriteNamespaces)) == 0 {
+		log.Warn("cluster actions are on but the allowlist is empty: every action is refused until a namespace is set (REMEDY_K8S_WRITE_NAMESPACES or the Setup page)")
+	}
 	tools := append(append(gatekeeper.IncidentTools(st), gatekeeper.JobLogTool(diagnoser)), gatekeeper.NoteTool(st))
 	if kubeReader != nil {
 		tools = append(tools, gatekeeper.ClusterTools(kubeReader, nil)...)
 		if kubeWriter != nil {
-			tools = append(tools, gatekeeper.ClusterActionTools(kubeReader, kubeWriter, cfg.Cluster, nil)...)
+			tools = append(tools, gatekeeper.ClusterActionTools(kubeReader, kubeWriter, cluster, nil)...)
 		}
 	}
 	hostSvc := &sshhost.Service{} // one lock per host, shared by the host routes and the host tools
@@ -132,9 +145,11 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		Responder:    diagnoser,
 		PollInterval: cfg.PollInterval,
 		Gatekeeper:   gate,
-		Cluster:      clusterCapabilities(cfg.Cluster, kubeReader, kubeWriter),
+		Cluster:      clusterCapabilities(cluster, kubeReader, kubeWriter),
 		RunnerStatus: server.NewRunnerStatus(),
 		Hosts:        hostSvc,
+		Settings:     set,
+		Facts:        facts(cfg, kubeReader, kubeWriter),
 	}
 	var handler, internalHandler http.Handler
 	if cfg.InternalAddr != "" {
@@ -150,19 +165,21 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		Gatekeeper:      gate,
 		KubeReader:      kubeReader,
 		KubeWriter:      kubeWriter,
+		Settings:        set,
 		log:             log,
 		Poller: &poller.Poller{
-			Store:      st,
-			Engine:     engine,
-			Key:        cfg.MasterKey,
-			NewSource:  func(token secret.Value) poller.Source { return reader(token) },
-			Interval:   cfg.PollInterval,
-			Log:        log,
-			AfterCycle: diagnoser.AutoStart,
+			Store:        st,
+			Engine:       engine,
+			Key:          cfg.MasterKey,
+			NewSource:    func(token secret.Value) poller.Source { return reader(token) },
+			IntervalFunc: func() time.Duration { return set.Duration(settings.PollInterval) },
+			Log:          log,
+			AfterCycle:   diagnoser.AutoStart,
 		},
 		Reaper: &reaper.Reaper{
-			Store: st,
-			Log:   log,
+			Store:      st,
+			Log:        log,
+			MaxAgeFunc: func() time.Duration { return reaper.MaxAgeFor(set.Duration(settings.RunTimeout)) },
 			OnFailed: func(ctx context.Context, ids []string) {
 				for _, id := range ids {
 					diagnoser.Complete(ctx, id)
@@ -177,7 +194,50 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 func clusterCapabilities(c kube.Config, reader *kube.Reader, writer *kube.Writer) server.Cluster {
 	caps := server.Cluster{Read: reader != nil, Write: writer != nil}
 	if writer != nil {
-		caps.Namespaces = slices.Clone(c.WriteNamespaces)
+		caps.NamespacesFunc = c.AllowedNamespaces
 	}
 	return caps
+}
+
+// envLayer is the environment's part of the settings. A configuration that was built by hand (a test) and not read from the
+// environment has no layer; its allowlist is then the environment's value.
+func envLayer(cfg config.Server) settings.Layer {
+	layer := maps.Clone(cfg.Env)
+	if layer == nil {
+		layer = settings.Layer{}
+	}
+	if _, ok := layer[settings.K8sWriteNamespaces]; !ok && len(cfg.Cluster.WriteNamespaces) > 0 {
+		layer[settings.K8sWriteNamespaces] = settings.Value{List: slices.Clone(cfg.Cluster.WriteNamespaces)}
+	}
+	return layer
+}
+
+// displayURL keeps scheme, host and path of an address: userinfo, query and fragment could hold a credential.
+func displayURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "(not shown)"
+	}
+	return (&url.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path}).String()
+}
+
+// facts are what the Setup page shows as read-only: set outside the page, never a secret.
+func facts(cfg config.Server, reader *kube.Reader, writer *kube.Writer) []server.Fact {
+	yesNo := func(b bool) string {
+		if b {
+			return "set up"
+		}
+		return "not set up"
+	}
+	internal := cfg.InternalAddr
+	if internal == "" {
+		internal = "none: one port serves everything"
+	}
+	return []server.Fact{
+		{Label: "Listener", Value: cfg.Addr},
+		{Label: "Internal listener (runner and tools)", Value: internal},
+		{Label: "GitHub API", Value: displayURL(cfg.GitHubAPIURL)},
+		{Label: "Cluster, reading", Value: yesNo(reader != nil)},
+		{Label: "Cluster, actions", Value: yesNo(writer != nil)},
+	}
 }

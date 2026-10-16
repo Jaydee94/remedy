@@ -40,8 +40,14 @@ func tokenFileOf(t *testing.T, name, token string) string {
 // environment uses.
 func newActionRigFor(t *testing.T, url string, allowlist []string) *env {
 	t.Helper()
-	cfg := kube.Config{API: url, ReadTokenFile: tokenFileOf(t, "read", "read-token"), WriteTokenFile: tokenFileOf(t, "write", "write-token"),
-		WriteNamespaces: allowlist}
+	return newActionRigWith(t, url, func(c *kube.Config) { c.WriteNamespaces = allowlist })
+}
+
+// newActionRigWith is newActionRigFor with a configuration the caller can tune (a live allowlist, for one).
+func newActionRigWith(t *testing.T, url string, tune func(*kube.Config)) *env {
+	t.Helper()
+	cfg := kube.Config{API: url, ReadTokenFile: tokenFileOf(t, "read", "read-token"), WriteTokenFile: tokenFileOf(t, "write", "write-token")}
+	tune(&cfg)
 	reader, err := kube.NewReader(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -124,6 +130,64 @@ func TestEveryActionToolIsMutatingInTheClusterGroupAndLogsWhatItDid(t *testing.T
 		if !strings.Contains(tool.Description, "maintainer has to approve") {
 			t.Errorf("%s: the description does not say that the call waits for an approval", tool.Name)
 		}
+	}
+}
+
+type liveList struct {
+	mu   sync.Mutex
+	list []string
+}
+
+func (l *liveList) get() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.list...)
+}
+func (l *liveList) set(v ...string) { l.mu.Lock(); defer l.mu.Unlock(); l.list = v }
+
+func newLiveRig(t *testing.T, al *liveList) *actionRig {
+	t.Helper()
+	api := kubetest.New(t, "read-token")
+	api.Accept("write-token")
+	return &actionRig{env: newActionRigWith(t, api.URL, func(c *kube.Config) { c.Namespaces = al.get }), api: api}
+}
+
+func TestAnAllowlistThatChangesCountsAtOnceAndAgainWhenTheActionRuns(t *testing.T) {
+	restart := map[string]any{"kind": "deployment", "namespace": "demo", "name": "web"}
+
+	// Empty: refused before an approval is asked for.
+	al := &liveList{}
+	r := newLiveRig(t, al)
+	text, isErr := r.ask(t, "cluster_rollout_restart", restart)
+	if !isErr || !strings.Contains(text, `actions are not allowed in the namespace "demo"`) {
+		t.Fatalf("an empty list: %q (%v)", text, isErr)
+	}
+	noApproval(t, r.env)
+
+	// Set while the control plane runs: the same call now waits for an approval.
+	al.set("demo")
+	s := r.open(t, "toolu_2", "cluster_rollout_restart", restart)
+	call := r.pending(t)
+
+	// Removed after the question was asked: the approved action is refused and sends nothing.
+	al.set()
+	if _, err := r.g.Decide(context.Background(), call.ID, true, "go on"); err != nil {
+		t.Fatal(err)
+	}
+	text, isErr = s.result()
+	if !isErr || !strings.Contains(text, "allowlist") && !strings.Contains(text, "not allowed") {
+		t.Fatalf("answer = %q (%v), want a refusal", text, isErr)
+	}
+	if n := len(r.changes()); n != 0 {
+		t.Fatalf("%d changes were sent after the namespace was removed", n)
+	}
+}
+
+func TestAnEmptyAllowlistIsNamedInTheRefusal(t *testing.T) {
+	r := newLiveRig(t, &liveList{})
+	text, isErr := r.ask(t, "cluster_rollout_restart", map[string]any{"kind": "deployment", "namespace": "demo", "name": "web"})
+	if want := `actions are not allowed in the namespace "demo": the allowlist is empty`; !isErr || text != want {
+		t.Fatalf("answer = %q (%v), want %q", text, isErr, want)
 	}
 }
 

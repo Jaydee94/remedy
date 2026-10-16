@@ -17,7 +17,7 @@ configured in the web UI.
 |---|---|---|
 | 1 | Hosts and access: inventory, credentials, host key pinning, connection test | A host can be created, trusted and tested in the UI; no agent uses it yet |
 | 2 | Host tools in the gatekeeper: `host_list`, `host_read`, `host_change`, classification, approvals, an SSH testbed ([spec](2026-10-11-hosts-2-tools-design.md)) | A question run reads a host; an action waits for an approval |
-| 3 | Settings in the database: a settings layer with the environment as defaults, the Setup page | Limits, URLs and rules are changed in the UI |
+| 3 | Settings in the database: a settings layer with the environment as defaults, the Setup page (implemented, [spec](2026-10-14-settings-3-design.md)) | Limits, URLs and rules are changed in the UI |
 | 4 | The Alertmanager source and the responder for outages, with the host tools | An alert becomes an incident, is mapped to a host and diagnosed |
 | 5 | Skills and the learning run: skills per host, `skill_get`, a review list | Remedy gets to know a host and keeps what the maintainer confirms |
 | 6 | Operation on the home server: Remedy under Argo CD on k3s, a real run on the NAS | The drill of section 10 runs end to end |
@@ -109,6 +109,8 @@ The tests of this cycle are the heart of the series and are written first: a tab
 
 ## 6. Cycle 3: settings in the database
 
+Built; see [`2026-10-14-settings-3-design.md`](2026-10-14-settings-3-design.md).
+
 A `settings` table of keys and JSON values, a typed registry in the code (a key, its type, its default from the environment, whether it is secret, whether it needs a restart), and a `Settings` reader that every component asks instead of reading the environment. A change in the UI takes effect without a restart where the component reads the value per cycle or per request; where it cannot, the UI says so. Secret settings (the Alertmanager token) use the same sealing as the host credentials.
 
 The Setup page shows each value with its source (`default`, `environment`, `set here`) and lets the maintainer change what is allowed to change. The bootstrap values are shown as read-only facts, not as fields.
@@ -193,7 +195,7 @@ A log line that contains an instruction must not become a skill. The defence is 
 
 - Cycle 1: decided in [`2026-10-09-hosts-1-inventory-design.md`](2026-10-09-hosts-1-inventory-design.md) (a navigation item, the schema, a snippet generated from three fields, no groups).
 - Cycle 2: the first contents of the table of reads (the set is small and grows by a decision recorded with a test); concurrency and timeouts; whether a host tool of an unreachable host fails the run or only the call (decided in the cycle 2 spec: the call).
-- Cycle 3: the registry's list of keys and which need a restart; where a failed setting is shown.
+- Cycle 3: decided in [`2026-10-14-settings-3-design.md`](2026-10-14-settings-3-design.md) (the registry has six keys: `poll_interval`, `diagnose_cooldown`, `diagnose_max_per_incident`, `diagnose_max_per_day`, `k8s_write_namespaces` and `run_timeout`; a stored value that fails is shown on its row as a problem).
 - Cycle 4: how a matcher conflict is shown; what an incident without a host gets for tools.
 - Cycle 5: the learner's answer schema; how many proposals per run; what happens to a skill when its host is deleted.
 - Cycle 6: how the SSH egress rule is written for the chart's NetworkPolicies, and the `VMRule` for the drill in the `home-server` repository.

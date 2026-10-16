@@ -3,9 +3,9 @@ import { api, ApiError } from './api.ts'
 import type { GitHubConnection } from './api.ts'
 import { useSignOut } from './shellContext.ts'
 import GitHubSection from '@/components/setup/GitHubSection'
-import LimitsSection from '@/components/setup/LimitsSection'
 import ReposSection from '@/components/setup/ReposSection'
 import RunnerSection from '@/components/setup/RunnerSection'
+import SettingsSection from '@/components/setup/SettingsSection'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -49,7 +49,7 @@ export default function SetupPage() {
         !error && <Skeleton className="h-48" />
       )}
 
-      <LimitsSection />
+      <SettingsSection />
 
       <div className="border-t border-border pt-4 md:hidden">
         <button

@@ -257,6 +257,14 @@ func (s *stack) admin(method, path, body string) (int, string) {
 	return resp.StatusCode, string(b)
 }
 
+// setPerDay changes the limit of automatic diagnoses the way the Setup page does; the responder reads it at every use.
+func setPerDay(t *testing.T, s *stack, n int) {
+	t.Helper()
+	if code, body := s.admin(http.MethodPut, "/api/settings/diagnose_max_per_day", `{"value":`+strconv.Itoa(n)+`}`); code != http.StatusOK {
+		t.Fatalf("set the daily limit = %d %s", code, body)
+	}
+}
+
 func (s *stack) poll() { s.app.Poller.PollOnce(context.Background()) }
 
 func (s *stack) incident() store.Incident {
@@ -457,13 +465,13 @@ func TestAnIgnoredIncidentIsNotDiagnosed(t *testing.T) {
 	s := newStack(t, false)
 	// The check is red and the maintainer ignores the incident before any diagnosis started: open it with
 	// automatic diagnosis switched off, ignore it, switch automatic diagnosis on, poll again.
-	s.app.Responder.Limits.MaxPerDay = 0
+	setPerDay(t, s, 0)
 	s.poll()
 	in := s.incident()
 	if code, _ := s.admin(http.MethodPost, "/api/incidents/"+strconv.FormatInt(in.ID, 10)+"/ignore", ""); code != http.StatusOK {
 		t.Fatalf("ignore = %d", code)
 	}
-	s.app.Responder.Limits.MaxPerDay = 20
+	setPerDay(t, s, 20)
 	s.poll()
 	if runs := s.responderRuns(); len(runs) != 0 {
 		t.Fatalf("an ignored incident was diagnosed: %+v", runs)
@@ -498,7 +506,7 @@ func TestAStuckDiagnosisIsClosedByTheReaper(t *testing.T) {
 
 func TestADiagnosisCanStillBeStartedByClickWhenAutomaticDiagnosisIsOff(t *testing.T) {
 	s := newStack(t, true)
-	s.app.Responder.Limits.MaxPerDay = 0 // nothing starts automatically
+	setPerDay(t, s, 0) // nothing starts automatically
 	s.poll()
 	in := s.incident()
 	if len(s.responderRuns()) != 0 {
