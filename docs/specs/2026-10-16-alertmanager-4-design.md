@@ -69,7 +69,7 @@ Pointing Remedy at the real Alertmanager of the home server is cycle 6.
 | `alertmanager_url` | text | `REMEDY_ALERTMANAGER_URL` (empty: the source is off) | `http` or `https`, a host, **no userinfo, no query, no fragment**, at most 2048 characters, a trailing slash is removed | next cycle |
 | `alertmanager_token` | secret | none | 1 to 4096 characters, no control character | next request |
 | `alertmanager_auto_max_age` | duration | none (1 h) | at least 1 m | when an incident opens |
-| `auto_approval_timeout` | duration | `REMEDY_AUTO_APPROVAL_TIMEOUT` (15 m) | `0` (off) or at least 1 m | when a call starts waiting |
+| `auto_approval_timeout` | duration | `REMEDY_AUTO_APPROVAL_TIMEOUT` (15 m) | `0` (off) or at least 1 m | when a call starts waiting (registered in plan 4b, with its consumer) |
 
 **The secret kind.** The stored value is JSON `{"sealed": "<base64>", "hint": "…abcd"}`; the sealing is `secret.Key.Seal` with the additional data `settings/<key>`, the same AES-256-GCM as the host
 credentials. The reader needs the master key and keeps the sealed bytes and the hint in the snapshot, **never the plaintext**; `Secret(key)` opens it on demand and returns a `secret.Value`
@@ -141,7 +141,7 @@ Calls of runs started by a click have no deadline. The approval card of an autom
 
 - `GET /api/signals`: `{"sources": [{"name": "alertmanager", "state": "ok|error|off", "checkedAt": ..., "active": n, "error": "..."}]}`.
 - `GET` and `PATCH /api/hosts[/{id}]` carry `matchers` (text).
-- The incident routes carry `hostId`, `hostName` and `alsoMatches`.
+- The incident routes carry `hostId`, `hostName` and `alsoMatches`; `alsoMatches` is read from `details.alsoMatches`.
 - A pending approval carries `expiresAt` (empty when it has none).
 - The settings routes carry the new keys and the secret kind (section 4).
 
@@ -181,9 +181,9 @@ Written first, in this order of weight:
 
 Two plans, each ending with `make check` and a green CI; the second builds on the first.
 
-1. **4a, the source.** The secret kind and the text kind in the registry, the four keys, `internal/alertmanager` and its fake, `internal/alertmatch`, `internal/signals` and its runner, migration 013 (`hosts.matchers`, `incidents.host_id`),
+1. **4a, the source.** The secret kind and the text kind in the registry, the three keys `alertmanager_url`, `alertmanager_token` and `alertmanager_auto_max_age`, `internal/alertmanager` and its fake, `internal/alertmatch`, `internal/signals` and its runner, migration 013 (`hosts.matchers`, `incidents.host_id`),
    the host routes and page, `GET /api/signals`, the Setup block. At the end alerts are incidents, mapped to hosts, and nothing diagnoses them yet.
-2. **4b, the responder.** `ListAutoCandidates` for every source, `StartDiagnosis` options, the claim by source, `prompt.Outage`, `diagnosis.ParseOutage`, the expiry of approvals (`tool_calls.expires_at`), the outage card, the testbed extension and the real run.
+2. **4b, the responder.** `ListAutoCandidates` for every source, `StartDiagnosis` options, the claim by source, `prompt.Outage`, `diagnosis.ParseOutage`, the expiry of approvals (`tool_calls.expires_at`) with its setting `auto_approval_timeout`, the outage card, the testbed extension and the real run.
 
 ## 13. Risks
 
