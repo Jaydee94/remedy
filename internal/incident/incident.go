@@ -67,6 +67,7 @@ type Observation struct {
 	Severity     string
 	AutoDiagnose bool
 	Details      json.RawMessage
+	HostID       int64 // the host the signal maps to, 0 for none
 
 	RepoID     int64
 	RepoName   string
@@ -82,25 +83,32 @@ type Observation struct {
 type Engine struct{ Store *store.Store }
 
 // Observe applies one observation. It is idempotent: observing the same state again changes
-// nothing except last_seen.
+// nothing except last_seen (and, for a source other than GitHub, the host and the details of the signal).
 func (e *Engine) Observe(ctx context.Context, o Observation) error {
+	_, err := e.ObserveSignal(ctx, o)
+	return err
+}
+
+// ObserveSignal is Observe that also says whether it opened an incident.
+func (e *Engine) ObserveSignal(ctx context.Context, o Observation) (bool, error) {
 	if o.Class == Pending {
-		return nil
+		return false, nil
 	}
 	source, key := o.Source, o.Key
 	if source == "" {
 		source, key = store.SourceGitHub, store.GitHubKey(o.RepoID, o.Ref, o.CheckName)
 	}
 	if key == "" {
-		return fmt.Errorf("an observation of %s needs a key", source)
+		return false, fmt.Errorf("an observation of %s needs a key", source)
 	}
 	cur, err := e.Store.FindActiveIncidentByKey(ctx, source, key)
 	if errors.Is(err, store.ErrNotFound) {
 		if o.Class == Green {
-			return nil
+			return false, nil
 		}
 		_, err := e.Store.OpenIncident(ctx, store.NewIncident{
 			Source: source, Key: o.Key, Title: o.Title, Severity: o.Severity, AutoDiagnose: o.AutoDiagnose, Details: o.Details,
+			HostID: o.HostID,
 			RepoID: o.RepoID, Ref: o.Ref, RefURL: o.RefURL, CheckName: o.CheckName,
 			Conclusion: o.Conclusion, HeadSHA: o.HeadSHA, CheckURL: o.URL,
 		}, store.NewActivity{
@@ -109,12 +117,12 @@ func (e *Engine) Observe(ctx context.Context, o Observation) error {
 			Data:    payload(o),
 		})
 		if errors.Is(err, store.ErrExists) {
-			return nil // another writer was faster; the next cycle sees its incident
+			return false, nil // another writer was faster; the next cycle sees its incident
 		}
-		return err
+		return err == nil, err
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	var change error
@@ -131,7 +139,9 @@ func (e *Engine) Observe(ctx context.Context, o Observation) error {
 			Data:    payload(o),
 		})
 	case cur.State == store.IncIgnored:
-		return nil
+		return false, nil
+	case cur.Source != store.SourceGitHub:
+		change = e.Store.TouchIncidentSignal(ctx, cur.ID, o.HostID, o.Details)
 	case cur.HeadSHA == o.HeadSHA:
 		change = e.Store.TouchIncident(ctx, cur.ID)
 	default:
@@ -144,9 +154,37 @@ func (e *Engine) Observe(ctx context.Context, o Observation) error {
 		})
 	}
 	if errors.Is(change, store.ErrNotFound) {
-		return nil // resolved by someone else in the meantime
+		return false, nil // resolved by someone else in the meantime
 	}
-	return change
+	return false, change
+}
+
+// ResolveAbsent resolves the unresolved incidents of a source (ignored ones too) whose key is not in present. The caller calls it only
+// after a complete and successful fetch: an incomplete answer would resolve incidents that are still firing.
+func (e *Engine) ResolveAbsent(ctx context.Context, source string, present map[string]bool) (int, error) {
+	list, err := e.Store.ListUnresolvedBySource(ctx, source)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, in := range list {
+		if present[in.Key] {
+			continue
+		}
+		err := e.Store.ResolveIncident(ctx, in.ID, ReasonCleared, store.NewActivity{
+			Kind:    store.KindIncidentResolved,
+			RepoID:  in.RepoID,
+			Summary: resolvedText(in),
+		})
+		if errors.Is(err, store.ErrNotFound) {
+			continue // resolved by someone else in the meantime
+		}
+		if err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
 }
 
 // ResolveClosedPRs resolves the active incidents of pull requests that are no longer open.
