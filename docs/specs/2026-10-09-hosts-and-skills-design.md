@@ -198,6 +198,6 @@ A log line that contains an instruction must not become a skill. The defence is 
 - Cycle 1: decided in [`2026-10-09-hosts-1-inventory-design.md`](2026-10-09-hosts-1-inventory-design.md) (a navigation item, the schema, a snippet generated from three fields, no groups).
 - Cycle 2: the first contents of the table of reads (the set is small and grows by a decision recorded with a test); concurrency and timeouts; whether a host tool of an unreachable host fails the run or only the call (decided in the cycle 2 spec: the call).
 - Cycle 3: decided in [`2026-10-14-settings-3-design.md`](2026-10-14-settings-3-design.md) (the registry has six keys: `poll_interval`, `diagnose_cooldown`, `diagnose_max_per_incident`, `diagnose_max_per_day`, `k8s_write_namespaces` and `run_timeout`; a stored value that fails is shown on its row as a problem).
-- Cycle 4: how a matcher conflict is shown; what an incident without a host gets for tools.
+- Cycle 4: how a matcher conflict is shown (answered: a tie is shown as `alsoMatches` on the incident, see the [cycle 4 spec](2026-10-16-alertmanager-4-design.md)); what an incident without a host gets for tools (answered in plan 4b: section 7 of the cycle 4 spec gives the run the incident's host only when there is one, so an incident without a host gets no host tools).
 - Cycle 5: the learner's answer schema; how many proposals per run; what happens to a skill when its host is deleted.
 - Cycle 6: how the SSH egress rule is written for the chart's NetworkPolicies, and the `VMRule` for the drill in the `home-server` repository.

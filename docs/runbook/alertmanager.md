@@ -11,7 +11,8 @@ silences or acknowledges anything.
 Open **Setup** and find the block "Alertmanager".
 
 - **Alertmanager address**: the address your cluster gives Alertmanager, `http` or `https`, with a host, without a user name, a query or a
-  fragment (for example `http://alertmanager:9093` in a plain setup; use the service name of your installation, not a guess). A trailing
+  fragment (for example `http://alertmanager:9093` in a plain setup without the chart's NetworkPolicy; use the service name of your installation, not a guess;
+  see "Reaching Alertmanager from the chart" below). **Use `https` for an Alertmanager outside this machine:** the bearer token travels in clear over plain `http`. A trailing
   slash is removed. Empty means Remedy does not ask. `REMEDY_ALERTMANAGER_URL` is only the default of this setting; what you save here wins.
 - **Alertmanager token** (optional): a bearer token, sent as `Authorization: Bearer` when set. It is written once, sealed with the master key,
   and never shown again, only as `…` and its last four characters. **Replace token** writes a new one, **Remove token** (it asks twice)
@@ -23,13 +24,26 @@ Open **Setup** and find the block "Alertmanager".
 How often Remedy asks is the setting **How often I check GitHub** (`REMEDY_POLL_INTERVAL`, default 60 s, at least 10 s): the Alertmanager source
 has its own loop and does not need a GitHub connection, but it uses the same interval.
 
+### Reaching Alertmanager from the chart
+
+With the chart's default `networkPolicy.enabled: true`, the control plane's pod may open connections only to DNS, the Kubernetes API (when
+`cluster.enabled`) and **public addresses on port 443**; every private range is excepted (`deploy/chart/templates/networkpolicy.yaml`). The chart has no value
+for extra egress yet. So an Alertmanager inside the cluster (`http://alertmanager:9093`) or on a private address **cannot be reached** by default, and the state
+line shows a connection error or a timeout. The options:
+
+- put Alertmanager behind a public HTTPS address on port 443 (an Ingress with a certificate) and enter that address;
+- turn `networkPolicy.enabled` off (this opens all egress of the control plane: weigh it);
+- wait for a chart value for extra egress, which is follow-up work of the operation cycle.
+
+The address can also come from the chart: `REMEDY_ALERTMANAGER_URL` can be passed through `server.env` (the setting saved on the Setup page wins over it).
+
 ## 2. What the state line says
 
 Below the settings of the block, one sentence says what Remedy last heard (`GET /api/signals`; the state is kept in memory, so a restart forgets it):
 
 - "I don't ask Alertmanager: no address is set."
 - "I haven't asked Alertmanager yet." (set up, the first request is still to come)
-- "I asked Alertmanager 12 seconds ago and it listed 7 active alerts."
+- "I asked Alertmanager 12 seconds ago and it listed 7 active alerts." (The count is what Remedy took from the answer: it leaves out the Watchdog and the alerts it skips.)
 - "I couldn't ask Alertmanager …: <reason>. I changed nothing because of it." A failed, cut-off or oversized answer, or an answer that is not a list of
   alerts, **resolves nothing**: an Alertmanager that does not answer is never read as "all clear", and the incidents stay open.
 
@@ -37,7 +51,8 @@ Below the settings of the block, one sentence says what Remedy last heard (`GET 
 
 An alert in the state `active` (not silenced, not inhibited), except `Watchdog` and `InfoInhibitor`, becomes an incident whose key is
 `<alertname>/<fingerprint>`. The title is the annotation `summary`, else the alert name with namespace and pod. After a complete answer,
-an incident whose alert is no longer in the list is resolved. At most 50 new incidents open per cycle; the rest follows in the next one.
+an incident whose alert is no longer in the list is resolved. **An alert that you silence, or that is inhibited, disappears from the active list and therefore
+resolves its incident at the next complete answer.** At most 50 new incidents open per cycle; the rest follows in the next one.
 Labels, annotations and the title are bounded and redacted before they are stored (at most 30 labels and 20 annotations, a label key of at most 64
 characters, a title of at most 200), and an alert with a name over 200 or a fingerprint over 64 characters is skipped. The alert text is data:
 the page shows it as text and never as an instruction.
@@ -58,6 +73,8 @@ instance=~"ugreen-nas(:[0-9]+)?"
 
 (the optional `:port` covers an exporter that adds one). The mapping is recomputed at every observation, so a changed rule applies within a cycle.
 When several hosts match, the host with the lowest id wins and the thread adds "also matches: ..." with the others; Remedy does not guess.
+**Careful with rules that are only negative** (`job!="x"`) **or can match the empty value** (`=~".*"`): a label the alert lacks counts as empty, so such a host is
+named by every alert, and the host with the lowest id then takes them all. Give a host at least one rule that needs a value (`instance=~"nas.*"`).
 The details of a mapped incident's thread have a Host row that links to the host. A rule is only compared with the alert's labels: it is never run or put into a command.
 
 An alert that matches no host still opens an incident, **without** a host (and so, later, without host tools). Deleting a host leaves its
@@ -81,10 +98,13 @@ the design of cycle 4b; today nothing starts either way.**
 
 ## 7. If it does not work
 
+These rows are the expected causes. They were **not tried against a live Alertmanager**; the source was tested against a fake that speaks the same API.
+
 | The line says | Look at |
 |---|---|
-| it could not ask, connection refused or a timeout | the address, and whether the control plane's pod can reach it (a NetworkPolicy, a service name) |
+| it could not ask, connection refused or a timeout | first the chart's NetworkPolicy: by default it blocks every private address, so an Alertmanager in the cluster or on your LAN times out (see "Reaching Alertmanager from the chart"); then the address and the service name |
+| the hosts could not be read | the database (a lock or a full disk): the cycle changes nothing and the next one tries again |
 | 401 or 403 | the token (replace it) |
 | a certificate error | `REMEDY_ALERTMANAGER_CA_FILE` |
-| listed 0 active alerts | `curl <address>/api/v2/alerts?active=true&silenced=false&inhibited=false` from the same network: silenced and inhibited alerts are not listed |
+| listed 0 active alerts | `curl <address>/api/v2/alerts?active=true&silenced=false&inhibited=false` from the same network: silenced and inhibited alerts are not listed; the count also leaves out the Watchdog and alerts Remedy skips |
 | the token "cannot be opened" | the master key changed since the token was saved: remove it and enter it again |

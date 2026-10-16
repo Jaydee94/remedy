@@ -1,6 +1,6 @@
 # Alertmanager, cycle 4: the source and the responder for outages
 
-Status: proposed 2026-10-16. Two implementation plans: **4a (the source) is implemented, the pull request is pending**; 4b (the responder) is not written yet and not built. Until 4b, an Alertmanager incident is shown and mapped to a host but never diagnosed (the thread says "I can't diagnose incidents from Alertmanager yet").
+Status: proposed 2026-10-16. Two implementation plans: **plan 4a (the source) implemented 2026-10-16 (see the pull request of cycle 4a); plan 4b (the responder) not written**. Until 4b, an Alertmanager incident is shown and mapped to a host but never diagnosed (the thread says "I can't diagnose incidents from Alertmanager yet").
 Parent documents: [`2026-10-09-hosts-and-skills-design.md`](2026-10-09-hosts-and-skills-design.md) (the umbrella: sections 2, 7 and 11 are binding here),
 [`2026-10-05-phase-2d-signals-design.md`](2026-10-05-phase-2d-signals-design.md) (the signals design this narrows: its decisions stand unless this spec changes them),
 [`2026-10-14-settings-3-design.md`](2026-10-14-settings-3-design.md) (the settings this builds on: registry, snapshot reader, the page),
@@ -156,7 +156,7 @@ Calls of runs started by a click have no deadline. The approval card of an autom
 
 ## 10. Failure
 
-- A fetch error, a size limit, a non-array answer, an invalid URL or a token that cannot be opened: state `error`, nothing resolves, one log line per cycle.
+- A fetch error, a size limit, a non-array answer, an invalid URL, a token that cannot be opened or a host list that cannot be read (the mapping needs it): state `error`, nothing resolves, one log line per cycle.
 - A rule that stops compiling (it cannot, the server checks it) or a host row with an unreadable rule text is skipped for the mapping and the host's name goes to the log once.
 - A host that is deleted or disabled between the start of a run and a tool call: the host tool answers as in cycle 2.
 - A run whose cluster read side is off still runs with the incident tools (and the host's, if mapped).
@@ -202,10 +202,14 @@ Two plans, each ending with `make check` and a green CI; the second builds on th
 
 ## 14. Documents to change with the implementation
 
-`docs/design.md` (sections 2.5, 2.7 and the roadmap line for the signals), the 2D spec (status table and the "Configuration" row: the environment names are defaults; the Argo CD source stays postponed), the umbrella spec (section 7 built, section 13 open points answered),
+`docs/design.md` (sections 2.3, 2.7 and 2.10 and the roadmap paragraph for the signals), the 2D spec (status table and the "Configuration" row: the environment names are defaults; the Argo CD source stays postponed), the umbrella spec (section 7 built, section 13 open points answered),
 `CLAUDE.md` (Current state, the Commands line for the testbed, the environment variables), the README, and a runbook `docs/runbook/alertmanager.md` for connecting a real Alertmanager.
 
 ## 15. Open points for the plans
 
 - 4a (answered when it was built): the wire form of the secret setting is `kind: "secret"`, `value: null` and a `hint` (section 4); the state of the source lives in memory in `internal/signals` (`Runner.States`, which `GET /api/signals` answers; a restart forgets it and the next cycle fills it in; before the first attempt the state is `pending`); the runner's loop (`Runner.Run`) is started by `cmd/remedy-server` with the process context and ends with it.
 - 4b: how `StartDiagnosis` applies `HostIDs` for a host that was deleted in between; the wording of the outage prompt; the testbed's fake Alertmanager (a container or a Go test server).
+- 4b, found in the final review of 4a:
+  - (a) Incidents of a source that is switched off, or whose address changed, stay open and keep `auto_diagnose`. The automatic candidates of 4b must be limited to recently seen incidents, or such incidents must be resolved when the source is switched off.
+  - (b) A touch refreshes the host and the details only, not the title, the severity or the URL of an incident. Decide in 4b whether it should.
+  - (c) A host whose rules are only negative or can match the empty value maps every alert to the lowest host id (a missing label counts as empty).
