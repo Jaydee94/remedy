@@ -110,6 +110,9 @@ func (g *Gatekeeper) callTool(w http.ResponseWriter, r *http.Request, rn run.Run
 		kind = store.CallKindMutating
 	}
 	n := store.NewToolCall{RunID: rn.ID, ToolUseID: p.Meta.ToolUseID, Tool: p.Name, Kind: kind, Arguments: storable(args)}
+	if kind == store.CallKindMutating {
+		n.ExpiresIn = g.expiry() // the store ignores it for a run that is not automatic
+	}
 	if refused == nil && known && tool.Incident != nil {
 		n.IncidentID = tool.Incident(args)
 	}

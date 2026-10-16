@@ -158,6 +158,14 @@ func (g *Gatekeeper) awaitDecision(w http.ResponseWriter, r *http.Request, req r
 	tick := time.NewTicker(g.progress)
 	defer tick.Stop()
 	var progress float64
+	// An automatic run's approval has a deadline. The timer fires at it, so a decision that arrives after the deadline and before the timer
+	// is the only window; the store lets exactly one of the decision and the expiry win.
+	var expired <-chan time.Time
+	if call.ExpiresAt != nil {
+		t := time.NewTimer(time.Until(*call.ExpiresAt))
+		defer t.Stop()
+		expired = t.C
+	}
 	for {
 		current, err := g.store.GetToolCall(ctx, call.ID)
 		if err != nil {
@@ -190,6 +198,17 @@ func (g *Gatekeeper) awaitDecision(w http.ResponseWriter, r *http.Request, req r
 
 		select {
 		case <-wake:
+		case <-expired:
+			expired = nil
+			at := *call.ExpiresAt
+			if now := time.Now(); now.After(at) {
+				at = now
+			}
+			if _, err := g.store.ExpireCall(ctx, call.ID, at); err != nil {
+				g.log.Error("could not expire a call", "call", call.ID, "err", err)
+			}
+			g.notify(call.ID) // the other waiters (replays) read the end now
+			// The next pass reads the call: an abandoned call settles with its error text, a call that was decided first goes on as decided.
 		case <-tick.C:
 			progress++
 			if len(token) > 0 {

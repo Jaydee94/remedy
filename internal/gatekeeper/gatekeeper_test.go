@@ -72,6 +72,8 @@ type env struct {
 	token string
 	runs  *atomic.Int32
 	next  int
+	// dbPath is the store's file, for a test that must change a row the store has no method for.
+	dbPath string
 }
 
 func newEnv(t *testing.T, extra ...gatekeeper.Tool) *env {
@@ -82,13 +84,14 @@ func newEnv(t *testing.T, extra ...gatekeeper.Tool) *env {
 // newEnvWith builds the tools after the store exists, and lets a test change the configuration.
 func newEnvWith(t *testing.T, build func(st *store.Store) []gatekeeper.Tool, opts ...func(*gatekeeper.Config)) *env {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := store.Open(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
 
-	e := &env{st: st, runs: &atomic.Int32{}}
+	e := &env{st: st, runs: &atomic.Int32{}, dbPath: dbPath}
 	cfg := gatekeeper.Config{Store: st, Tools: append([]gatekeeper.Tool{echoTool(e.runs), failingTool()}, build(st)...)}
 	for _, opt := range opts {
 		opt(&cfg)

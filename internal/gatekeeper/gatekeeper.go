@@ -32,7 +32,10 @@ type Config struct {
 	Grace time.Duration
 	// ExecuteTimeout bounds the execution of an approved tool. Default 75 seconds.
 	ExecuteTimeout time.Duration
-	Log            *slog.Logger
+	// ApprovalTimeout, when set, is asked when a mutating call of an automatic run starts waiting: that long later the call expires if nobody
+	// decided. Zero or nil means no deadline.
+	ApprovalTimeout func() time.Duration
+	Log             *slog.Logger
 }
 
 type Gatekeeper struct {
@@ -44,6 +47,8 @@ type Gatekeeper struct {
 	execTimeout time.Duration
 	log         *slog.Logger
 
+	approvalTimeout func() time.Duration
+
 	mu      sync.Mutex
 	waiters map[int64]*waiterSet // by tool call ID
 }
@@ -54,7 +59,7 @@ func New(c Config) *Gatekeeper {
 	g := &Gatekeeper{
 		store: c.Store, tools: c.Tools, byName: map[string]Tool{},
 		progress: c.ProgressInterval, grace: c.Grace, execTimeout: c.ExecuteTimeout, log: c.Log,
-		waiters: map[int64]*waiterSet{},
+		waiters: map[int64]*waiterSet{}, approvalTimeout: c.ApprovalTimeout,
 	}
 	if g.progress <= 0 {
 		g.progress = 15 * time.Second
@@ -78,6 +83,14 @@ func New(c Config) *Gatekeeper {
 		g.byName[t.Name] = t
 	}
 	return g
+}
+
+// expiry is how long a mutating call of an automatic run may wait for a decision; 0 means without a limit.
+func (g *Gatekeeper) expiry() time.Duration {
+	if g.approvalTimeout == nil {
+		return 0
+	}
+	return g.approvalTimeout()
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
