@@ -169,7 +169,7 @@ func TestTheAlertmanagerAddressIsCheckedAndWrittenWithoutATrailingSlash(t *testi
 		}
 	}
 	for _, in := range []string{
-		"ftp://x", "alertmanager:9093", "http://", "http://user@host", "http://user:pw@host", "http://h?x=1", "http://h?", "http://h#frag",
+		"ftp://x", "alertmanager:9093", "http://", "http://user@host", "http://user:pw@host", "http://h?x=1", "http://h?", "http://h#frag", "http://h#", "http://h/#", "http://h/?",
 		"http://h space", "http://h\nx", "javascript:alert(1)", "http://" + strings.Repeat("a", 2100),
 	} {
 		if _, err := s.ParseText(in); err == nil {

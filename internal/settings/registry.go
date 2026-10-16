@@ -108,7 +108,7 @@ func validAlertmanagerURL(s string) bool {
 	if s == "" {
 		return true
 	}
-	if len(s) > 2048 || strings.ContainsAny(s, " \t\r\n\x00") {
+	if len(s) > 2048 || strings.ContainsAny(s, " \t\r\n\x00#?") {
 		return false
 	}
 	u, err := url.Parse(s)
