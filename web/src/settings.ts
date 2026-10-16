@@ -23,13 +23,15 @@ export function replaceSetting(settings: Setting[], next: Setting): Setting[] {
 
 /** The value as a person reads it. */
 export function valueText(s: Setting): string {
+  if (s.value === null) return 'none'
   if (Array.isArray(s.value)) return s.value.length === 0 ? 'none' : s.value.join(', ')
   if (s.kind === 'text' && s.value === '') return 'none'
   return String(s.value)
 }
 
-/** The value as it stands in the input field. */
+/** The value as it stands in the input field. A secret's field starts empty: its value is never sent. */
 export function inputText(s: Setting): string {
+  if (s.value === null) return ''
   if (Array.isArray(s.value)) return s.value.join(', ')
   return String(s.value)
 }
@@ -57,6 +59,7 @@ export function parseInput(s: Setting, text: string): Parsed {
     return /^\d+$/.test(t) ? { ok: true, value: Number(t) } : { ok: false, message: 'Enter a whole number.' }
   }
   if (s.kind === 'text') return { ok: true, value: t }
+  if (s.kind === 'secret') return t === '' ? { ok: false, message: 'Enter the token.' } : { ok: true, value: t }
   return {
     ok: true,
     value: t
@@ -68,6 +71,7 @@ export function parseInput(s: Setting, text: string): Parsed {
 
 /** Whether the field holds what the setting shows now, so that Save has nothing to do. */
 export function unchanged(s: Setting, text: string): boolean {
+  if (s.kind === 'secret') return text.trim() === '' // a typed token is always a change: the stored one is never shown
   const parsed = parseInput(s, text)
   if (!parsed.ok) return false
   return JSON.stringify(parsed.value) === JSON.stringify(s.value)

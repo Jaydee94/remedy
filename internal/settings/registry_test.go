@@ -21,6 +21,12 @@ func spec(t *testing.T, key string) settings.Spec {
 
 func TestEveryDefaultPassesItsOwnBoundsAndSurvivesTheJSONRoundTrip(t *testing.T) {
 	for _, s := range settings.Specs() {
+		if s.Label == "" || s.Group == "" || s.Rule == "" || s.Effect == "" {
+			t.Errorf("%s: a field of the spec is empty: %+v", s.Key, s)
+		}
+		if s.Kind == settings.KindSecret {
+			continue // a secret has no default value to round trip: it is never written as JSON
+		}
 		v, err := s.ParseJSON(s.Default.JSON(s.Kind))
 		if err != nil {
 			t.Errorf("%s: the default %s does not parse: %v", s.Key, s.Default.JSON(s.Kind), err)
@@ -28,9 +34,6 @@ func TestEveryDefaultPassesItsOwnBoundsAndSurvivesTheJSONRoundTrip(t *testing.T)
 		}
 		if v.Text(s.Kind) != s.Default.Text(s.Kind) {
 			t.Errorf("%s: round trip %q, want %q", s.Key, v.Text(s.Kind), s.Default.Text(s.Kind))
-		}
-		if s.Label == "" || s.Group == "" || s.Rule == "" || s.Effect == "" {
-			t.Errorf("%s: a field of the spec is empty: %+v", s.Key, s)
 		}
 	}
 }

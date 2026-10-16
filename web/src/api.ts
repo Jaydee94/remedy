@@ -259,8 +259,9 @@ export interface Setting {
   key: string
   group: string
   label: string
-  kind: 'duration' | 'number' | 'list' | 'text'
-  value: SettingValue
+  kind: 'duration' | 'number' | 'list' | 'text' | 'secret'
+  /** `null` for a secret: its value is never sent. */
+  value: SettingValue | null
   source: 'default' | 'environment' | 'set here'
   fallback: 'default' | 'environment'
   env: string
@@ -268,6 +269,8 @@ export interface Setting {
   effect: string
   /** A stored value that cannot be used; the value shown is then the environment's or the default. */
   problem?: string
+  /** A secret's last characters (nothing of a short one), to tell a stored token from none. */
+  hint?: string
 }
 
 /** Something about the process that is set outside the page. */

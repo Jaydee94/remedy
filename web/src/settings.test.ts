@@ -121,3 +121,19 @@ describe('unchanged', () => {
     assert.equal(unchanged(setting({ kind: 'list', value: ['a', 'b'] }), 'a, b, c'), false)
   })
 })
+
+describe('a secret setting', () => {
+  const secret = (over: Partial<Setting> = {}) => setting({ kind: 'secret', value: null, hint: '…CRET', source: 'set here', ...over })
+  it('has no value to show: the page says none and the field starts empty', () => {
+    assert.equal(valueText(secret()), 'none')
+    assert.equal(inputText(secret()), '')
+  })
+  it('takes a typed token trimmed and refuses an empty field', () => {
+    assert.deepEqual(parseInput(secret(), '  tok-1  '), { ok: true, value: 'tok-1' })
+    assert.equal(parseInput(secret(), '   ').ok, false)
+  })
+  it('counts a typed token as a change and an empty field as none', () => {
+    assert.equal(unchanged(secret(), ''), true)
+    assert.equal(unchanged(secret(), 'tok-1'), false)
+  })
+})

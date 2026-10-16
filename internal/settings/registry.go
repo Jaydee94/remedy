@@ -25,6 +25,7 @@ const (
 	K8sWriteNamespaces     = "k8s_write_namespaces"
 	RunTimeout             = "run_timeout"
 	AlertmanagerURL        = "alertmanager_url"
+	AlertmanagerToken      = "alertmanager_token"
 	AlertmanagerAutoMaxAge = "alertmanager_auto_max_age"
 )
 
@@ -95,6 +96,13 @@ var specs = []Spec{
 		normalize: func(v Value) Value { v.Str = strings.TrimRight(v.Str, "/"); return v },
 	},
 	{
+		Key: AlertmanagerToken, Group: "Alertmanager", Label: "Alertmanager token",
+		Kind: KindSecret, Rule: "Written once and never shown again. Empty: I send no token.",
+		Effect:  "Takes effect at the next request.",
+		problem: "must be 1 to 4096 characters without a line break or a control character",
+		check:   func(v Value) bool { return validSecretText(v.Str) },
+	},
+	{
 		Key: AlertmanagerAutoMaxAge, Group: "Alertmanager", Label: "Oldest alert I diagnose on my own",
 		Kind: KindDuration, Default: Value{Dur: time.Hour}, Rule: "At least 1m, for example 1h. An older alert is shown, and a click diagnoses it.",
 		Effect:  "Takes effect when an incident opens.",
@@ -116,6 +124,20 @@ func validAlertmanagerURL(s string) bool {
 		return false
 	}
 	return u.User == nil && u.RawQuery == "" && u.Fragment == "" && !u.ForceQuery
+}
+
+// validSecretText says whether s can be a secret: 1 to 4096 bytes without a control character (a line break included). The
+// sentence that refuses it never contains s.
+func validSecretText(s string) bool {
+	if len(s) < 1 || len(s) > 4096 {
+		return false
+	}
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // Specs returns the registry in the order the Setup page shows it.
@@ -148,7 +170,7 @@ func (s Spec) ParseText(text string) (Value, error) {
 			return Value{}, errors.New(s.problem)
 		}
 		v.Num = n
-	case KindText:
+	case KindText, KindSecret:
 		v.Str = strings.TrimSpace(text)
 	default:
 		list, err := kube.ParseNamespaces(text)
@@ -183,7 +205,7 @@ func (s Spec) ParseJSON(raw json.RawMessage) (Value, error) {
 			return Value{}, errors.New(s.problem)
 		}
 		return s.ParseText(strconv.Itoa(n))
-	case KindText:
+	case KindText, KindSecret:
 		var text string
 		if err := json.Unmarshal(raw, &text); err != nil || isNull {
 			return Value{}, fmt.Errorf("%s (write it as a string)", s.problem)

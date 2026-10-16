@@ -32,7 +32,7 @@ func TestTheFactsShowTheGitHubAPIWithoutUserinfoQueryOrFragment(t *testing.T) {
 	}
 	cfg := config.Server{
 		AdminPassword: password, RunnerToken: runnerToken, MasterKey: key,
-		GitHubAPIURL: "https://user:secret@ghe.example/api/v3?x=y#frag", PollInterval: time.Minute,
+		GitHubAPIURL: "https://user:hunter2pw@ghe.example/api/v3?x=y#frag", PollInterval: time.Minute,
 		DiagnoseCooldown: 15 * time.Minute, DiagnoseMaxPerIncident: 3, DiagnoseMaxPerDay: 20,
 	}
 	a := app.New(cfg, st, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
@@ -59,7 +59,7 @@ func TestTheFactsShowTheGitHubAPIWithoutUserinfoQueryOrFragment(t *testing.T) {
 	if !strings.Contains(body, "https://ghe.example/api/v3") {
 		t.Errorf("the facts lack the address: %s", body)
 	}
-	for _, leak := range []string{"secret", "user:", "x=y", "frag"} {
+	for _, leak := range []string{"hunter2pw", "user:", "x=y", "frag"} {
 		if strings.Contains(body, leak) {
 			t.Errorf("the response contains %q: %s", leak, body)
 		}

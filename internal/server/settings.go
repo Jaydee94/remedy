@@ -28,12 +28,14 @@ type settingView struct {
 	Rule     string          `json:"rule"`
 	Effect   string          `json:"effect"`
 	Problem  string          `json:"problem,omitempty"`
+	Hint     string          `json:"hint,omitempty"` // a secret's last characters; its value is always null
 }
 
 func settingViewOf(e settings.Entry) settingView {
 	return settingView{
 		Key: e.Spec.Key, Group: e.Spec.Group, Label: e.Spec.Label, Kind: string(e.Spec.Kind), Value: e.Value.JSON(e.Spec.Kind),
 		Source: string(e.Source), Fallback: string(e.Fallback), Env: e.Spec.Env, Rule: e.Spec.Rule, Effect: e.Spec.Effect, Problem: e.Problem,
+		Hint: e.Hint,
 	}
 }
 

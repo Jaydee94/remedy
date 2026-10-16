@@ -93,7 +93,7 @@ func (a *App) CheckCluster(ctx context.Context) {
 // New wires everything for a configuration. web is the built UI, or nil.
 func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	engine := &incident.Engine{Store: st}
-	set := settings.New(context.Background(), st, envLayer(cfg), log)
+	set := settings.New(context.Background(), st, envLayer(cfg), log, settings.WithKey(cfg.MasterKey))
 	reader := func(token secret.Value) *github.Client {
 		return github.New(cfg.GitHubAPIURL, token, nil, github.WithLog(log))
 	}

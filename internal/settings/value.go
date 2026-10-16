@@ -15,6 +15,7 @@ const (
 	KindNumber   Kind = "number"
 	KindList     Kind = "list"
 	KindText     Kind = "text"
+	KindSecret   Kind = "secret" // never shown, never in the activity; stored sealed (see secret.Key)
 )
 
 // Value is the value of one setting. Only the field of the spec's Kind is used.
@@ -35,6 +36,8 @@ func (v Value) JSON(k Kind) json.RawMessage {
 		b = []byte(strconv.Itoa(v.Num))
 	case KindText:
 		b, _ = json.Marshal(v.Str)
+	case KindSecret:
+		b = []byte("null") // a secret is never sent
 	default:
 		list := v.List
 		if list == nil {
@@ -57,6 +60,8 @@ func (v Value) Text(k Kind) string {
 			return "none"
 		}
 		return v.Str
+	case KindSecret:
+		return "***"
 	}
 	if len(v.List) == 0 {
 		return "none"
