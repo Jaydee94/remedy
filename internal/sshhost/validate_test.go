@@ -62,6 +62,30 @@ func TestValidateRejects(t *testing.T) {
 	}
 }
 
+func TestMatchersAreValidatedAndWrittenCanonically(t *testing.T) {
+	f := valid()
+	f.Matchers = "  instance =~ \"nas.*\"  \n\n job=\"node\" "
+	if err := f.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if want := "instance=~\"nas.*\"\njob=\"node\""; f.Matchers != want {
+		t.Errorf("Matchers = %q, want %q", f.Matchers, want)
+	}
+
+	empty := valid()
+	if err := empty.Validate(); err != nil || empty.Matchers != "" {
+		t.Errorf("empty rules: %v, %q", err, empty.Matchers)
+	}
+
+	bad := valid()
+	bad.Matchers = "nonsense"
+	err := bad.Validate()
+	var fe *sshhost.FieldError
+	if !errors.As(err, &fe) || fe.Field != "matchers" || !strings.HasPrefix(fe.Msg, "the alert rules: line 1:") {
+		t.Fatalf("Validate = %#v, want a FieldError for matchers", err)
+	}
+}
+
 func TestValidateNormalisesUnits(t *testing.T) {
 	f := valid()
 	f.SystemdUnits = []string{" node_exporter ", "backup.timer", "node_exporter.service", "", "x.socket"}

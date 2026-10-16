@@ -222,6 +222,40 @@ func TestHostLifecycle(t *testing.T) {
 	}
 }
 
+func TestHostAlertRulesAreCheckedStoredAndShown(t *testing.T) {
+	e := newHostEnv(t, nil, "", ghKey(t, 1), sshtest.Start(t, sshtest.Config{}))
+	h := e.create(t, "nas")
+	path := fmt.Sprintf("/api/hosts/%d", h.ID)
+
+	code, b := e.do(t, http.MethodPatch, path, `{"matchers":"instance =~ \"ugreen-nas.*\""}`)
+	if code != http.StatusOK || !strings.Contains(b, `"matchers":"instance=~\"ugreen-nas.*\""`) {
+		t.Fatalf("patch = %d %s", code, b)
+	}
+	code, b = e.do(t, http.MethodGet, path, "")
+	if code != http.StatusOK || !strings.Contains(b, `"matchers":"instance=~\"ugreen-nas.*\""`) {
+		t.Fatalf("detail = %d %s", code, b)
+	}
+	code, b = e.do(t, http.MethodGet, "/api/hosts", "")
+	if code != http.StatusOK || !strings.Contains(b, `"matchers":"instance=~\"ugreen-nas.*\""`) {
+		t.Fatalf("list = %d %s", code, b)
+	}
+
+	code, b = e.do(t, http.MethodPatch, path, `{"matchers":"nonsense"}`)
+	if code != http.StatusBadRequest || !strings.Contains(b, `"error":"the alert rules: line 1:`) {
+		t.Fatalf("bad rules = %d %s", code, b)
+	}
+	// A refused edit leaves the stored rules alone, and an edit that does not mention them keeps them.
+	e.do(t, http.MethodPatch, path, `{"notes":"x"}`)
+	if _, b = e.do(t, http.MethodGet, path, ""); !strings.Contains(b, `"matchers":"instance=~\"ugreen-nas.*\""`) {
+		t.Fatalf("rules after other edits: %s", b)
+	}
+	// A new host can be created with rules.
+	body := fmt.Sprintf(`{"name":"other","address":%q,"matchers":"job=\"x\""}`, e.ssh.Host)
+	if code, b := e.do(t, http.MethodPost, "/api/hosts", body); code != http.StatusCreated || !strings.Contains(b, `"matchers":"job=\"x\""`) {
+		t.Fatalf("create with rules = %d %s", code, b)
+	}
+}
+
 func TestPutCredentialRejectsBadKeys(t *testing.T) {
 	e := newHostEnv(t, nil, "", ghKey(t, 1), sshtest.Start(t, sshtest.Config{}))
 	h := e.create(t, "nas")

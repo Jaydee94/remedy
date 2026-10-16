@@ -142,6 +142,8 @@ export interface Host {
   dockerPattern: string
   systemdUnits: string[]
   enabled: boolean
+  /** The rules that map an alert to this host: Alertmanager matcher syntax, one per line. Empty means none. */
+  matchers: string
   status: HostStatus
   statusDetail: string
   checkedAt?: string
@@ -172,6 +174,7 @@ export interface HostBody {
   dockerPattern?: string
   systemdUnits?: string[]
   enabled?: boolean
+  matchers?: string
 }
 
 export type CredentialBody = { kind: 'key'; key: string; passphrase: string } | { kind: 'password'; password: string }

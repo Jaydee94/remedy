@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -31,6 +32,84 @@ func failing(repoID int64, ref, check, sha string) store.NewIncident {
 
 func entry(kind string, repoID int64) store.NewActivity {
 	return store.NewActivity{Kind: kind, RepoID: repoID, Summary: kind + " summary"}
+}
+
+func TestAnIncidentOfAnotherSourceCanBelongToAHost(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	h, err := s.CreateHost(ctx, hostFields("nas"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := s.OpenIncident(ctx, store.NewIncident{Source: store.SourceAlertmanager, Key: "A/1", Title: "t", Conclusion: "firing", HostID: h.ID},
+		store.NewActivity{Kind: store.KindIncidentOpened, Summary: "opened"})
+	if err != nil || in.HostID != h.ID || in.HostName != "nas" {
+		t.Fatalf("%+v, %v", in, err)
+	}
+	if err := s.TouchIncidentSignal(ctx, in.ID, 0, json.RawMessage(`{"labels":{"a":"b"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetIncident(ctx, in.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.HostID != 0 || got.HostName != "" || string(got.Details) != `{"labels":{"a":"b"}}` || !got.LastSeen.After(in.LastSeen) && !got.LastSeen.Equal(in.LastSeen) {
+		t.Fatalf("after the touch: %+v", got)
+	}
+	if err := s.ResolveIncident(ctx, in.ID, "cleared", store.NewActivity{Kind: store.KindIncidentResolved, Summary: "r"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TouchIncidentSignal(ctx, in.ID, h.ID, json.RawMessage(`{}`)); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("touching a resolved incident: %v", err)
+	}
+	if err := s.TouchIncidentSignal(ctx, in.ID, 0, json.RawMessage(`[1]`)); !errors.Is(err, store.ErrInvalidIncident) {
+		t.Errorf("touching with details that are no object: %v", err)
+	}
+	// a GitHub incident never belongs to a host
+	repo := seedRepo(t, s)
+	gh := failing(repo.ID, "pr:1", "go", "aaa")
+	gh.HostID = h.ID
+	if _, err := s.OpenIncident(ctx, gh, store.NewActivity{Kind: store.KindIncidentOpened, Summary: "o"}); !errors.Is(err, store.ErrInvalidIncident) {
+		t.Errorf("a GitHub incident with a host: %v", err)
+	}
+}
+
+func TestListUnresolvedBySourceIncludesIgnoredAndLeavesResolvedAndOtherSources(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	open := func(source, key string) store.Incident {
+		t.Helper()
+		in, err := s.OpenIncident(ctx, store.NewIncident{Source: source, Key: key, Title: key, Conclusion: "firing"},
+			store.NewActivity{Kind: store.KindIncidentOpened, Summary: "opened " + key})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return in
+	}
+	first := open(store.SourceAlertmanager, "A/1")
+	resolved := open(store.SourceAlertmanager, "A/2")
+	ignored := open(store.SourceAlertmanager, "A/3")
+	last := open(store.SourceAlertmanager, "A/4")
+	open(store.SourceArgoCD, "guestbook")
+	if err := s.ResolveIncident(ctx, resolved.ID, "cleared", store.NewActivity{Kind: store.KindIncidentResolved, Summary: "r"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.IgnoreIncident(ctx, ignored.ID, store.NewActivity{Kind: store.KindIncidentIgnored, Summary: "i"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ListUnresolvedBySource(ctx, store.SourceAlertmanager)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []int64
+	for _, in := range got {
+		ids = append(ids, in.ID)
+	}
+	want := []int64{first.ID, ignored.ID, last.ID}
+	if len(ids) != len(want) || ids[0] != want[0] || ids[1] != want[1] || ids[2] != want[2] {
+		t.Fatalf("ids = %v, want %v", ids, want)
+	}
+	if none, err := s.ListUnresolvedBySource(ctx, store.SourceGitHub); err != nil || len(none) != 0 {
+		t.Errorf("github = %+v, %v", none, err)
+	}
 }
 
 func TestOpenIncidentStoresItAndLogsTheActivity(t *testing.T) {
