@@ -27,6 +27,7 @@ const (
 	AlertmanagerURL        = "alertmanager_url"
 	AlertmanagerToken      = "alertmanager_token"
 	AlertmanagerAutoMaxAge = "alertmanager_auto_max_age"
+	AutoApprovalTimeout    = "auto_approval_timeout"
 )
 
 // Spec says what one setting is. problem is the sentence that follows the variable's name when a value is refused; check is the
@@ -108,6 +109,13 @@ var specs = []Spec{
 		Effect:  "Takes effect when an incident opens.",
 		problem: "must be a duration of at least 1m, for example 1h",
 		check:   func(v Value) bool { return v.Dur >= time.Minute },
+	},
+	{
+		Key: AutoApprovalTimeout, Group: "Runs", Label: "How long I wait for an approval in an automatic run", Env: "REMEDY_AUTO_APPROVAL_TIMEOUT",
+		Kind: KindDuration, Default: Value{Dur: 15 * time.Minute}, Rule: "0 means I wait without a limit; otherwise at least 1m, for example 15m. A run you start yourself always waits.",
+		Effect:  "Takes effect when an approval is asked for; a question that already waits keeps its limit.",
+		problem: "must be 0 or a duration of at least 1m, for example 15m",
+		check:   func(v Value) bool { return v.Dur == 0 || v.Dur >= time.Minute },
 	},
 }
 
