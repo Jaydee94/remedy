@@ -60,6 +60,10 @@ running as a service for other people's homelabs.
   retry limit and a **budget per time window** (protects the subscription limit). The Claude CLI
   reports the subscription's five-hour and seven-day utilization in a `rate_limit_event`, which is the
   input for this budget and for the quota-based provider fallback.
+- **Built 2026-10-16 (cycle 4a,
+  [spec](specs/2026-10-16-alertmanager-4-design.md)).** The Alertmanager source polls `GET /api/v2/alerts`
+  (no inbound port): an active alert becomes an incident, mapped to a host by the host's label rules. The incidents
+  are shown, not yet diagnosed (cycle 4b: the responder for outages). The Argo CD source stays postponed.
 
 ### 2.4 GitOps integration (branch 4)
 
@@ -136,6 +140,10 @@ running as a service for other people's homelabs.
   of automatic diagnosis, the cluster action namespaces and the run timeout. The environment (and the chart's
   values) only gives their defaults; the Setup page overrides them without a restart and shows the source of each
   value (default, environment or set here). The bootstrap above stays in Helm and the environment.
+  **Cycle 4a (2026-10-16)** adds three: the Alertmanager address (`REMEDY_ALERTMANAGER_URL` is its default), its
+  token (the first secret setting: sealed with the master key, write-only, shown only as a hint) and the oldest
+  alert that is diagnosed on its own. The CA bundle of an https Alertmanager is a file path of the pod
+  (`REMEDY_ALERTMANAGER_CA_FILE`), bootstrap like the cluster token files.
 
 ### 2.8 Web UI (branch 8)
 
@@ -185,8 +193,9 @@ Decided on 2026-10-09; the specification is
   risk (4); the retrofit is two identities per host, and the data model leaves room for it.
 - **Skills** are Markdown per host or global, with an origin. Remedy gets to know a host in a read-only run whose
   proposals the maintainer confirms; unconfirmed proposals are not used as fact.
-- The Argo CD source of part 2D is postponed; the Alertmanager source and the responder for outages are built
-  after the host tools.
+- The Argo CD source of part 2D is postponed. The Alertmanager source and the host mapping (the rules are a field
+  of the host) are built (cycle 4a, 2026-10-16); the responder for outages follows in cycle 4b, and nothing diagnoses
+  an Alertmanager incident before it.
 
 ## 3. Roadmap
 
@@ -205,7 +214,8 @@ the Home Assistant notification, are separate later cycles. Phase 2 is delivered
 (parts A and B) and cluster access (part C: read tools and actions after an approval, tried on a kind testbed) are implemented, the signal adapters (part D: Alertmanager and Argo CD by polling, a general
 incident model, an automatic responder for outages whose actions wait for an approval) are specified in
 [`specs/2026-10-05-phase-2d-signals-design.md`](specs/2026-10-05-phase-2d-signals-design.md); the incident model
-([plan 2d-1](plans/phase-2d-1-incident-model.md)) is built, the sources and the responder are not.
+([plan 2d-1](plans/phase-2d-1-incident-model.md)) is built, and so is the Alertmanager source (cycle 4a of the hosts and skills series,
+[spec](specs/2026-10-16-alertmanager-4-design.md)); the Argo CD source and the responder for outages are not.
 
 ## 4. Accepted risks
 

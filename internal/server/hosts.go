@@ -42,6 +42,7 @@ type hostView struct {
 	DockerPattern     string          `json:"dockerPattern"`
 	SystemdUnits      []string        `json:"systemdUnits"`
 	Enabled           bool            `json:"enabled"`
+	Matchers          string          `json:"matchers"`
 	Status            string          `json:"status"`
 	StatusDetail      string          `json:"statusDetail"`
 	CheckedAt         *time.Time      `json:"checkedAt,omitempty"`
@@ -75,7 +76,7 @@ func hostViewOf(e store.HostEntry, detail bool) hostView {
 	h := e.Host
 	v := hostView{
 		ID: h.ID, Name: h.Name, Address: h.Address, Port: h.Port, Account: h.Account, Notes: h.Notes, DockerPattern: h.DockerPattern,
-		SystemdUnits: h.SystemdUnits, Enabled: h.Enabled, Status: string(h.Status), StatusDetail: h.StatusDetail,
+		SystemdUnits: h.SystemdUnits, Enabled: h.Enabled, Matchers: h.Matchers, Status: string(h.Status), StatusDetail: h.StatusDetail,
 		CheckedAt: h.CheckedAt, PinnedAt: h.PinnedAt, CreatedAt: h.CreatedAt, UpdatedAt: h.UpdatedAt,
 	}
 	if v.SystemdUnits == nil {
@@ -125,6 +126,7 @@ type hostBody struct {
 	DockerPattern *string   `json:"dockerPattern"`
 	SystemdUnits  *[]string `json:"systemdUnits"`
 	Enabled       *bool     `json:"enabled"`
+	Matchers      *string   `json:"matchers"`
 }
 
 func (b hostBody) apply(f store.HostFields) store.HostFields {
@@ -152,16 +154,20 @@ func (b hostBody) apply(f store.HostFields) store.HostFields {
 	if b.Enabled != nil {
 		f.Enabled = *b.Enabled
 	}
+	if b.Matchers != nil {
+		f.Matchers = *b.Matchers
+	}
 	return f
 }
 
 // checked validates the fields and returns them with the units normalised.
 func checked(f store.HostFields) (store.HostFields, error) {
-	v := sshhost.Fields{Name: f.Name, Address: f.Address, Port: f.Port, Account: f.Account, Notes: f.Notes, DockerPattern: f.DockerPattern, SystemdUnits: f.SystemdUnits}
+	v := sshhost.Fields{Name: f.Name, Address: f.Address, Port: f.Port, Account: f.Account, Notes: f.Notes, DockerPattern: f.DockerPattern, SystemdUnits: f.SystemdUnits, Matchers: f.Matchers}
 	if err := v.Validate(); err != nil {
 		return f, err
 	}
 	f.SystemdUnits = v.SystemdUnits
+	f.Matchers = v.Matchers
 	return f, nil
 }
 

@@ -15,25 +15,29 @@ type incidentView struct {
 	ID int64 `json:"id"`
 	// Source is github, alertmanager or argocd; Title is the line of the list, Details the signal of an incident from a
 	// source other than GitHub. The fields of GitHub below are empty for such an incident.
-	Source         string          `json:"source"`
-	Title          string          `json:"title"`
-	Severity       string          `json:"severity"`
-	AutoDiagnose   bool            `json:"autoDiagnose"`
-	Details        json.RawMessage `json:"details,omitempty"`
-	RepoID         int64           `json:"repoId"`
-	Repo           string          `json:"repo"`
-	Ref            string          `json:"ref"`
-	RefURL         string          `json:"refUrl,omitempty"`
-	CheckName      string          `json:"checkName"`
-	State          string          `json:"state"`
-	Conclusion     string          `json:"conclusion"`
-	HeadSHA        string          `json:"headSha"`
-	CheckURL       string          `json:"checkUrl,omitempty"`
-	Occurrences    int             `json:"occurrences"`
-	FirstSeen      time.Time       `json:"firstSeen"`
-	LastSeen       time.Time       `json:"lastSeen"`
-	ResolvedAt     *time.Time      `json:"resolvedAt,omitempty"`
-	ResolvedReason string          `json:"resolvedReason,omitempty"`
+	Source       string          `json:"source"`
+	Title        string          `json:"title"`
+	Severity     string          `json:"severity"`
+	AutoDiagnose bool            `json:"autoDiagnose"`
+	Details      json.RawMessage `json:"details,omitempty"`
+	// HostID and HostName are the host an alert was mapped to; AlsoMatches the names of further hosts its labels matched.
+	HostID         int64      `json:"hostId,omitempty"`
+	HostName       string     `json:"hostName,omitempty"`
+	AlsoMatches    []string   `json:"alsoMatches,omitempty"`
+	RepoID         int64      `json:"repoId"`
+	Repo           string     `json:"repo"`
+	Ref            string     `json:"ref"`
+	RefURL         string     `json:"refUrl,omitempty"`
+	CheckName      string     `json:"checkName"`
+	State          string     `json:"state"`
+	Conclusion     string     `json:"conclusion"`
+	HeadSHA        string     `json:"headSha"`
+	CheckURL       string     `json:"checkUrl,omitempty"`
+	Occurrences    int        `json:"occurrences"`
+	FirstSeen      time.Time  `json:"firstSeen"`
+	LastSeen       time.Time  `json:"lastSeen"`
+	ResolvedAt     *time.Time `json:"resolvedAt,omitempty"`
+	ResolvedReason string     `json:"resolvedReason,omitempty"`
 
 	Diagnoses       int             `json:"diagnoses"`
 	LastDiagnosisAt *time.Time      `json:"lastDiagnosisAt,omitempty"`
@@ -46,6 +50,7 @@ type incidentView struct {
 func incidentViewOf(in store.Incident) incidentView {
 	return incidentView{
 		ID: in.ID, Source: in.Source, Title: in.Title, Severity: in.Severity, AutoDiagnose: in.AutoDiagnose, Details: in.Details,
+		HostID: in.HostID, HostName: in.HostName, AlsoMatches: alsoMatches(in.Details),
 		RepoID: in.RepoID, Repo: in.RepoName, Ref: in.Ref, RefURL: in.RefURL, CheckName: in.CheckName,
 		State: string(in.State), Conclusion: in.Conclusion, HeadSHA: in.HeadSHA, CheckURL: in.CheckURL,
 		Occurrences: in.Occurrences, FirstSeen: in.FirstSeen, LastSeen: in.LastSeen,
@@ -53,6 +58,17 @@ func incidentViewOf(in store.Incident) incidentView {
 		Diagnoses: in.Diagnoses, LastDiagnosisAt: in.LastDiagnosisAt, DiagnosedAt: in.DiagnosedAt, Diagnosis: in.Diagnosis,
 		DiagnosedSHA: in.DiagnosedSHA, RunID: in.RunID,
 	}
+}
+
+// alsoMatches reads the names of the further hosts an alert matched from the details of an incident.
+func alsoMatches(details json.RawMessage) []string {
+	var d struct {
+		Also []string `json:"alsoMatches"`
+	}
+	if json.Unmarshal(details, &d) != nil {
+		return nil
+	}
+	return d.Also
 }
 
 type activityView struct {

@@ -1,0 +1,77 @@
+[
+  {
+    "annotations": {
+      "description": "This is an alert meant to ensure that the entire alerting pipeline is functional.",
+      "summary": "An alert that should always be firing to certify that Alertmanager is working properly."
+    },
+    "endsAt": "2026-10-16T09:14:12.418Z",
+    "fingerprint": "2c4f1a9d7e08b3a5",
+    "receivers": [{"name": "blackhole"}],
+    "startsAt": "2026-10-02T06:01:12.418Z",
+    "status": {"inhibitedBy": [], "silencedBy": [], "state": "active"},
+    "updatedAt": "2026-10-16T09:10:12.421Z",
+    "generatorURL": "http://prometheus.home.example/graph?g0.expr=vector%281%29&g0.tab=1",
+    "labels": {
+      "alertname": "Watchdog",
+      "severity": "none"
+    }
+  },
+  {
+    "annotations": {
+      "description": "Filesystem on /volume1 at ugreen-nas has only 4.7% available space left.",
+      "summary": "Filesystem has less than 5% space left."
+    },
+    "endsAt": "2026-10-16T09:14:12.418Z",
+    "fingerprint": "9b3e60d2f1c4a87e",
+    "receivers": [{"name": "blackhole"}],
+    "startsAt": "2026-10-14T21:36:42.418Z",
+    "status": {"inhibitedBy": [], "silencedBy": [], "state": "active"},
+    "updatedAt": "2026-10-16T09:10:42.427Z",
+    "generatorURL": "http://prometheus.home.example/graph?g0.expr=node_filesystem_avail_bytes+%2F+node_filesystem_size_bytes+%3C+0.05&g0.tab=1",
+    "labels": {
+      "alertname": "NodeFilesystemAlmostFull",
+      "instance": "ugreen-nas",
+      "job": "node-exporter",
+      "mountpoint": "/volume1",
+      "severity": "warning"
+    }
+  },
+  {
+    "annotations": {
+      "description": "Container paperless-webserver on ugreen-nas uses 93% of its memory limit.",
+      "summary": "Container memory usage is close to its limit."
+    },
+    "endsAt": "2026-10-16T09:14:12.418Z",
+    "fingerprint": "e07a5c3b84d19f62",
+    "receivers": [{"name": "blackhole"}],
+    "startsAt": "2026-10-16T07:48:27.418Z",
+    "status": {"inhibitedBy": [], "silencedBy": [], "state": "active"},
+    "updatedAt": "2026-10-16T09:10:27.433Z",
+    "generatorURL": "http://prometheus.home.example/graph?g0.expr=container_memory_usage_bytes+%2F+container_spec_memory_limit_bytes+%3E+0.9&g0.tab=1",
+    "labels": {
+      "alertname": "ContainerHighMemory",
+      "instance": "ugreen-nas",
+      "name": "paperless-webserver",
+      "severity": "warning"
+    }
+  },
+  {
+    "annotations": {
+      "description": "Pod demo/web-5d9c-abc12 has restarted 6 times in the last 15 minutes.",
+      "summary": "Pod is crash looping."
+    },
+    "endsAt": "2026-10-16T09:14:12.418Z",
+    "fingerprint": "47d8b1e9a30c5f26",
+    "receivers": [{"name": "blackhole"}],
+    "startsAt": "2026-10-16T08:52:57.418Z",
+    "status": {"inhibitedBy": [], "silencedBy": [], "state": "active"},
+    "updatedAt": "2026-10-16T09:10:57.439Z",
+    "generatorURL": "http://prometheus.home.example/graph?g0.expr=increase%28kube_pod_container_status_restarts_total%5B15m%5D%29+%3E+5&g0.tab=1",
+    "labels": {
+      "alertname": "KubePodCrashLooping",
+      "namespace": "demo",
+      "pod": "web-5d9c-abc12",
+      "severity": "critical"
+    }
+  }
+]

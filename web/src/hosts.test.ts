@@ -6,7 +6,7 @@ import { credentialText, hostLine, parseUnits, editableKey, statusSentence, stat
 
 function host(over: Partial<Host> = {}): Host {
   return {
-    id: 1, name: 'nas', address: '192.168.178.118', port: 22, account: 'remedy', notes: '', dockerPattern: '', systemdUnits: [], enabled: true,
+    id: 1, name: 'nas', address: '192.168.178.118', port: 22, account: 'remedy', notes: '', dockerPattern: '', systemdUnits: [], enabled: true, matchers: '',
     status: 'new', statusDetail: '', createdAt: '2026-10-09T10:00:00Z', updatedAt: '2026-10-09T10:00:00Z', ...over,
   }
 }

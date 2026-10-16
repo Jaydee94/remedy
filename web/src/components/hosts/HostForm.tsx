@@ -27,6 +27,7 @@ export default function HostForm({ host, busy, run, onSaved }: Props) {
     dockerPattern: host.dockerPattern,
     units: host.systemdUnits.join('\n'),
     enabled: host.enabled,
+    matchers: host.matchers,
   })
   const set = (k: keyof typeof f) => (v: string | boolean) => setF((prev) => ({ ...prev, [k]: v }))
   const ready = validHostName(f.name) && validAddress(f.address) && validDockerPattern(f.dockerPattern) && Number(f.port) >= 1 && Number(f.port) <= 65535
@@ -44,6 +45,7 @@ export default function HostForm({ host, busy, run, onSaved }: Props) {
         dockerPattern: f.dockerPattern.trim(),
         systemdUnits: parseUnits(f.units),
         enabled: f.enabled,
+        matchers: f.matchers,
       }),
     )
     if (res) {
@@ -75,6 +77,18 @@ export default function HostForm({ host, busy, run, onSaved }: Props) {
           onChange={(e) => set('notes')(e.target.value)}
           rows={3}
           className="min-h-20 rounded-xl border border-input bg-transparent px-3 py-2 text-base outline-none focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm"
+        />
+      </Field>
+      <Field
+        label="Alerts of this host"
+        hint={'One rule per line, as in Alertmanager: for example instance=~"nas\\\\.local(:[0-9]+)?". All lines must match, and a dot is written with two backslashes. Empty: no alert is mapped to this host.'}
+      >
+        <textarea
+          value={f.matchers}
+          onChange={(e) => set('matchers')(e.target.value)}
+          rows={3}
+          spellCheck={false}
+          className="min-h-20 rounded-xl border border-input bg-transparent px-3 py-2 font-mono text-base outline-none focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm"
         />
       </Field>
       <Field label="Containers I may start and stop" hint="A name with one star at the end, for example remedy-*. Leave it empty for none. It only shapes the snippet below. In sudoers a star also matches spaces: it limits less than it looks.">

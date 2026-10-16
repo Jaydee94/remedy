@@ -92,6 +92,10 @@ type Incident struct {
 	DiagnosedSHA string
 	// RunID is the latest responder run of the incident.
 	RunID string
+
+	// HostID and HostName name the host an alert was mapped to, zero and empty when it was mapped to none (or the host is gone).
+	HostID   int64
+	HostName string
 }
 
 // NewIncident describes an incident to open. An empty Source means GitHub: then RepoID is required, Key and Title
@@ -104,6 +108,8 @@ type NewIncident struct {
 	Details                                               json.RawMessage
 	RepoID                                                int64
 	Ref, RefURL, CheckName, Conclusion, HeadSHA, CheckURL string
+	// HostID is the host an alert was mapped to; only an incident of another source can have one.
+	HostID int64
 }
 
 // GitHubKey is the key of a GitHub incident: the repository, the ref and the name of the check, joined with U+001F,
@@ -152,6 +158,9 @@ func (n NewIncident) normalize() (NewIncident, error) {
 		if n.RepoID == 0 {
 			return bad("a GitHub incident needs a repository")
 		}
+		if n.HostID != 0 {
+			return bad("only an incident of another source can belong to a host")
+		}
 		if n.Key == "" {
 			n.Key = GitHubKey(n.RepoID, n.Ref, n.CheckName)
 		}
@@ -183,8 +192,8 @@ const (
 	incidentCols = `i.id, i.source, i.key, i.title, i.severity, i.auto_diagnose, i.details,
 		i.repo_id, r.full_name, i.ref, i.ref_url, i.check_name, i.state, i.conclusion,
 		i.head_sha, i.check_url, i.occurrences, i.first_seen, i.last_seen, i.resolved_at, i.resolved_reason,
-		i.diagnoses, i.last_diagnosis_at, i.diagnosed_at, i.diagnosis, i.diagnosed_sha, i.run_id`
-	incidentFrom = ` FROM incidents i LEFT JOIN repos r ON r.id = i.repo_id`
+		i.diagnoses, i.last_diagnosis_at, i.diagnosed_at, i.diagnosis, i.diagnosed_sha, i.run_id, i.host_id, h.name`
+	incidentFrom = ` FROM incidents i LEFT JOIN repos r ON r.id = i.repo_id LEFT JOIN hosts h ON h.id = i.host_id`
 )
 
 func scanIncident(sc scanner) (Incident, error) {
@@ -200,11 +209,13 @@ func scanIncident(sc scanner) (Incident, error) {
 		details     string
 		repoID      sql.NullInt64
 		repoName    sql.NullString
+		hostID      sql.NullInt64
+		hostName    sql.NullString
 	)
 	if err := sc.Scan(&in.ID, &in.Source, &in.Key, &in.Title, &in.Severity, &in.AutoDiagnose, &details,
 		&repoID, &repoName, &in.Ref, &in.RefURL, &in.CheckName, &state, &in.Conclusion,
 		&in.HeadSHA, &in.CheckURL, &in.Occurrences, &first, &last, &resolved, &in.ResolvedReason,
-		&in.Diagnoses, &lastDiag, &diagnosedAt, &diagnosis, &in.DiagnosedSHA, &runID); err != nil {
+		&in.Diagnoses, &lastDiag, &diagnosedAt, &diagnosis, &in.DiagnosedSHA, &runID, &hostID, &hostName); err != nil {
 		return Incident{}, err
 	}
 	in.State = IncidentState(state)
@@ -242,6 +253,7 @@ func scanIncident(sc scanner) (Incident, error) {
 		in.Diagnosis = json.RawMessage(diagnosis.String)
 	}
 	in.RunID = runID.String
+	in.HostID, in.HostName = hostID.Int64, hostName.String
 	return in, nil
 }
 
@@ -294,10 +306,10 @@ func (s *Store) OpenIncident(ctx context.Context, n NewIncident, act NewActivity
 		now := formatTS(time.Now())
 		res, err := tx.ExecContext(ctx, `
 			INSERT INTO incidents (source, key, title, severity, auto_diagnose, details, repo_id, ref, ref_url, check_name,
-				state, conclusion, head_sha, check_url, occurrences, first_seen, last_seen)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, 1, ?, ?)`,
+				state, conclusion, head_sha, check_url, occurrences, first_seen, last_seen, host_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, 1, ?, ?, ?)`,
 			n.Source, n.Key, n.Title, n.Severity, n.AutoDiagnose, string(n.Details), nullInt(n.RepoID), n.Ref, n.RefURL,
-			n.CheckName, n.Conclusion, n.HeadSHA, n.CheckURL, now, now)
+			n.CheckName, n.Conclusion, n.HeadSHA, n.CheckURL, now, now, nullInt(n.HostID))
 		if err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				return ErrExists
@@ -336,6 +348,30 @@ func (s *Store) RecordRecurrence(ctx context.Context, id int64, conclusion, head
 func (s *Store) TouchIncident(ctx context.Context, id int64) error {
 	return oneRow(s.db.ExecContext(ctx,
 		`UPDATE incidents SET last_seen = ? WHERE id = ? AND state <> 'resolved'`, formatTS(time.Now()), id))
+}
+
+// TouchIncidentSignal records that a signal is still there: it moves last_seen and writes the host the signal maps to now (0 for
+// none) and its current details. It changes an incident that is not resolved and returns ErrNotFound for any other.
+func (s *Store) TouchIncidentSignal(ctx context.Context, id, hostID int64, details json.RawMessage) error {
+	if len(details) == 0 {
+		details = json.RawMessage(`{}`)
+	}
+	if !json.Valid(details) || details[0] != '{' {
+		return fmt.Errorf("%w: details must be a JSON object", ErrInvalidIncident)
+	}
+	return oneRow(s.db.ExecContext(ctx, `
+		UPDATE incidents SET last_seen = ?, host_id = ?, details = ? WHERE id = ? AND state <> 'resolved'`,
+		formatTS(time.Now()), nullInt(hostID), string(details), id))
+}
+
+// ListUnresolvedBySource returns the incidents of a source that are not resolved, ignored ones included, oldest first.
+func (s *Store) ListUnresolvedBySource(ctx context.Context, source string) ([]Incident, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+incidentCols+incidentFrom+
+		` WHERE i.source = ? AND i.state <> 'resolved' ORDER BY i.first_seen, i.id`, source)
+	if err != nil {
+		return nil, err
+	}
+	return collectIncidents(rows)
 }
 
 // ResolveIncident resolves an incident that is not resolved yet.

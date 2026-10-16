@@ -8,7 +8,8 @@ import (
 	"github.com/Jaydee94/remedy/internal/settings"
 )
 
-const maxSettingBody = 4 << 10
+// maxSettingBody leaves room for the longest secret (4096 bytes, twice that when every byte is escaped in JSON).
+const maxSettingBody = 16 << 10
 
 // Fact is something about the process that is set outside the Setup page, shown there as a read-only fact. It never holds a secret.
 type Fact struct {
@@ -28,12 +29,14 @@ type settingView struct {
 	Rule     string          `json:"rule"`
 	Effect   string          `json:"effect"`
 	Problem  string          `json:"problem,omitempty"`
+	Hint     string          `json:"hint,omitempty"` // a secret's last characters; its value is always null
 }
 
 func settingViewOf(e settings.Entry) settingView {
 	return settingView{
 		Key: e.Spec.Key, Group: e.Spec.Group, Label: e.Spec.Label, Kind: string(e.Spec.Kind), Value: e.Value.JSON(e.Spec.Kind),
 		Source: string(e.Source), Fallback: string(e.Fallback), Env: e.Spec.Env, Rule: e.Spec.Rule, Effect: e.Spec.Effect, Problem: e.Problem,
+		Hint: e.Hint,
 	}
 }
 

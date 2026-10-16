@@ -2,6 +2,7 @@
 package config
 
 import (
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -35,6 +36,7 @@ type Server struct {
 	DiagnoseMaxPerIncident int           // REMEDY_DIAGNOSE_MAX_PER_INCIDENT
 	DiagnoseMaxPerDay      int           // REMEDY_DIAGNOSE_MAX_PER_DAY
 	Cluster                kube.Config   // REMEDY_K8S_*: how to reach the cluster; the zero value means no cluster
+	AlertmanagerCAFile     string        // REMEDY_ALERTMANAGER_CA_FILE: a PEM bundle for an https Alertmanager; empty means the system's roots
 	// Env holds the variables of the registry that were set (poll interval, diagnosis limits, namespaces, run timeout). They are
 	// the defaults of the settings, which the Setup page can override.
 	Env settings.Layer
@@ -98,6 +100,16 @@ func ServerFromEnv(get func(string) string) (Server, error) {
 	}
 	if err := c.Cluster.Validate(); err != nil {
 		return Server{}, err
+	}
+	c.AlertmanagerCAFile = get("REMEDY_ALERTMANAGER_CA_FILE")
+	if c.AlertmanagerCAFile != "" {
+		pemBytes, err := os.ReadFile(c.AlertmanagerCAFile)
+		if err != nil {
+			return Server{}, fmt.Errorf("REMEDY_ALERTMANAGER_CA_FILE: %w", err)
+		}
+		if !x509.NewCertPool().AppendCertsFromPEM(pemBytes) {
+			return Server{}, errors.New("REMEDY_ALERTMANAGER_CA_FILE: the file holds no certificate")
+		}
 	}
 	return c, nil
 }

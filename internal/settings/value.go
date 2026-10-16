@@ -14,6 +14,8 @@ const (
 	KindDuration Kind = "duration"
 	KindNumber   Kind = "number"
 	KindList     Kind = "list"
+	KindText     Kind = "text"
+	KindSecret   Kind = "secret" // never shown, never in the activity; stored sealed (see secret.Key)
 )
 
 // Value is the value of one setting. Only the field of the spec's Kind is used.
@@ -21,6 +23,7 @@ type Value struct {
 	Dur  time.Duration
 	Num  int
 	List []string
+	Str  string // a text value
 }
 
 // JSON is the form that is stored and sent: a string for a duration ("15m"), a number, an array of strings.
@@ -31,6 +34,10 @@ func (v Value) JSON(k Kind) json.RawMessage {
 		b, _ = json.Marshal(formatDuration(v.Dur))
 	case KindNumber:
 		b = []byte(strconv.Itoa(v.Num))
+	case KindText:
+		b, _ = json.Marshal(v.Str)
+	case KindSecret:
+		b = []byte("null") // a secret is never sent
 	default:
 		list := v.List
 		if list == nil {
@@ -48,6 +55,13 @@ func (v Value) Text(k Kind) string {
 		return formatDuration(v.Dur)
 	case KindNumber:
 		return strconv.Itoa(v.Num)
+	case KindText:
+		if v.Str == "" {
+			return "none"
+		}
+		return v.Str
+	case KindSecret:
+		return "***"
 	}
 	if len(v.List) == 0 {
 		return "none"

@@ -20,6 +20,8 @@ The part is proven on the kind testbed of part C, extended by an Alertmanager. P
 | C | Cluster: read tools, approved mutating actions | implemented |
 | D | Signals: Alertmanager and Argo CD, a general incident model, the responder for outages | this spec |
 
+Status of part D (2026-10-16): the incident model is built (plan 2d-1). The Alertmanager source is built by **cycle 4a** of the hosts and skills series ([`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md)): the client, the runner, the host mapping and `GET /api/signals`. The token is a sealed setting there, not `REMEDY_ALERTMANAGER_TOKEN_FILE` (which was never built); `REMEDY_ALERTMANAGER_URL` is the default of a setting and `REMEDY_ALERTMANAGER_CA_FILE` is read at start-up. The responder for outages is **not** built (cycle 4b), so nothing diagnoses an Alertmanager incident yet. The Argo CD source stays postponed.
+
 ### Non-goals
 
 - Loki (phase 3), webhook receivers (an inbound port and a fourth authentication domain), and any source other than the two above.

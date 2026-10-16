@@ -21,6 +21,12 @@ func spec(t *testing.T, key string) settings.Spec {
 
 func TestEveryDefaultPassesItsOwnBoundsAndSurvivesTheJSONRoundTrip(t *testing.T) {
 	for _, s := range settings.Specs() {
+		if s.Label == "" || s.Group == "" || s.Rule == "" || s.Effect == "" {
+			t.Errorf("%s: a field of the spec is empty: %+v", s.Key, s)
+		}
+		if s.Kind == settings.KindSecret {
+			continue // a secret has no default value to round trip: it is never written as JSON
+		}
 		v, err := s.ParseJSON(s.Default.JSON(s.Kind))
 		if err != nil {
 			t.Errorf("%s: the default %s does not parse: %v", s.Key, s.Default.JSON(s.Kind), err)
@@ -28,9 +34,6 @@ func TestEveryDefaultPassesItsOwnBoundsAndSurvivesTheJSONRoundTrip(t *testing.T)
 		}
 		if v.Text(s.Kind) != s.Default.Text(s.Kind) {
 			t.Errorf("%s: round trip %q, want %q", s.Key, v.Text(s.Kind), s.Default.Text(s.Kind))
-		}
-		if s.Env == "" || s.Label == "" || s.Group == "" || s.Rule == "" || s.Effect == "" {
-			t.Errorf("%s: a field of the spec is empty: %+v", s.Key, s)
 		}
 	}
 }
@@ -150,5 +153,76 @@ func TestEnvValueReadsOneKey(t *testing.T) {
 	}
 	if _, set, err := settings.EnvValue(settings.RunTimeout, env(nil)); err != nil || set {
 		t.Fatalf("unset: set = %v, err = %v", set, err)
+	}
+}
+
+func TestTheAlertmanagerAddressIsCheckedAndWrittenWithoutATrailingSlash(t *testing.T) {
+	s := spec(t, settings.AlertmanagerURL)
+	good := map[string]string{
+		"":                                "",
+		"http://alertmanager:9093":        "http://alertmanager:9093",
+		"https://am.example/":             "https://am.example",
+		"http://10.0.0.5:9093/base/path/": "http://10.0.0.5:9093/base/path",
+		"  http://x  ":                    "http://x",
+	}
+	for in, want := range good {
+		v, err := s.ParseText(in)
+		if err != nil || v.Str != want {
+			t.Errorf("%q: %q, %v, want %q", in, v.Str, err, want)
+		}
+	}
+	for _, in := range []string{
+		"ftp://x", "alertmanager:9093", "http://", "http://user@host", "http://user:pw@host", "http://h?x=1", "http://h?", "http://h#frag", "http://h#", "http://h/#", "http://h/?",
+		"http://h space", "http://h\nx", "javascript:alert(1)", "http://" + strings.Repeat("a", 2100),
+	} {
+		if _, err := s.ParseText(in); err == nil {
+			t.Errorf("%q was accepted", in)
+		}
+	}
+}
+
+func TestTheTextJSONFormIsAString(t *testing.T) {
+	s := spec(t, settings.AlertmanagerURL)
+	v, err := s.ParseJSON(json.RawMessage(`"http://a:9093/"`))
+	if err != nil || v.Str != "http://a:9093" {
+		t.Fatalf("%+v, %v", v, err)
+	}
+	for _, raw := range []string{`null`, `5`, `["a"]`, ``, `{}`} {
+		if _, err := s.ParseJSON(json.RawMessage(raw)); err == nil {
+			t.Errorf("%s was accepted", raw)
+		}
+	}
+	if got := string((settings.Value{Str: "http://a"}).JSON(settings.KindText)); got != `"http://a"` {
+		t.Errorf("JSON = %s", got)
+	}
+	if got := (settings.Value{}).Text(settings.KindText); got != "none" {
+		t.Errorf("empty text = %q", got)
+	}
+}
+
+func TestTheMaximumAgeIsADurationOfAtLeastAMinute(t *testing.T) {
+	s := spec(t, settings.AlertmanagerAutoMaxAge)
+	if _, err := s.ParseText("1h"); err != nil {
+		t.Error(err)
+	}
+	if _, err := s.ParseText("59s"); err == nil {
+		t.Error("59s was accepted")
+	}
+	if s.Default.Dur != time.Hour || s.Env != "" {
+		t.Errorf("default = %v, env = %q", s.Default.Dur, s.Env)
+	}
+}
+
+func TestEnvironmentVariablesOfTheTextKind(t *testing.T) {
+	l, err := settings.EnvLayer(env(map[string]string{"REMEDY_ALERTMANAGER_URL": "http://am:9093/"}))
+	if err != nil || l.Text(settings.AlertmanagerURL) != "http://am:9093" || len(l) != 1 {
+		t.Fatalf("%v, %v", l, err)
+	}
+	_, err = settings.EnvLayer(env(map[string]string{"REMEDY_ALERTMANAGER_URL": "http://u:p@am"}))
+	if err == nil || !strings.HasPrefix(err.Error(), "REMEDY_ALERTMANAGER_URL must be an http or https address") {
+		t.Fatalf("error = %v", err)
+	}
+	if _, set, err := settings.EnvValue(settings.AlertmanagerAutoMaxAge, env(nil)); err != nil || set {
+		t.Errorf("a setting without a variable: set = %v, err = %v", set, err)
 	}
 }

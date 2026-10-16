@@ -30,6 +30,9 @@ type HostFields struct {
 	DockerPattern string
 	SystemdUnits  []string
 	Enabled       bool
+	// Matchers are the rules that map an alert to this host: Alertmanager matcher syntax, one rule per line, canonical.
+	// Empty means no alert names the host.
+	Matchers string
 }
 
 type Host struct {
@@ -62,7 +65,7 @@ type HostEntry struct {
 }
 
 const hostSelect = `
-	SELECT h.id, h.name, h.address, h.port, h.account, h.notes, h.docker_pattern, h.systemd_units, h.enabled,
+	SELECT h.id, h.name, h.address, h.port, h.account, h.notes, h.docker_pattern, h.systemd_units, h.enabled, h.matchers,
 	       h.pinned_key, h.pinned_at, h.status, h.status_detail, h.report, h.checked_at, h.created_at, h.updated_at,
 	       c.host_id, c.kind, c.ciphertext, c.hint, c.public_key, c.updated_at
 	FROM hosts h LEFT JOIN host_credentials c ON c.host_id = h.id`
@@ -88,7 +91,7 @@ func scanHostEntry(sc scanner) (HostEntry, error) {
 		kind, hint, pub                 sql.NullString
 		ciphertext                      []byte
 	)
-	if err := sc.Scan(&h.ID, &h.Name, &h.Address, &h.Port, &h.Account, &h.Notes, &h.DockerPattern, &units, &enabled,
+	if err := sc.Scan(&h.ID, &h.Name, &h.Address, &h.Port, &h.Account, &h.Notes, &h.DockerPattern, &units, &enabled, &h.Matchers,
 		&h.PinnedKey, &pinnedAt, &status, &h.StatusDetail, &h.Report, &checked, &created, &updated,
 		&credHost, &kind, &ciphertext, &hint, &pub, &credUpdated); err != nil {
 		return HostEntry{}, err
@@ -175,9 +178,9 @@ func (s *Store) CreateHost(ctx context.Context, f HostFields) (Host, error) {
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		now := formatTS(time.Now())
 		res, err := tx.ExecContext(ctx, `
-			INSERT INTO hosts (name, address, port, account, notes, docker_pattern, systemd_units, enabled, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			f.Name, f.Address, f.Port, f.Account, f.Notes, f.DockerPattern, units, hostEnabledInt(f), now, now)
+			INSERT INTO hosts (name, address, port, account, notes, docker_pattern, systemd_units, enabled, matchers, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			f.Name, f.Address, f.Port, f.Account, f.Notes, f.DockerPattern, units, hostEnabledInt(f), f.Matchers, now, now)
 		if err != nil {
 			if isUnique(err) {
 				return ErrExists
@@ -215,12 +218,12 @@ func (s *Store) UpdateHost(ctx context.Context, id int64, f HostFields) (Host, b
 			return err
 		}
 		cleared = pinned != "" && (oldAddress != f.Address || oldPort != f.Port)
-		q := `UPDATE hosts SET name = ?, address = ?, port = ?, account = ?, notes = ?, docker_pattern = ?, systemd_units = ?, enabled = ?, updated_at = ?`
+		q := `UPDATE hosts SET name = ?, address = ?, port = ?, account = ?, notes = ?, docker_pattern = ?, systemd_units = ?, enabled = ?, matchers = ?, updated_at = ?`
 		if cleared {
 			q += `, pinned_key = '', pinned_at = NULL, status = 'untrusted', status_detail = '', report = ''`
 		}
 		q += ` WHERE id = ?`
-		if _, err := tx.ExecContext(ctx, q, f.Name, f.Address, f.Port, f.Account, f.Notes, f.DockerPattern, units, hostEnabledInt(f), formatTS(time.Now()), id); err != nil {
+		if _, err := tx.ExecContext(ctx, q, f.Name, f.Address, f.Port, f.Account, f.Notes, f.DockerPattern, units, hostEnabledInt(f), f.Matchers, formatTS(time.Now()), id); err != nil {
 			if isUnique(err) {
 				return ErrExists
 			}

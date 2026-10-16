@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/Jaydee94/remedy/internal/alertmatch"
 )
 
 const (
@@ -36,6 +38,9 @@ type Fields struct {
 	Notes         string
 	DockerPattern string
 	SystemdUnits  []string
+	// Matchers are the rules that map an alert to the host (Alertmanager matcher syntax, one per line). Validate writes them
+	// back canonically.
+	Matchers string
 }
 
 // Validate checks every field and normalises SystemdUnits in place. The first problem is returned.
@@ -63,6 +68,11 @@ func (f *Fields) Validate() error {
 		return err
 	}
 	f.SystemdUnits = units
+	canon, err := alertmatch.Canonical(f.Matchers)
+	if err != nil {
+		return &FieldError{"matchers", "the alert rules: " + err.Error()}
+	}
+	f.Matchers = canon
 	return nil
 }
 

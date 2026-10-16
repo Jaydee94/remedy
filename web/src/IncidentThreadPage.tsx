@@ -3,8 +3,10 @@ import { Link } from 'react-router'
 import { api, ApiError } from './api.ts'
 import type { Incident, Run } from './api.ts'
 import {
+  alsoLine,
   conclusionText,
   externalLinkClass,
+  hostLine,
   incidentStateColor,
   incidentStateText,
   reasonText,
@@ -52,6 +54,8 @@ export default function IncidentThreadPage({ id }: { id: number }) {
   const toast = useToast()
   const now = useClock()
   const incident = detail?.incident
+  const host = incident ? hostLine(incident) : null
+  const also = incident ? alsoLine(incident) : ''
   useShellHeader(incident ? { title: incident.title, back: '/incidents' } : null)
   const [diagnoseBusy, setDiagnoseBusy] = useState(false)
   // The state the incident was in when starting the diagnosis failed: the message is only shown while it is still in that state.
@@ -291,6 +295,17 @@ export default function IncidentThreadPage({ id }: { id: number }) {
               <>
                 <dt className="text-subtle">Severity</dt>
                 <dd>{incident.severity}</dd>
+              </>
+            )}
+            {host && (
+              <>
+                <dt className="text-subtle">Host</dt>
+                <dd className="flex flex-col gap-0.5">
+                  <Link to={`/hosts/${host.id}`} className="text-primary hover:text-primary-hover">
+                    {host.name}
+                  </Link>
+                  {also && <span className="text-muted-foreground">{also}</span>}
+                </dd>
               </>
             )}
             <dt className="text-subtle">Occurrences</dt>

@@ -142,6 +142,8 @@ export interface Host {
   dockerPattern: string
   systemdUnits: string[]
   enabled: boolean
+  /** The rules that map an alert to this host: Alertmanager matcher syntax, one per line. Empty means none. */
+  matchers: string
   status: HostStatus
   statusDetail: string
   checkedAt?: string
@@ -172,6 +174,7 @@ export interface HostBody {
   dockerPattern?: string
   systemdUnits?: string[]
   enabled?: boolean
+  matchers?: string
 }
 
 export type CredentialBody = { kind: 'key'; key: string; passphrase: string } | { kind: 'password'; password: string }
@@ -216,6 +219,18 @@ export interface Incident {
   diagnosedSha?: string
   /** The latest responder run. */
   runId?: string
+  /** The host an alert was mapped to by the rules of the hosts, and the names of the other hosts whose rules matched too. */
+  hostId?: number
+  hostName?: string
+  alsoMatches?: string[]
+}
+
+export interface SignalSource {
+  name: string
+  state: 'off' | 'ok' | 'error' | 'pending'
+  checkedAt?: string
+  active: number
+  error?: string
 }
 
 export interface ActivityEntry {
@@ -259,8 +274,9 @@ export interface Setting {
   key: string
   group: string
   label: string
-  kind: 'duration' | 'number' | 'list'
-  value: SettingValue
+  kind: 'duration' | 'number' | 'list' | 'text' | 'secret'
+  /** `null` for a secret: its value is never sent. */
+  value: SettingValue | null
   source: 'default' | 'environment' | 'set here'
   fallback: 'default' | 'environment'
   env: string
@@ -268,6 +284,8 @@ export interface Setting {
   effect: string
   /** A stored value that cannot be used; the value shown is then the environment's or the default. */
   problem?: string
+  /** A secret's last characters (nothing of a short one), to tell a stored token from none. */
+  hint?: string
 }
 
 /** Something about the process that is set outside the page. */
@@ -394,6 +412,7 @@ export const api = {
   listIncidentRuns: (incidentId: number) => request<Run[]>('GET', `/api/runs?incident=${incidentId}`),
   diagnoseIncident: (id: number) => request<{ runId: string }>('POST', `/api/incidents/${id}/diagnose`),
   getLimits: () => request<Limits>('GET', '/api/limits'),
+  getSignals: () => request<{ sources: SignalSource[] }>('GET', '/api/signals'),
   getSettings: () => request<SettingsPage>('GET', '/api/settings'),
   putSetting: (key: string, value: SettingValue) => request<Setting>('PUT', `/api/settings/${key}`, { value }),
   deleteSetting: (key: string) => request<void>('DELETE', `/api/settings/${key}`),

@@ -356,3 +356,25 @@ func TestTheHostRowNoticesEveryChangeThatCouldMakeAnApprovalStale(t *testing.T) 
 	step("unpinning a key", func() error { return s.UnpinHostKey(ctx, h.ID) }, true)
 	step("removing the login", func() error { return s.DeleteHostCredential(ctx, h.ID) }, true)
 }
+
+func TestAHostKeepsItsAlertRules(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	f := hostFields("nas")
+	f.Matchers = "a=\"b\""
+	h, err := s.CreateHost(ctx, f)
+	if err != nil || h.Matchers != "a=\"b\"" {
+		t.Fatalf("CreateHost = %+v, %v", h, err)
+	}
+	f.Matchers = "instance=~\"nas.*\"\nsite=\"home\""
+	if _, _, err := s.UpdateHost(ctx, h.ID, f); err != nil {
+		t.Fatal(err)
+	}
+	e, err := s.GetHost(ctx, h.ID)
+	if err != nil || e.Host.Matchers != f.Matchers {
+		t.Fatalf("GetHost = %q, %v", e.Host.Matchers, err)
+	}
+	list, err := s.ListHosts(ctx)
+	if err != nil || len(list) != 1 || list[0].Host.Matchers != f.Matchers {
+		t.Fatalf("ListHosts = %+v, %v", list, err)
+	}
+}

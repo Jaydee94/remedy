@@ -83,6 +83,19 @@ func TestTheGettersAnswerForEveryKind(t *testing.T) {
 	}
 }
 
+func TestThePollIntervalRuleSaysItAlsoPacesAlertmanager(t *testing.T) {
+	for _, sp := range settings.Specs() {
+		if sp.Key != settings.PollInterval {
+			continue
+		}
+		if sp.Label != "How often I check GitHub" || !strings.HasPrefix(sp.Rule, "At least 10s") || !strings.Contains(sp.Rule, "It is also how often I ask Alertmanager.") {
+			t.Fatalf("label %q, rule %q", sp.Label, sp.Rule)
+		}
+		return
+	}
+	t.Fatal("no poll interval spec")
+}
+
 func TestEntriesComeInTheOrderOfTheRegistry(t *testing.T) {
 	s, _ := newReader(t, nil)
 	var got, want []string
@@ -239,4 +252,22 @@ func TestAnUnknownKeyInAGetterIsAProgrammingError(t *testing.T) {
 		}
 	}()
 	s.Duration("poll_intervall")
+}
+
+func TestATextSettingIsSetAndReadBack(t *testing.T) {
+	ctx := context.Background()
+	s, st := newReader(t, nil)
+	if s.Text(settings.AlertmanagerURL) != "" {
+		t.Fatal("the default address is not empty")
+	}
+	e, err := s.Set(ctx, settings.AlertmanagerURL, json.RawMessage(`"http://am:9093/"`))
+	if err != nil || e.Source != settings.SourceSet || s.Text(settings.AlertmanagerURL) != "http://am:9093" {
+		t.Fatalf("%+v, %v", e, err)
+	}
+	if got := activityTexts(t, st); len(got) != 1 || got[0] != "Setting alertmanager_url changed from none (default) to http://am:9093 (set here)" {
+		t.Fatalf("activity = %q", got)
+	}
+	if _, err := s.Set(ctx, settings.AlertmanagerURL, json.RawMessage(`"http://u:p@am"`)); err == nil {
+		t.Error("an address with a user name was accepted")
+	}
 }
