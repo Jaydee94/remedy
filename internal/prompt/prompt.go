@@ -91,15 +91,7 @@ func Build(in Input, delimiter string) string {
 		}
 	}
 
-	data := func(name, content string) {
-		if strings.TrimSpace(content) == "" {
-			return
-		}
-		content = strings.ReplaceAll(content, delimiter, "[delimiter removed]")
-		content = strings.ReplaceAll(content, "<<<REMEDY-DATA", "<<<REMEDY-DATA[escaped]")
-		content = strings.ReplaceAll(content, "<<<END", "<<<END[escaped]")
-		fmt.Fprintf(&b, "\n<<<REMEDY-DATA %s %s>>>\n%s\n<<<END %s>>>\n", delimiter, name, strings.TrimRight(content, "\n"), delimiter)
-	}
+	data := func(name, content string) { dataBlock(&b, delimiter, name, content) }
 
 	data("check_name", oneLine(in.CheckName, maxName))
 	data("pull_request_title", oneLine(clean(in.PRTitle), maxName))
@@ -113,6 +105,18 @@ func Build(in Input, delimiter string) string {
 	return b.String()
 }
 
+// dataBlock writes one block of untrusted data. The delimiter and the markers are removed from the content, so that nothing inside can
+// close its block or open another.
+func dataBlock(b *strings.Builder, delimiter, name, content string) {
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+	content = strings.ReplaceAll(content, delimiter, "[delimiter removed]")
+	content = strings.ReplaceAll(content, "<<<REMEDY-DATA", "<<<REMEDY-DATA[escaped]")
+	content = strings.ReplaceAll(content, "<<<END", "<<<END[escaped]")
+	fmt.Fprintf(b, "\n<<<REMEDY-DATA %s %s>>>\n%s\n<<<END %s>>>\n", delimiter, name, strings.TrimRight(content, "\n"), delimiter)
+}
+
 // clean redacts and makes the text valid UTF-8.
 func clean(s string) string {
 	return strings.ToValidUTF8(redact.Redact(s), "?")
@@ -120,7 +124,7 @@ func clean(s string) string {
 
 // oneLine is for names: a single, short line.
 func oneLine(s string, max int) string {
-	s = strings.Join(strings.Fields(clean(s)), " ")
+	s = strings.Join(strings.Fields(removeControl(clean(s))), " ")
 	return head(s, max)
 }
 
