@@ -127,6 +127,8 @@ This is the part of 2D that the series needs: `internal/alertmanager` (a read-on
 - The responder run gets the host's tools (cycle 2) next to the cluster tools, for the host the alert maps to.
 - The Argo CD source and its tests are **not** built. The `Source` interface stays so that it can be.
 
+**Status (2026-10-16):** cycle 4 is split in two plans ([`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md)). **4a is built** (the source, the settings, the host rules and the host of an incident); **4b is not** (the responder for outages, the approval expiry and the real run).
+
 On this lab, Alertmanager has a single receiver `blackhole`. It still holds the firing alerts, and Remedy only reads them, so nothing in the home-server repository has to change for the source. What does have to change is one rule (section 10).
 
 ## 8. Cycle 5: skills and the learning run

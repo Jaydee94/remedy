@@ -1,6 +1,6 @@
 # Alertmanager, cycle 4: the source and the responder for outages
 
-Status: proposed 2026-10-16. Implementation plans: not written yet (two: 4a the source, 4b the responder).
+Status: proposed 2026-10-16. Two implementation plans: **4a (the source) is implemented, the pull request is pending**; 4b (the responder) is not written yet and not built. Until 4b, an Alertmanager incident is shown and mapped to a host but never diagnosed (the thread says "I can't diagnose incidents from Alertmanager yet").
 Parent documents: [`2026-10-09-hosts-and-skills-design.md`](2026-10-09-hosts-and-skills-design.md) (the umbrella: sections 2, 7 and 11 are binding here),
 [`2026-10-05-phase-2d-signals-design.md`](2026-10-05-phase-2d-signals-design.md) (the signals design this narrows: its decisions stand unless this spec changes them),
 [`2026-10-14-settings-3-design.md`](2026-10-14-settings-3-design.md) (the settings this builds on: registry, snapshot reader, the page),
@@ -67,13 +67,13 @@ Pointing Remedy at the real Alertmanager of the home server is cycle 6.
 | Key | Kind | Environment (default) | Bounds | Takes effect |
 |---|---|---|---|---|
 | `alertmanager_url` | text | `REMEDY_ALERTMANAGER_URL` (empty: the source is off) | `http` or `https`, a host, **no userinfo, no query, no fragment**, at most 2048 characters, a trailing slash is removed | next cycle |
-| `alertmanager_token` | secret | none | 1 to 4096 characters, no control character | next request |
+| `alertmanager_token` | secret | none | 1 to 4096 **bytes**, no control character | next request |
 | `alertmanager_auto_max_age` | duration | none (1 h) | at least 1 m | when an incident opens |
 | `auto_approval_timeout` | duration | `REMEDY_AUTO_APPROVAL_TIMEOUT` (15 m) | `0` (off) or at least 1 m | when a call starts waiting (registered in plan 4b, with its consumer) |
 
 **The secret kind.** The stored value is JSON `{"sealed": "<base64>", "hint": "…abcd"}`; the sealing is `secret.Key.Seal` with the additional data `settings/<key>`, the same AES-256-GCM as the host
 credentials. The reader needs the master key and keeps the sealed bytes and the hint in the snapshot, **never the plaintext**; `Secret(key)` opens it on demand and returns a `secret.Value`
-(its text form is `***`, so it cannot reach a log or an error). `GET /api/settings` shows a secret with `secret: true`, no value and its hint. `PUT` takes `{"value": "<text>"}` once;
+(its text form is `***`, so it cannot reach a log or an error). `GET /api/settings` shows a secret with `kind: "secret"`, `value: null` and a `hint`. `PUT` takes `{"value": "<text>"}` once;
 `DELETE` removes it. The **activity entry of a secret change names the key only**, never a value or a hint. A sealed value that cannot be opened (a changed master key) is a `problem` on the row,
 as in Setup for the GitHub token, and the source reports `error`.
 
@@ -85,6 +85,8 @@ The URL carries no credential by design: the token is the only secret, so the Se
 
 **The signal.** `title` is the annotation `summary`, else the alert name with namespace and pod when they exist, one line of at most 200 characters. `details` holds `labels`, `annotations`, `startsAt`,
 `generatorURL` and the fingerprint, bounded before they are stored: at most 30 labels (key at most 64 characters, value at most 300) and 20 annotations (value at most 1000), redacted with `internal/redact`.
+`generatorURL` is kept only as an `http` or `https` address (anything else becomes empty), redacted and then cut to 2000 characters. An alert without a name or a fingerprint, with a name over 200 or a fingerprint over 64 characters is skipped
+(the key goes into the database as it is). A label or annotation key over 64 characters, or one that redaction would change, is dropped. `details.truncated` says that something was left out.
 They are shown as text and go into the prompt as data, never as markup.
 
 **The cycle**, once per `poll_interval`, with the URL and token of that moment:
@@ -205,5 +207,5 @@ Two plans, each ending with `make check` and a green CI; the second builds on th
 
 ## 15. Open points for the plans
 
-- 4a: the exact wire form of the secret setting in `GET /api/settings`; where the state of the source lives (`internal/signals` or the server); how the runner's loop is started and stopped with the control plane.
+- 4a (answered when it was built): the wire form of the secret setting is `kind: "secret"`, `value: null` and a `hint` (section 4); the state of the source lives in memory in `internal/signals` (`Runner.States`, which `GET /api/signals` answers; a restart forgets it and the next cycle fills it in; before the first attempt the state is `pending`); the runner's loop (`Runner.Run`) is started by `cmd/remedy-server` with the process context and ends with it.
 - 4b: how `StartDiagnosis` applies `HostIDs` for a host that was deleted in between; the wording of the outage prompt; the testbed's fake Alertmanager (a container or a Go test server).

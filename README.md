@@ -16,8 +16,9 @@ CLIs (Claude Code, Antigravity CLI), without API tokens.
 > fix), on its own within limits or by a click. Agents get tools through an MCP gatekeeper: reading is free,
 > and every action (a note on an incident, a restart, a deleted pod, an Argo CD sync) waits for your approval.
 > The web UI is a conversation: Remedy speaks in the first person and one incident is one thread you can ask
-> questions in. The fixer (a branch and a pull request), the Alertmanager and Argo CD sources and the learning
-> graph come next (see [`docs/design.md`](docs/design.md), [`docs/specs/`](docs/specs/) and
+> questions in. An Alertmanager can be connected too: its active alerts become incidents, mapped to your hosts (shown,
+> not diagnosed yet). The fixer (a branch and a pull request), the diagnosis of Alertmanager incidents, the Argo CD
+> source and the learning graph come next (see [`docs/design.md`](docs/design.md), [`docs/specs/`](docs/specs/) and
 > [`docs/plans/`](docs/plans/)).
 
 ## The UI
@@ -53,7 +54,7 @@ restart ends it too; the next request then shows the login page again.
 - [`docs/research/subscription-cli-usage.md`](docs/research/subscription-cli-usage.md): research on using the CLIs with a subscription
 - [`docs/runbook/`](docs/runbook/): real runs step by step: [a first run against a repository](docs/runbook/first-real-run.md)
   ([what it showed](docs/research/phase-1-real-run.md)), [the gatekeeper](docs/runbook/gatekeeper-real-run.md) and
-  [the cluster tools](docs/runbook/cluster-real-run.md)
+  [the cluster tools](docs/runbook/cluster-real-run.md); [connecting an Alertmanager](docs/runbook/alertmanager.md)
 
 ## Layout
 
@@ -148,6 +149,17 @@ gatekeeper tools): your global skills, plugins, hooks and MCP servers are **not*
 read-only tools `Read`, `Grep` and `Glob` (and the gatekeeper's tools when the run has them), and file access is
 confined to a temporary workspace. This needs a recent `claude` CLI (the flags exist in 2.1.287). The model is
 `sonnet` unless you set `REMEDY_CLAUDE_MODEL` (see [`docs/research/spike-claude-billing.md`](docs/research/spike-claude-billing.md)).
+
+### Alertmanager (optional)
+
+In **Setup**, block "Alertmanager", enter the address your cluster gives Alertmanager (`http` or `https`; `REMEDY_ALERTMANAGER_URL`
+is only its default) and, if it needs one, a bearer token. The token is sealed with the master key, written once and shown only as a hint.
+`REMEDY_ALERTMANAGER_CA_FILE` is a PEM bundle for an `https` Alertmanager. Remedy asks once per poll interval (60 seconds by default),
+reads only (`GET /api/v2/alerts`), turns every active alert except `Watchdog` and `InfoInhibitor` into an incident and resolves it when the
+alert is gone from a complete answer; an Alertmanager that does not answer resolves nothing. To tell Remedy which host an alert is about,
+write rules in the field "Alerts of this host" on the host's page, one per line in Alertmanager's matcher syntax; all lines must hold. For a NAS
+whose alerts carry `instance="ugreen-nas"`: `instance=~"ugreen-nas(:[0-9]+)?"`. **These incidents are shown and mapped, but not diagnosed yet**
+(the responder for outages is the next cycle). See [`docs/runbook/alertmanager.md`](docs/runbook/alertmanager.md).
 
 ### Cluster access (optional)
 
