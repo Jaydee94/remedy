@@ -176,6 +176,112 @@ func TestTheDetailsAreBoundedAndRedacted(t *testing.T) {
 	}
 }
 
+func detailsURL(t *testing.T, s signals.Signal) string {
+	t.Helper()
+	var d struct {
+		GeneratorURL string `json:"generatorURL"`
+	}
+	if err := json.Unmarshal(s.Details, &d); err != nil {
+		t.Fatal(err)
+	}
+	return d.GeneratorURL
+}
+
+func TestTheGeneratorURLIsKeptOnlyAsABoundedRedactedWebAddress(t *testing.T) {
+	mk := func(fp, url string) alertmanager.Alert {
+		a := alert(fp, "A"+fp, nil, now)
+		a.GeneratorURL = url
+		return a
+	}
+	long := "https://prom.example/graph?g0.expr=" + strings.Repeat("x", 5000)
+	got := fetch(t, &lister{alerts: []alertmanager.Alert{
+		mk("1", "javascript:alert(1)"),
+		mk("2", long),
+		mk("3", "https://prom.example/?password=hunter2hunter2"),
+		mk("4", "http://prom.example/graph"),
+		mk("5", ""),
+	}}, time.Hour)
+	if len(got) != 5 {
+		t.Fatalf("%d signals", len(got))
+	}
+	for _, s := range got {
+		if s.URL != detailsURL(t, s) {
+			t.Errorf("%s: URL %q and details URL %q differ", s.Key, s.URL, detailsURL(t, s))
+		}
+	}
+	if got[0].URL != "" {
+		t.Errorf("a javascript: address was kept: %q", got[0].URL)
+	}
+	if n := len([]rune(got[1].URL)); n != 2000 || !strings.HasPrefix(got[1].URL, "https://prom.example/") {
+		t.Errorf("a long address has %d characters, want 2000", n)
+	}
+	if strings.Contains(got[2].URL, "hunter2hunter2") || !strings.HasPrefix(got[2].URL, "https://prom.example/") {
+		t.Errorf("the address is not redacted: %q", got[2].URL)
+	}
+	if got[3].URL != "http://prom.example/graph" || got[4].URL != "" {
+		t.Errorf("urls = %q, %q", got[3].URL, got[4].URL)
+	}
+}
+
+func TestAnAlertWithAHugeNameOrFingerprintIsNotASignal(t *testing.T) {
+	got := fetch(t, &lister{alerts: []alertmanager.Alert{
+		alert("1", strings.Repeat("n", 201), nil, now),
+		alert(strings.Repeat("f", 65), "Long", nil, now),
+		alert(strings.Repeat("f", 64), "Edge", nil, now),
+		alert("2", strings.Repeat("n", 200), nil, now),
+		alert("3", "Fine", nil, now),
+	}}, time.Hour)
+	if len(got) != 3 || got[0].Key != "Edge/"+strings.Repeat("f", 64) || got[2].Key != "Fine/3" {
+		t.Fatalf("%d signals: %+v", len(got), got)
+	}
+}
+
+func TestAKeyThatIsTooLongOrWouldBeRedactedIsDroppedFromTheDetails(t *testing.T) {
+	a := alert("1", "A", map[string]string{"ok": "v", strings.Repeat("k", 65): "v", "AKIAIOSFODNN7EXAMPLE": "v"}, now)
+	a.Annotations["fine"] = "x"
+	a.Annotations[strings.Repeat("a", 65)] = "x"
+	a.Annotations["password=hunter2hunter2"] = "x"
+	got := fetch(t, &lister{alerts: []alertmanager.Alert{a}}, time.Hour)[0]
+	var d struct {
+		Labels      map[string]string `json:"labels"`
+		Annotations map[string]string `json:"annotations"`
+		Truncated   bool              `json:"truncated"`
+	}
+	if err := json.Unmarshal(got.Details, &d); err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Labels) != 2 || d.Labels["ok"] != "v" || d.Labels["alertname"] != "A" || len(d.Annotations) != 1 || d.Annotations["fine"] != "x" || !d.Truncated {
+		t.Fatalf("details = %s", got.Details)
+	}
+	if len(got.Labels) != 4 {
+		t.Errorf("the full labels were cut: %d, want 4", len(got.Labels))
+	}
+}
+
+func TestASourceWithoutAClientIsOffAndFailsWithoutPanicking(t *testing.T) {
+	s := &signals.Alertmanager{On: func() bool { return true }}
+	if s.Enabled() {
+		t.Error("a source without a client is enabled")
+	}
+	if _, err := s.Fetch(context.Background()); err == nil {
+		t.Error("Fetch without a client did not fail")
+	}
+}
+
+func TestWithoutMaxAgeAnAlertIsYoungForAnHour(t *testing.T) {
+	s := &signals.Alertmanager{
+		Client: &lister{alerts: []alertmanager.Alert{
+			alert("a", "A", map[string]string{"severity": "critical"}, now.Add(-30*time.Minute)),
+			alert("b", "B", map[string]string{"severity": "critical"}, now.Add(-2*time.Hour)),
+		}},
+		On: func() bool { return true }, Now: func() time.Time { return now },
+	}
+	got, err := s.Fetch(context.Background())
+	if err != nil || len(got) != 2 || !got[0].Auto || got[1].Auto {
+		t.Fatalf("%+v, %v", got, err)
+	}
+}
+
 func TestAFailedListingIsAnError(t *testing.T) {
 	boom := errors.New("down")
 	if _, err := source(&lister{err: boom}, time.Hour).Fetch(context.Background()); !errors.Is(err, boom) {

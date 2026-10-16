@@ -3,6 +3,7 @@ package signals
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -21,6 +22,10 @@ const (
 	maxAnnotations = 20
 	maxAnnotation  = 1000
 	maxTitle       = 200
+	maxAlertName   = 200
+	maxFingerprint = 64
+	maxURL         = 2000
+	defaultMaxAge  = time.Hour
 )
 
 // AlertLister is what the source needs from the client.
@@ -30,8 +35,10 @@ type AlertLister interface {
 
 // Alertmanager is the source of the alerts of an Alertmanager.
 type Alertmanager struct {
+	// Client is nil-checked (a source without a client is off), but a typed nil pointer inside the interface is the caller's
+	// responsibility: wire Client only when the pointer is non-nil.
 	Client AlertLister
-	// On says whether an address is set. MaxAge is how old (since startsAt) an alert may be to be diagnosed on its own.
+	// On says whether an address is set. MaxAge is how old (since startsAt) an alert may be to be diagnosed on its own (nil: one hour).
 	On     func() bool
 	MaxAge func() time.Duration
 	Now    func() time.Time // default time.Now
@@ -39,7 +46,24 @@ type Alertmanager struct {
 
 func (a *Alertmanager) Name() string { return "alertmanager" }
 
-func (a *Alertmanager) Enabled() bool { return a.On != nil && a.On() }
+func (a *Alertmanager) Enabled() bool { return a.Client != nil && a.On != nil && a.On() }
+
+func (a *Alertmanager) maxAge() time.Duration {
+	if a.MaxAge != nil {
+		return a.MaxAge()
+	}
+	return defaultMaxAge
+}
+
+// cleanURL keeps a web address only: anything else (javascript:, data:, a bare string) becomes empty. What is kept is redacted and
+// cut, in this order, so that a secret cannot survive at the cut.
+func cleanURL(u string) string {
+	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		return ""
+	}
+	u, _ = cut(redact.Redact(u), maxURL)
+	return u
+}
 
 func (a *Alertmanager) now() time.Time {
 	if a.Now != nil {
@@ -51,16 +75,23 @@ func (a *Alertmanager) now() time.Time {
 // Fetch lists the active alerts. Watchdog and InfoInhibitor are heartbeats, not outages; an alert without a name or a fingerprint cannot
 // be keyed and is skipped.
 func (a *Alertmanager) Fetch(ctx context.Context) ([]Signal, error) {
+	if a.Client == nil {
+		return nil, errors.New("the Alertmanager source has no client")
+	}
 	alerts, err := a.Client.ListAlerts(ctx)
 	if err != nil {
 		return nil, err
 	}
-	now, maxAge := a.now(), a.MaxAge()
+	now, maxAge := a.now(), a.maxAge()
 	seen := map[string]bool{}
 	out := make([]Signal, 0, len(alerts))
 	for _, al := range alerts {
 		name := al.Labels["alertname"]
 		if name == "" || al.Fingerprint == "" || name == "Watchdog" || name == "InfoInhibitor" {
+			continue
+		}
+		// The key goes into the database as it is: an alert with an oversized name or fingerprint is not a signal.
+		if utf8.RuneCountInString(name) > maxAlertName || utf8.RuneCountInString(al.Fingerprint) > maxFingerprint {
 			continue
 		}
 		key := name + "/" + al.Fingerprint
@@ -69,6 +100,7 @@ func (a *Alertmanager) Fetch(ctx context.Context) ([]Signal, error) {
 		}
 		seen[key] = true
 		sev := severityOf(al.Labels["severity"])
+		al.GeneratorURL = cleanURL(al.GeneratorURL) // the cleaned address is the one that is stored, in the details and in the signal
 		out = append(out, Signal{
 			Key: key, Title: titleOf(al), Severity: sev,
 			Auto:    (sev == "critical" || sev == "warning") && !al.StartsAt.IsZero() && now.Sub(al.StartsAt) <= maxAge,
@@ -111,9 +143,9 @@ func titleOf(al alertmanager.Alert) string {
 	return t
 }
 
-// bounded keeps at most max entries (the smallest keys first, so the cut is the same every cycle), drops keys that are too long and
-// cuts and redacts the values. It says whether it left anything out.
-func bounded(in map[string]string, max, maxValue int, keyLimit bool) (map[string]string, bool) {
+// bounded keeps at most max entries (the smallest keys first, so the cut is the same every cycle), drops keys that are too long or
+// that redaction would change, and cuts and redacts the values. It says whether it left anything out.
+func bounded(in map[string]string, max, maxValue int) (map[string]string, bool) {
 	keys := make([]string, 0, len(in))
 	for k := range in {
 		keys = append(keys, k)
@@ -122,7 +154,7 @@ func bounded(in map[string]string, max, maxValue int, keyLimit bool) (map[string
 	out := map[string]string{}
 	cutAny := false
 	for _, k := range keys {
-		if keyLimit && utf8.RuneCountInString(k) > maxLabelKey {
+		if utf8.RuneCountInString(k) > maxLabelKey || redact.Redact(k) != k {
 			cutAny = true
 			continue
 		}
@@ -138,8 +170,8 @@ func bounded(in map[string]string, max, maxValue int, keyLimit bool) (map[string
 }
 
 func detailsOf(al alertmanager.Alert) json.RawMessage {
-	labels, c1 := bounded(al.Labels, maxLabels, maxLabelValue, true)
-	annotations, c2 := bounded(al.Annotations, maxAnnotations, maxAnnotation, false)
+	labels, c1 := bounded(al.Labels, maxLabels, maxLabelValue)
+	annotations, c2 := bounded(al.Annotations, maxAnnotations, maxAnnotation)
 	d := map[string]any{
 		"labels": labels, "annotations": annotations, "fingerprint": al.Fingerprint,
 		"generatorURL": al.GeneratorURL,
