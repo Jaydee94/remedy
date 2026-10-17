@@ -28,8 +28,10 @@ type callView struct {
 	Result      string          `json:"result,omitempty"`
 	Error       string          `json:"error,omitempty"`
 	RequestedAt time.Time       `json:"requestedAt"`
-	DecidedAt   *time.Time      `json:"decidedAt,omitempty"`
-	FinishedAt  *time.Time      `json:"finishedAt,omitempty"`
+	// ExpiresAt is when Remedy stops waiting for a decision: set only for an approval of an automatic run.
+	ExpiresAt  *time.Time `json:"expiresAt,omitempty"`
+	DecidedAt  *time.Time `json:"decidedAt,omitempty"`
+	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 	// Waiting is true while an agent still waits for the answer of the call: only then can it be decided.
 	Waiting bool `json:"waiting"`
 }
@@ -38,7 +40,7 @@ func (s *srv) callViewOf(c store.ToolCall) callView {
 	return callView{
 		ID: c.ID, RunID: c.RunID, IncidentID: c.IncidentID, Tool: c.Tool, Kind: c.Kind, Arguments: c.Arguments,
 		Status: c.Status, Decision: c.Decision, Reason: c.DecisionReason, Result: c.Result, Error: c.Error,
-		RequestedAt: c.CreatedAt, DecidedAt: c.DecidedAt, FinishedAt: c.FinishedAt,
+		RequestedAt: c.CreatedAt, ExpiresAt: c.ExpiresAt, DecidedAt: c.DecidedAt, FinishedAt: c.FinishedAt,
 		Waiting: c.Decision == store.DecisionPending && s.d.Gatekeeper != nil && s.d.Gatekeeper.Waiting(c.ID),
 	}
 }
