@@ -3,6 +3,8 @@ import { api, ApiError } from '@/api.ts'
 import type { ToolCall } from '@/api.ts'
 import { argumentList, byteLength, limitBytes } from '@/approvals.ts'
 import { askText } from '@/ask.ts'
+import { expiryText } from '@/outage.ts'
+import { useClock } from '@/useClock.ts'
 import { useToast } from '@/toast.ts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,6 +34,7 @@ function AskBody({ call, variant = 'compact', onChanged, disabled = false }: Pro
   const [error, setError] = useState('')
   const ask = askText(call)
   const large = variant === 'large'
+  const expiry = expiryText(call, useClock())
 
   async function decide(approve: boolean) {
     // The buttons are aria-disabled, not disabled (they keep the focus while the request runs): a click or a key while busy or locked does nothing.
@@ -55,6 +58,7 @@ function AskBody({ call, variant = 'compact', onChanged, disabled = false }: Pro
   return (
     <div className="flex flex-col gap-3">
       <p className="font-serif text-[clamp(18px,2vw,21px)] leading-normal text-pretty break-words">{ask.question}</p>
+      {expiry && <p className="text-[13px] text-muted-foreground">{expiry}</p>}
       <div className={cn('flex flex-col gap-3.5 rounded-[20px] border bg-card', call.waiting ? 'border-primary' : 'border-border', large ? 'p-4.5' : 'p-4')}>
         <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span className="font-mono text-[13px] break-all text-foreground">{call.tool}</span>

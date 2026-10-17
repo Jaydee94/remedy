@@ -62,6 +62,13 @@ describe('decisionView', () => {
       assert.equal(v.text, 'text-muted-foreground')
     }
   })
+  it('says an approval that nobody decided in time was not decided in time, and an agent-left one abandoned', () => {
+    const expired = decisionView(call({ decision: 'abandoned', status: 'abandoned', error: 'no decision within 15 minutes' }))
+    assert.equal(expired.label, 'not decided in time')
+    assert.equal(expired.text, 'text-muted-foreground')
+    assert.equal(decisionView(call({ decision: 'abandoned', status: 'abandoned', error: 'the run ended' })).label, 'abandoned')
+    assert.equal(decisionView(call({ decision: 'abandoned', status: 'abandoned' })).label, 'abandoned')
+  })
   it('names the other decisions, each with a token colour', () => {
     assert.equal(decisionView(call({ decision: 'denied', status: 'denied' })).label, 'denied')
     assert.equal(decisionView(call({ decision: 'abandoned', status: 'abandoned' })).label, 'abandoned')

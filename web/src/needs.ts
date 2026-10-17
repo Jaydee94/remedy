@@ -26,6 +26,8 @@ export function decisionView(call: ToolCall): { label: string; text: string } {
     case 'denied':
       return { label: 'denied', text: 'text-muted-foreground' }
     case 'abandoned':
+      // An approval that nobody decided in an automatic run ends with this error; an agent that left says nothing of it.
+      if (call.error?.startsWith('no decision within')) return { label: 'not decided in time', text: 'text-muted-foreground' }
       return { label: 'abandoned', text: 'text-muted-foreground' }
     case 'pending':
       return { label: 'waiting for you', text: 'text-primary' }

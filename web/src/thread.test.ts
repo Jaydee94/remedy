@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { ActivityEntry, Diagnosis, Incident, Run, ToolCall } from './api.ts'
+import type { ActivityEntry, Diagnosis, Incident, OutageDiagnosis, Run, ToolCall } from './api.ts'
 import { allAnnouncements, buildThread } from './thread.ts'
 import type { ThreadItem } from './thread.ts'
 
@@ -88,12 +88,32 @@ describe('buildThread: the diagnosis', () => {
     assert.ok(manual && manual.type === 'undiagnosed' && manual.reason === 'manual')
   })
 
-  it('says that it cannot diagnose an incident of another source yet, with the source named', () => {
-    const items = buildThread({ incident: inc({ source: 'alertmanager', repoId: 0, repo: '', ref: '' }), activity: [], questionRuns: [], asks: [] })
+  it('says that it cannot diagnose an incident of a source without a responder yet, with the source named', () => {
+    const items = buildThread({ incident: inc({ source: 'argocd', repoId: 0, repo: '', ref: '' }), activity: [], questionRuns: [], asks: [] })
     const u = items.find((i) => i.type === 'undiagnosed')
     assert.ok(u && u.type === 'undiagnosed')
     assert.equal(u.reason, 'source')
-    assert.equal(u.sourceLabel, 'Alertmanager')
+    assert.equal(u.sourceLabel, 'Argo CD')
+  })
+
+  it('diagnoses an alert like a GitHub incident: fresh with automatic diagnosis, manual without', () => {
+    const alert = { source: 'alertmanager', repoId: 0, repo: '', ref: '' } as const
+    const mk = (over: Partial<Incident>) => buildThread({ incident: inc({ ...alert, ...over }), activity: [], questionRuns: [], asks: [] }).find((i) => i.type === 'undiagnosed')
+    const fresh = mk({ autoDiagnose: true })
+    assert.ok(fresh && fresh.type === 'undiagnosed' && fresh.reason === 'fresh')
+    assert.equal(fresh.sourceLabel, 'Alertmanager')
+    const manual = mk({ autoDiagnose: false })
+    assert.ok(manual && manual.type === 'undiagnosed' && manual.reason === 'manual')
+  })
+
+  it('shows the outage diagnosis of an alert as a diagnosis that is not outdated', () => {
+    const outage: OutageDiagnosis = { summary: 'web is down', cause: 'c', confidence: 'high', category: 'workload_crash', affected: ['deployment/demo/web'], proposed_action: 'none', evidence: 'e' }
+    const items = buildThread({ incident: inc({ source: 'alertmanager', repoId: 0, repo: '', ref: '', headSha: '', state: 'diagnosed', diagnosis: outage }), activity: [], questionRuns: [], asks: [] })
+    const d = items.find((i) => i.type === 'diagnosis')
+    assert.ok(d && d.type === 'diagnosis')
+    assert.deepEqual(d.diagnosis, outage)
+    assert.equal(d.outdated, false)
+    assert.deepEqual(allAnnouncements(items).map((a) => a.text), ['Remedy diagnosed this incident: web is down'])
   })
 
   it('shows the failure of the last responder run instead of a fresh incident', () => {
@@ -122,7 +142,7 @@ describe('buildThread: the diagnosis', () => {
 
   it('lets the source win over a failed responder run', () => {
     const items = buildThread({
-      incident: inc({ source: 'alertmanager', repoId: 0, repo: '', ref: '' }),
+      incident: inc({ source: 'argocd', repoId: 0, repo: '', ref: '' }),
       activity: [],
       questionRuns: [],
       asks: [],
@@ -148,8 +168,10 @@ describe('buildThread: the diagnosis', () => {
     assert.ok(none && none.type === 'undiagnosed' && none.reason === 'fresh' && none.runId === undefined)
     const manual = mk({ autoDiagnose: false })
     assert.ok(manual && manual.type === 'undiagnosed' && manual.reason === 'manual')
-    const other = mk({ source: 'alertmanager', repoId: 0, repo: '', ref: '', lastDiagnosisAt: at })
+    const other = mk({ source: 'argocd', repoId: 0, repo: '', ref: '', lastDiagnosisAt: at })
     assert.ok(other && other.type === 'undiagnosed' && other.reason === 'source')
+    const alert = mk({ source: 'alertmanager', repoId: 0, repo: '', ref: '', lastDiagnosisAt: at })
+    assert.ok(alert && alert.type === 'undiagnosed' && alert.reason === 'failed')
   })
 
   it('does not change a stored diagnosis because a diagnosis was started', () => {

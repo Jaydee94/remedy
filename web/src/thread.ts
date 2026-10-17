@@ -1,12 +1,12 @@
 import { askText } from './ask.ts'
-import type { ActivityEntry, Diagnosis, Incident, Run, ToolCall } from './api.ts'
+import type { ActivityEntry, AnyDiagnosis, Incident, Run, ToolCall } from './api.ts'
 import { sourceLabel } from './incidents.ts'
 import { kindDotClass } from './timeline.ts'
 
 export type ThreadItem =
   | { type: 'event'; key: string; at: string; dot: string; text: string; /** What a screen reader hears when the entry appears, if anything. */ say?: string }
   | { type: 'working'; key: string; at: string; runId?: string }
-  | { type: 'diagnosis'; key: string; at: string; diagnosis: Diagnosis; outdated: boolean; sha: string; runId?: string }
+  | { type: 'diagnosis'; key: string; at: string; diagnosis: AnyDiagnosis; outdated: boolean; sha: string; runId?: string }
   | { type: 'undiagnosed'; key: string; at: string; reason: 'fresh' | 'manual' | 'source' | 'failed'; sourceLabel: string; runId?: string }
   | { type: 'ask'; key: string; at: string; call: ToolCall }
   | { type: 'question'; key: string; at: string; run: Run }
@@ -60,7 +60,7 @@ export function buildThread({ incident, activity, questionRuns, asks, lastRespon
   } else if (incident.state === 'open') {
     // A diagnosis that was started (lastDiagnosisAt) and left no diagnosis failed, even when its run is not in the list.
     const failed = lastResponder?.status === 'failed' || incident.lastDiagnosisAt !== undefined
-    const reason = incident.source !== 'github' ? 'source' : failed ? 'failed' : !incident.autoDiagnose ? 'manual' : 'fresh'
+    const reason = incident.source === 'argocd' ? 'source' : failed ? 'failed' : !incident.autoDiagnose ? 'manual' : 'fresh'
     items.push({
       type: 'undiagnosed',
       key: 'undiagnosed',
