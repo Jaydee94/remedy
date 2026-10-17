@@ -116,10 +116,10 @@ func TestAnIncidentOfAnotherSourceHasItsHistoryAndCanBeIgnored(t *testing.T) {
 	}
 }
 
-func TestAnIncidentOfAnotherSourceCannotBeDiagnosedYet(t *testing.T) {
+func TestAnArgoCDIncidentCannotBeDiagnosedYet(t *testing.T) {
 	e := newRespEnv(t, goodKey(t))
 	alert, err := e.st.OpenIncident(context.Background(), store.NewIncident{
-		Source: store.SourceAlertmanager, Key: "NodeDown/1", Title: "NodeDown n1", AutoDiagnose: true, Conclusion: "firing",
+		Source: store.SourceArgoCD, Key: "NodeDown/1", Title: "NodeDown n1", AutoDiagnose: true, Conclusion: "firing",
 	}, store.NewActivity{Kind: store.KindIncidentOpened, Summary: "opened"})
 	if err != nil {
 		t.Fatal(err)

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -29,6 +30,18 @@ func claimFor(r run.Run, mcpToken string) run.Claim {
 		c.Prompt = prompt.Question(*r.IncidentID, r.Prompt)
 	}
 	return c
+}
+
+// responderClaim sets what a responder run needs besides the run: the schema of the answer and whether to download a snapshot, by the
+// source of its incident. A GitHub incident (and a run whose incident is gone) gets the diagnosis schema and the snapshot, as before.
+func (s *srv) responderClaim(ctx context.Context, c *run.Claim) {
+	if c.Role != run.RoleResponder || c.IncidentID == nil {
+		return
+	}
+	if in, err := s.d.Store.GetIncident(ctx, *c.IncidentID); err == nil && in.Source == store.SourceAlertmanager {
+		c.Schema = json.RawMessage(diagnosis.OutageSchema)
+		c.Snapshot = false
+	}
 }
 
 func (s *srv) diagnoseIncident(w http.ResponseWriter, r *http.Request) {

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/settings"
 	"github.com/Jaydee94/remedy/internal/store"
@@ -60,6 +59,7 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			c := claimFor(*claimed, token)
+			s.responderClaim(r.Context(), &c)
 			// Only a value somebody chose (the environment of the control plane or the Setup page) goes to the runner: while
 			// the setting is at its default the field stays out, so a runner with its own REMEDY_RUN_TIMEOUT keeps it.
 			if s.d.Settings != nil {
@@ -123,7 +123,7 @@ func (s *srv) finish(w http.ResponseWriter, r *http.Request) {
 	if s.d.Responder != nil {
 		if rn, err := s.d.Store.GetRun(r.Context(), id); err == nil && rn.Role == run.RoleResponder {
 			responderRun = true
-			out = responder.CheckOutcome(out)
+			out = s.d.Responder.CheckRun(r.Context(), rn, out)
 		}
 	}
 	err := s.d.Store.FinishRun(r.Context(), id, out)

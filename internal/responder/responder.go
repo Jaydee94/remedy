@@ -5,6 +5,7 @@ package responder
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -30,8 +31,8 @@ var (
 	ErrNoConnection = errors.New("GitHub is not connected, or the stored token cannot be used")
 	// ErrGitHub means a read from GitHub failed.
 	ErrGitHub = errors.New("could not read the failing run from GitHub")
-	// ErrSourceNotSupported means the incident does not come from GitHub, and the responder handles only those until
-	// plan 2d-3.
+	// ErrSourceNotSupported means the incident comes from a source the responder does not handle (it handles GitHub and
+	// Alertmanager).
 	ErrSourceNotSupported = errors.New("the diagnosis of an incident from this source is not available yet")
 	// ErrNotSnapshotRun means the run is not a running responder run, so it has no snapshot.
 	ErrNotSnapshotRun = errors.New("the run does not take a snapshot")
@@ -56,6 +57,10 @@ type Responder struct {
 	LimitsFunc func() store.DiagnosisLimits
 	Log        *slog.Logger
 	Now        func() time.Time // default time.Now
+	// ClusterEnabled says whether the cluster read side exists; the run for an alert is offered the cluster tools only then.
+	ClusterEnabled func() bool
+	// AlertFresh is how recently an alert incident must have been seen to be diagnosed on its own; default 10 minutes.
+	AlertFresh func() time.Duration
 
 	mu      sync.Mutex
 	backoff map[int64]time.Time // automatic starts that could not read GitHub: do not retry before
@@ -66,6 +71,15 @@ func (r *Responder) now() time.Time {
 		return r.Now()
 	}
 	return time.Now()
+}
+
+func (r *Responder) freshFor() time.Duration {
+	if r.AlertFresh != nil {
+		if d := r.AlertFresh(); d > 0 {
+			return d
+		}
+	}
+	return 10 * time.Minute
 }
 
 func (r *Responder) provider() string {
@@ -117,7 +131,11 @@ func (r *Responder) start(ctx context.Context, incidentID int64, automatic bool)
 	if in.State != store.IncOpen && in.State != store.IncDiagnosed {
 		return run.Run{}, store.ErrNotDiagnosable
 	}
-	if in.Source != store.SourceGitHub {
+	switch in.Source {
+	case store.SourceGitHub:
+	case store.SourceAlertmanager:
+		return r.startOutage(ctx, in, automatic)
+	default:
 		return run.Run{}, ErrSourceNotSupported
 	}
 	if busy, err := r.Store.HasActiveRun(ctx); err != nil {
@@ -148,6 +166,53 @@ func (r *Responder) start(ctx context.Context, incidentID int64, automatic bool)
 	})
 }
 
+// startOutage begins the diagnosis of an alert: no GitHub, no snapshot. The run gets the incident tools, the cluster tools when the
+// cluster read side exists and the tools of the host the alert was mapped to, if that host is still enabled.
+func (r *Responder) startOutage(ctx context.Context, in store.Incident, automatic bool) (run.Run, error) {
+	if busy, err := r.Store.HasActiveRun(ctx); err != nil {
+		return run.Run{}, err
+	} else if busy {
+		return run.Run{}, store.ErrBusy
+	}
+	cluster := r.ClusterEnabled != nil && r.ClusterEnabled()
+	var hosts []int64
+	if in.HostID != 0 {
+		// A host that was disabled (or deleted) since the alert was mapped gives the run none of its tools; the prompt then says so.
+		if h, err := r.Store.GetHost(ctx, in.HostID); err == nil && h.Host.Enabled {
+			hosts = []int64{in.HostID}
+		} else if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return run.Run{}, err
+		}
+	}
+	text := prompt.Outage(outageInput(in, cluster, len(hosts) > 0), "")
+	how := "by a click"
+	if automatic {
+		how = "automatically"
+	}
+	return r.Store.StartDiagnosis(ctx, store.StartParams{
+		IncidentID: in.ID, Provider: r.provider(), Prompt: text, Automatic: automatic, Limits: r.limits(), Now: r.now(),
+		Tools: true, Cluster: cluster, HostIDs: hosts,
+	}, store.NewActivity{
+		Kind:    store.KindDiagnosisStarted,
+		Summary: fmt.Sprintf("Diagnosis of %s started %s", label(in), how),
+	})
+}
+
+// outageInput reads the stored signal of an alert incident. A signal that cannot be read gives a prompt with the title and the facts only.
+func outageInput(in store.Incident, cluster, host bool) prompt.OutageInput {
+	var d struct {
+		Labels       map[string]string `json:"labels"`
+		Annotations  map[string]string `json:"annotations"`
+		StartsAt     string            `json:"startsAt"`
+		GeneratorURL string            `json:"generatorURL"`
+	}
+	_ = json.Unmarshal(in.Details, &d)
+	return prompt.OutageInput{
+		Title: in.Title, Severity: in.Severity, StartsAt: d.StartsAt, HostName: in.HostName, GeneratorURL: d.GeneratorURL,
+		Labels: d.Labels, Annotations: d.Annotations, HasCluster: cluster, HasHost: host && in.HostName != "",
+	}
+}
+
 func (r *Responder) limits() store.DiagnosisLimits {
 	if r.LimitsFunc != nil {
 		return r.LimitsFunc()
@@ -156,6 +221,9 @@ func (r *Responder) limits() store.DiagnosisLimits {
 }
 
 func label(in store.Incident) string {
+	if in.Source != store.SourceGitHub {
+		return oneLine(in.Title, 120)
+	}
 	return fmt.Sprintf("%s on %s in %s", in.CheckName, incident.RefLabel(in.Ref), in.RepoName)
 }
 
@@ -250,7 +318,7 @@ func (r *Responder) AutoStart(ctx context.Context) {
 	if n, err := r.Store.AutoRunsSince(ctx, now.Add(-24*time.Hour)); err != nil || n >= limits.MaxPerDay {
 		return
 	}
-	candidates, err := r.Store.ListAutoCandidates(ctx, now, limits, 10*time.Minute)
+	candidates, err := r.Store.ListAutoCandidates(ctx, now, limits, r.freshFor())
 	if err != nil {
 		r.Log.Error("cannot list the incidents to diagnose", "err", err)
 		return
@@ -290,10 +358,13 @@ func (r *Responder) backOff(id int64, until time.Time) {
 	r.backoff[id] = until
 }
 
-// CheckOutcome judges what the runner reports for a responder run: a run that exited with 0 must carry a
-// valid diagnosis. Otherwise the outcome becomes a failure with the reason invalid_output, so that the run
-// is shown as failed and counts as such.
-func CheckOutcome(o run.Outcome) run.Outcome {
+// CheckOutcome judges the outcome of a responder run for a GitHub incident; see CheckOutcomeFor.
+func CheckOutcome(o run.Outcome) run.Outcome { return CheckOutcomeFor(store.SourceGitHub, o) }
+
+// CheckOutcomeFor judges what the runner reports for a responder run: a run that exited with 0 must carry a valid answer of the shape
+// its incident's source asks for. Otherwise the outcome becomes a failure with the reason invalid_output, so that the run is shown as
+// failed and counts as such.
+func CheckOutcomeFor(source string, o run.Outcome) run.Outcome {
 	if o.ExitCode != 0 || o.FailureReason != "" {
 		return o
 	}
@@ -302,11 +373,39 @@ func CheckOutcome(o run.Outcome) run.Outcome {
 		o.Result = "The agent finished without a structured answer."
 		return o
 	}
-	if _, err := diagnosis.Parse(o.Output); err != nil {
+	if _, _, err := parseAnswer(source, o.Output); err != nil {
 		o.FailureReason = run.ReasonInvalidOutput
 		o.Result = "The agent's answer is not a valid diagnosis: " + err.Error()
 	}
 	return o
+}
+
+// CheckRun is CheckOutcomeFor for the incident of a run: the source is read from it, a run without an incident (or whose incident is
+// gone) counts as GitHub's.
+func (r *Responder) CheckRun(ctx context.Context, rn run.Run, o run.Outcome) run.Outcome {
+	source := store.SourceGitHub
+	if rn.IncidentID != nil {
+		if in, err := r.Store.GetIncident(ctx, *rn.IncidentID); err == nil {
+			source = in.Source
+		}
+	}
+	return CheckOutcomeFor(source, o)
+}
+
+// parseAnswer validates an answer by the shape its source asks for and returns the canonical JSON to store and the summary.
+func parseAnswer(source string, raw []byte) (canonical json.RawMessage, summary string, err error) {
+	if source == store.SourceAlertmanager {
+		d, err := diagnosis.ParseOutage(raw)
+		if err != nil {
+			return nil, "", err
+		}
+		return d.JSON(), d.Summary, nil
+	}
+	d, err := diagnosis.Parse(raw)
+	if err != nil {
+		return nil, "", err
+	}
+	return d.JSON(), d.Summary, nil
 }
 
 // Complete closes the diagnosis of a responder run that is finished (the server calls it after the
@@ -323,11 +422,11 @@ func (r *Responder) Complete(ctx context.Context, runID string) {
 	}
 
 	if rn.Status == run.Succeeded {
-		d, perr := diagnosis.Parse(rn.Output)
+		canonical, summary, perr := parseAnswer(in.Source, rn.Output)
 		if perr == nil {
-			err = r.Store.CompleteDiagnosis(ctx, runID, d.JSON(), store.NewActivity{
+			err = r.Store.CompleteDiagnosis(ctx, runID, canonical, store.NewActivity{
 				Kind:    store.KindDiagnosisFinished,
-				Summary: fmt.Sprintf("Diagnosis of %s finished: %s", label(in), oneLine(d.Summary, 200)),
+				Summary: fmt.Sprintf("Diagnosis of %s finished: %s", label(in), oneLine(summary, 200)),
 			})
 			r.logCloseError(runID, err)
 			return
