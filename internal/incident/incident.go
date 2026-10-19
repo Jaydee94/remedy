@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/store"
 )
@@ -20,6 +21,10 @@ const (
 	// ReasonCleared is the reason for an incident of another source: the signal is no longer reported.
 	ReasonCleared = "cleared"
 )
+
+// ReopenQuiet is how long after a diagnosis a re-fired alert of the same source and key is not diagnosed again on its own: an
+// Alertmanager that restarts delivers its alerts again, and each would otherwise cost a run.
+const ReopenQuiet = time.Hour
 
 // ErrNotActive is returned when an incident cannot be changed because it is resolved or ignored.
 var ErrNotActive = errors.New("incident is already resolved or ignored")
@@ -106,14 +111,26 @@ func (e *Engine) ObserveSignal(ctx context.Context, o Observation) (bool, error)
 		if o.Class == Green {
 			return false, nil
 		}
+		summary := openedText(source, o)
+		auto := o.AutoDiagnose
+		if source != store.SourceGitHub && auto {
+			recent, err := e.Store.RecentlyDiagnosed(ctx, source, key, time.Now().Add(-ReopenQuiet))
+			if err != nil {
+				return false, err
+			}
+			if recent {
+				auto = false
+				summary += " (it was diagnosed recently; I do not diagnose it again on my own)"
+			}
+		}
 		_, err := e.Store.OpenIncident(ctx, store.NewIncident{
-			Source: source, Key: o.Key, Title: o.Title, Severity: o.Severity, AutoDiagnose: o.AutoDiagnose, Details: o.Details,
+			Source: source, Key: o.Key, Title: o.Title, Severity: o.Severity, AutoDiagnose: auto, Details: o.Details,
 			HostID: o.HostID,
 			RepoID: o.RepoID, Ref: o.Ref, RefURL: o.RefURL, CheckName: o.CheckName,
 			Conclusion: o.Conclusion, HeadSHA: o.HeadSHA, CheckURL: o.URL,
 		}, store.NewActivity{
 			Kind:    store.KindIncidentOpened,
-			Summary: openedText(source, o),
+			Summary: summary,
 			Data:    payload(o),
 		})
 		if errors.Is(err, store.ErrExists) {
