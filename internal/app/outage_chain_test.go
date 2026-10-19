@@ -47,6 +47,10 @@ func TestAnAlertIsDiagnosedWithoutGitHubAndAnOldOneOnlyByAClick(t *testing.T) {
 	s := newStack(t, false)
 	ctx := context.Background()
 	fake := alertmanagertest.New(t, alertmanagerToken)
+	// There is no GitHub connection at all: Remedy must work with Alertmanager alone.
+	if code, body := s.admin(http.MethodDelete, "/api/github/connection", ""); code != http.StatusNoContent && code != http.StatusOK {
+		t.Fatalf("DELETE connection = %d %s", code, body)
+	}
 	githubBefore := len(s.gh.seen())
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -106,8 +110,7 @@ func TestAnAlertIsDiagnosedWithoutGitHubAndAnOldOneOnlyByAClick(t *testing.T) {
 		t.Fatalf("young = %+v, old = %+v", young, old)
 	}
 
-	// The automatic start picks the young alert only.
-	s.app.Responder.AutoStart(ctx)
+	// The signal runner's own hook starts the diagnosis of the young alert only; nothing here calls AutoStart by hand.
 	got := waitDiagnosed(t, s.st, young.ID)
 	want, err := diagnosis.ParseOutage([]byte(goodOutage))
 	if err != nil {
@@ -128,7 +131,7 @@ func TestAnAlertIsDiagnosedWithoutGitHubAndAnOldOneOnlyByAClick(t *testing.T) {
 	}
 
 	// No second run for the diagnosed alert, and none for the old one.
-	s.app.Responder.AutoStart(ctx)
+	s.app.Signals.RunOnce(ctx)
 	if runs := s.responderRuns(); len(runs) != 1 {
 		t.Fatalf("responder runs = %d, want 1", len(runs))
 	}

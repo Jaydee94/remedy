@@ -146,6 +146,9 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	}
 
 	sigs := signalRunner(cfg, st, engine, set, log)
+	// The same responder as the poller's hook: an alert is diagnosed with no GitHub connection, in which case the poller's cycle
+	// stops before its hook. Both hooks may run at once; the responder keeps its limits inside one store transaction.
+	sigs.AfterCycle = diagnoser.AutoStart
 
 	deps := server.Deps{
 		Store:        st,

@@ -46,6 +46,13 @@ type Runner struct {
 	Log      *slog.Logger
 	Now      func() time.Time // default time.Now
 
+	// AfterCycle, when set, runs at the end of every cycle in which at least one source was switched on, whatever the fetch
+	// returned: an incident that an earlier cycle opened may still be due for its automatic diagnosis although this fetch
+	// failed. It never runs when every source is off, and not when ctx has ended. It is how an alert gets diagnosed without
+	// a GitHub connection, because the GitHub poller's hook does not run then. It may run beside the poller's hook; the
+	// responder's limits are enforced inside one store transaction.
+	AfterCycle func(ctx context.Context)
+
 	mu     sync.Mutex
 	states map[string]State
 }
@@ -95,11 +102,17 @@ func (r *Runner) Run(ctx context.Context) {
 
 // RunOnce asks every source that is set up once.
 func (r *Runner) RunOnce(ctx context.Context) {
+	ran := false
 	for _, src := range r.Sources {
 		if ctx.Err() != nil {
 			return
 		}
-		r.runSource(ctx, src)
+		if r.runSource(ctx, src) {
+			ran = true
+		}
+	}
+	if ran && r.AfterCycle != nil && ctx.Err() == nil {
+		r.AfterCycle(ctx)
 	}
 }
 
@@ -154,12 +167,19 @@ func (r *Runner) hostRules(ctx context.Context) ([]compiledHost, error) {
 	return ok, nil
 }
 
-func (r *Runner) runSource(ctx context.Context, src Source) {
+// runSource runs one source and says whether it was switched on.
+func (r *Runner) runSource(ctx context.Context, src Source) bool {
 	name := src.Name()
 	if !src.Enabled() {
 		r.set(State{Name: name, State: StateOff})
-		return
+		return false
 	}
+	r.observe(ctx, src)
+	return true
+}
+
+func (r *Runner) observe(ctx context.Context, src Source) {
+	name := src.Name()
 	sigs, err := src.Fetch(ctx)
 	if err != nil {
 		r.fail(name, err)
