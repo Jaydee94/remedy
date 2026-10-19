@@ -1,6 +1,6 @@
 # Hosts, skills and configuration in the UI
 
-Status: draft for the maintainer's review, 2026-10-09; cycles 1 to 4 are implemented (cycle 4: the real run is outstanding), 5 and 6 are not. This is the umbrella specification of six cycles. Each cycle gets its own spec and plan before it is built;
+Status: draft for the maintainer's review, 2026-10-09; cycles 1 to 4 are implemented (cycle 4: the real run was made on 2026-10-19), 5 and 6 are not. This is the umbrella specification of six cycles. Each cycle gets its own spec and plan before it is built;
 this document fixes the decisions they share and the order.
 Parent documents: [`../design.md`](../design.md) (2.2, 2.5, 2.7 and the roadmap),
 [`2026-10-05-phase-2d-signals-design.md`](2026-10-05-phase-2d-signals-design.md) (the Alertmanager source and the responder for outages, which this narrows and
@@ -127,7 +127,7 @@ This is the part of 2D that the series needs: `internal/alertmanager` (a read-on
 - The responder run gets the host's tools (cycle 2) next to the cluster tools, for the host the alert maps to.
 - The Argo CD source and its tests are **not** built. The `Source` interface stays so that it can be.
 
-**Status (2026-10-16):** cycle 4 is split in two plans ([`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md)). **4a is built** (the source, the settings, the host rules and the host of an incident); **4b is built (2026-10-19)** (the responder for outages, the approval expiry of automatic runs); **the real run with the real CLI is not made** ([runbook](../runbook/outage-real-run.md)).
+**Status (2026-10-16):** cycle 4 is split in two plans ([`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md)). **4a is built** (the source, the settings, the host rules and the host of an incident); **4b is built (2026-10-19)** (the responder for outages, the approval expiry of automatic runs); **the real run with the real CLI was made on 2026-10-19** ([runbook](../runbook/outage-real-run.md), [record](../research/phase-2d-real-run.md)); it did not cover `host_change` or the home server.
 
 On this lab, Alertmanager has a single receiver `blackhole`. It still holds the firing alerts, and Remedy only reads them, so nothing in the home-server repository has to change for the source. What does have to change is one rule (section 10).
 

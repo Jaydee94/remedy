@@ -1,7 +1,8 @@
 # Runbook: the diagnosis of an alert against the real CLI (the real run of cycles 2 and 4)
 
-**This run was not made by the plan that prepared it.** It costs subscription quota and needs you, so you start it. Everything it needs is
-built and tested against a fake `claude`; this run is the proof against the real one. Plan on about an hour.
+**This run was made on 2026-10-19** (record: [`docs/research/phase-2d-real-run.md`](../research/phase-2d-real-run.md)), with a real Alertmanager in a container instead of the fake
+(section 3). It costs subscription quota, so repeat it only on purpose. Everything it needs is built and tested against a fake `claude`; this run is the proof against the real one.
+Plan on about an hour.
 
 ## 1. Why
 
@@ -71,6 +72,21 @@ time, so the second alert is diagnosed after the first. An alert is diagnosed on
 (1 hour) before the incident opened, and was seen in the last 10 minutes (or three poll intervals, whichever is longer): a stale file starts nothing. The limits of automatic
 diagnosis hold (20 a day by default).
 
+**A real Alertmanager instead of the fake.** The run of 2026-10-19 used a real one. A config with a receiver that does nothing is enough:
+
+```sh
+cat > alertmanager.yml <<EOF
+route: {receiver: blackhole}
+receivers: [{name: blackhole}]
+EOF
+docker run -d --name remedy-alertmanager -p 127.0.0.1:19093:9093 -v "$PWD/alertmanager.yml":/etc/alertmanager/alertmanager.yml:ro prom/alertmanager:latest
+curl -H 'Content-Type: application/json' -d @alerts.json http://127.0.0.1:19093/api/v2/alerts
+```
+
+Each alert in `alerts.json` has `labels`, `annotations`, `startsAt` (about a minute ago) and `endsAt` (an hour ahead), the way Prometheus posts them. In **Setup** the address
+is `http://127.0.0.1:19093` (no token). A restarted Alertmanager loses its alerts, so Remedy resolves their incidents on the next complete, empty answer; an alert that is
+posted again afterwards is a new incident and a new run.
+
 ## 4. The steps, and what to look for
 
 Note the time of each step: the record needs them.
@@ -102,7 +118,7 @@ In `docs/research/phase-2d-real-run.md`: the CLI version (`claude --version`), t
 validated and its category, what an approval looked like (the line, the time, the expiry), the cost shown on the run, any surprise (a refused call, a host tool that
 did not fit the table, a prompt the agent did not follow).
 
-Afterwards, a real recording of the answer of `GET /api/v2/alerts` of the home server should replace the hand-written sample in
-`internal/alertmanager/alertmanagertest/testdata/`. It is read-only (one `GET`), but it is your machine: do it only on your explicit go-ahead.
+A recording of a real answer was made on 2026-10-19: `internal/alertmanager/alertmanagertest/testdata/alertmanager-0.34.1.json`, from the Alertmanager of that run. A recording of
+the answer of `GET /api/v2/alerts` of the home server is still open and should be added next to it. It is read-only (one `GET`), but it is your machine: do it only on your explicit go-ahead.
 
 Stop everything: `kill` the server, the runner and the fake by their process IDs (do not use a loose `pkill -f` pattern), and, from the root of the checkout, `dev/ssh/down.sh` and `dev/kind/down.sh`.

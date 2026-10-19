@@ -66,8 +66,8 @@ running as a service for other people's homelabs.
   are diagnosed by the responder (**built 2026-10-19, cycle 4b**): on its own for a young `critical` or `warning` alert that
   was seen recently, by a click otherwise. The run gets the incident tools, the cluster tools and the tools of the mapped
   host; its answer has its own schema (`diagnosis.ParseOutage`); its changes wait for an approval, which expires in an
-  automatic run (`auto_approval_timeout`). The real run with the real CLI is outstanding
-  ([runbook](runbook/outage-real-run.md)). The Argo CD source stays postponed.
+  automatic run (`auto_approval_timeout`). The real run with the real CLI was made on 2026-10-19
+  ([runbook](runbook/outage-real-run.md), [record](research/phase-2d-real-run.md)). The Argo CD source stays postponed.
 
 ### 2.4 GitOps integration (branch 4)
 
@@ -201,8 +201,10 @@ Decided on 2026-10-09; the specification is
   proposals the maintainer confirms; unconfirmed proposals are not used as fact.
 - The Argo CD source of part 2D is postponed. The Alertmanager source and the host mapping (the rules are a field
   of the host) are built (cycle 4a, 2026-10-16), and so is the responder for outages (cycle 4b, 2026-10-19). The real run
-  of cycles 2 and 4 with the real CLI is not made yet; whether the CLI returns a structured answer after it used tools is
-  proven only by that run.
+  of cycles 2 and 4 with the real CLI was made on 2026-10-19 ([record](research/phase-2d-real-run.md)): the CLI does return a
+  valid structured answer in runs that also used MCP tools, and `host_list`, `host_read`, the cluster tools, the approval and
+  its expiry worked. Not covered: `host_change` (the agent never asked for one), the chart's in-cluster runner with an
+  outage, the home server and a real Prometheus.
 
 ## 3. Roadmap
 
@@ -222,8 +224,8 @@ the Home Assistant notification, are separate later cycles. Phase 2 is delivered
 incident model, an automatic responder for outages whose actions wait for an approval) are specified in
 [`specs/2026-10-05-phase-2d-signals-design.md`](specs/2026-10-05-phase-2d-signals-design.md); the incident model
 ([plan 2d-1](plans/phase-2d-1-incident-model.md)) is built, and so is the Alertmanager source (cycle 4a of the hosts and skills series,
-[spec](specs/2026-10-16-alertmanager-4-design.md)), and so is the responder for outages (cycle 4b); the Argo CD source is not, and the real run
-of the responder is outstanding.
+[spec](specs/2026-10-16-alertmanager-4-design.md)), and so is the responder for outages (cycle 4b); the Argo CD source is not; the real run
+of the responder was made on 2026-10-19 ([record](research/phase-2d-real-run.md)).
 
 ## 4. Accepted risks
 

@@ -1,0 +1,58 @@
+[
+  {
+    "annotations": {
+      "description": "Pod demo/crashy-77cfcdd775-d2cgx (container crashy) is restarting 5 times / 10 minutes.",
+      "summary": "Pod demo/crashy-77cfcdd775-d2cgx is crash looping."
+    },
+    "endsAt": "2026-10-19T12:03:25.000Z",
+    "fingerprint": "0472301d78125819",
+    "receivers": [
+      {
+        "name": "blackhole"
+      }
+    ],
+    "startsAt": "2026-10-19T11:02:25.000Z",
+    "status": {
+      "inhibitedBy": [],
+      "mutedBy": [],
+      "silencedBy": [],
+      "state": "active"
+    },
+    "updatedAt": "2026-10-19T11:03:25.603Z",
+    "generatorURL": "http://prometheus.invalid/graph?g0.expr=up",
+    "labels": {
+      "alertname": "KubePodCrashLooping",
+      "job": "kube-state-metrics",
+      "namespace": "demo",
+      "pod": "crashy-77cfcdd775-d2cgx",
+      "severity": "critical"
+    }
+  },
+  {
+    "annotations": {
+      "summary": "Host ssh-testbed has had a CPU usage above 95% for 10 minutes."
+    },
+    "endsAt": "2026-10-19T12:03:25.000Z",
+    "fingerprint": "55957b95819f1d0d",
+    "receivers": [
+      {
+        "name": "blackhole"
+      }
+    ],
+    "startsAt": "2026-10-19T11:02:25.000Z",
+    "status": {
+      "inhibitedBy": [],
+      "mutedBy": [],
+      "silencedBy": [],
+      "state": "active"
+    },
+    "updatedAt": "2026-10-19T11:03:25.618Z",
+    "generatorURL": "http://prometheus.invalid/graph?g0.expr=up",
+    "labels": {
+      "alertname": "HostHighCpuLoad",
+      "instance": "ssh-testbed",
+      "job": "node-exporter",
+      "severity": "warning"
+    }
+  }
+]
