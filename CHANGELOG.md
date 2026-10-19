@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.0](https://github.com/Jaydee94/remedy/compare/v0.5.0...v0.6.0) (2026-10-19)
+
+### Features
+
+* diagnose alerts, with approvals that expire (cycle 4b) ([#148](https://github.com/Jaydee94/remedy/issues/148)) ([cb0d000](https://github.com/Jaydee94/remedy/commit/cb0d000530a21e0c04ac36e28be916ab80742637))
+
 ## [0.5.0](https://github.com/Jaydee94/remedy/compare/v0.4.0...v0.5.0) (2026-10-16)
 
 ### Features
