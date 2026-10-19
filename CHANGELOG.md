@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.1](https://github.com/Jaydee94/remedy/compare/v0.6.0...v0.6.1) (2026-10-19)
+
+### Bug Fixes
+
+* follow-ups of the real run (approval incident, outage prompt, re-fired alerts) ([#150](https://github.com/Jaydee94/remedy/issues/150)) ([2a909b6](https://github.com/Jaydee94/remedy/commit/2a909b6b3c092315a7891ccde965a38d3722bfd1))
+
 ## [0.6.0](https://github.com/Jaydee94/remedy/compare/v0.5.0...v0.6.0) (2026-10-19)
 
 ### Features
