@@ -381,12 +381,20 @@ func CheckOutcomeFor(source string, o run.Outcome) run.Outcome {
 }
 
 // CheckRun is CheckOutcomeFor for the incident of a run: the source is read from it, a run without an incident (or whose incident is
-// gone) counts as GitHub's.
+// gone) counts as GitHub's. Any other error of the lookup says nothing about the source: the outcome is then left as the runner reported
+// it (judging an alert's answer by the GitHub shape would fail a good run), and Complete, which reads the source again and parses the
+// stored answer by it, stays the authority over what becomes a diagnosis.
 func (r *Responder) CheckRun(ctx context.Context, rn run.Run, o run.Outcome) run.Outcome {
 	source := store.SourceGitHub
 	if rn.IncidentID != nil {
-		if in, err := r.Store.GetIncident(ctx, *rn.IncidentID); err == nil {
+		in, err := r.Store.GetIncident(ctx, *rn.IncidentID)
+		switch {
+		case err == nil:
 			source = in.Source
+		case errors.Is(err, store.ErrNotFound):
+		default:
+			r.Log.Warn("cannot read the incident of a run to judge its answer; the answer is judged when the diagnosis is closed", "run", rn.ID, "err", err)
+			return o
 		}
 	}
 	return CheckOutcomeFor(source, o)

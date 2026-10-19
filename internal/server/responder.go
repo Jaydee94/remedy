@@ -34,14 +34,23 @@ func claimFor(r run.Run, mcpToken string) run.Claim {
 
 // responderClaim sets what a responder run needs besides the run: the schema of the answer and whether to download a snapshot, by the
 // source of its incident. A GitHub incident (and a run whose incident is gone) gets the diagnosis schema and the snapshot, as before.
-func (s *srv) responderClaim(ctx context.Context, c *run.Claim) {
+// Only a missing incident means GitHub's shape; any other error of the lookup is returned, because guessing would hand an alert's run the
+// wrong schema and a snapshot download that cannot work.
+func (s *srv) responderClaim(ctx context.Context, c *run.Claim) error {
 	if c.Role != run.RoleResponder || c.IncidentID == nil {
-		return
+		return nil
 	}
-	if in, err := s.d.Store.GetIncident(ctx, *c.IncidentID); err == nil && in.Source == store.SourceAlertmanager {
+	in, err := s.d.Store.GetIncident(ctx, *c.IncidentID)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return nil
+	case err != nil:
+		return err
+	case in.Source == store.SourceAlertmanager:
 		c.Schema = json.RawMessage(diagnosis.OutageSchema)
 		c.Snapshot = false
 	}
+	return nil
 }
 
 func (s *srv) diagnoseIncident(w http.ResponseWriter, r *http.Request) {

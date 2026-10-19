@@ -59,7 +59,16 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			c := claimFor(*claimed, token)
-			s.responderClaim(r.Context(), &c)
+			if err := s.responderClaim(r.Context(), &c); err != nil {
+				// The run is claimed already: end it, like a run whose token could not be created, instead of leaving it running.
+				done := context.WithoutCancel(r.Context())
+				_ = s.d.Store.FinishRun(done, claimed.ID, run.Outcome{ExitCode: -1, Result: "The incident of the run could not be read."})
+				if s.d.Responder != nil {
+					s.d.Responder.Complete(done, claimed.ID)
+				}
+				writeErr(w, http.StatusInternalServerError, "could not read the incident of the run")
+				return
+			}
 			// Only a value somebody chose (the environment of the control plane or the Setup page) goes to the runner: while
 			// the setting is at its default the field stays out, so a runner with its own REMEDY_RUN_TIMEOUT keeps it.
 			if s.d.Settings != nil {
