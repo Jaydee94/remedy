@@ -203,8 +203,8 @@ Decided on 2026-10-09; the specification is
   of the host) are built (cycle 4a, 2026-10-16), and so is the responder for outages (cycle 4b, 2026-10-19). The real run
   of cycles 2 and 4 with the real CLI was made on 2026-10-19 ([record](research/phase-2d-real-run.md)): the CLI does return a
   valid structured answer in runs that also used MCP tools, and `host_list`, `host_read`, the cluster tools, the approval and
-  its expiry worked. Not covered: `host_change` (the agent never asked for one), the chart's in-cluster runner with an
-  outage, the home server and a real Prometheus.
+  its expiry worked; after the follow-up fixes a control run proved `host_change` too (approved, run as root through `sudo -n`).
+  Not covered: a refused or expired `host_change`, the chart's in-cluster runner with an outage, the home server and a real Prometheus.
 
 ## 3. Roadmap
 
