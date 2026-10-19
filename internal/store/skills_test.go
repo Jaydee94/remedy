@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/skill"
 	"github.com/Jaydee94/remedy/internal/store"
@@ -111,8 +112,9 @@ func TestUpdateSkillChangesTheTextsAndTheStateAndSaysWhich(t *testing.T) {
 	nas := hostNamed(t, s, "nas")
 	k, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
 
+	time.Sleep(5 * time.Millisecond) // so that a later updated_at is strictly later
 	off, err := s.UpdateSkill(ctx, k.ID, skillFields("paperless"), store.SkillOff)
-	if err != nil || off.State != store.SkillOff || off.Origin != store.SkillOriginWritten || off.UpdatedAt.Before(k.UpdatedAt) {
+	if err != nil || off.State != store.SkillOff || off.Origin != store.SkillOriginWritten || !off.UpdatedAt.After(k.UpdatedAt) {
 		t.Fatalf("off = %+v, %v", off, err)
 	}
 	on, err := s.UpdateSkill(ctx, k.ID, skillFields("paperless"), store.SkillActive)
