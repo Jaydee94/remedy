@@ -18,6 +18,7 @@ import {
 } from './incidents.ts'
 import { runFailure } from './runview.ts'
 import { useShellHeader, useShellState } from './shellContext.ts'
+import { isOutage } from './outage.ts'
 import { allAnnouncements, buildThread } from './thread.ts'
 import type { ThreadItem } from './thread.ts'
 import { dayTimeLabel } from './timeline.ts'
@@ -30,6 +31,7 @@ import RefLink from './RefLink.tsx'
 import ApprovalAsk from '@/components/conversation/ApprovalAsk'
 import Composer from '@/components/conversation/Composer'
 import DiagnosisMessage from '@/components/conversation/DiagnosisMessage'
+import OutageMessage from '@/components/conversation/OutageMessage'
 import EventPill from '@/components/conversation/EventPill'
 import FailCard from '@/components/conversation/FailCard'
 import RemedyMessage from '@/components/conversation/RemedyMessage'
@@ -164,7 +166,9 @@ export default function IncidentThreadPage({ id }: { id: number }) {
         return (
           <RemedyMessage key={item.key} kind="working" meta={`Remedy · ${dayTimeLabel(item.at, now)}`}>
             <span className="text-[13px] text-muted-foreground">
-              Reading the failure log and the repository. I can only read; I can't change anything.
+              {inc.source === 'github'
+                ? "Reading the failure log and the repository. I can only read; I can't change anything."
+                : "Reading the alert, the cluster and the hosts. I can only read; if I want to change something I have to ask you."}
             </span>
             {item.runId && (
               <div>
@@ -175,17 +179,29 @@ export default function IncidentThreadPage({ id }: { id: number }) {
             )}
           </RemedyMessage>
         )
-      case 'diagnosis':
+      case 'diagnosis': {
+        const again = inc.state === 'open' || inc.state === 'diagnosed' ? () => void diagnose() : undefined
         return (
-          <RemedyMessage key={item.key} meta={`Remedy · ${dayTimeLabel(item.at, now)} · read the failure log and the repository at ${shortSha(item.sha)}`}>
-            <DiagnosisMessage
-              diagnosis={item.diagnosis}
-              outdatedSha={item.outdated ? item.sha : undefined}
-              headSha={inc.headSha}
-              runId={item.runId}
-              busy={diagnoseBusy || diagnosing}
-              onDiagnoseAgain={inc.state === 'open' || inc.state === 'diagnosed' ? () => void diagnose() : undefined}
-            />
+          <RemedyMessage
+            key={item.key}
+            meta={
+              isOutage(item.diagnosis)
+                ? `Remedy · ${dayTimeLabel(item.at, now)} · read the alert, the cluster and the hosts`
+                : `Remedy · ${dayTimeLabel(item.at, now)} · read the failure log and the repository at ${shortSha(item.sha)}`
+            }
+          >
+            {isOutage(item.diagnosis) ? (
+              <OutageMessage diagnosis={item.diagnosis} runId={item.runId} busy={diagnoseBusy || diagnosing} onDiagnoseAgain={again} />
+            ) : (
+              <DiagnosisMessage
+                diagnosis={item.diagnosis}
+                outdatedSha={item.outdated ? item.sha : undefined}
+                headSha={inc.headSha}
+                runId={item.runId}
+                busy={diagnoseBusy || diagnosing}
+                onDiagnoseAgain={again}
+              />
+            )}
             {diagnoseError && (
               <span role="alert" className="text-[13px] text-destructive">
                 {diagnoseError}
@@ -193,6 +209,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
             )}
           </RemedyMessage>
         )
+      }
       case 'undiagnosed':
         return (
           <RemedyMessage key={item.key} meta={`Remedy · ${dayTimeLabel(item.at, now)}`}>
@@ -200,7 +217,9 @@ export default function IncidentThreadPage({ id }: { id: number }) {
               <p className="font-serif text-[17px] leading-normal text-pretty">I can't diagnose incidents from {item.sourceLabel} yet.</p>
             ) : (
               <>
-                <p className="font-serif text-[17px] leading-normal text-pretty">{undiagnosedText[item.reason]}</p>
+                <p className="font-serif text-[17px] leading-normal text-pretty">
+                  {item.reason === 'manual' && inc.source !== 'github' ? "I don't diagnose this on my own. You can ask me to look at it." : undiagnosedText[item.reason]}
+                </p>
                 {diagnoseError && (
                   <span role="alert" className="text-[13px] text-destructive">
                     {diagnoseError}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/store"
@@ -56,16 +57,17 @@ func TestAnIncidentOfAnotherSourceNeedsNoRepository(t *testing.T) {
 	}
 }
 
-func TestTheResponderStartsOnItsOwnOnlyForGitHubIncidentsThatAreMarkedForIt(t *testing.T) {
+func TestTheResponderStartsOnItsOwnOnlyForIncidentsThatAreMarkedForIt(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	repo := seedRepo(t, s)
 	red := open(t, s, repo, "pr:1", "go", "aaa", "failure")
 	open(t, s, repo, "pr:2", "go", "aaa", "cancelled")
-	openAlert(t, s, "a/1", true) // marked for it, but the responder does not handle this source yet (plan 2d-3)
+	alert := openAlert(t, s, "a/1", true) // marked for it and seen just now: a candidate since the Alertmanager responder (cycle 4b)
+	openAlert(t, s, "a/0", false)         // not marked
 
-	got, err := s.ListAutoCandidates(ctx, t0, limits)
-	if err != nil || len(got) != 1 || got[0].ID != red.ID {
-		t.Fatalf("candidates = %+v, %v, want only incident %d", got, err, red.ID)
+	got, err := s.ListAutoCandidates(ctx, time.Now(), limits, 10*time.Minute)
+	if err != nil || len(got) != 2 || got[0].ID != red.ID || got[1].ID != alert.ID {
+		t.Fatalf("candidates = %+v, %v, want incidents %d and %d", got, err, red.ID, alert.ID)
 	}
 
 	// The mark decides an automatic start, also for a source other than GitHub.

@@ -71,6 +71,7 @@ func (f *fakeRead) GetTarball(context.Context, string, string) (io.ReadCloser, e
 }
 
 type respEnv struct {
+	dbPath string
 	ts     *httptest.Server
 	st     *store.Store
 	src    *fakeRead
@@ -99,7 +100,8 @@ func newRespEnv(t *testing.T, openKey secret.Key) *respEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := store.Open(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +129,7 @@ func newRespEnv(t *testing.T, openKey secret.Key) *respEnv {
 	t.Cleanup(ts.Close)
 
 	jar, _ := cookiejar.New(nil)
-	e := &respEnv{ts: ts, st: st, src: src, repo: repo, client: &http.Client{Jar: jar}}
+	e := &respEnv{dbPath: dbPath, ts: ts, st: st, src: src, repo: repo, client: &http.Client{Jar: jar}}
 	if code, _ := e.admin(t, http.MethodPost, "/api/login", `{"password":"`+password+`"}`); code != http.StatusNoContent {
 		t.Fatalf("login status = %d", code)
 	}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/Jaydee94/remedy/internal/run"
@@ -34,8 +35,10 @@ const (
 	KindApprovalRequested = "approval_requested"
 	KindApprovalDecided   = "approval_decided"
 	KindApprovalAbandoned = "approval_abandoned"
-	KindNoteAdded         = "note_added"
-	KindRunCancelled      = "run_cancelled"
+	// KindApprovalExpired is an approval of an automatic run that nobody decided before its deadline.
+	KindApprovalExpired = "approval_expired"
+	KindNoteAdded       = "note_added"
+	KindRunCancelled    = "run_cancelled"
 	// KindClusterAction is an action in the cluster that was approved and done.
 	KindClusterAction = "cluster_action"
 	// KindHostAction is an approved command on a host that was run.
@@ -75,6 +78,8 @@ type ToolCall struct {
 	DecidedAt      *time.Time
 	CreatedAt      time.Time
 	FinishedAt     *time.Time
+	// ExpiresAt is when an undecided approval of an automatic run ends as abandoned; nil: it waits without a limit.
+	ExpiresAt *time.Time
 }
 
 type NewToolCall struct {
@@ -84,10 +89,13 @@ type NewToolCall struct {
 	Kind       string
 	IncidentID int64 // 0 when none; an incident that does not exist is not linked
 	Arguments  json.RawMessage
+	// ExpiresIn is how long a mutating call of an automatic run may wait for a decision; 0 or negative: without a limit. It is ignored
+	// for a read call and for a run that is not automatic.
+	ExpiresIn time.Duration
 }
 
 const callCols = `id, run_id, incident_id, tool_use_id, tool, kind, arguments, status, result, error, decision,
-	decision_reason, decided_at, created_at, finished_at`
+	decision_reason, decided_at, created_at, finished_at, expires_at`
 
 func optTime(s sql.NullString) (*time.Time, error) {
 	if !s.Valid {
@@ -106,9 +114,10 @@ func scanCall(sc scanner) (ToolCall, error) {
 		incident          sql.NullInt64
 		args, created     string
 		decided, finished sql.NullString
+		expires           sql.NullString
 	)
 	if err := sc.Scan(&c.ID, &c.RunID, &incident, &c.ToolUseID, &c.Tool, &c.Kind, &args, &c.Status, &c.Result,
-		&c.Error, &c.Decision, &c.DecisionReason, &decided, &created, &finished); err != nil {
+		&c.Error, &c.Decision, &c.DecisionReason, &decided, &created, &finished, &expires); err != nil {
 		return ToolCall{}, err
 	}
 	c.IncidentID = incident.Int64
@@ -121,6 +130,9 @@ func scanCall(sc scanner) (ToolCall, error) {
 		return ToolCall{}, err
 	}
 	if c.FinishedAt, err = optTime(finished); err != nil {
+		return ToolCall{}, err
+	}
+	if c.ExpiresAt, err = optTime(expires); err != nil {
 		return ToolCall{}, err
 	}
 	return c, nil
@@ -228,10 +240,21 @@ func (s *Store) BeginToolCall(ctx context.Context, n NewToolCall) (ToolCall, boo
 		if len(args) == 0 {
 			args = json.RawMessage(`{}`)
 		}
+		now := time.Now()
+		expires := sql.NullString{}
+		if mutating && n.ExpiresIn > 0 {
+			var automatic int
+			if err := tx.QueryRowContext(ctx, `SELECT automatic FROM runs WHERE id = ?`, n.RunID).Scan(&automatic); err != nil {
+				return err
+			}
+			if automatic == 1 {
+				expires = sql.NullString{String: formatTS(now.Add(n.ExpiresIn)), Valid: true}
+			}
+		}
 		res, err := tx.ExecContext(ctx, `
-			INSERT INTO tool_calls (run_id, incident_id, tool_use_id, tool, kind, arguments, status, decision, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			n.RunID, nullInt(incident), n.ToolUseID, n.Tool, n.Kind, string(args), status, decision, formatTS(time.Now()))
+			INSERT INTO tool_calls (run_id, incident_id, tool_use_id, tool, kind, arguments, status, decision, created_at, expires_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			n.RunID, nullInt(incident), n.ToolUseID, n.Tool, n.Kind, string(args), status, decision, formatTS(now), expires)
 		if err != nil {
 			return err
 		}
@@ -438,6 +461,56 @@ func abandonTx(ctx context.Context, tx *sql.Tx, now time.Time, cond string, args
 		}
 	}
 	return len(calls), nil
+}
+
+// expiryText says why an approval ended: the duration it was allowed, and what the agent should do.
+func expiryText(d time.Duration) string {
+	return "no decision within " + durationText(d) + ": the action was not run. Do not ask for it again; put it in proposed_action instead."
+}
+
+// durationText writes a duration in whole units: 15m, 90s, 2h.
+func durationText(d time.Duration) string {
+	d = d.Round(time.Second)
+	switch {
+	case d > 0 && d%time.Hour == 0:
+		return strconv.Itoa(int(d/time.Hour)) + "h"
+	case d > 0 && d%time.Minute == 0:
+		return strconv.Itoa(int(d/time.Minute)) + "m"
+	}
+	return strconv.Itoa(int(d/time.Second)) + "s"
+}
+
+// ExpireCall ends an approval that nobody decided before its deadline. It is a compare-and-set: only a call that is still waiting with the
+// decision pending moves, so a decision that arrived first wins and a late decision is refused (ErrNotPending). An approved call is never expired.
+func (s *Store) ExpireCall(ctx context.Context, id int64, now time.Time) (bool, error) {
+	done := false
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		c, err := scanCall(tx.QueryRowContext(ctx, `SELECT `+callCols+` FROM tool_calls WHERE id = ?`, id))
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if c.Status != CallWaiting || c.Decision != DecisionPending || c.ExpiresAt == nil || c.ExpiresAt.After(now) {
+			return nil
+		}
+		allowed := durationText(c.ExpiresAt.Sub(c.CreatedAt))
+		res, err := tx.ExecContext(ctx, `
+			UPDATE tool_calls SET status = 'abandoned', decision = 'abandoned', error = ?, finished_at = ?
+			WHERE id = ? AND status = 'waiting' AND decision = 'pending'`, expiryText(c.ExpiresAt.Sub(c.CreatedAt)), formatTS(now), id)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			return nil
+		}
+		done = true
+		c.Status, c.Decision = CallAbandoned, DecisionAbandoned
+		return callActivity(ctx, tx, KindApprovalExpired,
+			fmt.Sprintf("Nobody decided %s%s within %s: the approval expired", c.Tool, forIncident(c), allowed), c)
+	})
+	return done, err
 }
 
 // AbandonCall abandons a waiting call. The bool says whether it did: a call that is done, or abandoned already, is left alone.

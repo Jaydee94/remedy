@@ -124,6 +124,9 @@ type notification struct {
 	Params  any    `json:"params"`
 }
 
+// expireRetry is how long awaitDecision waits before it tries to expire a call again after the store failed.
+const expireRetry = time.Second
+
 // awaitDecision answers a call of a mutating tool with an event stream and waits for the decision. It sends a progress
 // notification every ProgressInterval, so that the CLI does not give up on the call, and ends with the result.
 func (g *Gatekeeper) awaitDecision(w http.ResponseWriter, r *http.Request, req request, tool Tool, call store.ToolCall, token json.RawMessage) {
@@ -158,6 +161,16 @@ func (g *Gatekeeper) awaitDecision(w http.ResponseWriter, r *http.Request, req r
 	tick := time.NewTicker(g.progress)
 	defer tick.Stop()
 	var progress float64
+	// An automatic run's approval has a deadline. The timer fires at it, so a decision that arrives after the deadline and before the timer
+	// is the only window; the store lets exactly one of the decision and the expiry win.
+	var expired <-chan time.Time
+	var retry *time.Timer
+	if call.ExpiresAt != nil {
+		t := time.NewTimer(time.Until(*call.ExpiresAt))
+		defer t.Stop()
+		retry = t
+		expired = t.C
+	}
 	for {
 		current, err := g.store.GetToolCall(ctx, call.ID)
 		if err != nil {
@@ -190,6 +203,20 @@ func (g *Gatekeeper) awaitDecision(w http.ResponseWriter, r *http.Request, req r
 
 		select {
 		case <-wake:
+		case <-expired:
+			at := *call.ExpiresAt
+			if now := time.Now(); now.After(at) {
+				at = now
+			}
+			if _, err := g.store.ExpireCall(ctx, call.ID, at); err != nil {
+				// Without the expiry the call would stay pending for good (the run's clock paused, the runner held): try again.
+				g.log.Error("could not expire a call; trying again", "call", call.ID, "err", err)
+				retry.Reset(expireRetry)
+			} else {
+				expired = nil // true: this handler expired it; false: a decision came first and the next pass reads it
+			}
+			g.notify(call.ID) // the other waiters (replays) read the end now
+			// The next pass reads the call: an abandoned call settles with its error text, a call that was decided first goes on as decided.
 		case <-tick.C:
 			progress++
 			if len(token) > 0 {

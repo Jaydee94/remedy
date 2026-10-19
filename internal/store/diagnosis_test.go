@@ -473,7 +473,7 @@ func TestListAutoCandidates(t *testing.T) {
 	failRun(t, s, r)
 
 	now := t0.Add(3*time.Hour + 5*time.Minute)
-	got, err := s.ListAutoCandidates(ctx, now, limits)
+	got, err := s.ListAutoCandidates(ctx, now, limits, 10*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -485,7 +485,7 @@ func TestListAutoCandidates(t *testing.T) {
 		t.Fatalf("candidates = %v, want [%d %d] (oldest first; not cancelled, ignored, resolved, capped, cooling down or in a disabled repo)", ids, eligible.ID, timedOut.ID)
 	}
 
-	later, _ := s.ListAutoCandidates(ctx, t0.Add(3*time.Hour+20*time.Minute), limits)
+	later, _ := s.ListAutoCandidates(ctx, t0.Add(3*time.Hour+20*time.Minute), limits, 10*time.Minute)
 	if len(later) != 3 {
 		t.Fatalf("after the cooldown there are %d candidates, want 3", len(later))
 	}

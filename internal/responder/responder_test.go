@@ -94,6 +94,7 @@ type env struct {
 	repo   store.Repo
 	now    time.Time
 	tokens []string
+	path   string // the database file, for a test that rewrites a row
 }
 
 func testKey(t *testing.T, fill byte) secret.Key {
@@ -109,7 +110,8 @@ func newEnv(t *testing.T) *env { return newEnvWithKeys(t, testKey(t, 1), testKey
 
 func newEnvWithKeys(t *testing.T, sealKey, openKey secret.Key) *env {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	path := filepath.Join(t.TempDir(), "test.db")
+	st, err := store.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +135,7 @@ func newEnvWithKeys(t *testing.T, sealKey, openKey secret.Key) *env {
 	pr.User.Login, pr.User.Type = "renovate[bot]", "Bot"
 	pr.Head.SHA = sha
 	e := &env{
-		t: t, st: st, repo: repo, now: time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC),
+		t: t, st: st, path: path, repo: repo, now: time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC),
 		src: &fakeSource{
 			pr:    pr,
 			files: []github.PRFile{{Filename: "web/package.json", Status: "modified", Additions: 1, Deletions: 1, Patch: "@@ -21,7 +21,7 @@\n-    \"typescript\": \"~6.0.2\",\n+    \"typescript\": \"~7.0.0\","}},
@@ -170,7 +172,7 @@ func (e *env) incident(ref, check, headSHA, conclusion string) store.Incident {
 	return in
 }
 
-// finish claims the run, applies CheckOutcome like the server does, finishes it and completes the diagnosis.
+// finish claims the run, applies CheckRun like the server does, finishes it and completes the diagnosis.
 func (e *env) finish(r run.Run, o run.Outcome) {
 	e.t.Helper()
 	ctx := context.Background()
@@ -178,7 +180,7 @@ func (e *env) finish(r run.Run, o run.Outcome) {
 	if err != nil || claimed == nil || claimed.ID != r.ID {
 		e.t.Fatalf("ClaimNext = %+v, %v, want %s", claimed, err, r.ID)
 	}
-	if err := e.st.FinishRun(ctx, r.ID, responder.CheckOutcome(o)); err != nil {
+	if err := e.st.FinishRun(ctx, r.ID, e.r.CheckRun(ctx, r, o)); err != nil {
 		e.t.Fatal(err)
 	}
 	e.r.Complete(ctx, r.ID)

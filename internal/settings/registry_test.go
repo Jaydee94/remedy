@@ -213,6 +213,30 @@ func TestTheMaximumAgeIsADurationOfAtLeastAMinute(t *testing.T) {
 	}
 }
 
+func TestTheApprovalTimeoutIsZeroOrAtLeastAMinute(t *testing.T) {
+	s := spec(t, settings.AutoApprovalTimeout)
+	for _, in := range []string{"0", "0s", "1m", "15m", "2h"} {
+		if _, err := s.ParseText(in); err != nil {
+			t.Errorf("%q was refused: %v", in, err)
+		}
+	}
+	for _, in := range []string{"59s", "-1m", "abc", ""} {
+		if _, err := s.ParseText(in); err == nil {
+			t.Errorf("%q was accepted", in)
+		}
+	}
+	if s.Default.Dur != 15*time.Minute || s.Env != "REMEDY_AUTO_APPROVAL_TIMEOUT" || s.Group != "Runs" || s.Kind != settings.KindDuration {
+		t.Errorf("default = %v, env = %q, group = %q, kind = %v", s.Default.Dur, s.Env, s.Group, s.Kind)
+	}
+	if v, err := s.ParseJSON(json.RawMessage(`"0s"`)); err != nil || v.Dur != 0 {
+		t.Errorf("0s as JSON = %+v, %v", v, err)
+	}
+	_, err := settings.EnvLayer(env(map[string]string{"REMEDY_AUTO_APPROVAL_TIMEOUT": "30s"}))
+	if err == nil || err.Error() != "REMEDY_AUTO_APPROVAL_TIMEOUT must be 0 or a duration of at least 1m, for example 15m" {
+		t.Errorf("error = %v", err)
+	}
+}
+
 func TestEnvironmentVariablesOfTheTextKind(t *testing.T) {
 	l, err := settings.EnvLayer(env(map[string]string{"REMEDY_ALERTMANAGER_URL": "http://am:9093/"}))
 	if err != nil || l.Text(settings.AlertmanagerURL) != "http://am:9093" || len(l) != 1 {

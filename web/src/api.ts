@@ -75,6 +75,8 @@ export interface ToolCall {
   finishedAt?: string
   /** An agent still waits for the answer of the call: only then can it be decided. */
   waiting: boolean
+  /** When Remedy stops waiting for a decision (a call of an automatic run only). */
+  expiresAt?: string
 }
 
 export interface RunEvent {
@@ -214,7 +216,7 @@ export interface Incident {
   lastDiagnosisAt?: string
   /** When the stored diagnosis was written. A new diagnosis moves it, a failed one does not. */
   diagnosedAt?: string
-  diagnosis?: Diagnosis
+  diagnosis?: AnyDiagnosis
   /** The commit the diagnosis is about. It differs from headSha when a newer commit failed since. */
   diagnosedSha?: string
   /** The latest responder run. */
@@ -255,6 +257,19 @@ export interface Diagnosis {
   proposed_fix: string
   fix_looks_automatable: boolean
 }
+
+/** The answer of the responder agent for an alert. The names are those of the schema. Show it as text, never as HTML. */
+export interface OutageDiagnosis {
+  summary: string
+  cause: string
+  confidence: 'high' | 'medium' | 'low'
+  category: string
+  affected: string[]
+  proposed_action: string
+  evidence: string
+}
+
+export type AnyDiagnosis = Diagnosis | OutageDiagnosis
 
 export interface Limits {
   pollIntervalSeconds: number

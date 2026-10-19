@@ -46,10 +46,16 @@ type StartParams struct {
 	IncidentID int64
 	Provider   string
 	Prompt     string
-	HeadSHA    string // the commit the prompt and the snapshot are for
+	HeadSHA    string // the commit the prompt and the snapshot are for ("" for an alert)
 	Automatic  bool
 	Limits     DiagnosisLimits // only used for an automatic start
 	Now        time.Time
+
+	// Tools gives the run access to the gatekeeper (the incident tools); Cluster adds the cluster tools; HostIDs bind the hosts whose
+	// tools the run is offered. Any of them turns the access on. A host that does not exist any more is skipped.
+	Tools   bool
+	Cluster bool
+	HostIDs []int64
 }
 
 // StartDiagnosis creates a queued responder run for an incident and marks the incident diagnosing, in
@@ -84,11 +90,32 @@ func (s *Store) StartDiagnosis(ctx context.Context, p StartParams, act NewActivi
 		if p.Automatic {
 			automatic = 1
 		}
+		var hosts []int64
+		seen := map[int64]bool{}
+		for _, h := range p.HostIDs {
+			if h == 0 || seen[h] {
+				continue
+			}
+			seen[h] = true
+			var n int
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM hosts WHERE id = ?`, h).Scan(&n); err != nil {
+				return err
+			}
+			if n == 1 {
+				hosts = append(hosts, h)
+			}
+		}
+		mcp := p.Tools || p.Cluster || len(hosts) > 0
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO runs (id, provider, prompt, status, role, incident_id, head_sha, automatic, created_at)
-			VALUES (?, ?, ?, 'queued', 'responder', ?, ?, ?, ?)`,
-			id, p.Provider, p.Prompt, p.IncidentID, p.HeadSHA, automatic, formatTS(p.Now)); err != nil {
+			INSERT INTO runs (id, provider, prompt, status, role, incident_id, head_sha, automatic, mcp, cluster, host_count, created_at)
+			VALUES (?, ?, ?, 'queued', 'responder', ?, ?, ?, ?, ?, ?, ?)`,
+			id, p.Provider, p.Prompt, p.IncidentID, p.HeadSHA, automatic, flagInt(mcp), flagInt(p.Cluster), len(hosts), formatTS(p.Now)); err != nil {
 			return err
+		}
+		for _, h := range hosts {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO run_hosts (run_id, host_id) VALUES (?, ?)`, id, h); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE incidents SET state = 'diagnosing', run_id = ?, last_diagnosis_at = ?, diagnoses = diagnoses + ?
@@ -184,20 +211,22 @@ func (s *Store) logRunActivity(ctx context.Context, tx *sql.Tx, incidentID int64
 	return insertActivity(ctx, tx, act)
 }
 
-// ListAutoCandidates returns the incidents an automatic diagnosis may pick now, oldest first: a real
-// failure that is open (or diagnosed for an older commit), in an enabled repo, below the per-incident cap
-// and past the cooldown. The daily limit and "one run at a time" are checked by StartDiagnosis.
-//
-// An incident of another source has no repository, so the join with an enabled repository leaves it out: the responder does
-// not handle those sources until plan 2d-3 lifts this.
-func (s *Store) ListAutoCandidates(ctx context.Context, now time.Time, l DiagnosisLimits) ([]Incident, error) {
+// ListAutoCandidates returns the incidents an automatic diagnosis may pick now, oldest first. A GitHub incident is a real failure
+// that is open (or diagnosed for an older commit) in an enabled repository. An incident of the Alertmanager source is open, may be
+// diagnosed on its own and was seen at most freshFor ago (a stale one belongs to a source that is switched off or was changed); a
+// diagnosed alert is not diagnosed again on its own. Incidents of other sources are never candidates. Every candidate is below the
+// per-incident cap and past the cooldown. The daily limit and "one run at a time" are checked by StartDiagnosis.
+func (s *Store) ListAutoCandidates(ctx context.Context, now time.Time, l DiagnosisLimits, freshFor time.Duration) ([]Incident, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+incidentCols+incidentFrom+`
 		WHERE i.auto_diagnose = 1
-		  AND (i.state = 'open' OR (i.state = 'diagnosed' AND i.head_sha <> i.diagnosed_sha))
+		  AND i.source IN ('github', 'alertmanager')
+		  AND (i.state = 'open' OR (i.state = 'diagnosed' AND i.source = 'github' AND i.head_sha <> i.diagnosed_sha))
 		  AND i.diagnoses < ?
 		  AND (i.last_diagnosis_at IS NULL OR i.last_diagnosis_at <= ?)
-		  AND r.enabled = 1
-		ORDER BY i.first_seen, i.id LIMIT 20`, l.MaxPerIncident, formatTS(now.Add(-l.Cooldown)))
+		  AND (i.source <> 'github' OR r.enabled = 1)
+		  AND (i.source = 'github' OR i.last_seen >= ?)
+		ORDER BY i.first_seen, i.id LIMIT 20`,
+		l.MaxPerIncident, formatTS(now.Add(-l.Cooldown)), formatTS(now.Add(-freshFor)))
 	if err != nil {
 		return nil, err
 	}

@@ -109,6 +109,8 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		Key:        cfg.MasterKey,
 		NewSource:  func(token secret.Value) responder.Source { return reader(token) },
 		LimitsFunc: set.DiagnosisLimits,
+		// An alert incident must have been seen within three polls (at least ten minutes) to be diagnosed on its own.
+		AlertFresh: func() time.Duration { return max(10*time.Minute, 3*set.Duration(settings.PollInterval)) },
 		Log:        log,
 	}
 	// One configuration, with the live allowlist, for the writer, the action tools and the capabilities: the tool, the
@@ -116,6 +118,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	cluster := cfg.Cluster
 	cluster.Namespaces = func() []string { return set.List(settings.K8sWriteNamespaces) }
 	kubeReader, kubeWriter := clusterClients(cluster, log)
+	diagnoser.ClusterEnabled = func() bool { return kubeReader != nil }
 	if kubeWriter != nil && len(set.List(settings.K8sWriteNamespaces)) == 0 {
 		log.Warn("cluster actions are on but the allowlist is empty: every action is refused until a namespace is set (REMEDY_K8S_WRITE_NAMESPACES or the Setup page)")
 	}
@@ -132,6 +135,8 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		Store: st,
 		Tools: tools,
 		Log:   log,
+		// An approval nobody decides in an automatic run expires after this long (0: never).
+		ApprovalTimeout: func() time.Duration { return set.Duration(settings.AutoApprovalTimeout) },
 	})
 	// The requests that waited for an approval died with the previous process; nobody can receive their results.
 	if n, err := st.AbandonAllWaiting(context.Background()); err != nil {
@@ -141,6 +146,9 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	}
 
 	sigs := signalRunner(cfg, st, engine, set, log)
+	// The same responder as the poller's hook: an alert is diagnosed with no GitHub connection, in which case the poller's cycle
+	// stops before its hook. Both hooks may run at once; the responder keeps its limits inside one store transaction.
+	sigs.AfterCycle = diagnoser.AutoStart
 
 	deps := server.Deps{
 		Store:        st,

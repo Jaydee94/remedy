@@ -16,8 +16,9 @@ CLIs (Claude Code, Antigravity CLI), without API tokens.
 > fix), on its own within limits or by a click. Agents get tools through an MCP gatekeeper: reading is free,
 > and every action (a note on an incident, a restart, a deleted pod, an Argo CD sync) waits for your approval.
 > The web UI is a conversation: Remedy speaks in the first person and one incident is one thread you can ask
-> questions in. An Alertmanager can be connected too: its active alerts become incidents, mapped to your hosts (shown,
-> not diagnosed yet). The fixer (a branch and a pull request), the diagnosis of Alertmanager incidents, the Argo CD
+> questions in. An Alertmanager can be connected too: its active alerts become incidents, mapped to your hosts, and
+> are diagnosed like the failed checks (a read-only run with the cluster tools and the tools of the mapped host; the real
+> run with the real CLI is not made yet). The fixer (a branch and a pull request), the Argo CD
 > source and the learning graph come next (see [`docs/design.md`](docs/design.md), [`docs/specs/`](docs/specs/) and
 > [`docs/plans/`](docs/plans/)).
 
@@ -158,8 +159,13 @@ is only its default) and, if it needs one, a bearer token. The token is sealed w
 reads only (`GET /api/v2/alerts`), turns every active alert except `Watchdog` and `InfoInhibitor` into an incident and resolves it when the
 alert is gone from a complete answer; an Alertmanager that does not answer resolves nothing. To tell Remedy which host an alert is about,
 write rules in the field "Alerts of this host" on the host's page, one per line in Alertmanager's matcher syntax; all lines must hold. For a NAS
-whose alerts carry `instance="ugreen-nas"`: `instance=~"ugreen-nas(:[0-9]+)?"`. **These incidents are shown and mapped, but not diagnosed yet**
-(the responder for outages is the next cycle). See [`docs/runbook/alertmanager.md`](docs/runbook/alertmanager.md).
+whose alerts carry `instance="ugreen-nas"`: `instance=~"ugreen-nas(:[0-9]+)?"`. **These incidents are diagnosed too:** on its own for a
+young `critical` or `warning` alert (one that started less than "Oldest alert I diagnose on my own" ago, 1 hour by default, and that Remedy saw in the last 10 minutes
+or three polls), by **Diagnose** in its thread otherwise. The run reads with the cluster tools (when the cluster is set up) and the tools of the host the alert is mapped
+to, and answers with a cause, a confidence, a category and what it read. Any change it asks for waits for you under **Needs you**; in an automatic run the approval
+expires after "How long I wait for an approval in an automatic run" (15 minutes by default, `REMEDY_AUTO_APPROVAL_TIMEOUT`, `0` means without a limit): the action is then
+not run and stays a proposal in the diagnosis. A run you start yourself always waits. `dev/fakealertmanager` serves a file as an Alertmanager for a look without one;
+[`docs/runbook/outage-real-run.md`](docs/runbook/outage-real-run.md) is the runbook of the real run, which has not been made. See [`docs/runbook/alertmanager.md`](docs/runbook/alertmanager.md).
 
 ### Cluster access (optional)
 

@@ -65,6 +65,7 @@ const kindDots: Record<string, string> = {
   approval_requested: 'bg-primary',
   approval_decided: 'bg-neutral',
   approval_abandoned: 'bg-neutral',
+  approval_expired: 'bg-neutral',
   note_added: 'bg-primary',
   run_cancelled: 'bg-neutral',
   cluster_action: 'bg-violet',
