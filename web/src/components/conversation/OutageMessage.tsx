@@ -53,7 +53,7 @@ export default function OutageMessage({ diagnosis: d, runId, busy, onDiagnoseAga
         <Section title="What went wrong">
           <p className={cn(bodyClass, 'text-foreground/90')}>{d.cause}</p>
         </Section>
-        {d.affected.length > 0 && (
+        {Array.isArray(d.affected) && d.affected.length > 0 && (
           <Section title="What it touches">
             <ul role="list" className="m-0 flex list-none flex-wrap gap-1.5 p-0">
               {d.affected.map((a, i) => (

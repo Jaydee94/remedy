@@ -217,7 +217,9 @@ export default function IncidentThreadPage({ id }: { id: number }) {
               <p className="font-serif text-[17px] leading-normal text-pretty">I can't diagnose incidents from {item.sourceLabel} yet.</p>
             ) : (
               <>
-                <p className="font-serif text-[17px] leading-normal text-pretty">{undiagnosedText[item.reason]}</p>
+                <p className="font-serif text-[17px] leading-normal text-pretty">
+                  {item.reason === 'manual' && inc.source !== 'github' ? "I don't diagnose this on my own. You can ask me to look at it." : undiagnosedText[item.reason]}
+                </p>
                 {diagnoseError && (
                   <span role="alert" className="text-[13px] text-destructive">
                     {diagnoseError}

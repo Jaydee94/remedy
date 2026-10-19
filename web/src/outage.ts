@@ -1,5 +1,4 @@
 import type { AnyDiagnosis, OutageDiagnosis, ToolCall } from './api.ts'
-import { duration } from './setup.ts'
 
 export function isOutage(d: AnyDiagnosis): d is OutageDiagnosis {
   return 'affected' in d && 'proposed_action' in d
@@ -28,5 +27,11 @@ export function actionText(d: OutageDiagnosis): { none: boolean; text: string } 
 export function expiryText(call: ToolCall, now: number): string {
   if (!call.expiresAt || call.decision !== 'pending') return ''
   const seconds = Math.round((Date.parse(call.expiresAt) - now) / 1000)
-  return seconds > 0 ? `I stop waiting in ${duration(seconds)}.` : ''
+  if (!(seconds > 0)) return '' // also an invalid date (NaN)
+  // Whole minutes, rounded up, from a minute on: the clock ticks at arbitrary moments, so exact seconds would jump about.
+  if (seconds >= 60) {
+    const minutes = Math.ceil(seconds / 60)
+    return `I stop waiting in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`
+  }
+  return `I stop waiting in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`
 }
