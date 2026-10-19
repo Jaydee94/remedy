@@ -15,11 +15,13 @@ type env struct {
 	e    *incident.Engine
 	st   *store.Store
 	repo store.Repo
+	path string // the database file, for a test that changes a row the store has no method for
 }
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	path := filepath.Join(t.TempDir(), "test.db")
+	st, err := store.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +36,7 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &env{e: &incident.Engine{Store: st}, st: st, repo: repo}
+	return &env{e: &incident.Engine{Store: st}, st: st, repo: repo, path: path}
 }
 
 func (v *env) obs(class incident.Class, ref, check, sha, conclusion string) incident.Observation {

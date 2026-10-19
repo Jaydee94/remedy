@@ -375,6 +375,9 @@ func (c *clusterTools) events() Tool {
 	}
 }
 
+// logGoneHint follows the kubelet's text for a log that is gone, and points to where the end of the container is recorded.
+const logGoneHint = "The cluster no longer has this log. How the container ended is in the lastState of cluster_describe."
+
 func (c *clusterTools) podLogs() Tool {
 	type args struct {
 		Namespace string `json:"namespace"`
@@ -433,7 +436,12 @@ func (c *clusterTools) podLogs() Tool {
 			if strings.TrimSpace(log) == "" {
 				return head + ":\n(the log is empty)", nil
 			}
-			return head + ":\n" + log, nil
+			out := head + ":\n" + log
+			if strings.HasPrefix(strings.TrimSpace(log), "unable to retrieve container logs") {
+				// The kubelet answers 200 with this text when it no longer has the log (a previous log that was rotated away).
+				out += "\n" + logGoneHint
+			}
+			return out, nil
 		},
 	}
 }

@@ -25,7 +25,7 @@ with CLI 2.1.303. Nothing had to be changed.
 
 ## The runs
 
-Durations are `startedAt` to `finishedAt` of the run. No run reported a cost (`cost` is empty in the API).
+Durations are `startedAt` to `finishedAt` of the run. The cost of each run is in the API as `costUsd` (0.018 to 0.062 USD per run, 0.33 USD for the nine; notional).
 
 | # | Alert (real Alertmanager) | What was wrong | Tools the agent called | Time | Answer |
 |---|---|---|---|---|---|
@@ -59,28 +59,48 @@ What was checked and held:
 
 ## Surprises and findings
 
-1. **In an automatic run the agent proposes a change instead of asking for it, unless something tells it that this is the known fix.** Run 3 was
-   `high` confidence and wrote "I have not requested the restart"; it only called `cluster_rollout_restart` when the alert carried a `runbook`
-   annotation (runs 4 and 5). That is cautious and fits "a human always decides", but it means approvals of automatic runs are rare in practice, and
-   the expiry only matters when the alert's own text points at an action. Whether the instructions of `prompt.Outage` should be sharper is a decision
-   for the maintainer.
-2. **The approval of an automatic run has no incident.** `incidentId` is empty on the approval of `cluster_rollout_restart` (runs 4 and 5): the call's
-   incident comes only from the incident tools' own argument. So the card on Needs you has no "Incident #N" link, and the thread of the incident
-   does not show the question (`web/src/thread.ts` lists an ask only when `call.incidentId` equals the incident or the call belongs to a question run). The
-   answered question is therefore visible only on Needs you and in the activity feed. Fix (not made): `BeginToolCall` takes the run's `incident_id`
-   when the call has none.
-3. **A restarted Alertmanager re-delivers what is posted again and Remedy opens new incidents.** After the resolve, the two alerts that were posted again
-   (to record the answer) opened incidents 8 and 9, which started two more automatic runs: each resolved incident that fires again is a new incident and a
-   new run. The daily cap (20) bounds it; a flapping alert costs a run per flap. Known and accepted in the spec; seen here for real.
-4. **`cluster_pod_logs` with `previous=true` returned nothing usable for a crash-looping pod** (run 1): the agent said so and described the command
-   from the spec instead. Worth a look at the tool; not tested further.
-5. **No cost is shown** for any run, so the quota use of this record is unknown. Nine runs were made, seven of them looked at: 9 to 77 seconds each.
-6. The unexpected fast part: none of the runs took more than 25 seconds of agent time (run 4's 77 s is the one-minute wait).
+Findings 1 to 5 were all dealt with the same day (PR "fix: follow-ups of the real run"); the control run after the fixes is below.
+
+1. **In an automatic run the agent proposed a change instead of asking for it, unless the alert's text pointed at the fix.** Run 3 was `high` confidence
+   and wrote "I have not requested the restart"; it only called `cluster_rollout_restart` when the alert carried a `runbook` annotation (runs 4 and 5).
+   *Fixed:* `prompt.Outage` now tells the agent to ask for exactly one fixing action when one of its tools can make it (a restart, a pod deletion, a
+   `host_change`), says that nothing happens before the maintainer approves, and keeps fixes the tools cannot make (a manifest) in `proposed_action`
+   only. Control run: it asks without any runbook hint, and does not ask when the evidence shows no clear fix (see below).
+2. **The approval of an automatic run had no incident.** `incidentId` was empty on the approval of `cluster_rollout_restart` (runs 4 and 5), so the card on
+   Needs you had no "Incident #N" link and the thread did not show the question (`web/src/thread.ts`). *Fixed:* `BeginToolCall` gives a call the run's
+   incident when it names none. Control run: every call of the run, reads included, and the approval carry `incidentId`; the thread shows "Approved
+   cluster_rollout_restart on incident #1: …" and "Restarted deployment demo/api".
+3. **A restarted Alertmanager that re-delivers alerts opened new incidents and new automatic runs.** After the resolve, the two alerts posted again
+   opened incidents 8 and 9 and two more runs. *Fixed:* a non-GitHub incident that is opened while a resolved incident of the same key was diagnosed
+   within the last hour (`incident.ReopenQuiet`) is opened with `auto_diagnose` false; it is shown, and "Diagnose" works. Control run: the resolved
+   `NodeExporterDown` incident fired again, incident 4 opened with `auto=false` ("it was diagnosed recently; I do not diagnose it again on my own") and no
+   run started.
+4. **`cluster_pod_logs` with `previous=true` returned nothing usable for a crash-looping pod** (run 1). Not a Remedy defect: the cluster itself answered
+   "unable to retrieve container logs for containerd://…" (the kubelet no longer had the previous container). *Changed:* the tool adds one line after that
+   text, "The cluster no longer has this log. How the container ended is in the lastState of cluster_describe." Covered by a test only; the situation did
+   not come up again in the control run.
+5. ~~No cost is shown for any run.~~ **That was a mistake of the first version of this record:** the API field is `costUsd` (the run table's `cost_usd`),
+   not `cost`. The nine runs of the first round cost 0.33 USD in total (notional, the subscription is not billed per run): 0.018 to 0.062 per run.
+6. None of the runs took more than 25 seconds of agent time (run 4's 77 s is the one-minute wait).
+
+## The control run after the fixes
+
+Same setup (a fresh kind cluster, a fresh SSH testbed, a real Alertmanager 0.34.1, the same CLI), built from the branch with the three fixes; this time the
+SSH testbed's `systemctl` and `journalctl` were made stateful (a unit stays `failed` until it is restarted) so that a host change has something to fix.
+
+| # | Alert | What was wrong | What happened | Cost |
+|---|---|---|---|---|
+| A | `KubeDeploymentReplicasMismatch`, **no runbook hint**, the container log says the instance stays unready until restarted | `demo/api` has no ready pod (its readiness file was deleted) | the agent read the pods, the deployment and the log, **asked for `cluster_rollout_restart`** (an approval card with `incidentId` 1 and a 1-minute deadline); approved 0.1 s after it was asked: the restart ran once, the pod was replaced; the answer says "which I requested and the maintainer approved" and names the lasting fix (the manifest) it cannot make | 0.070 USD |
+| B | `ContainerHighMemory` for the container `remedy-drill` | nothing visible: the fake docker shows a running container, host memory is free | `host_list`, `docker ps -a`, `docker inspect`, `docker logs`, `free -m`; **did not ask for a restart** (low confidence, "restart only if it starts getting OOM-killed"): correct, there was no clear fix | 0.059 USD |
+| C | `NodeExporterDown` | `node_exporter.service` failed (the journal says the port is in use) | `systemctl status`, `journalctl`, `ss -tln`, then **`host_change` `systemctl restart node_exporter.service`**, approved: it ran through `sudo -n` over real SSH, the unit is `active`, and the agent checked with `systemctl is-active` and wrote it down; activity feed: "Ran systemctl restart node_exporter.service on ssh-testbed" | 0.033 USD |
+| D | `NodeExporterDown` again, after it was resolved | (re-fired) | incident 4 opened with `auto=false`, no run | 0 |
+
+So `host_change` is now proven with the real CLI, too: the approval showed the argv, the command ran as root through the sudoers rule of the testbed, and the
+result reached the agent. The three runs cost 0.16 USD together.
 
 ## What was not covered
 
-The chart's in-cluster runner with an outage (the dummy setup cannot reach the SSH testbed, and the NetworkPolicy blocks a private Alertmanager), a `host_change`
-approval (the agent never asked for one), the home server, a real Prometheus with real rules, and any run with `auto_approval_timeout` at its default.
+The chart's in-cluster runner with an outage (the dummy setup cannot reach the SSH testbed, and the NetworkPolicy blocks a private Alertmanager), a `host_change` that is refused or expires (the control run only approved one), the home server, a real Prometheus with real rules, and any run with `auto_approval_timeout` at its default.
 
 ## The recording
 
