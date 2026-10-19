@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/Jaydee94/remedy/internal/skill"
 	"github.com/Jaydee94/remedy/internal/store"
@@ -364,5 +365,227 @@ func TestDeletingAHostDeletesItsProposalsToo(t *testing.T) {
 	}
 	if first := activitySummaries(t, s)[0]; first != "Host nas removed; 2 skills removed with it" {
 		t.Errorf("activity = %q", first)
+	}
+}
+
+func TestRedactionThatLengthensADescriptionCutsItInsteadOfRefusingTheSet(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	nas := hostNamed(t, s, "nas")
+
+	desc := strings.TrimSpace(strings.Repeat("token=ab ", 21)) // 188 characters; redacted it is far longer than 200
+	if n := len([]rune(desc)); n > skill.MaxDescriptionRunes {
+		t.Fatalf("the test text has %d characters", n)
+	}
+	got, err := s.CreateProposals(ctx, store.ProposalSet{HostID: nas.ID, Items: []store.Proposal{
+		{Fields: skill.Fields{Name: "lengthened", Description: desc, Body: "b"}},
+		{Fields: skillFields("other")},
+	}})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("CreateProposals = %+v, %v; a text that redaction lengthened must be cut, not refused", got, err)
+	}
+	if n := len([]rune(got[0].Description)); n == 0 || n > skill.MaxDescriptionRunes || strings.Contains(got[0].Description, "=ab") || got[0].Description != strings.TrimSpace(got[0].Description) {
+		t.Errorf("stored description (%d characters) = %q", n, got[0].Description)
+	}
+}
+
+func TestRedactionThatLengthensABodyCutsItAtARuneBoundary(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	nas := hostNamed(t, s, "nas")
+
+	long := strings.TrimSpace(strings.Repeat("password=x ", 744)) // 8183 bytes
+	got, err := s.CreateProposals(ctx, store.ProposalSet{HostID: nas.ID, Items: []store.Proposal{{Fields: skill.Fields{Name: "long", Description: "d", Body: long}}}})
+	if err != nil {
+		t.Fatalf("a body that redaction lengthened = %v", err)
+	}
+	if b := got[0].Body; len(b) > skill.MaxBodyBytes || len(b) < 8000 || strings.Contains(b, "password=x") || !utf8.ValidString(b) {
+		t.Errorf("stored body has %d bytes, valid utf-8 %v", len(b), utf8.ValidString(b))
+	}
+
+	// the cut falls in the middle of a two-byte character: the cut moves back to its start
+	multi := strings.Repeat("password=x ", 10) + "a" + strings.Repeat(string(rune(0xE9)), 4040) // 8191 bytes raw, 8281 redacted
+	got, err = s.CreateProposals(ctx, store.ProposalSet{HostID: nas.ID, Items: []store.Proposal{{Fields: skill.Fields{Name: "multi", Description: "d", Body: multi}}}})
+	if err != nil {
+		t.Fatalf("a multi-byte body that redaction lengthened = %v", err)
+	}
+	if b := got[0].Body; len(b) > skill.MaxBodyBytes || len(b) < 8180 || !utf8.ValidString(b) {
+		t.Errorf("stored body has %d bytes, valid utf-8 %v", len(b), utf8.ValidString(b))
+	}
+}
+
+func TestATextThatIsTooLongAsSentIsStillRefusedWithItsOwnLength(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	nas := hostNamed(t, s, "nas")
+	var fe *skill.FieldError
+	_, err := s.CreateProposals(ctx, store.ProposalSet{HostID: nas.ID, Items: []store.Proposal{{Fields: skill.Fields{Name: "x", Description: strings.Repeat("a", 201), Body: "b"}}}})
+	if !errors.As(err, &fe) || fe.Field != "description" || !strings.Contains(fe.Msg, "at most 200") {
+		t.Errorf("a description of 201 characters = %v", err)
+	}
+	_, err = s.CreateProposals(ctx, store.ProposalSet{HostID: nas.ID, Items: []store.Proposal{{Fields: skill.Fields{Name: "x", Description: "d", Body: strings.Repeat("a", skill.MaxBodyBytes+1)}}}})
+	if !errors.As(err, &fe) || fe.Field != "body" || !strings.Contains(fe.Msg, "8 KB") {
+		t.Errorf("a body of 8 KB and a byte = %v", err)
+	}
+	if len(proposals(t, s)) != 0 {
+		t.Error("a refused text was stored")
+	}
+}
+
+func TestEvidenceIsBoundedAndRedactedAtTheStore(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	nas := hostNamed(t, s, "nas")
+
+	var many []skill.Evidence
+	for i := 0; i < 15; i++ {
+		argv := []string{strings.Repeat("x", 500)}
+		for j := 0; j < 19; j++ {
+			argv = append(argv, "w")
+		}
+		many = append(many, skill.Evidence{Argv: argv, Ran: i%2 == 0})
+	}
+	many = append(many[:1], append([]skill.Evidence{{Argv: []string{"export", "PASSWORD=hunter2hunter2"}, Ran: true}}, many[1:]...)...)
+	got, err := s.CreateProposals(ctx, store.ProposalSet{HostID: nas.ID, Items: []store.Proposal{{Fields: skillFields("evidence"), Evidence: many}}})
+	if err != nil {
+		t.Fatalf("too much evidence must be cut, not refused: %v", err)
+	}
+	ev := got[0].Evidence
+	if len(ev) != 10 {
+		t.Fatalf("%d evidence entries, want 10", len(ev))
+	}
+	if len(ev[0].Argv) != 12 || len([]rune(ev[0].Argv[0])) != 200 || !ev[0].Ran {
+		t.Errorf("first entry = %d words, first word %d characters, ran %v", len(ev[0].Argv), len([]rune(ev[0].Argv[0])), ev[0].Ran)
+	}
+	if ev[1].Argv[0] != "export" || strings.Contains(ev[1].Argv[1], "hunter2hunter2") || !strings.HasPrefix(ev[1].Argv[1], "PASSWORD=") || !ev[1].Ran {
+		t.Errorf("the entry with a secret = %q, ran %v", ev[1].Argv, ev[1].Ran)
+	}
+	if ev[2].Ran {
+		t.Error("Ran was changed")
+	}
+	again, err := s.GetSkill(ctx, got[0].ID)
+	if err != nil || len(again.Evidence) != 10 || strings.Contains(again.Evidence[1].Argv[1], "hunter2hunter2") {
+		t.Errorf("the stored evidence = %+v, %v", again.Evidence, err)
+	}
+}
+
+func TestConfirmAndRejectAfterTheHostWasDeletedAreNotFound(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	nas := hostNamed(t, s, "nas")
+	got := propose(t, s, nas.ID, "a", "b")
+	if err := s.DeleteHost(ctx, nas.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ConfirmSkill(ctx, got[0].ID, nil); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("Confirm after the host was deleted = %v", err)
+	}
+	if err := s.RejectSkill(ctx, got[1].ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("Reject after the host was deleted = %v", err)
+	}
+}
+
+func TestConfirmingAReplacingProposalTwiceIsNotFoundTheSecondTime(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	nas := hostNamed(t, s, "nas")
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
+	p := propose(t, s, nas.ID, "paperless")[0]
+	if _, err := s.ConfirmSkill(ctx, p.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ConfirmSkill(ctx, p.ID, nil); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("the second confirmation = %v, want ErrNotFound (the proposal row is gone)", err)
+	}
+	if got, _ := s.GetSkill(ctx, old.ID); got.State != store.SkillActive {
+		t.Errorf("the replaced skill = %+v", got)
+	}
+}
+
+func TestAReplacingConfirmationWithoutAnEditAppliesTheProposalsText(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	nas := hostNamed(t, s, "nas")
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
+	p := propose(t, s, nas.ID, "paperless")[0]
+
+	got, err := s.ConfirmSkill(ctx, p.ID, nil)
+	if err != nil || got.ID != old.ID || got.Description != p.Description || got.Body != p.Body || len(got.Evidence) != 1 {
+		t.Fatalf("confirmed = %+v, %v", got, err)
+	}
+}
+
+func TestAReplacingConfirmationNeverOverwritesASkillThatWasRenamedMeanwhile(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	nas := hostNamed(t, s, "nas")
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
+	p := propose(t, s, nas.ID, "paperless")[0]
+	if p.ReplacesID != old.ID {
+		t.Fatalf("the proposal replaces %d, want %d", p.ReplacesID, old.ID)
+	}
+	if _, err := s.UpdateSkill(ctx, old.ID, skill.Fields{Name: "paperless-ngx", Description: "Renamed.", Body: "Renamed body."}, store.SkillActive); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.ConfirmSkill(ctx, p.ID, nil)
+	if err != nil || got.ID != p.ID || got.Name != "paperless" || got.State != store.SkillActive {
+		t.Fatalf("confirmed = %+v, %v; the proposal becomes a skill of its own", got, err)
+	}
+	if kept, _ := s.GetSkill(ctx, old.ID); kept.Name != "paperless-ngx" || kept.Body != "Renamed body." || kept.Origin != store.SkillOriginWritten {
+		t.Errorf("the renamed skill was overwritten: %+v", kept)
+	}
+}
+
+func TestAReplacingConfirmationRefusesWhenTheRenamedSkillsOldNameIsTakenAgain(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	nas := hostNamed(t, s, "nas")
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
+	p := propose(t, s, nas.ID, "paperless")[0]
+	if _, err := s.UpdateSkill(ctx, old.ID, skillFields("paperless-ngx"), store.SkillActive); err != nil {
+		t.Fatal(err)
+	}
+	mine, err := s.CreateSkill(ctx, nas.ID, skill.Fields{Name: "paperless", Description: "Mine.", Body: "My own note."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ConfirmSkill(ctx, p.ID, nil); !errors.Is(err, store.ErrExists) {
+		t.Fatalf("Confirm = %v, want ErrExists", err)
+	}
+	if got, _ := s.GetSkill(ctx, mine.ID); got.Body != "My own note." {
+		t.Errorf("the maintainer's skill was changed: %+v", got)
+	}
+}
+
+func TestAReplacingConfirmationAppliesTheProposalsTextOverAnEditMadeMeanwhile(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	nas := hostNamed(t, s, "nas")
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
+	p := propose(t, s, nas.ID, "paperless")[0]
+	if _, err := s.UpdateSkill(ctx, old.ID, skill.Fields{Name: "paperless", Description: "Edited later.", Body: "Edited later body."}, store.SkillActive); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ConfirmSkill(ctx, p.ID, nil)
+	if err != nil || got.ID != old.ID || got.Body != p.Body || got.Description != p.Description {
+		t.Fatalf("confirmed = %+v, %v; the text the maintainer reviewed is the proposal's", got, err)
+	}
+}
+
+func TestProposalWithReplacedReturnsBothInOneRead(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	nas := hostNamed(t, s, "nas")
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
+	got := propose(t, s, nas.ID, "paperless", "fresh")
+
+	p, replaced, err := s.ProposalWithReplaced(ctx, got[0].ID)
+	if err != nil || p.ID != got[0].ID || p.State != store.SkillProposed || replaced == nil || replaced.ID != old.ID || replaced.Body != old.Body {
+		t.Fatalf("ProposalWithReplaced = %+v, %+v, %v", p, replaced, err)
+	}
+	if p, replaced, err := s.ProposalWithReplaced(ctx, got[1].ID); err != nil || p.Name != "fresh" || replaced != nil {
+		t.Errorf("a proposal that replaces nothing = %+v, %+v, %v", p, replaced, err)
+	}
+	if _, err := s.UpdateSkill(ctx, old.ID, skillFields("renamed"), store.SkillActive); err != nil {
+		t.Fatal(err)
+	}
+	if _, replaced, err := s.ProposalWithReplaced(ctx, got[0].ID); err != nil || replaced != nil {
+		t.Errorf("after the replaced skill was renamed = %+v, %v; it is no longer what the proposal replaces", replaced, err)
+	}
+	if _, _, err := s.ProposalWithReplaced(ctx, 999); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("an unknown id = %v", err)
+	}
+	if _, _, err := s.ProposalWithReplaced(ctx, old.ID); !errors.Is(err, store.ErrSkillState) {
+		t.Errorf("a skill that is not a proposal = %v", err)
 	}
 }
