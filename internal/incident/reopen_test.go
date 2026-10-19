@@ -129,6 +129,7 @@ func TestAnObservationThatIsNotAutomaticStaysNotAutomatic(t *testing.T) {
 func TestAGitHubIncidentThatRecursAfterADiagnosisIsNotAffected(t *testing.T) {
 	v := newEnv(t)
 	bad := v.obs(incident.Bad, "pr:7", "build", "abc", "failure")
+	bad.AutoDiagnose = true // so that the source check, not the missing flag, is what keeps the rule away from GitHub
 	v.observeSignal(t, bad)
 	v.setDiagnosedAt(t, time.Now().Add(-time.Minute))
 	green := v.obs(incident.Green, "pr:7", "build", "abc", "success")

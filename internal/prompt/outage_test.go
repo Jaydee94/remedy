@@ -78,7 +78,7 @@ func TestTheInstructionsTellTheAgentToAskForTheFixingAction(t *testing.T) {
 	lower := strings.ToLower(outside)
 	// The four ideas, in the order of the paragraph: ask for the fixing action, only one, say it in proposed_action too, never ask twice.
 	last := -1
-	for _, want := range []string{"ask for exactly that one action", "ask for one action only", "proposed_action", "do not ask for the same action again"} {
+	for _, want := range []string{"ask for exactly that one action", "nothing happens before they say yes", "ask for one action only", "proposed_action", "do not ask for the same action again"} {
 		i := strings.Index(lower, want)
 		if i < 0 {
 			t.Errorf("the instructions lack %q:\n%s", want, outside)
