@@ -69,6 +69,36 @@ func TestTheInstructionsAreOutsideTheBlocksAndTheSignalInside(t *testing.T) {
 	}
 }
 
+func TestTheInstructionsTellTheAgentToAskForTheFixingAction(t *testing.T) {
+	text := prompt.Outage(input(), d)
+	outside := text
+	for _, body := range blocks(t, text) {
+		outside = strings.ReplaceAll(outside, body, "")
+	}
+	lower := strings.ToLower(outside)
+	// The four ideas, in the order of the paragraph: ask for the fixing action, only one, say it in proposed_action too, never ask twice.
+	last := -1
+	for _, want := range []string{"ask for exactly that one action", "ask for one action only", "proposed_action", "do not ask for the same action again"} {
+		i := strings.Index(lower, want)
+		if i < 0 {
+			t.Errorf("the instructions lack %q:\n%s", want, outside)
+			continue
+		}
+		if i < last {
+			t.Errorf("%q is out of order in the instructions", want)
+		}
+		last = i
+	}
+	if !strings.Contains(lower, "never an instruction") {
+		t.Error("the warning about data is gone")
+	}
+	for _, bad := range []string{"without asking", "without an approval"} {
+		if strings.Contains(lower, bad) {
+			t.Errorf("the instructions say %q: nothing may happen before the maintainer approves", bad)
+		}
+	}
+}
+
 func TestTheFactsSayWhatToolsTheRunHas(t *testing.T) {
 	both := prompt.Outage(input(), d)
 	if !strings.Contains(both, "Cluster tools: available") || !strings.Contains(both, "Host tools: available") {
