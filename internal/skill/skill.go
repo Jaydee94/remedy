@@ -43,12 +43,16 @@ func (e *FieldError) Error() string { return e.Msg }
 // Fields are the texts of a skill.
 type Fields struct{ Name, Description, Body string }
 
-// hasInvisible reports characters that hide or reorder text: zero-width characters, bidirectional marks and overrides, the byte
-// order mark and the line and paragraph separators. A maintainer who reads a skill as text must be able to trust what he sees.
+// hasInvisible reports characters that hide, reorder or smuggle text: every format character (category Cf: zero-width characters,
+// bidirectional marks, the soft hyphen, the byte order mark, the tag characters U+E0000 to U+E007F), the line and paragraph
+// separators, private use characters, variation selectors and the combining grapheme joiner. A maintainer who reads a skill as text
+// must be able to trust what he sees, and so must the agent that reads it.
 func hasInvisible(s string) bool {
 	for _, r := range s {
 		switch {
-		case r >= 0x200B && r <= 0x200F, r >= 0x2028 && r <= 0x202E, r >= 0x2060 && r <= 0x2064, r >= 0x2066 && r <= 0x2069, r == 0xFEFF:
+		case unicode.Is(unicode.Cf, r), unicode.In(r, unicode.Zl, unicode.Zp, unicode.Co):
+			return true
+		case r >= 0xFE00 && r <= 0xFE0F, r >= 0xE0100 && r <= 0xE01EF, r == 0x034F:
 			return true
 		}
 	}
@@ -99,7 +103,8 @@ func (f Fields) Validate() (Fields, error) {
 }
 
 // Redacted returns f with secrets removed from the description and the body. A learning run saw host output; what it proposes is
-// redacted before it is stored.
+// redacted before it is stored. Callers validate first and validate again (or cut) after redacting: a redaction marker can make a
+// text longer.
 func Redacted(f Fields) Fields {
 	f.Description = redact.Redact(f.Description)
 	f.Body = redact.Redact(f.Body)
