@@ -9,7 +9,6 @@ import (
 const (
 	// maxOutageTitle leaves room for the truncation note that head appends (about 40 characters), so that a title stays within 200.
 	maxOutageTitle = 150
-	maxOutageKey   = 64
 	// maxOutageLabel bounds a whole `key=value` line of a label, maxOutageAnnotation a whole annotation.
 	maxOutageLabel      = 300
 	maxOutageAnnotation = 1000
@@ -99,7 +98,9 @@ func sortedKeys(m map[string]string) []string {
 func keyValues(m map[string]string, max int) string {
 	var lines []string
 	for _, k := range sortedKeys(m) {
-		lines = append(lines, oneLine(oneLine(k, maxOutageKey)+"="+m[k], max))
+		// The key is not cut before the redaction: `<long key>_password=value` must reach the rule whole. The cap of the whole line
+		// bounds it afterwards.
+		lines = append(lines, oneLine(k+"="+m[k], max))
 	}
 	return capEntries(lines, maxOutageEntries, maxOutageLabelsBytes)
 }
@@ -109,7 +110,9 @@ func keyValues(m map[string]string, max int) string {
 func annotations(m map[string]string) string {
 	var lines []string
 	for _, k := range sortedKeys(m) {
-		lines = append(lines, head(removeControl(clean(oneLine(k, maxOutageKey)+": "+m[k])), maxOutageAnnotation))
+		// As in keyValues, the key is cleaned together with the value and bounded by the cap of the whole entry.
+		key := strings.Join(strings.Fields(removeControl(k)), " ")
+		lines = append(lines, head(removeControl(clean(key+": "+m[k])), maxOutageAnnotation))
 	}
 	return capEntries(lines, maxOutageEntries, maxOutageAnnotationBytes)
 }
