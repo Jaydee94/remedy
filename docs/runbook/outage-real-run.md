@@ -18,12 +18,14 @@ The unit tests cannot show four things:
 
 The host tools talk to a host the control plane can reach, and the SSH testbed listens on `127.0.0.1` of this machine. A control plane inside the
 dummy setup's cluster cannot reach it (and its NetworkPolicy blocks private addresses), so use a **local control plane and runner**, as the
-[cluster runbook](cluster-real-run.md) does. The `claude` CLI must be installed and logged in (`claude` once, `/login`; Remedy never reads the login).
+[cluster runbook](cluster-real-run.md) does. The `claude` CLI must be installed and logged in (`claude` once, `/login`; Remedy never reads the login). The first block runs from the root of the checkout, up to the `cd`; after it,
+`<path-to-remedy>` is that root.
 
 ```sh
 dev/kind/up.sh                 # the cluster testbed: demo/web, demo/crashy, ... ; writes ~/remedy-kind/env.sh
 dev/ssh/up.sh                  # the SSH testbed: a container with sshd, sudo and a fake docker; writes ~/remedy-ssh/env.sh
 make web-install && make build
+mkdir -p ~/remedy-outage-run && go build -o ~/remedy-outage-run/fakealertmanager ./dev/fakealertmanager   # all of this from the root of the checkout
 mkdir -p ~/remedy-outage-run && cd ~/remedy-outage-run
 cat > env.sh <<EOF
 export REMEDY_ADMIN_PASSWORD='$(openssl rand -hex 12)'
@@ -60,7 +62,6 @@ cat > alerts.json <<EOF
   "annotations":{"summary":"Pod demo/crashy is crash looping.","description":"Pod demo/crashy restarted 6 times in 15 minutes."}}
 ]
 EOF
-go build -o fakealertmanager <path-to-remedy>/dev/fakealertmanager
 ./fakealertmanager 127.0.0.1:9093 secret-token alerts.json 2> fakealertmanager.log &
 ```
 
@@ -104,4 +105,4 @@ did not fit the table, a prompt the agent did not follow).
 Afterwards, a real recording of the answer of `GET /api/v2/alerts` of the home server should replace the hand-written sample in
 `internal/alertmanager/alertmanagertest/testdata/`. It is read-only (one `GET`), but it is your machine: do it only on your explicit go-ahead.
 
-Stop everything: `kill` the server, the runner and the fake by their process IDs (do not use a loose `pkill -f` pattern), `dev/ssh/down.sh`, `dev/kind/down.sh`.
+Stop everything: `kill` the server, the runner and the fake by their process IDs (do not use a loose `pkill -f` pattern), and, from the root of the checkout, `dev/ssh/down.sh` and `dev/kind/down.sh`.

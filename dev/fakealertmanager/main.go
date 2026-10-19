@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 const alertsPath = "/api/v2/alerts"
@@ -26,7 +27,7 @@ func main() {
 	addr, token, file := os.Args[1], os.Args[2], os.Args[3]
 	log.SetFlags(log.LstdFlags)
 	log.Printf("serving %s at http://%s%s (token check: %t)", file, addr, alertsPath, token != "")
-	srv := &http.Server{Addr: addr, Handler: handler(token, file)}
+	srv := &http.Server{Addr: addr, Handler: handler(token, file), ReadHeaderTimeout: 5 * time.Second}
 	log.Fatal(srv.ListenAndServe())
 }
 

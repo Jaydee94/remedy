@@ -42,6 +42,7 @@ make web-install                                 # npm ci in web/
 cd web && npm run lint                           # oxlint
 cd web && npm test                               # node --test over src/**/*.test.ts: pure logic only, no DOM
 dev/ssh/up.sh                                    # the SSH testbed of the host tools: a container with a real sshd, sudo and a fake docker; writes ~/remedy-ssh/env.sh; see dev/ssh/README.md
+go build -o /tmp/fakealertmanager ./dev/fakealertmanager  # a fake Alertmanager for browser checks and real runs; see dev/fakealertmanager/README.md
 . ~/remedy-ssh/env.sh && go test -tags sshlive ./internal/sshhost -run Live   # talks to it; CHANGES nothing outside the container
 dev/kind/up.sh                                   # the kind testbed for the cluster tools; see dev/kind/README.md
 . ~/remedy-kind/env.sh && go test -tags kind -run Live ./internal/kube   # the read methods against the real testbed

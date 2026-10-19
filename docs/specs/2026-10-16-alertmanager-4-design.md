@@ -184,7 +184,7 @@ Written first, in this order of weight:
 Two plans, each ending with `make check` and a green CI; the second builds on the first.
 
 1. **4a, the source.** The secret kind and the text kind in the registry, the three keys `alertmanager_url`, `alertmanager_token` and `alertmanager_auto_max_age`, `internal/alertmanager` and its fake, `internal/alertmatch`, `internal/signals` and its runner, migration 013 (`hosts.matchers`, `incidents.host_id`),
-   the host routes and page, `GET /api/signals`, the Setup block. At the end alerts are incidents, mapped to hosts, and nothing diagnoses them yet.
+   the host routes and page, `GET /api/signals`, the Setup block. At the end of 4a (historical) alerts are incidents, mapped to hosts, and nothing diagnoses them yet; 4b added the responder.
 2. **4b, the responder.** `ListAutoCandidates` for every source, `StartDiagnosis` options, the claim by source, `prompt.Outage`, `diagnosis.ParseOutage`, the expiry of approvals (`tool_calls.expires_at`) with its setting `auto_approval_timeout`, the outage card, the testbed extension and the real run.
 
 ## 13. Risks
