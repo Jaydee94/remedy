@@ -20,7 +20,7 @@ func TestAClaimWhoseIncidentLookupFailsAnswers500AndFailsTheRun(t *testing.T) {
 		t.Fatalf("diagnose = %d %s", code, body)
 	}
 	// A timestamp that cannot be read makes the lookup of the incident fail, while the run is still claimable.
-	db, err := sql.Open("sqlite", e.dbPath)
+	db, err := sql.Open("sqlite", "file:"+e.dbPath+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}

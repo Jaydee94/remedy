@@ -13,7 +13,7 @@ import (
 // again instead of giving up: the call would stay pending for good, the run's clock paused and the runner held.
 func TestAnExpiryThatFailsIsRetriedUntilItWorks(t *testing.T) {
 	e, in := automaticEnv(t, ms(100))
-	db, err := sql.Open("sqlite", e.dbPath)
+	db, err := sql.Open("sqlite", "file:"+e.dbPath+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}

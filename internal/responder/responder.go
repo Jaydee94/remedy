@@ -323,8 +323,15 @@ func (r *Responder) AutoStart(ctx context.Context) {
 		r.Log.Error("cannot list the incidents to diagnose", "err", err)
 		return
 	}
+	githubUnusable := false
 	for _, in := range candidates {
 		if r.backedOff(in.ID, now) {
+			continue
+		}
+		// Remedy works with Alertmanager alone: GitHub incidents stay in the list after the connection is gone or its token is bad, and
+		// the oldest of them would otherwise stop the loop before it reaches a fresh alert. Once GitHub has been refused, the other
+		// GitHub candidates are not tried (each would only repeat the refusal, with a request to GitHub for a rejected token).
+		if githubUnusable && in.Source == store.SourceGitHub {
 			continue
 		}
 		started, err := r.start(ctx, in.ID, true)
@@ -332,6 +339,9 @@ func (r *Responder) AutoStart(ctx context.Context) {
 		case err == nil:
 			r.Log.Info("diagnosis started", "incident", in.ID, "run", started.ID)
 			return
+		case errors.Is(err, ErrNoConnection) && in.Source == store.SourceGitHub:
+			githubUnusable = true
+			continue
 		case errors.Is(err, store.ErrBusy), errors.Is(err, ErrNoConnection):
 			return
 		case errors.Is(err, store.ErrLimit), errors.Is(err, store.ErrNotDiagnosable), errors.Is(err, store.ErrNotFound):
