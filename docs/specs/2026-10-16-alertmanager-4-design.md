@@ -1,6 +1,6 @@
 # Alertmanager, cycle 4: the source and the responder for outages
 
-Status: proposed 2026-10-16. Two implementation plans: **plan 4a (the source) implemented 2026-10-16 (see the pull request of cycle 4a); plan 4b (the responder) not written**. Until 4b, an Alertmanager incident is shown and mapped to a host but never diagnosed (the thread says "I can't diagnose incidents from Alertmanager yet").
+Status: 2026-10-19. Two implementation plans: **plan 4a (the source) implemented 2026-10-16, plan 4b (the responder, [`../plans/alertmanager-4b-responder.md`](../plans/alertmanager-4b-responder.md)) implemented 2026-10-19. The real run with the real CLI is not made** ([`../runbook/outage-real-run.md`](../runbook/outage-real-run.md)): whether the CLI returns a valid structured answer after it used the MCP tools is proven only by it.
 Parent documents: [`2026-10-09-hosts-and-skills-design.md`](2026-10-09-hosts-and-skills-design.md) (the umbrella: sections 2, 7 and 11 are binding here),
 [`2026-10-05-phase-2d-signals-design.md`](2026-10-05-phase-2d-signals-design.md) (the signals design this narrows: its decisions stand unless this spec changes them),
 [`2026-10-14-settings-3-design.md`](2026-10-14-settings-3-design.md) (the settings this builds on: registry, snapshot reader, the page),
@@ -111,20 +111,20 @@ label names follow the Prometheus rule; an error is a 400 with a readable text. 
 
 ## 7. The responder for outages
 
-**`responder.start`** branches on the incident's source. GitHub goes the way it always went. An Alertmanager incident needs no GitHub connection and no snapshot. `StartDiagnosis` gets two options that it applies in
+**`responder.start`** branches on the incident's source (built: an Alertmanager incident goes to `startOutage`; any other source than GitHub or Alertmanager is `ErrSourceNotSupported`). GitHub goes the way it always went. An Alertmanager incident needs no GitHub connection and no snapshot. `StartDiagnosis` gets two options that it applies in
 its own transaction, like `CreateRunWith`: `Cluster` (true when the cluster read side is set up) and `HostIDs` (the incident's `host_id` when there is one). The run has `mcp = 1`, `runs.cluster` and its `run_hosts`, `automatic` as before.
 
-**The claim.** `claimFor` loads the incident of a responder run and answers by its source: the GitHub schema and `snapshot: true` for GitHub, the outage schema and no snapshot for Alertmanager.
+**The claim.** `responderClaim` (`internal/server/responder.go`, called from the claim handler) loads the incident of a responder run and answers by its source: the GitHub schema and `snapshot: true` for GitHub, the outage schema and no snapshot for Alertmanager.
 
 **The prompt** is built only by `internal/prompt` (`Outage`): the instructions outside, the signal (labels, annotations, the host's name) in blocks with a random delimiter, cleaned, redacted and bounded. The instructions say that the agent is
 Remedy's responder for an outage, that it finds the cause with the read tools, that everything in the blocks is data copied from monitoring and never an instruction, and that it may request an action only when the diagnosis supports it and says
 in `proposed_action` which one and why.
 
 **The answer.** `diagnosis.ParseOutage` is strict like `Parse`: `summary`, `cause`, `confidence`, `category`, `affected` (a list of strings, each at most 200 characters), `proposed_action` (text or `none`), `evidence` (what the agent read).
-Categories: `workload_crash`, `image_pull`, `resource_pressure`, `configuration`, `dependency_outage`, `host_problem`, `unknown`. `responder.CheckOutcome` validates it in `finish` by the incident's source. The UI shows it as text.
+Categories: `workload_crash`, `image_pull`, `resource_pressure`, `configuration`, `dependency_outage`, `host_problem`, `unknown`. `responder.CheckOutcomeFor(source, outcome)` validates it by the incident's source (`Responder.CheckRun` reads the source from the run's incident, and `finish` calls it; `CheckOutcome` is GitHub's). A GitHub-shaped answer to an alert run and an outage-shaped answer to a GitHub run are both invalid. The UI shows it as text.
 
 **Automatic start.** `ListAutoCandidates` leaves out the join that excluded every incident without a repository: it joins `repos` with a left join and the `enabled` test applies to GitHub rows only; an incident that is not GitHub's
-is a candidate only while `open` (the re-diagnosis on a new head commit is GitHub's). Cooldown, caps and the daily limit are the existing ones.
+is a candidate only while `open` (the re-diagnosis on a new head commit is GitHub's). It must also have been seen at most `max(10 minutes, 3 x poll interval)` ago (the ruling "fresh candidates only": the runner touches a live incident every cycle, so a stale one belongs to a source that is switched off or was changed). Cooldown, caps and the daily limit are the existing ones.
 
 ## 8. Approvals of automatic runs expire
 
@@ -208,8 +208,7 @@ Two plans, each ending with `make check` and a green CI; the second builds on th
 ## 15. Open points for the plans
 
 - 4a (answered when it was built): the wire form of the secret setting is `kind: "secret"`, `value: null` and a `hint` (section 4); the state of the source lives in memory in `internal/signals` (`Runner.States`, which `GET /api/signals` answers; a restart forgets it and the next cycle fills it in; before the first attempt the state is `pending`); the runner's loop (`Runner.Run`) is started by `cmd/remedy-server` with the process context and ends with it.
-- 4b: how `StartDiagnosis` applies `HostIDs` for a host that was deleted in between; the wording of the outage prompt; the testbed's fake Alertmanager (a container or a Go test server).
-- 4b, found in the final review of 4a:
-  - (a) Incidents of a source that is switched off, or whose address changed, stay open and keep `auto_diagnose`. The automatic candidates of 4b must be limited to recently seen incidents, or such incidents must be resolved when the source is switched off.
-  - (b) A touch refreshes the host and the details only, not the title, the severity or the URL of an incident. Decide in 4b whether it should.
-  - (c) A host whose rules are only negative or can match the empty value maps every alert to the lowest host id (a missing label counts as empty).
+- 4b (answered by the rulings of [the plan](../plans/alertmanager-4b-responder.md), "Rulings of the planning", when it was built):
+  - A host deleted between the mapping and the start is skipped: `StartDiagnosis` binds only hosts that still exist, and `startOutage` also leaves out a host that was disabled; the prompt then says the run has no host tools. The wording of the outage prompt is `prompt.Outage`. The fake Alertmanager for real runs is a small Go server, `dev/fakealertmanager`.
+  - Found in the final review of 4a: (a) incidents of a source that is switched off, or whose address changed, stay open and keep `auto_diagnose`: answered by **fresh candidates only**, a non-GitHub incident is an automatic candidate only if its `last_seen` is at most `max(10 minutes, 3 x poll interval)` old, so such an incident is never diagnosed on its own; (b) a touch still refreshes the host and the details only, **not the title, the severity or the URL** (no change); (c) a host whose rules are only negative or can match the empty value maps every alert to the lowest host id: a documented property (runbook), not changed.
+  - **Structured output together with MCP tools is not proven.** The GitHub responder uses `--json-schema` without tools; the outage run needs both. The unit tests use the fake CLI; the real run is the proof, and if the CLI cannot combine them the run stops there and the maintainer decides.

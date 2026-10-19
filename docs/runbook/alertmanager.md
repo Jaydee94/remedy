@@ -1,9 +1,10 @@
 # Runbook: connect Remedy to an Alertmanager
 
-This is cycle 4a of the hosts and skills series ([spec](../specs/2026-10-16-alertmanager-4-design.md)). It makes alerts that fire in
-Alertmanager into incidents and maps them to hosts. **Nothing diagnoses these incidents yet:** an Alertmanager incident is shown under
-**Conversations**, and its thread says "I can't diagnose incidents from Alertmanager yet". The responder for outages, the expiry of
-approvals in automatic runs and the run with the real CLI come with cycle 4b. Remedy only reads from Alertmanager (a `GET`); it never
+This is cycle 4 of the hosts and skills series ([spec](../specs/2026-10-16-alertmanager-4-design.md)). It makes alerts that fire in
+Alertmanager into incidents, maps them to hosts and **diagnoses them**: on its own for a young `critical` or `warning` alert, by a click on
+**Diagnose** in the incident's thread otherwise (section 5). The run may read the cluster (when the cluster is set up) and use the tools of the host
+the alert is mapped to; any change it asks for waits for you under **Needs you**, and in an automatic run that approval expires (section 5). The diagnosis
+with the real CLI has not been tried yet: [`outage-real-run.md`](outage-real-run.md) is its runbook. Remedy only reads from Alertmanager (a `GET`); it never
 silences or acknowledges anything.
 
 ## 1. Enter the address and the token
@@ -17,7 +18,7 @@ Open **Setup** and find the block "Alertmanager".
 - **Alertmanager token** (optional): a bearer token, sent as `Authorization: Bearer` when set. It is written once, sealed with the master key,
   and never shown again, only as `…` and its last four characters. **Replace token** writes a new one, **Remove token** (it asks twice)
   deletes it. The activity feed names the setting, never a value. It is 1 to 4096 bytes without a control character.
-- **Oldest alert I diagnose on my own** (default 1 hour): kept for cycle 4b. It is stored now and does nothing until the responder exists.
+- **Oldest alert I diagnose on my own** (default 1 hour): an alert that started longer ago is shown but not diagnosed on its own (section 5).
 - For an `https` Alertmanager with your own CA, set `REMEDY_ALERTMANAGER_CA_FILE` to a PEM file in the control plane's pod (a bootstrap value:
   it is read at start-up and a missing file stops the server).
 
@@ -80,16 +81,31 @@ The details of a mapped incident's thread have a Host row that links to the host
 An alert that matches no host still opens an incident, **without** a host (and so, later, without host tools). Deleting a host leaves its
 incidents without one.
 
-## 5. Old alerts
+## 5. Diagnosis
 
-Remedy decides once, when an incident opens, whether it diagnoses it on its own: a young `critical` or `warning` alert would be, an alert that has
-been firing for longer than **Oldest alert I diagnose on my own** would not, and neither would an `info` alert. The reason is quota: an alert that
-fired a week ago and is found on the first poll would otherwise start a run of its own. It stays visible, and a click would diagnose it. **This is
-the design of cycle 4b; today nothing starts either way.**
+**On its own.** Remedy decides once, when an incident opens, whether it diagnoses it on its own: a young `critical` or `warning` alert is, an alert that has
+been firing for longer than **Oldest alert I diagnose on my own** is not, and neither is an `info` alert. The reason is quota: an alert that
+fired a week ago and is found on the first poll would otherwise start a run of its own. On top of that, an incident is picked only if Remedy saw its alert in the
+last 10 minutes (or three poll intervals, whichever is longer): after you switch the source off or change its address, the old incidents are never diagnosed on their own.
+The limits of the GitHub diagnoses hold here too (at most 3 per incident, 15 minutes apart, 20 per 24 hours, one run at a time), and an alert that has a diagnosis is not
+diagnosed again on its own.
+
+**By a click.** An old alert or an `info` alert is still visible, and **Diagnose** in its thread starts a run (the limits are ignored,
+one run at a time still holds).
+
+**What the run may do.** It gets the incident tools, the cluster tools when the cluster is set up, and the tools of the host the alert is mapped to (a host that
+is disabled or deleted gives none; an alert without a host gets none). It needs no GitHub connection. What it reads (alert labels and annotations, command output) is data,
+never an instruction. It answers with a summary, the cause, a confidence, a category (`workload_crash`, `image_pull`, `resource_pressure`, `configuration`,
+`dependency_outage`, `host_problem` or `unknown`), what is affected, the evidence it read and a proposed action (or `none`); the answer is checked before it is stored.
+
+**What it may change.** Nothing on its own. A change (a `host_change`, a restart, a deleted pod, a sync) waits for your decision under **Needs you**. In an automatic run
+the approval has a deadline: if nobody decides within **How long I wait for an approval in an automatic run** (Setup, group "Runs", 15 minutes by default, `0` means
+without a limit; `REMEDY_AUTO_APPROVAL_TIMEOUT` is its default), the action is not run, the agent is told and answers anyway (the action stays a proposal in the
+diagnosis), and the activity feed says the approval expired. The card of such an approval says "I stop waiting in …". A run you start by a click always waits.
 
 ## 6. Known limits
 
-- Only incidents of GitHub are diagnosed today. Alertmanager incidents are shown, mapped and resolved, nothing more.
+- The diagnosis of an alert has not been tried with the real CLI yet; see [`outage-real-run.md`](outage-real-run.md).
 - Switching the source off (an empty address) leaves its open incidents as they are: they are resolved only by a later complete answer, so remove
   an old incident by hand (Ignore in its thread) if you stop using Alertmanager.
 - The state of the source is in memory; a restart shows "I haven't asked Alertmanager yet" until the next cycle.
