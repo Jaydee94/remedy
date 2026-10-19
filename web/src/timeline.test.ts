@@ -17,6 +17,7 @@ describe('kindDotClass', () => {
     approval_requested: 'bg-primary',
     approval_decided: 'bg-neutral',
     approval_abandoned: 'bg-neutral',
+    approval_expired: 'bg-neutral',
     note_added: 'bg-primary',
     run_cancelled: 'bg-neutral',
     cluster_action: 'bg-violet',
@@ -29,8 +30,8 @@ describe('kindDotClass', () => {
     })
   }
 
-  it('covers all 17 kinds', () => {
-    assert.equal(Object.keys(expected).length, 17)
+  it('covers all 18 kinds', () => {
+    assert.equal(Object.keys(expected).length, 18)
   })
 
   it('falls back to neutral for a kind it does not know', () => {
