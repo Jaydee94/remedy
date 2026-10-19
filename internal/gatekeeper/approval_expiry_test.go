@@ -259,14 +259,15 @@ func TestAnApprovalBeforeTheDeadlineExecutes(t *testing.T) {
 }
 
 func TestAnApprovedCallIsNeverExpiredEvenIfItsDeadlinePassesBeforeItRuns(t *testing.T) {
-	e, _ := automaticEnv(t, ms(100), slowTool(240*time.Millisecond))
+	// Generous margins: the decision comes at about 50 ms of a 400 ms deadline, the tool runs until about 750 ms.
+	e, _ := automaticEnv(t, ms(400), slowTool(700*time.Millisecond))
 	s := e.open(t, "toolu_1", "slow_change", map[string]any{})
 	call := e.pending(t)
-	time.Sleep(60 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	if _, err := e.g.Decide(context.Background(), call.ID, true, "go on"); err != nil {
 		t.Fatalf("Decide: %v (the test needs the decision to arrive before the deadline)", err)
 	}
-	// The deadline passes at 100 ms, while the tool still runs until about 300 ms.
+	// The deadline passes at 400 ms, while the tool still runs.
 	text, isErr := s.result()
 	if isErr || text != "slow done" {
 		t.Fatalf("result = %q (error %v)", text, isErr)
