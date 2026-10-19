@@ -280,6 +280,30 @@ func TestALogTailAndAMissingPod(t *testing.T) {
 	}
 }
 
+// The API server answers 200 with this text when the previous log of a container is gone. The answer keeps it and says where
+// the agent can read how the container ended; a log that is there gets no hint.
+func TestALostPreviousLogGetsAHintAndALogThatIsThereGetsNone(t *testing.T) {
+	const hint = "The cluster no longer has this log. How the container ended is in the lastState of cluster_describe."
+	const lost = "unable to retrieve container logs for containerd://ecbf0b16c35f76697c6641b947dc0043fde3df076bb168b777a3ce9e7adbef44"
+	e := newClusterEnv(t)
+	e.api.SetLog("gone-1", lost)
+	text, isErr := e.ask(t, "cluster_pod_logs", map[string]any{"namespace": "demo", "pod": "gone-1", "previous": true})
+	if isErr {
+		t.Fatal(text)
+	}
+	if !strings.Contains(text, lost) || !strings.Contains(text, hint) {
+		t.Fatalf("the answer lacks the text or the hint: %s", text)
+	}
+	if strings.Index(text, hint) < strings.Index(text, lost) {
+		t.Errorf("the hint is before the log text: %s", text)
+	}
+
+	normal, _ := e.ask(t, "cluster_pod_logs", map[string]any{"namespace": "demo", "pod": kubetest.PodName(t, "chatty"), "container": "chatty"})
+	if strings.Contains(normal, "no longer has this log") {
+		t.Fatalf("a log that is there got the hint: %s", normal)
+	}
+}
+
 func TestNodesAndArgoApplications(t *testing.T) {
 	e := newClusterEnv(t)
 	nodes, _ := e.ask(t, "cluster_nodes", map[string]any{})

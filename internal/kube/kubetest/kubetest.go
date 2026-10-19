@@ -45,12 +45,13 @@ type Server struct {
 	mu       sync.Mutex
 	reqs     []Request
 	failures map[string]failure
+	logs     map[string]string // pod name to the text its log answers with, in place of the recording
 }
 
 // New starts a server that accepts the token. Accept adds another: the read and the write identity have one each.
 func New(t testing.TB, token string) *Server {
 	t.Helper()
-	s := &Server{tokens: map[string]bool{token: true}, failures: map[string]failure{}}
+	s := &Server{tokens: map[string]bool{token: true}, failures: map[string]failure{}, logs: map[string]string{}}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.Close)
 	return s
@@ -68,6 +69,13 @@ func (s *Server) Requests() []Request {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]Request(nil), s.reqs...)
+}
+
+// SetLog makes the log of the pod answer with text (status 200, any container, current or previous), in place of the recording.
+func (s *Server) SetLog(pod, text string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.logs[pod] = text
 }
 
 // Fail makes every request for the path answer with a Status object of the given code.
@@ -246,6 +254,14 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, namespace string
 
 // log serves the recorded logs of the pods of chatty and crashy, tailed like the API server tails them.
 func (s *Server) log(w http.ResponseWriter, r *http.Request, namespace, pod string) {
+	s.mu.Lock()
+	over, overridden := s.logs[pod]
+	s.mu.Unlock()
+	if overridden {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte(over))
+		return
+	}
 	var file string
 	switch {
 	case namespace != "demo":

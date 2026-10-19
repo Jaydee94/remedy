@@ -224,6 +224,16 @@ func (s *Store) BeginToolCall(ctx context.Context, n NewToolCall) (ToolCall, boo
 		}
 
 		incident := n.IncidentID
+		if incident == 0 {
+			// The cluster and host tools name no incident: the call belongs to the incident of its run.
+			var runIncident sql.NullInt64
+			if err := tx.QueryRowContext(ctx, `SELECT incident_id FROM runs WHERE id = ?`, n.RunID).Scan(&runIncident); err != nil {
+				return err
+			}
+			if runIncident.Valid {
+				incident = runIncident.Int64
+			}
+		}
 		if incident != 0 {
 			var one int
 			if err := tx.QueryRowContext(ctx, `SELECT 1 FROM incidents WHERE id = ?`, incident).Scan(&one); errors.Is(err, sql.ErrNoRows) {
