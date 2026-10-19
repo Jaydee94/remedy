@@ -181,6 +181,26 @@ func TestACAFileThatIsNotACertificateIsRefused(t *testing.T) {
 	}
 }
 
+// alertmanager-0.34.1.json is the unedited answer of a real Alertmanager 0.34.1 (a container) to the request the client sends, for two
+// alerts posted to its API: the alerts are made up, the shape of the answer (including the member mutedBy) is not.
+func TestARealAnswerOfAlertmanager0_34IsReadAsItIs(t *testing.T) {
+	raw, err := os.ReadFile("alertmanagertest/testdata/alertmanager-0.34.1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := alertmanagertest.New(t, "")
+	fake.SetBody(raw)
+	got, err := newClient(t, creds(fake.URL, "")).ListAlerts(context.Background())
+	if err != nil || len(got) != 2 {
+		t.Fatalf("%d alerts, %v", len(got), err)
+	}
+	crash := got[0]
+	if crash.Labels["alertname"] != "KubePodCrashLooping" || crash.Labels["severity"] != "critical" || crash.Fingerprint == "" ||
+		crash.StartsAt.IsZero() || crash.Status.State != "active" || crash.Annotations["summary"] == "" || crash.GeneratorURL == "" {
+		t.Errorf("the first alert was not read completely: %+v", crash)
+	}
+}
+
 func TestTheAnswerOfTheHomeServerIsReadAsItIs(t *testing.T) {
 	raw, err := os.ReadFile("alertmanagertest/testdata/home-server.json")
 	if err != nil {

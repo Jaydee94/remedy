@@ -1,6 +1,6 @@
 # Phase 2 (part D): signals and the responder for outages
 
-Status: draft for the maintainer's review, 2026-10-05. Implementation plans: [`phase-2d-1`](../plans/phase-2d-1-incident-model.md), implemented; 2d-2 and 2d-3 are superseded by cycle 4 of the hosts and skills series ([`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md)), whose plans 4a and 4b are implemented (the real run is outstanding).
+Status: draft for the maintainer's review, 2026-10-05. Implementation plans: [`phase-2d-1`](../plans/phase-2d-1-incident-model.md), implemented; 2d-2 and 2d-3 are superseded by cycle 4 of the hosts and skills series ([`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md)), whose plans 4a and 4b are implemented (the real run was made on 2026-10-19, see [`phase-2d-real-run.md`](../research/phase-2d-real-run.md)).
 Parent documents: [`../design.md`](../design.md) (sections 2.3, 2.4 and the roadmap),
 [`2026-10-02-phase-1-detect-and-diagnose-design.md`](2026-10-02-phase-1-detect-and-diagnose-design.md) (incidents, the poller, the responder),
 [`2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md`](2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md) (the gatekeeper and the approvals) and
@@ -18,9 +18,9 @@ The part is proven on the kind testbed of part C, extended by an Alertmanager. P
 |---|---|---|
 | A, B | Gatekeeper, approvals, the run clock, cancelling | implemented |
 | C | Cluster: read tools, approved mutating actions | implemented |
-| D | Signals: Alertmanager and Argo CD, a general incident model, the responder for outages | incident model, Alertmanager source and responder implemented (cycle 4); Argo CD postponed; the real run outstanding |
+| D | Signals: Alertmanager and Argo CD, a general incident model, the responder for outages | incident model, Alertmanager source and responder implemented (cycle 4); Argo CD postponed; the real run made on 2026-10-19 |
 
-Status of part D (2026-10-16): the incident model is built (plan 2d-1). The Alertmanager source is built by **cycle 4a** of the hosts and skills series ([`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md)): the client, the runner, the host mapping and `GET /api/signals`. The token is a sealed setting there, not `REMEDY_ALERTMANAGER_TOKEN_FILE` (which was never built); `REMEDY_ALERTMANAGER_URL` is the default of a setting and `REMEDY_ALERTMANAGER_CA_FILE` is read at start-up. The responder for outages is built by **cycle 4b** (2026-10-19; [plan](../plans/alertmanager-4b-responder.md)): an Alertmanager incident is diagnosed on its own when it is young and `critical` or `warning`, by a click otherwise, and the approvals of automatic runs expire. **Cycle 4 is built; the real run with the real CLI is outstanding** ([runbook](../runbook/outage-real-run.md)). The Argo CD source stays postponed.
+Status of part D (2026-10-16): the incident model is built (plan 2d-1). The Alertmanager source is built by **cycle 4a** of the hosts and skills series ([`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md)): the client, the runner, the host mapping and `GET /api/signals`. The token is a sealed setting there, not `REMEDY_ALERTMANAGER_TOKEN_FILE` (which was never built); `REMEDY_ALERTMANAGER_URL` is the default of a setting and `REMEDY_ALERTMANAGER_CA_FILE` is read at start-up. The responder for outages is built by **cycle 4b** (2026-10-19; [plan](../plans/alertmanager-4b-responder.md)): an Alertmanager incident is diagnosed on its own when it is young and `critical` or `warning`, by a click otherwise, and the approvals of automatic runs expire. **Cycle 4 is built, and its real run with the real CLI was made on 2026-10-19** ([runbook](../runbook/outage-real-run.md), [record](../research/phase-2d-real-run.md)). The Argo CD source stays postponed.
 
 ### Non-goals
 
@@ -213,7 +213,7 @@ Three plans, as in part C. Each ends with `make check` and CI green, and a plan 
 2. **2d-2, the sources.** The Alertmanager client and its fake, the Argo CD source, the `signals` runner, the configuration, `GET /api/signals`, the testbed
    extension and the live tests.
 3. **2d-3, the responder and the real run.** The prompt, `ParseCluster`, the branch in the responder, the approval expiry, the diagnosis card, the runbook and the run
-   against the real CLI and the testbed, recorded in `docs/research/phase-2d-real-run.md`.
+   against the real CLI and the testbed, recorded in `docs/research/phase-2d-real-run.md` (made on 2026-10-19, under cycle 4).
 
 ## 11. Success criteria
 

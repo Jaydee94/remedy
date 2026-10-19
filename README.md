@@ -18,7 +18,7 @@ CLIs (Claude Code, Antigravity CLI), without API tokens.
 > The web UI is a conversation: Remedy speaks in the first person and one incident is one thread you can ask
 > questions in. An Alertmanager can be connected too: its active alerts become incidents, mapped to your hosts, and
 > are diagnosed like the failed checks (a read-only run with the cluster tools and the tools of the mapped host; the real
-> run with the real CLI is not made yet). The fixer (a branch and a pull request), the Argo CD
+> run with the real CLI was made on 2026-10-19, see [`docs/research/phase-2d-real-run.md`](docs/research/phase-2d-real-run.md)). The fixer (a branch and a pull request), the Argo CD
 > source and the learning graph come next (see [`docs/design.md`](docs/design.md), [`docs/specs/`](docs/specs/) and
 > [`docs/plans/`](docs/plans/)).
 
@@ -165,7 +165,7 @@ or three polls), by **Diagnose** in its thread otherwise. The run reads with the
 to, and answers with a cause, a confidence, a category and what it read. Any change it asks for waits for you under **Needs you**; in an automatic run the approval
 expires after "How long I wait for an approval in an automatic run" (15 minutes by default, `REMEDY_AUTO_APPROVAL_TIMEOUT`, `0` means without a limit): the action is then
 not run and stays a proposal in the diagnosis. A run you start yourself always waits. `dev/fakealertmanager` serves a file as an Alertmanager for a look without one;
-[`docs/runbook/outage-real-run.md`](docs/runbook/outage-real-run.md) is the runbook of the real run, which has not been made. See [`docs/runbook/alertmanager.md`](docs/runbook/alertmanager.md).
+[`docs/runbook/outage-real-run.md`](docs/runbook/outage-real-run.md) is the runbook of the real run, which was made on 2026-10-19 and is recorded in [`docs/research/phase-2d-real-run.md`](docs/research/phase-2d-real-run.md). See [`docs/runbook/alertmanager.md`](docs/runbook/alertmanager.md).
 
 ### Cluster access (optional)
 
