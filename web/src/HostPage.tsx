@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { api, ApiError } from './api.ts'
-import type { Host, PresentedKey } from './api.ts'
+import type { Host, PresentedKey, Skill } from './api.ts'
 import { editableKey, statusSentence } from './hosts.ts'
+import { deleteHostLabel, hostDeleteWarning } from './skills.ts'
 import { useFocusRestore } from './useFocusRestore.ts'
 import ConfirmButton from '@/components/ConfirmButton'
 import HostForm from '@/components/hosts/HostForm'
@@ -32,6 +33,7 @@ export default function HostPage({ id }: { id: number }) {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [gone, setGone] = useState(false)
+  const [skills, setSkills] = useState<Skill[] | null>(null)
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const { target: heading, restore } = useFocusRestore<HTMLHeadingElement>()
@@ -44,6 +46,14 @@ export default function HostPage({ id }: { id: number }) {
         if (e instanceof ApiError && e.status === 404) setGone(true)
         else setError(e instanceof ApiError ? e.message : 'Could not load the host')
       })
+  }, [id])
+
+  // What deleting the host takes with it: its skills and the proposals that wait for a review. Not knowing is shown as such.
+  useEffect(() => {
+    api
+      .listSkills({ host: id })
+      .then(setSkills)
+      .catch(() => setSkills(null))
   }, [id])
 
   // One request at a time. A 404 means the host was removed elsewhere (another tab): say so once, instead of an error per button.
@@ -160,8 +170,11 @@ export default function HostPage({ id }: { id: number }) {
             <SnippetSection host={host} />
           </Part>
 
-          <div className="border-t border-border pt-4">
-            <ConfirmButton label="Delete host" confirmLabel="Confirm: also removes its login" className="h-10" disabled={busy} onConfirm={() => void remove()} />
+          <div className="flex flex-col gap-3 border-t border-border pt-4">
+            {skills !== null && hostDeleteWarning(skills) && <p className="text-[13px] text-muted-foreground">{hostDeleteWarning(skills)}</p>}
+            <div>
+              <ConfirmButton label="Delete host" confirmLabel={deleteHostLabel(skills)} className="h-10" disabled={busy} onConfirm={() => void remove()} />
+            </div>
           </div>
         </>
       ) : (

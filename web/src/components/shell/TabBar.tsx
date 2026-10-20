@@ -1,12 +1,22 @@
 import { Link } from 'react-router'
-import { navItems } from '@/shell.ts'
+import { navBadge, navItems } from '@/shell.ts'
 import type { Section } from '@/shell.ts'
 import { navIcons } from '@/components/shell/navIcons.ts'
 import PendingBadge from '@/components/shell/PendingBadge'
 import { cn } from '@/lib/utils'
 
 /** The bottom tab bar of a phone. 44 px or more per target, and the safe-area inset under it. Hidden from the md breakpoint up. */
-export default function TabBar({ section, pathname, pending }: { section: Section | null; pathname: string; pending: number }) {
+export default function TabBar({
+  section,
+  pathname,
+  pending,
+  proposals,
+}: {
+  section: Section | null
+  pathname: string
+  pending: number
+  proposals: number
+}) {
   return (
     <nav
       aria-label="Main"
@@ -15,6 +25,7 @@ export default function TabBar({ section, pathname, pending }: { section: Sectio
       {navItems.map((item) => {
         const Icon = navIcons[item.section]
         const active = item.section === section
+        const badge = navBadge(item.section, pending, proposals)
         return (
           <Link
             key={item.to}
@@ -27,8 +38,8 @@ export default function TabBar({ section, pathname, pending }: { section: Sectio
           >
             <Icon className="size-5.5" aria-hidden />
             {item.short}
-            {item.section === 'needs' && pending > 0 && (
-              <PendingBadge count={pending} className="absolute top-1 left-[calc(50%+6px)] h-4.5 min-w-4.5 px-1 text-[11px]" />
+            {badge && (
+              <PendingBadge count={badge.count} label={badge.label} className="absolute top-1 left-[calc(50%+6px)] h-4.5 min-w-4.5 px-1 text-[11px]" />
             )}
           </Link>
         )
