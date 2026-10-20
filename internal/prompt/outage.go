@@ -27,6 +27,8 @@ type OutageInput struct {
 	Labels, Annotations                               map[string]string
 	// HasCluster and HasHost say which tools the run is offered besides the incident tools.
 	HasCluster, HasHost bool
+	// Skills are the notes the run may load with skill_get (the active ones that are global and those of its host).
+	Skills []Skill
 }
 
 const outageInstructions = `You are Remedy's responder for an outage. An alert fired in the maintainer's monitoring. Find the cause and say what would fix it. You cannot run commands and you cannot change anything yourself: you work only with the tools you are given, which read. A tool that changes something asks the maintainer first; they may say no, or not answer in time, and then the action stays a proposal.
@@ -73,6 +75,7 @@ func Outage(in OutageInput, delimiter string) string {
 		dataBlock(&b, delimiter, "host_name", oneLine(in.HostName, maxName))
 	}
 	dataBlock(&b, delimiter, "generator_url", oneLine(in.GeneratorURL, maxOutageURL))
+	b.WriteString(SkillsSection(in.Skills, delimiter))
 	return b.String()
 }
 
