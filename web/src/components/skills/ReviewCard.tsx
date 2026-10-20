@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { evidenceSummary, skillProblem } from '@/skills.ts'
 import type { ReviewItem } from '@/skills.ts'
 import ConfirmButton from '@/components/ConfirmButton'
@@ -14,18 +14,47 @@ interface Props {
   busy: boolean
   onConfirm: (edit?: { description: string; body: string }) => void
   onReject: () => void
+  /** Called with true while the edit form is open and with false when it closes or the card goes: the page does not refresh then. */
+  onEditingChange?: (editing: boolean) => void
 }
 
 const text = 'rounded-xl border border-border bg-background px-3 py-2 font-mono text-[13px] whitespace-pre-wrap break-words'
 
 /** One proposal that waits for the maintainer: what it says as text, the commands behind it, what it replaces, and the three answers. */
-export default function ReviewCard({ item, blocked, busy, onConfirm, onReject }: Props) {
+export default function ReviewCard({ item, blocked, busy, onConfirm, onReject, onEditingChange }: Props) {
   const { skill } = item
   const [editing, setEditing] = useState(false)
   const [description, setDescription] = useState(skill.description)
   const [body, setBody] = useState(skill.body)
+  const [said, setSaid] = useState('')
+  const editButton = useRef<HTMLButtonElement>(null)
+  const blockedId = useId()
+  const problemId = useId()
   const problem = editing ? skillProblem({ name: skill.name, description, body }) : ''
   const summary = evidenceSummary(item)
+
+  useEffect(() => {
+    if (!editing) return
+    onEditingChange?.(true)
+    return () => onEditingChange?.(false)
+  }, [editing, onEditingChange])
+
+  // The draft starts from the proposal as it is now, so that reopening after a Cancel (or after the list changed) never shows an old draft.
+  function startEditing() {
+    setDescription(skill.description)
+    setBody(skill.body)
+    setSaid('')
+    setEditing(true)
+  }
+
+  // Cancel removes the button that was clicked: the focus goes back to the button that opened the form (it is rendered again first).
+  function cancelEditing() {
+    setEditing(false)
+    setDescription(skill.description)
+    setBody(skill.body)
+    setSaid('')
+    requestAnimationFrame(() => editButton.current?.focus())
+  }
 
   return (
     <li className="flex flex-col gap-3 rounded-3xl border border-border bg-card p-5">
@@ -39,7 +68,14 @@ export default function ReviewCard({ item, blocked, busy, onConfirm, onReject }:
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1.5">
             <span className="text-[13px] font-semibold text-muted-foreground">Description</span>
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} className="h-11 text-base md:text-sm" autoComplete="off" />
+            <Input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="h-11 text-base md:text-sm"
+              autoComplete="off"
+              autoFocus
+              aria-describedby={problem ? problemId : undefined}
+            />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-[13px] font-semibold text-muted-foreground">Note</span>
@@ -51,10 +87,14 @@ export default function ReviewCard({ item, blocked, busy, onConfirm, onReject }:
             />
           </label>
           {problem && (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p id={problemId} className="text-[13px] text-destructive">
               {problem}
             </p>
           )}
+          {/* Said once, when Save and confirm is pressed with a problem, not at every keystroke. */}
+          <p role="status" className="sr-only">
+            {problem ? said : ''}
+          </p>
         </div>
       ) : item.replaces ? (
         <div className="grid gap-3 md:grid-cols-2">
@@ -91,13 +131,18 @@ export default function ReviewCard({ item, blocked, busy, onConfirm, onReject }:
         {summary && <p className="text-[13px] text-muted-foreground">{summary}</p>}
       </div>
 
-      {blocked && <p className="text-[13px] text-destructive">{blocked}</p>}
+      {blocked && (
+        <p id={blockedId} className="text-[13px] text-destructive">
+          {blocked}
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {!editing && (
           <Button
             type="button"
             aria-disabled={busy || blocked !== ''}
+            aria-describedby={blocked ? blockedId : undefined}
             className={cn('h-10', ariaDisabled)}
             onClick={() => {
               if (!busy && blocked === '') onConfirm()
@@ -110,20 +155,26 @@ export default function ReviewCard({ item, blocked, busy, onConfirm, onReject }:
           <>
             <Button
               type="button"
-              aria-disabled={busy || problem !== '' || blocked !== ''}
+              aria-disabled={busy || blocked !== ''}
+              aria-describedby={blocked ? blockedId : undefined}
               className={cn('h-10', ariaDisabled)}
               onClick={() => {
-                if (!busy && problem === '' && blocked === '') onConfirm({ description: description.trim(), body })
+                if (busy || blocked !== '') return
+                if (problem !== '') {
+                  setSaid(problem) // the button stays clickable so that a keyboard user hears what is wrong
+                  return
+                }
+                onConfirm({ description: description.trim(), body })
               }}
             >
               Save and confirm
             </Button>
-            <Button type="button" variant="ghost" className="h-10" onClick={() => setEditing(false)}>
+            <Button type="button" variant="ghost" className="h-10" onClick={cancelEditing}>
               Cancel
             </Button>
           </>
         ) : (
-          <Button type="button" variant="outline" className="h-10" onClick={() => setEditing(true)}>
+          <Button ref={editButton} type="button" variant="outline" className="h-10" onClick={startEditing}>
             Edit and confirm
           </Button>
         )}

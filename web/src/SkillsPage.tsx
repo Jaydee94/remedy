@@ -24,6 +24,7 @@ export default function SkillsPage() {
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<number | null>(null)
   const { target: heading, restore } = useFocusRestore<HTMLHeadingElement>()
+  const newButton = useRef<HTMLButtonElement>(null)
 
   // Not an async function: oxlint reads a state setter in the body of an async function that an effect calls as a synchronous one.
   const reload = useCallback(
@@ -84,6 +85,12 @@ export default function SkillsPage() {
     if (await act(() => api.patchSkill(s.id, { name: v.name, description: v.description, body: v.body }), say('saved', v.name), true)) setEditing(null)
   }
 
+  // Cancel removes the form with the button that was clicked: the focus goes back to "New skill" (rendered again first).
+  function cancelAdding() {
+    setAdding(false)
+    requestAnimationFrame(() => newButton.current?.focus())
+  }
+
   return (
     <div className="mx-auto flex max-w-190 flex-col gap-8 px-4 py-5 md:px-10 md:py-12">
       <div className="flex flex-col gap-1">
@@ -137,14 +144,14 @@ export default function SkillsPage() {
                 All skills
               </h2>
               {!adding && (
-                <Button type="button" variant="outline" size="sm" className="ml-auto h-9" onClick={() => setAdding(true)}>
+                <Button ref={newButton} type="button" variant="outline" size="sm" className="ml-auto h-9" onClick={() => setAdding(true)}>
                   New skill
                 </Button>
               )}
             </div>
             {adding && (
               <div className="rounded-3xl border border-border bg-card p-5">
-                <SkillForm hosts={hosts} busy={busy} submitLabel="Save" onSubmit={(v) => void create(v)} onCancel={() => setAdding(false)} />
+                <SkillForm hosts={hosts} busy={busy} submitLabel="Save" onSubmit={(v) => void create(v)} onCancel={cancelAdding} />
               </div>
             )}
             {groups.length === 0 && !adding && (

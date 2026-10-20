@@ -249,8 +249,25 @@ func TestSkillGetSeesAChangeMadeDuringTheRun(t *testing.T) {
 	if text, isErr := r.get(t, "g3", map[string]any{"name": "lab-notes"}); isErr || !strings.Contains(text, "Line one.") {
 		t.Errorf("a global skill after the host was deleted: %q, %v", text, isErr)
 	}
-	if text, isErr := r.get(t, "g4", map[string]any{"name": "nas-off"}); !isErr || !strings.Contains(text, "no skill with that name") {
-		t.Errorf("a deleted host's skill: %q, %v", text, isErr)
+}
+
+// The skill asked for after the host's deletion is one that was active and loadable before it, so that the answer can only come from the
+// deletion (an already-off skill would be refused for that reason alone).
+func TestSkillGetRefusesAnActiveSkillOfAHostThatWasDeletedDuringTheRun(t *testing.T) {
+	r := newSkillRig(t)
+	ctx := context.Background()
+	if _, err := r.e.st.CreateSkill(ctx, r.nas.ID, skill.Fields{Name: "nas-live", Description: "About nas-live.", Body: "NAS-LIVE-BODY"}); err != nil {
+		t.Fatal(err)
+	}
+	if text, isErr := r.get(t, "g1", map[string]any{"name": "nas-live"}); isErr || !strings.Contains(text, "NAS-LIVE-BODY") {
+		t.Fatalf("before the delete the skill must load: %q, %v", text, isErr)
+	}
+	if err := r.e.st.DeleteHost(ctx, r.nas.ID); err != nil {
+		t.Fatal(err)
+	}
+	text, isErr := r.get(t, "g2", map[string]any{"name": "nas-live"})
+	if !isErr || !strings.Contains(text, "no skill with that name") || strings.Contains(text, "NAS-LIVE-BODY") {
+		t.Errorf("a deleted host's active skill: %q, %v, want the answer for an unknown skill", text, isErr)
 	}
 }
 

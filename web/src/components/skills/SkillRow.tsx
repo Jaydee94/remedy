@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import type { Host, Skill } from '@/api.ts'
 import { originText } from '@/skills.ts'
 import SkillForm from '@/components/skills/SkillForm'
@@ -20,10 +21,16 @@ interface Props {
 
 /** One skill of the list: its name, whether it is on, what it is about, who wrote it, and its note as text on demand. */
 export default function SkillRow({ skill, hosts, busy, editing, onToggle, onEdit, onCancelEdit, onSave, onDelete }: Props) {
+  const editButton = useRef<HTMLButtonElement>(null)
+  // Cancel removes the form with the button that was clicked: the focus goes back to the Edit button that opened it (rendered again first).
+  const cancelEdit = () => {
+    onCancelEdit()
+    requestAnimationFrame(() => editButton.current?.focus())
+  }
   if (editing) {
     return (
       <li className="rounded-3xl border border-border bg-card p-5">
-        <SkillForm hosts={hosts} skill={skill} busy={busy} submitLabel="Save" onSubmit={onSave} onCancel={onCancelEdit} />
+        <SkillForm hosts={hosts} skill={skill} busy={busy} submitLabel="Save" onSubmit={onSave} onCancel={cancelEdit} />
       </li>
     )
   }
@@ -51,7 +58,7 @@ export default function SkillRow({ skill, hosts, busy, editing, onToggle, onEdit
         <pre className="mt-2 rounded-xl border border-border bg-background px-3 py-2 font-mono text-[13px] whitespace-pre-wrap break-words">{skill.body}</pre>
       </details>
       <div className="flex flex-wrap gap-2 pt-1">
-        <Button type="button" variant="outline" size="sm" className="h-9" onClick={onEdit}>
+        <Button ref={editButton} type="button" variant="outline" size="sm" className="h-9" onClick={onEdit}>
           Edit
         </Button>
         <ConfirmButton label="Delete" confirmLabel="Confirm: delete" className="h-9" disabled={busy} onConfirm={onDelete} />

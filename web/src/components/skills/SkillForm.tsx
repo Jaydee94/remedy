@@ -52,7 +52,7 @@ export default function SkillForm({ hosts, skill, busy, submitLabel, onSubmit, o
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" aria-describedby={shown && problem ? problemId : undefined}>
       <Field label="Where it applies" hint={skill ? 'The scope of a skill does not change.' : "Global skills are listed for every run; a host's skills only for runs that have the host."}>
-        <select value={hostId} onChange={(e) => setHostId(e.target.value)} disabled={skill !== undefined} className={cn(area, 'h-11')}>
+        <select value={hostId} onChange={(e) => setHostId(e.target.value)} disabled={skill !== undefined} autoFocus={skill === undefined} className={cn(area, 'h-11')}>
           <option value="">Global</option>
           {hosts.map((h) => (
             <option key={h.id} value={String(h.id)}>
@@ -62,7 +62,7 @@ export default function SkillForm({ hosts, skill, busy, submitLabel, onSubmit, o
         </select>
       </Field>
       <Field label="Name" hint="Lower case letters, digits and dashes. The agent passes it to skill_get.">
-        <Input value={name} onChange={(e) => setName(e.target.value)} className={field} autoComplete="off" spellCheck={false} />
+        <Input value={name} onChange={(e) => setName(e.target.value)} className={field} autoComplete="off" spellCheck={false} autoFocus={skill !== undefined} />
       </Field>
       <Field label="Description" hint={`One line that says what the note is about. ${[...description.trim()].length} of ${MAX_DESCRIPTION} characters.`}>
         <Input value={description} onChange={(e) => setDescription(e.target.value)} className={field} autoComplete="off" />
