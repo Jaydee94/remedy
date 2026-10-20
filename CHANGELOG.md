@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.0](https://github.com/Jaydee94/remedy/compare/v0.6.1...v0.7.0) (2026-10-20)
+
+### Features
+
+* skills, notes about the lab that runs can load (cycle 5a) ([#152](https://github.com/Jaydee94/remedy/issues/152)) ([d5afce2](https://github.com/Jaydee94/remedy/commit/d5afce2d369f099fbe52f19111e1a42a893ef78b))
+
 ## [0.6.1](https://github.com/Jaydee94/remedy/compare/v0.6.0...v0.6.1) (2026-10-19)
 
 ### Bug Fixes

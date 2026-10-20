@@ -2,8 +2,8 @@ apiVersion: v2
 name: remedy
 description: Remedy, an AI operator for a homelab GitOps setup. The control plane and the runner.
 type: application
-version: 0.6.1
-appVersion: "0.6.1"
+version: 0.7.0
+appVersion: "0.7.0"
 home: https://github.com/Jaydee94/remedy
 sources:
   - https://github.com/Jaydee94/remedy
