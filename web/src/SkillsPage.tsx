@@ -12,6 +12,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 
+const REFRESH_MS = 5000
+
 /** What I know about the lab: the proposals that wait for a review, and every skill by scope. */
 export default function SkillsPage() {
   const [skills, setSkills] = useState<Skill[] | null>(null)
@@ -27,21 +29,42 @@ export default function SkillsPage() {
   const newButton = useRef<HTMLButtonElement>(null)
 
   // Not an async function: oxlint reads a state setter in the body of an async function that an effect calls as a synchronous one.
-  const reload = useCallback(
-    () =>
-      Promise.all([api.listSkills(), api.listHosts().catch(() => [] as Host[])])
-        .then(([list, hostList]) => {
-          setSkills(list)
-          setHosts(hostList)
-          setLoadError('')
-        })
-        .catch((e: unknown) => setLoadError(e instanceof ApiError ? e.message : 'Could not load the skills')),
-    [],
-  )
+  // Only the answer of the latest request is used: a slow refresh that was started before an action must not undo the reload after it.
+  // A quiet reload (the refresh below) shows no error: the page keeps what it has until the next try.
+  const latest = useRef(0)
+  const reload = useCallback((quiet = false) => {
+    const mine = ++latest.current
+    return Promise.all([api.listSkills(), api.listHosts().catch(() => [] as Host[])])
+      .then(([list, hostList]) => {
+        if (mine !== latest.current) return
+        setSkills(list)
+        setHosts(hostList)
+        setLoadError('')
+      })
+      .catch((e: unknown) => {
+        if (!quiet && mine === latest.current) setLoadError(e instanceof ApiError ? e.message : 'Could not load the skills')
+      })
+  }, [])
 
   useEffect(() => {
     void reload()
   }, [reload])
+
+  // The navigation badge polls every five seconds; the open page follows it, so that a proposal that arrives is listed and not only counted.
+  // Not during an action, not while a form is open (a draft is never replaced), not in a hidden tab. It says nothing: no announcement.
+  const reviewEditing = useRef(0)
+  const formOpen = adding || editing !== null
+  useEffect(() => {
+    if (formOpen) return
+    const timer = setInterval(() => {
+      if (document.hidden || busyRef.current || reviewEditing.current > 0) return
+      void reload(true)
+    }, REFRESH_MS)
+    return () => clearInterval(timer)
+  }, [formOpen, reload])
+  const trackReviewEditing = useCallback((on: boolean) => {
+    reviewEditing.current += on ? 1 : -1
+  }, [])
 
   /**
    * One request at a time. The page reloads after it, also after a failure, so that it shows what is really there (a proposal that
@@ -130,6 +153,7 @@ export default function SkillsPage() {
                     item={item}
                     blocked={confirmBlocked(skills, item.skill)}
                     busy={busy}
+                    onEditingChange={trackReviewEditing}
                     onConfirm={(edit) => void act(() => api.confirmSkill(item.skill.id, edit), say('confirmed', item.skill.name), true)}
                     onReject={() => void act(() => api.rejectSkill(item.skill.id), say('rejected', item.skill.name), true)}
                   />
