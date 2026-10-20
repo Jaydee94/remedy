@@ -31,7 +31,7 @@ describe('sectionOf', () => {
 
   it('has seven items, in the order of the navigation', () => {
     assert.deepEqual(navItems.map((n) => n.section), ['today', 'conversations', 'needs', 'ask', 'hosts', 'skills', 'setup'])
-    assert.deepEqual(navItems.map((n) => n.short), ['Today', 'Chats', 'Needs you', 'Ask', 'Hosts', 'Skills', 'Setup'])
+    assert.deepEqual(navItems.map((n) => n.short), ['Today', 'Chats', 'Needs', 'Ask', 'Hosts', 'Skills', 'Setup'])
   })
 
   it('maps the skills page to Skills', () => {

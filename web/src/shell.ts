@@ -13,7 +13,7 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { section: 'today', to: '/', label: 'Today', short: 'Today' },
   { section: 'conversations', to: '/incidents', label: 'Conversations', short: 'Chats' },
-  { section: 'needs', to: '/approvals', label: 'Needs you', short: 'Needs you' },
+  { section: 'needs', to: '/approvals', label: 'Needs you', short: 'Needs' },
   { section: 'ask', to: '/runs', label: 'Ask Remedy', short: 'Ask' },
   { section: 'hosts', to: '/hosts', label: 'Hosts', short: 'Hosts' },
   { section: 'skills', to: '/skills', label: 'Skills', short: 'Skills' },
