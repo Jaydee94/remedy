@@ -197,8 +197,10 @@ Decided on 2026-10-09; the specification is
 - **One identity per host.** Safety rests on the classification of an argv (default deny, a table in the code
   that no skill can extend, a short "never" list) and on the rights of the account on the host. This is an accepted
   risk (4); the retrofit is two identities per host, and the data model leaves room for it.
-- **Skills** are Markdown per host or global, with an origin. Remedy gets to know a host in a read-only run whose
-  proposals the maintainer confirms; unconfirmed proposals are not used as fact.
+- **Skills** are Markdown per host or global, with an origin. They are built (cycle 5a): the maintainer writes them, runs list their names and
+  descriptions and load a body with `skill_get`, and no skill can widen the table of reads or remove an approval. Remedy gets to know a host in a
+  read-only run whose proposals the maintainer confirms (cycle 5b, not built); unconfirmed proposals are not used as fact: the store keeps them
+  invisible to every run.
 - The Argo CD source of part 2D is postponed. The Alertmanager source and the host mapping (the rules are a field
   of the host) are built (cycle 4a, 2026-10-16), and so is the responder for outages (cycle 4b, 2026-10-19). The real run
   of cycles 2 and 4 with the real CLI was made on 2026-10-19 ([record](research/phase-2d-real-run.md)): the CLI does return a
