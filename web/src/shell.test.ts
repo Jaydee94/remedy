@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Incident, ToolCall } from './api.ts'
-import { defaultHeader, emptyShell, isGatewayStatus, navItems, nextShell, sectionOf } from './shell.ts'
+import { defaultHeader, emptyShell, isGatewayStatus, navBadge, navItems, nextShell, sectionOf } from './shell.ts'
 
 describe('sectionOf', () => {
   it('maps every navigation path to its section', () => {
@@ -29,9 +29,15 @@ describe('sectionOf', () => {
     assert.equal(sectionOf('/hostsX'), null)
   })
 
-  it('has six items, in the order of the navigation', () => {
-    assert.deepEqual(navItems.map((n) => n.section), ['today', 'conversations', 'needs', 'ask', 'hosts', 'setup'])
-    assert.deepEqual(navItems.map((n) => n.short), ['Today', 'Chats', 'Needs you', 'Ask', 'Hosts', 'Setup'])
+  it('has seven items, in the order of the navigation', () => {
+    assert.deepEqual(navItems.map((n) => n.section), ['today', 'conversations', 'needs', 'ask', 'hosts', 'skills', 'setup'])
+    assert.deepEqual(navItems.map((n) => n.short), ['Today', 'Chats', 'Needs', 'Ask', 'Hosts', 'Skills', 'Setup'])
+  })
+
+  it('maps the skills page to Skills', () => {
+    assert.equal(sectionOf('/skills'), 'skills')
+    assert.equal(sectionOf('/skillsX'), null)
+    assert.deepEqual(defaultHeader('/skills'), { title: 'Skills' })
   })
 })
 
@@ -144,5 +150,19 @@ describe('isGatewayStatus', () => {
 
   it('is false for every other status', () => {
     for (const status of [200, 401, 404, 500]) assert.equal(isGatewayStatus(status), false)
+  })
+})
+
+describe('navBadge', () => {
+  it('counts the calls that wait on Needs you and the proposals that wait on Skills', () => {
+    assert.deepEqual(navBadge('needs', 2, 5), { count: 2, label: '2 waiting for a decision' })
+    assert.deepEqual(navBadge('skills', 2, 5), { count: 5, label: '5 proposals waiting for your review' })
+    assert.deepEqual(navBadge('skills', 0, 1), { count: 1, label: '1 proposal waiting for your review' })
+  })
+
+  it('has no badge for zero, and none for another item', () => {
+    assert.equal(navBadge('needs', 0, 5), null)
+    assert.equal(navBadge('skills', 5, 0), null)
+    for (const s of ['today', 'conversations', 'ask', 'hosts', 'setup'] as const) assert.equal(navBadge(s, 9, 9), null)
   })
 })

@@ -19,17 +19,47 @@ import (
 
 // claimFor is the answer to a runner that claimed a run. A responder run also gets the diagnosis schema and
 // the order to download the repository snapshot first. A question about an incident (an ad-hoc run with an incident) gets the
-// frame of prompt.Question around the stored question; the stored prompt stays the bare question.
-func claimFor(r run.Run, mcpToken string) run.Claim {
+// frame of prompt.Question around the stored question, and any ad-hoc run with gatekeeper access gets the list of the skills it may
+// load; the stored prompt stays the bare question. A responder run carries its list in its stored prompt.
+func claimFor(r run.Run, mcpToken string, skills []prompt.Skill) run.Claim {
 	c := run.Claim{Run: r, MCPToken: mcpToken}
 	if r.Role == run.RoleResponder {
 		c.Schema = json.RawMessage(diagnosis.Schema)
 		c.Snapshot = true
 	}
-	if r.Role == run.RoleAdhoc && r.IncidentID != nil {
-		c.Prompt = prompt.Question(*r.IncidentID, r.Prompt)
+	switch {
+	case r.Role == run.RoleAdhoc && r.IncidentID != nil:
+		c.Prompt = prompt.QuestionWithSkills(*r.IncidentID, r.Prompt, skills)
+	case r.Role == run.RoleAdhoc && r.MCP:
+		c.Prompt = prompt.WithSkills(r.Prompt, skills)
 	}
 	return c
+}
+
+// claimSkills reads the skills an ad-hoc run with gatekeeper access may see, at the time of the claim.
+func (s *srv) claimSkills(ctx context.Context, r run.Run) ([]prompt.Skill, error) {
+	if r.Role != run.RoleAdhoc || !r.MCP {
+		return nil, nil
+	}
+	list, err := s.d.Store.RunSkills(ctx, r.ID)
+	if err != nil {
+		return nil, err
+	}
+	return responder.SkillLines(list), nil
+}
+
+// claimOf builds the answer to a claim. An error means that what the run needs could not be read (its incident or its skills): the
+// caller ends the run instead of handing out a prompt that is wrong.
+func (s *srv) claimOf(ctx context.Context, r run.Run, mcpToken string) (run.Claim, error) {
+	skills, err := s.claimSkills(ctx, r)
+	if err != nil {
+		return run.Claim{}, err
+	}
+	c := claimFor(r, mcpToken, skills)
+	if err := s.responderClaim(ctx, &c); err != nil {
+		return run.Claim{}, err
+	}
+	return c, nil
 }
 
 // responderClaim sets what a responder run needs besides the run: the schema of the answer and whether to download a snapshot, by the

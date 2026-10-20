@@ -1,6 +1,6 @@
 import type { Incident, ToolCall } from './api.ts'
 
-export type Section = 'today' | 'conversations' | 'needs' | 'ask' | 'hosts' | 'setup'
+export type Section = 'today' | 'conversations' | 'needs' | 'ask' | 'hosts' | 'skills' | 'setup'
 
 export interface NavItem {
   section: Section
@@ -13,11 +13,27 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { section: 'today', to: '/', label: 'Today', short: 'Today' },
   { section: 'conversations', to: '/incidents', label: 'Conversations', short: 'Chats' },
-  { section: 'needs', to: '/approvals', label: 'Needs you', short: 'Needs you' },
+  { section: 'needs', to: '/approvals', label: 'Needs you', short: 'Needs' },
   { section: 'ask', to: '/runs', label: 'Ask Remedy', short: 'Ask' },
   { section: 'hosts', to: '/hosts', label: 'Hosts', short: 'Hosts' },
+  { section: 'skills', to: '/skills', label: 'Skills', short: 'Skills' },
   { section: 'setup', to: '/settings', label: 'Setup', short: 'Setup' },
 ]
+
+export interface NavBadge {
+  count: number
+  /** What a screen reader says. */
+  label: string
+}
+
+/** The badge of a navigation item: the calls that wait for a decision on Needs you, the proposals that wait for a review on Skills. */
+export function navBadge(section: Section, pending: number, proposals: number): NavBadge | null {
+  if (section === 'needs' && pending > 0) return { count: pending, label: `${pending} waiting for a decision` }
+  if (section === 'skills' && proposals > 0) {
+    return { count: proposals, label: `${proposals} ${proposals === 1 ? 'proposal' : 'proposals'} waiting for your review` }
+  }
+  return null
+}
 
 /** The section a path belongs to: a thread belongs to Conversations, a run to Ask Remedy. Null for a path outside the navigation. */
 export function sectionOf(pathname: string): Section | null {

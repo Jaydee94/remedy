@@ -184,7 +184,14 @@ func (r *Responder) startOutage(ctx context.Context, in store.Incident, automati
 			return run.Run{}, err
 		}
 	}
-	text := prompt.Outage(outageInput(in, cluster, len(hosts) > 0), "")
+	// The visible set is read here, outside the transaction of StartDiagnosis (the store has one connection).
+	skills, err := r.Store.VisibleSkills(ctx, hosts)
+	if err != nil {
+		return run.Run{}, err
+	}
+	input := outageInput(in, cluster, len(hosts) > 0)
+	input.Skills = SkillLines(skills)
+	text := prompt.Outage(input, "")
 	how := "by a click"
 	if automatic {
 		how = "automatically"
@@ -196,6 +203,15 @@ func (r *Responder) startOutage(ctx context.Context, in store.Incident, automati
 		Kind:    store.KindDiagnosisStarted,
 		Summary: fmt.Sprintf("Diagnosis of %s started %s", label(in), how),
 	})
+}
+
+// SkillLines turns the skills a run may see into the lines of the prompt's list. The server uses it for the claim of an ad-hoc run.
+func SkillLines(list []store.Skill) []prompt.Skill {
+	out := make([]prompt.Skill, 0, len(list))
+	for _, k := range list {
+		out = append(out, prompt.Skill{Name: k.Name, Host: k.HostName, Description: k.Description})
+	}
+	return out
 }
 
 // outageInput reads the stored signal of an alert incident. A signal that cannot be read gives a prompt with the title and the facts only.

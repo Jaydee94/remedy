@@ -122,7 +122,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	if kubeWriter != nil && len(set.List(settings.K8sWriteNamespaces)) == 0 {
 		log.Warn("cluster actions are on but the allowlist is empty: every action is refused until a namespace is set (REMEDY_K8S_WRITE_NAMESPACES or the Setup page)")
 	}
-	tools := append(append(gatekeeper.IncidentTools(st), gatekeeper.JobLogTool(diagnoser)), gatekeeper.NoteTool(st))
+	tools := append(append(gatekeeper.IncidentTools(st), gatekeeper.JobLogTool(diagnoser)), gatekeeper.NoteTool(st), gatekeeper.SkillTool(st))
 	if kubeReader != nil {
 		tools = append(tools, gatekeeper.ClusterTools(kubeReader, nil)...)
 		if kubeWriter != nil {

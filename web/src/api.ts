@@ -165,6 +165,57 @@ export interface PresentedKey {
 }
 
 export type HostTest = Host & { presentedKey?: PresentedKey }
+
+export type SkillState = 'proposed' | 'active' | 'off'
+
+/** One command that a proposal cites as the source of a fact, and whether the learning run really ran it. */
+export interface SkillEvidence {
+  argv: string[]
+  ran: boolean
+}
+
+/** The current text of the skill that a proposal replaces. */
+export interface SkillReplaced {
+  id: number
+  description: string
+  body: string
+}
+
+/** A note about the lab. Everything in it is text: show it as text, never as HTML or Markdown. */
+export interface Skill {
+  id: number
+  /** The host it belongs to; null for a global skill. */
+  hostId: number | null
+  /** The host's name; left out for a global skill. */
+  host?: string
+  name: string
+  description: string
+  body: string
+  origin: 'written' | 'proposed'
+  state: SkillState
+  /** The learning run that proposed it. */
+  runId?: string
+  evidence: SkillEvidence[]
+  /** Only a proposal that replaces a skill has it. */
+  replaces?: SkillReplaced
+  createdAt: string
+  updatedAt: string
+  confirmedAt?: string
+}
+
+export interface SkillCreate {
+  hostId?: number | null
+  name: string
+  description: string
+  body: string
+}
+
+export interface SkillPatch {
+  name?: string
+  description?: string
+  body?: string
+  state?: 'active' | 'off'
+}
 export type HostPatched = Host & { pinCleared: boolean }
 
 export interface HostBody {
@@ -412,6 +463,21 @@ export const api = {
   testHost: (id: number) => request<HostTest>('POST', `/api/hosts/${id}/test`),
   pinHostKey: (id: number, fingerprint: string) => request<Host>('POST', `/api/hosts/${id}/hostkey`, { fingerprint }),
   unpinHostKey: (id: number) => request<void>('DELETE', `/api/hosts/${id}/hostkey`),
+
+  /** All skills, global first. `host` is one host's skills only; `state` one state. */
+  listSkills: (filter: { host?: number; state?: SkillState } = {}) => {
+    const query = new URLSearchParams()
+    if (filter.host !== undefined) query.set('host', String(filter.host))
+    if (filter.state !== undefined) query.set('state', filter.state)
+    const text = query.toString()
+    return request<Skill[]>('GET', text === '' ? '/api/skills' : `/api/skills?${text}`)
+  },
+  createSkill: (body: SkillCreate) => request<Skill>('POST', '/api/skills', body),
+  patchSkill: (id: number, body: SkillPatch) => request<Skill>('PATCH', `/api/skills/${id}`, body),
+  deleteSkill: (id: number) => request<void>('DELETE', `/api/skills/${id}`),
+  /** Confirms a proposal, with an edited description and body when `edit` is given. */
+  confirmSkill: (id: number, edit?: { description: string; body: string }) => request<Skill>('POST', `/api/skills/${id}/confirm`, edit),
+  rejectSkill: (id: number) => request<void>('POST', `/api/skills/${id}/reject`),
 
   /** state is "active", "all" or one incident state. source is left out for every source. */
   listIncidents: (state: string, repoId?: number, source?: IncidentSource) => {

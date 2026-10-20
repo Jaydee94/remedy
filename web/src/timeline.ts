@@ -70,6 +70,12 @@ const kindDots: Record<string, string> = {
   run_cancelled: 'bg-neutral',
   cluster_action: 'bg-violet',
   host_action: 'bg-violet',
+  skill_created: 'bg-primary',
+  skill_updated: 'bg-neutral',
+  skill_deleted: 'bg-neutral',
+  skill_confirmed: 'bg-success',
+  skill_rejected: 'bg-neutral',
+  skills_proposed: 'bg-info',
 }
 
 export function kindDotClass(kind: string): string {

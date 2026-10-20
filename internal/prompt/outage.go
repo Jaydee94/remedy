@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -27,6 +28,8 @@ type OutageInput struct {
 	Labels, Annotations                               map[string]string
 	// HasCluster and HasHost say which tools the run is offered besides the incident tools.
 	HasCluster, HasHost bool
+	// Skills are the notes the run may load with skill_get (the active ones that are global and those of its host).
+	Skills []Skill
 }
 
 const outageInstructions = `You are Remedy's responder for an outage. An alert fired in the maintainer's monitoring. Find the cause and say what would fix it. You cannot run commands and you cannot change anything yourself: you work only with the tools you are given, which read. A tool that changes something asks the maintainer first; they may say no, or not answer in time, and then the action stays a proposal.
@@ -73,6 +76,7 @@ func Outage(in OutageInput, delimiter string) string {
 		dataBlock(&b, delimiter, "host_name", oneLine(in.HostName, maxName))
 	}
 	dataBlock(&b, delimiter, "generator_url", oneLine(in.GeneratorURL, maxOutageURL))
+	b.WriteString(SkillsSection(in.Skills, delimiter))
 	return b.String()
 }
 
@@ -112,7 +116,7 @@ func annotations(m map[string]string) string {
 	for _, k := range sortedKeys(m) {
 		// As in keyValues, the key is cleaned together with the value and bounded by the cap of the whole entry.
 		key := strings.Join(strings.Fields(removeControl(k)), " ")
-		lines = append(lines, head(removeControl(clean(key+": "+m[k])), maxOutageAnnotation))
+		lines = append(lines, head(clean(removeControl(key+": "+m[k])), maxOutageAnnotation))
 	}
 	return capEntries(lines, maxOutageEntries, maxOutageAnnotationBytes)
 }
@@ -135,12 +139,18 @@ func capEntries(entries []string, maxEntries, maxBytes int) string {
 	return b.String()
 }
 
-// removeControl drops control characters other than the newline and the tab.
+// removeControl keeps the newline and the tab and drops every other character a reader cannot see or that moves the text around: the C0
+// and C1 controls and DEL, the format characters (category Cf: zero width space and joiners, the bidirectional marks and isolates, the soft
+// hyphen, the word joiner, the BOM and the tag characters) and the line and paragraph separators. A zero width joiner also breaks an
+// emoji sequence into its parts; that is accepted. Accented letters, dashes, emoji and other scripts stay.
 func removeControl(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r == '\n' || r == '\t' || r >= ' ' && r != 0x7f {
+		switch {
+		case r == '\n' || r == '\t':
 			return r
+		case unicode.IsControl(r), unicode.Is(unicode.Cf, r), unicode.Is(unicode.Zl, r), unicode.Is(unicode.Zp, r):
+			return -1
 		}
-		return -1
+		return r
 	}, s)
 }

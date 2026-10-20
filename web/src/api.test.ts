@@ -97,3 +97,33 @@ describe('runBody', () => {
     assert.equal(JSON.stringify(runBody('q', true, false, undefined, [])), '{"prompt":"q","tools":true,"cluster":false}')
   })
 })
+
+describe('the skill calls', () => {
+  afterEach(() => {
+    globalThis.fetch = realFetch
+  })
+
+  it('builds the query of a list from the filter', async () => {
+    const paths: string[] = []
+    stubFetch((path) => {
+      paths.push(path)
+      return respond(200, [])
+    })
+    await api.listSkills()
+    await api.listSkills({ host: 3 })
+    await api.listSkills({ state: 'proposed' })
+    await api.listSkills({ host: 3, state: 'active' })
+    assert.deepEqual(paths, ['/api/skills', '/api/skills?host=3', '/api/skills?state=proposed', '/api/skills?host=3&state=active'])
+  })
+
+  it('confirms without a body and with an edit', async () => {
+    const bodies: (string | undefined)[] = []
+    globalThis.fetch = ((_: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(init?.body as string | undefined)
+      return Promise.resolve(respond(200, {}))
+    }) as typeof fetch
+    await api.confirmSkill(4)
+    await api.confirmSkill(4, { description: 'd', body: 'b' })
+    assert.deepEqual(bodies, [undefined, JSON.stringify({ description: 'd', body: 'b' })])
+  })
+})

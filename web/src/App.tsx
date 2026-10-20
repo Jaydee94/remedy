@@ -12,6 +12,7 @@ import NeedsYouPage from './NeedsYouPage.tsx'
 import NotFound from './NotFound.tsx'
 import RunPage from './RunPage.tsx'
 import SetupPage from './SetupPage.tsx'
+import SkillsPage from './SkillsPage.tsx'
 import TodayPage from './TodayPage.tsx'
 
 /** Mounts RunPage with key={id} so that switching runs resets its state. */
@@ -99,6 +100,7 @@ export default function App() {
         <Route path="runs/:id" element={<RunRoute />} />
         <Route path="hosts" element={<HostsPage />} />
         <Route path="hosts/:id" element={<HostRoute />} />
+        <Route path="skills" element={<SkillsPage />} />
         <Route path="settings" element={<SetupPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

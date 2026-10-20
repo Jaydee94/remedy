@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -252,17 +253,26 @@ func hostName(ctx context.Context, tx *sql.Tx, id int64) (string, error) {
 	return name, err
 }
 
-// DeleteHost removes a host and, through the foreign key, its login.
+// DeleteHost removes a host and, through the foreign keys, its login and its skills (proposals included). The activity entry says how
+// many skills went with it.
 func (s *Store) DeleteHost(ctx context.Context, id int64) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		name, err := hostName(ctx, tx, id)
 		if err != nil {
 			return err
 		}
+		var skills int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM skills WHERE host_id = ?`, id).Scan(&skills); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM hosts WHERE id = ?`, id); err != nil {
 			return err
 		}
-		return insertActivity(ctx, tx, NewActivity{Kind: KindHostChanged, Summary: "Host " + name + " removed"})
+		summary := "Host " + name + " removed"
+		if skills > 0 {
+			summary += fmt.Sprintf("; %s removed with it", plural(skills, "skill"))
+		}
+		return insertActivity(ctx, tx, NewActivity{Kind: KindHostChanged, Summary: summary})
 	})
 }
 

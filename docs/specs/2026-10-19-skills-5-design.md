@@ -1,6 +1,6 @@
 # Skills and the learning run, cycle 5
 
-Status: draft for the maintainer's review, 2026-10-19. Two implementation plans: **5a (skills)** and **5b (the learning run)**, both written after this spec is approved.
+Status: approved by the maintainer, 2026-10-19. Plan 5a (skills, `docs/plans/skills-5a-skills.md`) is implemented; plan 5b (the learning run) is not.
 Parent documents: [`2026-10-09-hosts-and-skills-design.md`](2026-10-09-hosts-and-skills-design.md) (the umbrella: sections 2, 8 and 11 are binding here),
 [`2026-10-11-hosts-2-tools-design.md`](2026-10-11-hosts-2-tools-design.md) (the host tools and the table of reads that no skill can change),
 [`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md) (the responder for outages whose prompt gets the skill list),
@@ -88,6 +88,8 @@ The table keeps no secret. Timestamps have nine fractional digits.
 **The role.** `runs.role` is `CHECK (role IN ('adhoc', 'responder'))`. A new role `learner` needs the table rebuilt. The migration starts with the line `-- remedy:foreign-keys-off` (as 008 does), rebuilds `runs`
 with `'learner'` allowed and copies every row, and carries a test on a database built from the earlier migration files with a row in every table that points at `runs` (`run_events`, `run_tokens`, `tool_calls`, `incidents`,
 `activity`, `run_hosts`, and the others the plan lists by reading the schema). A learner run has `host_count` 1, `mcp` 1, `cluster` 0 and `automatic` 0.
+
+Plan 5a made migration 015 the table of skills only; the rebuild of `runs` is migration 016 (plan 5b).
 
 ## 5. What a run sees
 
@@ -208,5 +210,5 @@ cancelled or times out leaves nothing.
 
 ## 13. Open points for the plans
 
-- 5a: where the visible set is read for an ad-hoc run (at the claim, next to `prompt.Question`) and whether the responder's stored prompt keeps the list of its start (it does: the list is part of what is stored); the exact wording of the instructions in the `available_skills` block.
+- 5a (answered in the plan): the visible set is read at the claim for an ad-hoc run (`Store.RunSkills`) and when the responder starts a run (`Store.VisibleSkills`); the responder's stored prompt keeps the list; the wording is `skillsInstructions` in `internal/prompt/skills.go`.
 - 5b: the exact Markdown layout of the profile skill; whether the learner run appears on the Ask page's run list (it is a run of role `learner` and shows there with its host).

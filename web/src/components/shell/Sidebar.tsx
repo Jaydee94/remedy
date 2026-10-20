@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 import { askFor, filterIncidents, incidentPreview } from '@/conversation.ts'
 import { incidentStateColor, timeAgo } from '@/incidents.ts'
-import { navItems } from '@/shell.ts'
+import { navBadge, navItems } from '@/shell.ts'
 import { useSignOut } from '@/shellContext.ts'
 import { useClock } from '@/useClock.ts'
 import type { Section, ShellState } from '@/shell.ts'
@@ -14,12 +14,13 @@ interface Props {
   section: Section | null
   pathname: string
   shell: ShellState
+  proposals: number
 }
 
 const focus = 'outline-none focus-visible:ring-3 focus-visible:ring-ring/50'
 
 /** The desktop sidebar: the navigation, the open conversations, what is coming later. Hidden below the md breakpoint. */
-export default function Sidebar({ section, pathname, shell }: Props) {
+export default function Sidebar({ section, pathname, shell, proposals }: Props) {
   const signOut = useSignOut()
   const now = useClock()
   return (
@@ -37,6 +38,7 @@ export default function Sidebar({ section, pathname, shell }: Props) {
         {navItems.map((item) => {
           const Icon = navIcons[item.section]
           const active = item.section === section
+          const badge = navBadge(item.section, shell.pending, proposals)
           return (
             <Link
               key={item.to}
@@ -50,7 +52,7 @@ export default function Sidebar({ section, pathname, shell }: Props) {
             >
               <Icon className="size-4.25" aria-hidden />
               <span className="flex-1">{item.label}</span>
-              {item.section === 'needs' && shell.pending > 0 && <PendingBadge count={shell.pending} />}
+              {badge && <PendingBadge count={badge.count} label={badge.label} />}
             </Link>
           )
         })}

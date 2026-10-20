@@ -146,6 +146,15 @@ func (s *srv) routes(public, internal *http.ServeMux) {
 		public.HandleFunc("DELETE /api/settings/{key}", s.session(s.deleteSetting))
 	}
 
+	// The skills depend on the store only.
+	public.HandleFunc("GET /api/skills", s.session(s.listSkills))
+	public.HandleFunc("POST /api/skills", s.session(s.createSkill))
+	public.HandleFunc("GET /api/skills/{id}", s.session(s.getSkill))
+	public.HandleFunc("PATCH /api/skills/{id}", s.session(s.patchSkill))
+	public.HandleFunc("DELETE /api/skills/{id}", s.session(s.deleteSkill))
+	public.HandleFunc("POST /api/skills/{id}/confirm", s.session(s.confirmSkill))
+	public.HandleFunc("POST /api/skills/{id}/reject", s.session(s.rejectSkill))
+
 	if d.Signals != nil {
 		public.HandleFunc("GET /api/signals", s.session(s.getSignals))
 	}
