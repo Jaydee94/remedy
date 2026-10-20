@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Host, Skill } from '@/api.ts'
-import { MAX_BODY_BYTES, MAX_DESCRIPTION, byteLength, skillProblem } from '@/skills.ts'
+import { MAX_BODY_BYTES, MAX_DESCRIPTION, byteLength, normalizeBody, skillProblem } from '@/skills.ts'
 import Field from '@/components/hosts/Field'
 import { ariaDisabled } from '@/components/setup/ariaDisabled.ts'
 import { Button } from '@/components/ui/button'
@@ -48,7 +48,7 @@ export default function SkillForm({ hosts, skill, busy, submitLabel, onSubmit, o
     onSubmit({ hostId: hostId === '' ? null : Number(hostId), name: name.trim(), description: description.trim(), body })
   }
 
-  const kb = (byteLength(body.trim()) / 1024).toFixed(1)
+  const kb = (byteLength(normalizeBody(body)) / 1024).toFixed(1)
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" aria-describedby={shown && problem ? problemId : undefined}>
       <Field label="Where it applies" hint={skill ? 'The scope of a skill does not change.' : "Global skills are listed for every run; a host's skills only for runs that have the host."}>

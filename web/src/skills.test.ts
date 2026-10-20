@@ -10,6 +10,7 @@ import {
   evidenceSummary,
   hostDeleteWarning,
   nextProposals,
+  normalizeBody,
   originText,
   reviewItems,
   scopeGroups,
@@ -58,6 +59,18 @@ describe('skillProblem', () => {
     assert.match(skillProblem({ ...ok, body: 'x'.repeat(8193) }), /at most 8 KB/)
   })
 
+  it('reads a body the way the server does: CRLF is LF before the trim and the byte count', () => {
+    const lf = ('x'.repeat(63) + '\n').repeat(127) + 'x'.repeat(64)
+    assert.equal(byteLength(lf), 8192)
+    const crlf = lf.replaceAll('\n', '\r\n')
+    assert.equal(byteLength(crlf), 8192 + 127)
+    assert.equal(skillProblem({ ...ok, body: crlf }), '')
+    assert.equal(skillProblem({ ...ok, body: '\r\n' + crlf + '\r\n' }), '')
+    assert.match(skillProblem({ ...ok, body: crlf + 'y' }), /at most 8 KB/)
+    assert.match(skillProblem({ ...ok, body: 'x'.repeat(8191) + '\r\ny' }), /at most 8 KB/)
+    assert.equal(normalizeBody('  a\r\nb \r\n'), 'a\nb')
+  })
+
   it('counts bytes for the body and characters for the description', () => {
     assert.equal(byteLength('é'), 2)
     assert.match(skillProblem({ ...ok, body: 'é'.repeat(4097) }), /at most 8 KB/)
@@ -82,6 +95,26 @@ describe('scopeGroups', () => {
         ['host:1', 'alpha', ['backup']],
         ['host:2', 'nas', ['paperless', 'profile']],
       ],
+    )
+  })
+
+  it('orders by code point, the same on every locale', () => {
+    const groups = scopeGroups([
+      onHost(1, 'alpha', { id: 1, name: 'ab' }),
+      onHost(2, 'Zeta', { id: 2, name: 'a-b' }),
+      onHost(3, '_x', { id: 3, name: 'a0' }),
+      onHost(4, 'é', { id: 4, name: 'a-b' }),
+      onHost(1, 'alpha', { id: 5, name: 'a-b' }),
+      onHost(1, 'alpha', { id: 6, name: 'a0' }),
+    ])
+    // localeCompare would put alpha, _x, é, Zeta in some order of its own; the code points say Z < _ < a < é.
+    assert.deepEqual(
+      groups.map((g) => g.title),
+      ['Zeta', '_x', 'alpha', 'é'],
+    )
+    assert.deepEqual(
+      groups.find((g) => g.title === 'alpha')?.skills.map((s) => s.name),
+      ['a-b', 'a0', 'ab'],
     )
   })
 

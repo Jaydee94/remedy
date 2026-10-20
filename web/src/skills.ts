@@ -9,6 +9,12 @@ export const validSkillName = (s: string) => /^[a-z0-9][a-z0-9-]{0,39}$/.test(s.
 const encoder = new TextEncoder()
 export const byteLength = (s: string) => encoder.encode(s).length
 
+/** The body as the server stores it: CRLF line breaks are LF, then the ends are trimmed (internal/skill/skill.go). */
+export const normalizeBody = (s: string) => s.replaceAll('\r\n', '\n').trim()
+
+/** Plain code-point order: the same on every locale, and the order the server uses. */
+const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+
 /**
  * The first rule a skill form breaks, in the words of the API, or '' when the server can be asked. The API has the last word (it also
  * refuses invisible characters and a name that exists).
@@ -21,7 +27,7 @@ export function skillProblem(f: { name: string; description: string; body: strin
   if (description === '') return 'The description must not be empty.'
   if ([...description].length > MAX_DESCRIPTION) return 'The description has at most 200 characters.'
   if (/\p{Cc}/u.test(description)) return 'The description is one line of plain text: no line breaks and no control characters.'
-  const body = f.body.trim()
+  const body = normalizeBody(f.body)
   if (body === '') return 'The body must not be empty.'
   if (byteLength(body) > MAX_BODY_BYTES) return 'The body has at most 8 KB.'
   return ''
@@ -48,8 +54,8 @@ export function scopeGroups(skills: readonly Skill[]): ScopeGroup[] {
     group.skills.push(s)
   }
   const out = [...groups.values()]
-  for (const g of out) g.skills.sort((a, b) => a.name.localeCompare(b.name))
-  out.sort((a, b) => (a.hostId === null ? -1 : b.hostId === null ? 1 : a.title.localeCompare(b.title)))
+  for (const g of out) g.skills.sort((a, b) => compare(a.name, b.name))
+  out.sort((a, b) => (a.hostId === null ? -1 : b.hostId === null ? 1 : compare(a.title, b.title)))
   return out
 }
 
