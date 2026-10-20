@@ -49,11 +49,20 @@ export default function HostPage({ id }: { id: number }) {
   }, [id])
 
   // What deleting the host takes with it: its skills and the proposals that wait for a review. Not knowing is shown as such.
+  // `stale` keeps a slow answer for the previous host from replacing the one of the current host.
   useEffect(() => {
+    let stale = false
     api
       .listSkills({ host: id })
-      .then(setSkills)
-      .catch(() => setSkills(null))
+      .then((list) => {
+        if (!stale) setSkills(list)
+      })
+      .catch(() => {
+        if (!stale) setSkills(null)
+      })
+    return () => {
+      stale = true
+    }
   }, [id])
 
   // One request at a time. A 404 means the host was removed elsewhere (another tab): say so once, instead of an error per button.
