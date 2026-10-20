@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -138,12 +139,18 @@ func capEntries(entries []string, maxEntries, maxBytes int) string {
 	return b.String()
 }
 
-// removeControl drops control characters other than the newline and the tab.
+// removeControl keeps the newline and the tab and drops every other character a reader cannot see or that moves the text around: the C0
+// and C1 controls and DEL, the format characters (category Cf: zero width space and joiners, the bidirectional marks and isolates, the soft
+// hyphen, the word joiner, the BOM and the tag characters) and the line and paragraph separators. A zero width joiner also breaks an
+// emoji sequence into its parts; that is accepted. Accented letters, dashes, emoji and other scripts stay.
 func removeControl(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r == '\n' || r == '\t' || r >= ' ' && r != 0x7f {
+		switch {
+		case r == '\n' || r == '\t':
 			return r
+		case unicode.IsControl(r), unicode.Is(unicode.Cf, r), unicode.Is(unicode.Zl, r), unicode.Is(unicode.Zp, r):
+			return -1
 		}
-		return -1
+		return r
 	}, s)
 }

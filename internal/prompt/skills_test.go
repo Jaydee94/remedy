@@ -153,9 +153,17 @@ func TestADescriptionIsBoundedOneLineAndRedacted(t *testing.T) {
 	secret := prompt.Skill{Name: "db", Description: "login: password=hunter2hunter2 and AKIAIOSFODNN7EXAMPLE"}
 	control := prompt.Skill{Name: "ctl", Description: "a\x00b\x1b[31mc\td"}
 	text := prompt.SkillsSection([]prompt.Skill{long, secret, control}, d)
+	// The longest line is the long one: its prefix, the 800 bytes of the description cap and the note that head appends (folded into
+	// one line), which says that 4200 bytes were left out.
+	longest := len("long (global) — ") + 800 + len(" [... truncated, 4200 more bytes ...]")
 	for _, line := range strings.Split(listOf(t, text), "\n") {
-		if len(line) > 1000 {
-			t.Errorf("a line has %d bytes: %.80q", len(line), line)
+		if len(line) > longest {
+			t.Errorf("a line has %d bytes, more than the %d of the cap: %.80q", len(line), longest, line)
+		}
+	}
+	for _, line := range strings.Split(listOf(t, text), "\n") {
+		if strings.HasPrefix(line, "long ") && len(line) != longest {
+			t.Errorf("the long line has %d bytes, want exactly %d (the cap is 800 bytes of description plus the note)", len(line), longest)
 		}
 	}
 	if strings.Contains(text, "hunter2hunter2") || strings.Contains(text, "AKIAIOSFODNN7EXAMPLE") {

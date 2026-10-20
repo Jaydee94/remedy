@@ -24,12 +24,15 @@ func Question(incidentID int64, question string) string {
 }
 
 // QuestionWithSkills is Question with the list of the skills the run may load between the frame and the question. The question stays last.
+// It draws its own random delimiter (SkillsSection with ""): the prompt holds one data block only, so there is no other block whose
+// delimiter has to match.
 func QuestionWithSkills(incidentID int64, question string, skills []Skill) string {
 	return fmt.Sprintf(questionFrame, incidentID) + SkillsSection(skills, "") + questionAsk + question + "\n"
 }
 
 // WithSkills puts the list of skills in front of the task of an ad-hoc run that is not about an incident. With no skills the task is
-// returned exactly as it is. The task is the maintainer's own text and stays last.
+// returned exactly as it is. The task is the maintainer's own text and stays last. Like QuestionWithSkills it draws its own random
+// delimiter, because it writes one block only.
 func WithSkills(task string, skills []Skill) string {
 	section := SkillsSection(skills, "")
 	if section == "" {
