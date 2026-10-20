@@ -116,7 +116,7 @@ func annotations(m map[string]string) string {
 	for _, k := range sortedKeys(m) {
 		// As in keyValues, the key is cleaned together with the value and bounded by the cap of the whole entry.
 		key := strings.Join(strings.Fields(removeControl(k)), " ")
-		lines = append(lines, head(removeControl(clean(key+": "+m[k])), maxOutageAnnotation))
+		lines = append(lines, head(clean(removeControl(key+": "+m[k])), maxOutageAnnotation))
 	}
 	return capEntries(lines, maxOutageEntries, maxOutageAnnotationBytes)
 }

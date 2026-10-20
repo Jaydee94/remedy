@@ -124,7 +124,7 @@ func clean(s string) string {
 
 // oneLine is for names: a single, short line.
 func oneLine(s string, max int) string {
-	s = strings.Join(strings.Fields(removeControl(clean(s))), " ")
+	s = strings.Join(strings.Fields(clean(removeControl(s))), " ")
 	return head(s, max)
 }
 
