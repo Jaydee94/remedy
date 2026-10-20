@@ -16,6 +16,9 @@ import (
 // maxSkillBody bounds a request: a body of 8 KB can grow when JSON escapes it.
 const maxSkillBody = 64 << 10
 
+// notWaitingForReview answers a confirmation or a rejection of a skill that is not a proposal.
+const notWaitingForReview = "This skill is not waiting for a review."
+
 type evidenceView struct {
 	Argv []string `json:"argv"`
 	Ran  bool     `json:"ran"`
@@ -76,6 +79,12 @@ func skillID(r *http.Request) (int64, bool) {
 // skillError answers for an error of the store: a rule that was broken is a 400 with its text, a missing thing a 404 with the text
 // the caller gives, a clash a 409. Every text is fixed: none carries what an agent wrote.
 func (s *srv) skillError(w http.ResponseWriter, err error, missing, fallback string) {
+	s.skillErrorState(w, err, missing, fallback, "A proposal can only be confirmed or rejected.")
+}
+
+// skillErrorState is skillError with the sentence for a skill in the wrong state: it depends on the action, a change or a delete
+// that met a proposal, or a confirmation or rejection that met a skill that is not one.
+func (s *srv) skillErrorState(w http.ResponseWriter, err error, missing, fallback, wrongState string) {
 	var fe *skill.FieldError
 	switch {
 	case errors.As(err, &fe):
@@ -87,18 +96,37 @@ func (s *srv) skillError(w http.ResponseWriter, err error, missing, fallback str
 	case errors.Is(err, store.ErrExists):
 		writeErr(w, http.StatusConflict, "A skill with this name already exists in this scope.")
 	case errors.Is(err, store.ErrSkillState):
-		writeErr(w, http.StatusConflict, "A proposal can only be confirmed or rejected, and only a proposal can be.")
+		writeErr(w, http.StatusConflict, wrongState)
 	default:
 		writeErr(w, http.StatusInternalServerError, fallback)
 	}
 }
 
-func readSkillBody(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxSkillBody)).Decode(v); err != nil {
+// decodeSkillBody reads one JSON object into v, strictly: an unknown member, trailing data after the object and a body over
+// maxSkillBody are all "invalid request body" (a fixed text), so a mistyped key never turns into a request that does something
+// else (a confirmation without the maintainer's edit). With allowEmpty a body with no content at all is accepted and leaves v as
+// it is; `{}` and `null` also leave v as it is.
+func decodeSkillBody(w http.ResponseWriter, r *http.Request, v any, allowEmpty bool) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxSkillBody))
+	dec.DisallowUnknownFields()
+	err := dec.Decode(v)
+	if err == nil {
+		// A second value, or anything but white space after the first, is refused; only the end of the body is right.
+		if _, second := dec.Token(); !errors.Is(second, io.EOF) {
+			err = errors.New("trailing data")
+		}
+	} else if allowEmpty && errors.Is(err, io.EOF) {
+		return true
+	}
+	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid request body")
 		return false
 	}
 	return true
+}
+
+func readSkillBody(w http.ResponseWriter, r *http.Request, v any) bool {
+	return decodeSkillBody(w, r, v, false)
 }
 
 // viewOfStored builds the view of a skill read from the store. A proposal is read together with the skill it replaces, in one
@@ -267,14 +295,13 @@ func (s *srv) confirmSkill(w http.ResponseWriter, r *http.Request) {
 		Description *string `json:"description"`
 		Body        *string `json:"body"`
 	}
-	// No body at all is a confirmation without an edit.
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxSkillBody)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		writeErr(w, http.StatusBadRequest, "invalid request body")
+	// No body at all, `{}` and `null` are a confirmation without an edit.
+	if !decodeSkillBody(w, r, &body, true) {
 		return
 	}
 	cur, err := s.d.Store.GetSkill(r.Context(), id)
 	if err != nil {
-		s.skillError(w, err, "skill not found", "could not load the skill")
+		s.skillErrorState(w, err, "skill not found", "could not load the skill", notWaitingForReview)
 		return
 	}
 	var edit *skill.Fields
@@ -289,7 +316,7 @@ func (s *srv) confirmSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	k, err := s.d.Store.ConfirmSkill(r.Context(), id, edit)
 	if err != nil {
-		s.skillError(w, err, "skill not found", "could not confirm the skill")
+		s.skillErrorState(w, err, "skill not found", "could not confirm the skill", notWaitingForReview)
 		return
 	}
 	writeJSON(w, http.StatusOK, skillViewOf(k, nil))
@@ -302,7 +329,7 @@ func (s *srv) rejectSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.d.Store.RejectSkill(r.Context(), id); err != nil {
-		s.skillError(w, err, "skill not found", "could not reject the proposal")
+		s.skillErrorState(w, err, "skill not found", "could not reject the proposal", notWaitingForReview)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

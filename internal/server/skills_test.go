@@ -495,6 +495,99 @@ func TestNoAnswerEchoesWhatAnAgentWrote(t *testing.T) {
 	}
 }
 
+func TestAnUnknownMemberOrTrailingDataIsRefusedAndChangesNothing(t *testing.T) {
+	e := newSkillEnv(t)
+	nas := e.host(t, "nas")
+	a := e.create(t, `{"name":"a","description":"First.","body":"First body."}`)
+	made := e.propose(t, nas.ID, proposal("profile", "What the NAS is.", "A NAS."))
+	confirm := fmt.Sprintf("/api/skills/%d/confirm", made[0].ID)
+	patch := fmt.Sprintf("/api/skills/%d", a.ID)
+
+	for name, c := range map[string]struct{ method, path, body string }{
+		"create with an unknown member":    {http.MethodPost, "/api/skills", `{"name":"b","description":"d","body":"b","origin":"proposed"}`},
+		"create with trailing data":        {http.MethodPost, "/api/skills", `{"name":"b","description":"d","body":"b"} garbage`},
+		"create with a second object":      {http.MethodPost, "/api/skills", `{"name":"b","description":"d","body":"b"}{"name":"c","description":"d","body":"b"}`},
+		"patch with a hostId":              {http.MethodPatch, patch, fmt.Sprintf(`{"hostId":%d}`, nas.ID)},
+		"patch with an origin":             {http.MethodPatch, patch, `{"origin":"proposed"}`},
+		"patch with a mistyped key":        {http.MethodPatch, patch, `{"descripton":"x"}`},
+		"patch with trailing data":         {http.MethodPatch, patch, `{"state":"off"} x`},
+		"confirm with a mistyped edit key": {http.MethodPost, confirm, `{"descripton":"Edited."}`},
+		"confirm with a name":              {http.MethodPost, confirm, `{"name":"other"}`},
+		"confirm with trailing data":       {http.MethodPost, confirm, `{"body":"Edited."} x`},
+	} {
+		if code, out := e.do(t, c.method, c.path, c.body); code != http.StatusBadRequest || !strings.Contains(out, "invalid request body") {
+			t.Errorf("%s: %d %s, want 400 invalid request body", name, code, out)
+		}
+	}
+	if waiting := e.list(t, "?state=proposed"); len(waiting) != 1 || waiting[0].Description != "What the NAS is." {
+		t.Errorf("a mistyped edit must leave the proposal unconfirmed and unedited: %+v", waiting)
+	}
+	all := e.list(t, "?state=active")
+	if len(all) != 1 || all[0].Name != "a" || all[0].Description != "First." || all[0].State != "active" || all[0].HostID != nil {
+		t.Errorf("a refused request changed something: %+v", all)
+	}
+}
+
+func TestAnEmptyOrNullConfirmationBodyIsNoEdit(t *testing.T) {
+	e := newSkillEnv(t)
+	nas := e.host(t, "nas")
+	made := e.propose(t, nas.ID,
+		proposal("one", "Desc one.", "Body one."), proposal("two", "Desc two.", "Body two."), proposal("three", "Desc three.", "Body three."))
+	for i, body := range []string{"", `{}`, `null`} {
+		code, out := e.do(t, http.MethodPost, fmt.Sprintf("/api/skills/%d/confirm", made[i].ID), body)
+		got := decodeBody[skillJSON](t, out)
+		if code != http.StatusOK || got.State != "active" || got.Description != made[i].Description || got.Body != made[i].Body {
+			t.Errorf("confirm with body %q = %d %s, want the proposal as it is", body, code, out)
+		}
+	}
+}
+
+func TestAnOversizeBodyAndOddIdsAreRefused(t *testing.T) {
+	e := newSkillEnv(t)
+	huge := `{"name":"a","description":"d","body":"` + strings.Repeat("x", 70<<10) + `"}`
+	if code, out := e.do(t, http.MethodPost, "/api/skills", huge); code != http.StatusBadRequest || !strings.Contains(out, "invalid request body") {
+		t.Errorf("an oversize body = %d %s, want 400", code, out)
+	}
+	if got := e.list(t, ""); len(got) != 0 {
+		t.Errorf("an oversize body stored something: %+v", got)
+	}
+	for _, id := range []string{"-1", "0", "99999999999999999999"} {
+		for _, c := range []struct{ method, suffix, body string }{
+			{http.MethodGet, "", ""}, {http.MethodPatch, "", `{"state":"off"}`}, {http.MethodDelete, "", ""},
+			{http.MethodPost, "/confirm", ""}, {http.MethodPost, "/reject", ""},
+		} {
+			if code, _ := e.do(t, c.method, "/api/skills/"+id+c.suffix, c.body); code != http.StatusNotFound {
+				t.Errorf("%s /api/skills/%s%s = %d, want 404", c.method, id, c.suffix, code)
+			}
+		}
+	}
+}
+
+func TestReadingOneSkillNeedsASession(t *testing.T) {
+	e := newSkillEnv(t)
+	a := e.create(t, `{"name":"a","description":"d","body":"b"}`)
+	if code, _ := e.request(t, &http.Client{}, http.MethodGet, fmt.Sprintf("/api/skills/%d", a.ID), "", true); code != http.StatusUnauthorized {
+		t.Errorf("GET /api/skills/{id} without a session = %d, want 401", code)
+	}
+}
+
+func TestTheConflictSentenceFitsTheAction(t *testing.T) {
+	e := newSkillEnv(t)
+	nas := e.host(t, "nas")
+	a := e.create(t, `{"name":"a","description":"d","body":"b"}`)
+	p := e.propose(t, nas.ID, proposal("pending", "d", "b"))[0]
+	for name, c := range map[string]struct{ method, path, body, want string }{
+		"patch a proposal":  {http.MethodPatch, fmt.Sprintf("/api/skills/%d", p.ID), `{"state":"off"}`, "A proposal can only be confirmed or rejected."},
+		"delete a proposal": {http.MethodDelete, fmt.Sprintf("/api/skills/%d", p.ID), "", "A proposal can only be confirmed or rejected."},
+		"confirm a skill":   {http.MethodPost, fmt.Sprintf("/api/skills/%d/confirm", a.ID), "", "This skill is not waiting for a review."},
+		"reject a skill":    {http.MethodPost, fmt.Sprintf("/api/skills/%d/reject", a.ID), "", "This skill is not waiting for a review."},
+	} {
+		if code, out := e.do(t, c.method, c.path, c.body); code != http.StatusConflict || !strings.Contains(out, c.want) {
+			t.Errorf("%s: %d %s, want 409 containing %q", name, code, out, c.want)
+		}
+	}
+}
+
 func TestGetOneSkillCarriesWhatAProposalReplaces(t *testing.T) {
 	e := newSkillEnv(t)
 	nas := e.host(t, "nas")
