@@ -55,6 +55,16 @@ func newVisibleRig(t *testing.T) *visibleRig {
 	return r
 }
 
+// skills is RunSkills with its error checked: a failing call must fail the test, not pass as an empty list.
+func (r *visibleRig) skills(t *testing.T, runID string) []store.Skill {
+	t.Helper()
+	got, err := r.s.RunSkills(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("RunSkills(%s): %v", runID, err)
+	}
+	return got
+}
+
 func (r *visibleRig) run(t *testing.T, hosts ...int64) string {
 	t.Helper()
 	created, err := r.s.CreateRunWith(context.Background(), store.RunOptions{Provider: "claude", Prompt: "p", Tools: true, HostIDs: hosts})
@@ -89,7 +99,7 @@ func TestARunSeesTheActiveGlobalSkillsAndTheActiveSkillsOfItsHostsOnly(t *testin
 func TestNoProposalNoOffSkillAndNoOtherHostsSkillIsEverVisible(t *testing.T) {
 	r, ctx := newVisibleRig(t), context.Background()
 	everything := r.run(t, r.nas.ID, r.alpha.ID, r.gone.ID)
-	got, _ := r.s.RunSkills(ctx, everything)
+	got := r.skills(t, everything)
 	for _, hidden := range []string{"pending-proposal", "global-off", "nas-off"} {
 		if strings.Contains(listing(got), hidden) {
 			t.Errorf("%s is visible: %q", hidden, listing(got))
@@ -126,13 +136,13 @@ func TestAnUnknownRunSeesTheGlobalSkillsAndTheResultIsNeverNil(t *testing.T) {
 func TestADeletedHostTakesItsSkillsOutOfTheVisibleSetOfARunThatHadIt(t *testing.T) {
 	r, ctx := newVisibleRig(t), context.Background()
 	id := r.run(t, r.nas.ID, r.gone.ID)
-	if got, _ := r.s.RunSkills(ctx, id); !strings.Contains(listing(got), "gone/gone-skill") {
+	if got := r.skills(t, id); !strings.Contains(listing(got), "gone/gone-skill") {
 		t.Fatalf("before the delete: %q", listing(got))
 	}
 	if err := r.s.DeleteHost(ctx, r.gone.ID); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := r.s.RunSkills(ctx, id)
+	got := r.skills(t, id)
 	if listing(got) != "lab-notes nas/paperless" {
 		t.Errorf("after the delete: %q", listing(got))
 	}
@@ -144,23 +154,26 @@ func TestTurningASkillOffOrDeletingItTakesItOutAtOnceAndAConfirmedProposalComesI
 	if _, err := r.s.UpdateSkill(ctx, r.paperless.ID, skillFields("paperless"), store.SkillOff); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := r.s.RunSkills(ctx, id); listing(got) != "lab-notes" {
+	if got := r.skills(t, id); listing(got) != "lab-notes" {
 		t.Errorf("after turning it off: %q", listing(got))
 	}
 	if _, err := r.s.UpdateSkill(ctx, r.paperless.ID, skillFields("paperless"), store.SkillActive); err != nil {
 		t.Fatal(err)
 	}
-	pending, _ := r.s.ListSkills(ctx, store.SkillFilter{State: store.SkillProposed})
+	pending, err := r.s.ListSkills(ctx, store.SkillFilter{State: store.SkillProposed})
+	if err != nil || len(pending) == 0 {
+		t.Fatalf("ListSkills(proposed) = %v, %v", pending, err)
+	}
 	if _, err := r.s.ConfirmSkill(ctx, pending[0].ID, nil); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := r.s.RunSkills(ctx, id); listing(got) != "lab-notes nas/paperless nas/pending-proposal" {
+	if got := r.skills(t, id); listing(got) != "lab-notes nas/paperless nas/pending-proposal" {
 		t.Errorf("after the confirmation: %q", listing(got))
 	}
 	if err := r.s.DeleteSkill(ctx, r.paperless.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := r.s.RunSkills(ctx, id); listing(got) != "lab-notes nas/pending-proposal" {
+	if got := r.skills(t, id); listing(got) != "lab-notes nas/pending-proposal" {
 		t.Errorf("after the delete: %q", listing(got))
 	}
 }
@@ -176,7 +189,7 @@ func TestAReplacingProposalIsInvisibleUntilItIsConfirmedAndThenReplacesTheText(t
 	}
 
 	bodies := func() []string {
-		list, _ := r.s.RunSkills(ctx, id)
+		list := r.skills(t, id)
 		var out []string
 		for _, k := range list {
 			if k.Name == "paperless" {
@@ -193,5 +206,25 @@ func TestAReplacingProposalIsInvisibleUntilItIsConfirmedAndThenReplacesTheText(t
 	}
 	if got := bodies(); len(got) != 1 || got[0] != "Proposed body." {
 		t.Errorf("after the confirmation the run sees %q, want the new text once", got)
+	}
+}
+
+// A host that is switched off keeps its skills visible to a run that already has it. The choice is deliberate: a skill only informs the
+// reasoning, the host tools are the barrier and they refuse to run on a disabled host, and the outage path drops disabled hosts before it
+// reads the host's skills. Hiding them here would make the answer of skill_get depend on a switch that does not protect anything.
+func TestASkillOfADisabledHostStaysVisibleToARunThatHasTheHost(t *testing.T) {
+	r, ctx := newVisibleRig(t), context.Background()
+	id := r.run(t, r.nas.ID)
+	off := hostFields("nas")
+	off.Enabled = false
+	if _, _, err := r.s.UpdateHost(ctx, r.nas.ID, off); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.skills(t, id); listing(got) != "lab-notes nas/paperless" {
+		t.Errorf("after disabling the host: %q, want its active skill to stay", listing(got))
+	}
+	byHosts, err := r.s.VisibleSkills(ctx, []int64{r.nas.ID})
+	if err != nil || listing(byHosts) != "lab-notes nas/paperless" {
+		t.Errorf("VisibleSkills for the disabled host = %q, %v", listing(byHosts), err)
 	}
 }
