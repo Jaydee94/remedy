@@ -192,7 +192,7 @@ func TestAToolRunReadsAndWritesThroughTheWholeChain(t *testing.T) {
 		names = append(names, tool.(map[string]any)["name"].(string))
 	}
 	slices.Sort(names)
-	if code != http.StatusOK || strings.Join(names, ",") != "activity_list,incident_add_note,incident_get,incident_job_log,incident_list" {
+	if code != http.StatusOK || strings.Join(names, ",") != "activity_list,incident_add_note,incident_get,incident_job_log,incident_list,skill_get" {
 		t.Fatalf("tools = %v (status %d)", names, code)
 	}
 
