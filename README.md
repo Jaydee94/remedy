@@ -205,3 +205,8 @@ Releases are automated: a merge to `main` with a `feat` or a `fix` publishes the
 (`ghcr.io/jaydee94/remedy-server` and `remedy-runner`, tags `X.Y.Z`, `sha-<short>`, `edge`), the Helm chart as an OCI artifact
 (`oci://ghcr.io/jaydee94/charts/remedy`) and a GitHub release with the changelog. Pull request titles must be conventional
 commits. Implemented, not yet run: see [`docs/runbook/release.md`](docs/runbook/release.md).
+
+## License
+
+Remedy is released under the [MIT License](LICENSE). The license covers this repository only. It does not cover the `claude` CLI, which no
+image contains and which you install and log in to under its vendor's own terms.
