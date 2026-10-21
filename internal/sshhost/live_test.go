@@ -92,10 +92,21 @@ func TestLiveTheTableOfReadsRunsAsTheAccountAndAsSudo(t *testing.T) {
 			continue
 		}
 		seen[v.Form] = true
-		res, err := l.run(t, c.Argv, v.Sudo)
-		if err != nil || res.ExitCode != 0 || !strings.Contains(res.Stdout, c.Want) {
-			t.Errorf("%q (sudo %v): %+v, %v, want exit 0 and %q", c.Argv, v.Sudo, res, err, c.Want)
+		// The command that runs is the expanded one: docker ps -a carries the host's filter, which the sudoers file names.
+		argv, ok := hostexec.Expand(v, c.Argv, liveRules)
+		if !ok {
+			t.Errorf("%q: Expand refused the host's rules", c.Argv)
+			continue
 		}
+		res, err := l.run(t, argv, v.Sudo)
+		if err != nil || res.ExitCode != 0 || !strings.Contains(res.Stdout, c.Want) {
+			t.Errorf("%q (sudo %v): %+v, %v, want exit 0 and %q", argv, v.Sudo, res, err, c.Want)
+		}
+	}
+	// The filter works: the container outside the pattern is in the fake's unfiltered list, and not in the answer.
+	ps, _ := hostexec.Expand(hostexec.Classify([]string{"docker", "ps", "-a"}, liveRules), []string{"docker", "ps", "-a"}, liveRules)
+	if res, err := l.run(t, ps, true); err != nil || strings.Contains(res.Stdout, "other") || !strings.Contains(res.Stdout, "remedy-drill") {
+		t.Errorf("%q: %+v, %v, want remedy-drill and not other", ps, res, err)
 	}
 	for _, f := range hostexec.ReadForms() {
 		if !seen[f] {
@@ -123,13 +134,17 @@ func TestLiveSudoRunsOnlyWhatTheSnippetAllows(t *testing.T) {
 	refused := [][]string{
 		{"docker", "restart", "other"},    // outside the container pattern
 		{"docker", "run", "alpine", "id"}, // not in the sudoers file
+		// The sudoers line names the filter, so sudo itself refuses a list of every container (or of other containers).
+		{"docker", "ps", "-a"},
+		{"docker", "ps", "-a", "--filter", "name=^other-"},
+		{"docker", "ps", "-a", "--filter", "name=remedy-"},
 		{"systemctl", "restart", "ssh.service"},
 		{"cat", "/etc/shadow"},
 		{"id"},
 	}
 	for _, argv := range refused {
 		res, err := l.run(t, argv, true)
-		if err != nil || res.ExitCode == 0 {
+		if err != nil || res.ExitCode == 0 || strings.Contains(res.Stdout, "remedy-drill") {
 			t.Errorf("%q: %+v, %v, want sudo to refuse it", argv, res, err)
 		}
 	}

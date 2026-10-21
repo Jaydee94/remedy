@@ -4,7 +4,8 @@
 # Reading the journal needs the group systemd-journal, not sudo.
 # In sudoers a * also matches spaces and further arguments, so a pattern with a star limits less than it looks.
 # A name without a star is an exact match.
-remedy ALL=(root) NOPASSWD: /usr/bin/docker ps -a
+# docker ps -a is granted only with the filter below, so sudo itself refuses a list of every container of the host.
+remedy ALL=(root) NOPASSWD: /usr/bin/docker ps -a --filter name\=^remedy-
 remedy ALL=(root) NOPASSWD: /usr/bin/docker logs --tail * remedy-*
 remedy ALL=(root) NOPASSWD: /usr/bin/docker inspect remedy-*
 remedy ALL=(root) NOPASSWD: /usr/bin/docker start remedy-*, /usr/bin/docker restart remedy-*, /usr/bin/docker stop remedy-*
