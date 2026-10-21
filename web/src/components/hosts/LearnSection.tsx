@@ -15,6 +15,8 @@ interface Props {
   run: Run
   /** Reads the host and its skills again. */
   onRefresh: () => Promise<void>
+  /** One quiet poll; the page skips it in a hidden tab and while one of its requests runs. */
+  onPoll: () => void
   onNotice: (text: string) => void
 }
 
@@ -22,7 +24,7 @@ interface Props {
  * "Get to know this host": starts the learning run, says what it costs and what it does, links to the run and to the review list, and shows
  * how the last run ended. While a run is going it asks for the host again every few seconds.
  */
-export default function LearnSection({ host, skills, busy, run, onRefresh, onNotice }: Props) {
+export default function LearnSection({ host, skills, busy, run, onRefresh, onPoll, onNotice }: Props) {
   const now = useClock()
   const active = learnActive(host.learning)
   const blocked = learnBlocked(host, skills)
@@ -31,17 +33,16 @@ export default function LearnSection({ host, skills, busy, run, onRefresh, onNot
 
   useEffect(() => {
     if (!active) return
-    const timer = setInterval(() => void onRefresh(), LEARN_POLL_MS)
+    const timer = setInterval(onPoll, LEARN_POLL_MS)
     return () => clearInterval(timer)
-  }, [active, onRefresh])
+  }, [active, onPoll])
 
+  // The page is read again after a failed start too: a run that another window started is then shown (the error stays, the focus stays).
   async function start() {
     if (busy || blocked !== '') return
     const started = await run(() => api.learnHost(host.id))
-    if (started) {
-      onNotice(learnStartedNotice(host.name))
-      await onRefresh()
-    }
+    if (started) onNotice(learnStartedNotice(host.name))
+    await onRefresh()
   }
 
   const progress = learnProgress(host.learning)

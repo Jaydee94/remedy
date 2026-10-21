@@ -171,6 +171,14 @@ export default function RunPage({ id }: { id: string }) {
                   <Link to="/skills" className="text-primary hover:text-primary-hover">
                     Review the proposals
                   </Link>
+                  {learnedHost && (
+                    <>
+                      {' · '}
+                      <Link to={`/hosts/${learnedHost.id}`} className="text-primary hover:text-primary-hover">
+                        Back to {learnedHost.name}
+                      </Link>
+                    </>
+                  )}
                 </>
               )}
             </p>

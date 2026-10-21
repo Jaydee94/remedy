@@ -32,12 +32,19 @@ export default function HostPage({ id }: { id: number }) {
   const navigate = useNavigate()
   const [host, setHost] = useState<Host | null>(null)
   const [presented, setPresented] = useState<PresentedKey | null>(null)
-  const [notice, setNotice] = useState('')
+  const [notice, setNoticeText] = useState('')
+  // Each notice is a new one: the same text set twice (a second start in one visit) is announced again, because the key remounts it.
+  const [noticeSeq, setNoticeSeq] = useState(0)
+  const setNotice = useCallback((text: string) => {
+    setNoticeText(text)
+    setNoticeSeq((n) => n + 1)
+  }, [])
   const [error, setError] = useState('')
   const [gone, setGone] = useState(false)
   const [skills, setSkills] = useState<Skill[] | null>(null)
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
+  const latest = useRef(0)
   const { target: heading, restore } = useFocusRestore<HTMLHeadingElement>()
 
   useEffect(() => {
@@ -68,9 +75,11 @@ export default function HostPage({ id }: { id: number }) {
   }, [id])
 
   // One request at a time. A 404 means the host was removed elsewhere (another tab): say so once, instead of an error per button.
+  // An action also makes every refresh that is still on its way stale: its answer was read before the action and must not undo it.
   const run: Run = useCallback(async <T,>(action: () => Promise<T>) => {
     if (busyRef.current) return undefined
     busyRef.current = true
+    latest.current++
     setBusy(true)
     setError('')
     try {
@@ -85,12 +94,21 @@ export default function HostPage({ id }: { id: number }) {
     }
   }, [])
 
-  // The host and its skills again: while a learning run is going, and after it was started. A poll that fails keeps what the page has.
+  // The host and its skills again: while a learning run is going, and after a start was tried. A poll that fails keeps what the page has.
+  // Only the answer of the latest request is used (an action counts as one, see `run`), so a slow answer never wins over a newer one.
   const refresh = useCallback(async () => {
+    const mine = ++latest.current
     const [h, s] = await Promise.allSettled([api.getHost(id), api.listSkills({ host: id })])
+    if (mine !== latest.current) return
     setHost((prev) => (prev ? nextHost(prev, h) : prev))
     if (s.status === 'fulfilled') setSkills(s.value)
   }, [id])
+
+  // The learning section's poll: not in a hidden tab and not while a request of the page runs (a save must not be undone). It says nothing.
+  const poll = useCallback(() => {
+    if (document.hidden || busyRef.current) return
+    void refresh()
+  }, [refresh])
 
   // For the actions that remove the control that was clicked (pin, unpin, save and remove a login): the focus goes back to the heading.
   // `restore` remembers the focused control when it is called, so it comes first; it does nothing when the control stays (a failure).
@@ -134,11 +152,14 @@ export default function HostPage({ id }: { id: number }) {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-          {notice && (
-            <Alert role="status">
-              <AlertDescription>{notice}</AlertDescription>
-            </Alert>
-          )}
+          {/* The live region stays mounted, so a notice that appears in it is announced; the key makes a repeated text a new notice. */}
+          <div role="status" aria-live="polite" className="empty:hidden">
+            {notice && (
+              <Alert key={noticeSeq} role={undefined}>
+                <AlertDescription>{notice}</AlertDescription>
+              </Alert>
+            )}
+          </div>
 
           <Part title="The host">
             <HostForm
@@ -185,7 +206,7 @@ export default function HostPage({ id }: { id: number }) {
             )}
           </Part>
           <Part title="Get to know this host">
-            <LearnSection host={host} skills={skills} busy={busy} run={run} onRefresh={refresh} onNotice={setNotice} />
+            <LearnSection host={host} skills={skills} busy={busy} run={run} onRefresh={refresh} onPoll={poll} onNotice={setNotice} />
           </Part>
           <Part title="Set the account up">
             <SnippetSection host={host} />
