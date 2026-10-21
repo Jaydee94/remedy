@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.10.0](https://github.com/Jaydee94/remedy/compare/v0.9.0...v0.10.0) (2026-10-21)
+
+### Features
+
+* show the running version in the UI ([#162](https://github.com/Jaydee94/remedy/issues/162)) ([6a13430](https://github.com/Jaydee94/remedy/commit/6a13430b88a184ab633e7f7ccc9040232e341156))
+
 ## [0.9.0](https://github.com/Jaydee94/remedy/compare/v0.8.0...v0.9.0) (2026-10-21)
 
 ### Features
