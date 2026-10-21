@@ -229,3 +229,22 @@ func TestHasInvisibleSeesWhatHidesOrReordersText(t *testing.T) {
 		t.Error("visible text was reported")
 	}
 }
+
+func TestHasControlAllowsTheLayoutOnlyWhenAsked(t *testing.T) {
+	for _, s := range []string{"a\nb", "a\tb"} {
+		if !skill.HasControl(s, false) {
+			t.Errorf("%q: a line break or a tab is a control character without layout", s)
+		}
+		if skill.HasControl(s, true) {
+			t.Errorf("%q: a line break or a tab is layout", s)
+		}
+	}
+	for _, s := range []string{"a\rb", "a\x00b", "a\x1bb", "a" + string(rune(0x85)) + "b"} {
+		if !skill.HasControl(s, true) {
+			t.Errorf("%q was not seen", s)
+		}
+	}
+	if skill.HasControl("plain "+string(rune(0xE9)), false) {
+		t.Error("plain text was reported")
+	}
+}

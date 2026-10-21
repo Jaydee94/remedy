@@ -244,6 +244,129 @@ func TestLearnJSONIsTheCanonicalForm(t *testing.T) {
 	}
 }
 
+func TestParseLearnReturnsTheNormalisedSkill(t *testing.T) {
+	l, err := diagnosis.ParseLearn(learnJSON(t, func(m map[string]any) {
+		skillOf(m)["name"] = " paperless "
+		skillOf(m)["description"] = "  Paperless.  "
+		skillOf(m)["body"] = "line one\r\nline two\r\n"
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := l.Skills[0]
+	if k.Name != "paperless" || k.Description != "Paperless." || k.Body != "line one\nline two" {
+		t.Fatalf("not normalised: %q %q %q", k.Name, k.Description, k.Body)
+	}
+	if strings.Contains(string(l.JSON()), `\r`) || strings.Contains(string(l.JSON()), ` paperless `) {
+		t.Errorf("the stored form is not normalised: %s", l.JSON())
+	}
+	// A body at the limit plus trailing spaces is accepted and comes back at the limit; one byte of content more is refused.
+	l, err = diagnosis.ParseLearn(learnJSON(t, func(m map[string]any) { skillOf(m)["body"] = strings.Repeat("x", 8192) + "   \n " }))
+	if err != nil {
+		t.Fatalf("8192 bytes plus spaces: %v", err)
+	}
+	if n := len(l.Skills[0].Body); n != 8192 {
+		t.Errorf("8192 bytes plus spaces came back with %d bytes", n)
+	}
+	if _, err := diagnosis.ParseLearn(learnJSON(t, func(m map[string]any) { skillOf(m)["body"] = strings.Repeat("x", 8193) + "  " })); !errors.Is(err, diagnosis.ErrInvalid) {
+		t.Errorf("8193 bytes: err = %v", err)
+	}
+}
+
+// learnText is the good answer as text, so that a case can place a duplicate or a differently cased key.
+func learnText(top, profile, skill string) string {
+	return `{"profile":{"os":"Debian 12","role":"NAS","services":["sshd"],"containers":[],"notes":""` + profile + `},` +
+		`"skills":[{"name":"paperless","description":"Paperless.","body":"b","evidence":[["uname","-a"]]` + skill + `}]` + top + `}`
+}
+
+func TestRepeatedAndDifferentlyCasedKeysAreRefused(t *testing.T) {
+	if _, err := diagnosis.ParseLearn([]byte(learnText("", "", ""))); err != nil {
+		t.Fatalf("the text form of the good answer: %v", err)
+	}
+	prof := `{"os":"o","role":"r","services":[],"containers":[],"notes":""}`
+	cases := map[string]string{
+		"a repeated profile":       learnText(`,"profile":`+prof, "", ""),
+		"a Profile":                learnText(`,"Profile":`+prof, "", ""),
+		"a repeated skills":        learnText(`,"skills":[]`, "", ""),
+		"a repeated os":            learnText("", `,"os":"b"`, ""),
+		"an OS":                    learnText("", `,"OS":"b"`, ""),
+		"a Notes":                  learnText("", `,"Notes":"x"`, ""),
+		"a repeated name":          learnText("", "", `,"name":"other"`),
+		"a Body":                   learnText("", "", `,"Body":"x"`),
+		"a repeated evidence":      learnText("", "", `,"evidence":[]`),
+		"a null notes":             strings.Replace(learnText("", "", ""), `"notes":""`, `"notes":null`, 1),
+		"a null os":                strings.Replace(learnText("", "", ""), `"os":"Debian 12"`, `"os":null`, 1),
+		"a null profile":           `{"profile":null,"skills":[]}`,
+		"a null skill":             `{"profile":` + prof + `,"skills":[null]}`,
+		"a null service":           strings.Replace(learnText("", "", ""), `["sshd"]`, `[null]`, 1),
+		"a null body":              strings.Replace(learnText("", "", ""), `"body":"b"`, `"body":null`, 1),
+		"a null cited command":     strings.Replace(learnText("", "", ""), `[["uname","-a"]]`, `[null]`, 1),
+		"a null cited word":        strings.Replace(learnText("", "", ""), `["uname","-a"]`, `["uname",null]`, 1),
+		"a differently cased only": strings.Replace(learnText("", "", ""), `"role"`, `"Role"`, 1),
+	}
+	for name, raw := range cases {
+		if _, err := diagnosis.ParseLearn([]byte(raw)); !errors.Is(err, diagnosis.ErrInvalid) {
+			t.Errorf("%s: err = %v, want ErrInvalid", name, err)
+		}
+	}
+}
+
+func TestErrorsNeverEchoTheAgentsText(t *testing.T) {
+	const marker = "MARKER-7f3a"
+	cases := map[string][]byte{
+		"an unknown top member":     []byte(learnText(`,"`+marker+`":1`, "", "")),
+		"an unknown profile member": []byte(learnText("", `,"`+marker+`":"x"`, "")),
+		"an unknown skill member":   []byte(learnText("", "", `,"`+marker+`":"x"`)),
+		"a wrong type":              []byte(strings.Replace(learnText("", "", ""), `"os":"Debian 12"`, `"os":{"`+marker+`":1}`, 1)),
+		"a bad name":                learnJSON(t, func(m map[string]any) { skillOf(m)["name"] = marker }),
+		"a name used twice": learnJSON(t, func(m map[string]any) {
+			skillOf(m)["name"] = "marker-7f3a"
+			m["skills"] = append(m["skills"].([]any), skillOf(m))
+		}),
+		"a long os":       learnJSON(t, func(m map[string]any) { profileOf(m)["os"] = marker + strings.Repeat("x", 300) }),
+		"a broken answer": []byte(`{"` + marker + ``),
+		"trailing data":   []byte(learnText("", "", "") + `"` + marker + `"`),
+	}
+	for name, raw := range cases {
+		_, err := diagnosis.ParseLearn(raw)
+		if !errors.Is(err, diagnosis.ErrInvalid) {
+			t.Errorf("%s: err = %v, want ErrInvalid", name, err)
+			continue
+		}
+		if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(marker)) {
+			t.Errorf("%s: the error echoes the agent's text: %v", name, err)
+		}
+	}
+}
+
+func TestProfileEntriesAreOneLine(t *testing.T) {
+	cases := map[string]func(m map[string]any){
+		"a newline in the os":         func(m map[string]any) { profileOf(m)["os"] = "Debian\n## Notes" },
+		"a tab in the role":           func(m map[string]any) { profileOf(m)["role"] = "NAS\tbox" },
+		"a newline in a service":      func(m map[string]any) { profileOf(m)["services"] = []string{"sshd\n## Containers"} },
+		"a tab in a container":        func(m map[string]any) { profileOf(m)["containers"] = []string{"a\tb"} },
+		"a carriage return in a role": func(m map[string]any) { profileOf(m)["role"] = "a\rb" },
+	}
+	for name, mutate := range cases {
+		if _, err := diagnosis.ParseLearn(learnJSON(t, mutate)); !errors.Is(err, diagnosis.ErrInvalid) {
+			t.Errorf("%s: err = %v, want ErrInvalid", name, err)
+		}
+	}
+	if _, err := diagnosis.ParseLearn(learnJSON(t, func(m map[string]any) { profileOf(m)["notes"] = "one\n\ttwo" })); err != nil {
+		t.Errorf("the notes may have layout: %v", err)
+	}
+}
+
+// A cited word is limited to 400 characters: the spec has no such limit, it is defence in depth.
+func TestACitedWordHasAtMost400Characters(t *testing.T) {
+	if _, err := diagnosis.ParseLearn(learnJSON(t, func(m map[string]any) { skillOf(m)["evidence"] = [][]string{{"cat", strings.Repeat("x", 400)}} })); err != nil {
+		t.Errorf("400 characters: %v", err)
+	}
+	if _, err := diagnosis.ParseLearn(learnJSON(t, func(m map[string]any) { skillOf(m)["evidence"] = [][]string{{"cat", strings.Repeat("x", 401)}} })); !errors.Is(err, diagnosis.ErrInvalid) {
+		t.Errorf("401 characters: err = %v", err)
+	}
+}
+
 // The schema that goes to the CLI and the structs that ParseLearn fills must describe the same members at every level.
 func TestLearnSchemaMatchesTheStructs(t *testing.T) {
 	var s struct {

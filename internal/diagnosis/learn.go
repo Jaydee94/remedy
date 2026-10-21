@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/Jaydee94/remedy/internal/skill"
@@ -36,6 +36,7 @@ const (
 	maxLearnNotes     = 2000
 	maxLearnEvidence  = 10
 	maxLearnArgvWords = 12
+	// maxLearnWordRunes is not in the spec: it is defence in depth, so that 10 commands of 12 words cannot carry an unbounded text.
 	maxLearnWordRunes = 400
 	reservedSkillName = skill.ProfileName
 )
@@ -63,20 +64,90 @@ type Learn struct {
 	Skills  []LearnSkill `json:"skills"`
 }
 
-var (
-	learnRequired   = []string{"profile", "skills"}
-	profileRequired = []string{"os", "role", "services", "containers", "notes"}
-	skillRequired   = []string{"name", "description", "body", "evidence"}
-)
-
-// layoutControl reports a control character other than the newline and the tab.
-func layoutControl(s string) bool {
-	return strings.IndexFunc(s, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' }) >= 0
+// learnShape is the form of one value of a learning answer: an object with exactly these members, a list of elem, or (both nil) a
+// string.
+type learnShape struct {
+	members []learnMember
+	elem    *learnShape
 }
 
-// checkLearnText accepts text of at most max characters that is valid UTF-8, has no control character but the newline and the tab and no
-// invisible or bidirectional character. blank says whether it may be empty.
-func checkLearnText(name, s string, max int, blank bool) error {
+type learnMember struct {
+	name  string
+	shape *learnShape
+}
+
+var (
+	learnString = &learnShape{}
+	learnList   = &learnShape{elem: learnString}
+	learnAnswer = &learnShape{members: []learnMember{
+		{"profile", &learnShape{members: []learnMember{{"os", learnString}, {"role", learnString}, {"services", learnList}, {"containers", learnList}, {"notes", learnString}}}},
+		{"skills", &learnShape{elem: &learnShape{members: []learnMember{{"name", learnString}, {"description", learnString}, {"body", learnString}, {"evidence", &learnShape{elem: learnList}}}}}},
+	}}
+	// errLearnShape is the one text for every problem of form. It never repeats what the agent wrote: an error ends up in the run's
+	// record and in logs.
+	errLearnShape = invalid("the answer is not an object of the schema: a member is missing, unknown, repeated, null or of the wrong type")
+)
+
+// walkLearn reads one value from dec and checks it against shape token by token. Go's decoder matches member names regardless of case
+// and lets the last of two equal members win; this walk refuses both, and refuses null anywhere.
+func walkLearn(dec *json.Decoder, shape *learnShape) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return errLearnShape
+	}
+	switch {
+	case shape.members != nil:
+		if tok != json.Delim('{') {
+			return errLearnShape
+		}
+		seen := map[string]bool{}
+		for dec.More() {
+			tok, err := dec.Token()
+			if err != nil {
+				return errLearnShape
+			}
+			key, _ := tok.(string)
+			var member *learnShape
+			for _, m := range shape.members {
+				if m.name == key {
+					member = m.shape
+				}
+			}
+			if member == nil || seen[key] {
+				return errLearnShape
+			}
+			seen[key] = true
+			if err := walkLearn(dec, member); err != nil {
+				return err
+			}
+		}
+		if len(seen) != len(shape.members) {
+			return errLearnShape
+		}
+	case shape.elem != nil:
+		if tok != json.Delim('[') {
+			return errLearnShape
+		}
+		for dec.More() {
+			if err := walkLearn(dec, shape.elem); err != nil {
+				return err
+			}
+		}
+	default:
+		if _, ok := tok.(string); !ok {
+			return errLearnShape
+		}
+		return nil
+	}
+	if _, err := dec.Token(); err != nil { // the closing delimiter
+		return errLearnShape
+	}
+	return nil
+}
+
+// checkLearnText accepts text of at most max characters that is valid UTF-8, has no control character (with layout, the newline and the
+// tab are fine) and no invisible or bidirectional character. blank says whether it may be empty.
+func checkLearnText(name, s string, max int, blank, layout bool) error {
 	switch {
 	case !utf8.ValidString(s):
 		return invalid("%s is not valid UTF-8", name)
@@ -84,57 +155,35 @@ func checkLearnText(name, s string, max int, blank bool) error {
 		return invalid("%s is empty", name)
 	case utf8.RuneCountInString(s) > max:
 		return invalid("%s has %d characters, at most %d", name, utf8.RuneCountInString(s), max)
-	case layoutControl(s):
-		return invalid("%s contains a control character", name)
+	case skill.HasControl(s, layout):
+		if layout {
+			return invalid("%s contains a control character other than a line break or a tab", name)
+		}
+		return invalid("%s must be one line: it contains a line break, a tab or another control character", name)
 	case skill.HasInvisible(s):
 		return invalid("%s contains an invisible or bidirectional character", name)
 	}
 	return nil
 }
 
-func requireMembers(raw []byte, what string, names []string) error {
-	var members map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &members); err != nil || members == nil {
-		return invalid("%s is not a JSON object", what)
-	}
-	for _, name := range names {
-		if _, ok := members[name]; !ok {
-			return invalid("%s has no member %q", what, name)
-		}
-	}
-	return nil
-}
-
-// ParseLearn validates raw strictly: exactly the members of the schema, the right types, the limits of the spec, the rules of a skill
-// (internal/skill) for each proposed skill, evidence of 1 to 10 commands of at most 12 words for each, and a name that is used once and
-// is not "profile" (the note that Remedy writes from the profile has that name).
+// ParseLearn validates raw strictly: exactly the members of the schema (each once, with its exact name, never null), the right types,
+// the limits of the spec, the rules of a skill (internal/skill) for each proposed skill, evidence of 1 to 10 commands of at most 12 words
+// for each, and a name that is used once and is not "profile" (the note that Remedy writes from the profile has that name). It returns
+// the skills normalised by skill.Fields.Validate. No error text repeats what the agent wrote.
 func ParseLearn(raw []byte) (Learn, error) {
-	if err := requireMembers(raw, "the answer", learnRequired); err != nil {
+	walk := json.NewDecoder(bytes.NewReader(raw))
+	if err := walkLearn(walk, learnAnswer); err != nil {
 		return Learn{}, err
 	}
-	var members map[string]json.RawMessage
-	_ = json.Unmarshal(raw, &members)
-	if err := requireMembers(members["profile"], "profile", profileRequired); err != nil {
-		return Learn{}, err
-	}
-	var items []json.RawMessage
-	if err := json.Unmarshal(members["skills"], &items); err != nil || items == nil {
-		return Learn{}, invalid("skills is not a list")
-	}
-	for i, item := range items {
-		if err := requireMembers(item, fmt.Sprintf("skill %d", i+1), skillRequired); err != nil {
-			return Learn{}, err
-		}
+	if _, err := walk.Token(); err != io.EOF {
+		return Learn{}, invalid("data after the answer")
 	}
 
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	var l Learn
 	if err := dec.Decode(&l); err != nil {
-		return Learn{}, invalid("%v", err)
-	}
-	if dec.More() {
-		return Learn{}, invalid("data after the answer")
+		return Learn{}, errLearnShape
 	}
 
 	p := l.Profile
@@ -145,8 +194,11 @@ func ParseLearn(raw []byte) (Learn, error) {
 		name, s string
 		max     int
 		blank   bool
-	}{{"profile.os", p.OS, maxLearnOS, false}, {"profile.role", p.Role, maxLearnRole, false}, {"profile.notes", p.Notes, maxLearnNotes, true}} {
-		if err := checkLearnText(c.name, c.s, c.max, c.blank); err != nil {
+		layout  bool
+	}{{"profile.os", p.OS, maxLearnOS, false, false}, {"profile.role", p.Role, maxLearnRole, false, false}, {"profile.notes", p.Notes, maxLearnNotes, true, true}} {
+		// os, role and the entries of the lists are one line each, so that none can fake a heading of the profile note; the notes may
+		// have layout.
+		if err := checkLearnText(c.name, c.s, c.max, c.blank, c.layout); err != nil {
 			return Learn{}, err
 		}
 	}
@@ -158,7 +210,7 @@ func ParseLearn(raw []byte) (Learn, error) {
 			return Learn{}, invalid("%s has %d entries, at most %d", list.name, len(list.items), maxLearnList)
 		}
 		for _, s := range list.items {
-			if err := checkLearnText(list.name+" entry", s, maxLearnListItem, false); err != nil {
+			if err := checkLearnText(list.name+" entry", s, maxLearnListItem, false, false); err != nil {
 				return Learn{}, err
 			}
 		}
@@ -173,18 +225,20 @@ func ParseLearn(raw []byte) (Learn, error) {
 		fields, err := skill.Fields{Name: k.Name, Description: k.Description, Body: k.Body}.Validate()
 		if err != nil {
 			var fe *skill.FieldError
-			if errors.As(err, &fe) {
+			if errors.As(err, &fe) { // the messages of a FieldError are fixed texts
 				return Learn{}, invalid("%s: %s", where, fe.Msg)
 			}
-			return Learn{}, invalid("%s: %v", where, err)
+			return Learn{}, invalid("%s: the name, the description or the body is not valid", where)
 		}
 		if fields.Name == reservedSkillName {
 			return Learn{}, invalid("%s: the name %q is reserved for the note that Remedy writes from the profile", where, reservedSkillName)
 		}
 		if seen[fields.Name] {
-			return Learn{}, invalid("%s: the name %q is used twice", where, fields.Name)
+			return Learn{}, invalid("%s: its name is used by an earlier skill", where)
 		}
 		seen[fields.Name] = true
+		// What is returned and stored is the normalised text: trimmed, and the body with \r\n made \n.
+		l.Skills[i].Name, l.Skills[i].Description, l.Skills[i].Body = fields.Name, fields.Description, fields.Body
 		if k.Evidence == nil {
 			return Learn{}, invalid("%s: evidence must be a list", where)
 		}
@@ -196,11 +250,8 @@ func ParseLearn(raw []byte) (Learn, error) {
 				return Learn{}, invalid("%s: a cited command has %d words, between 1 and %d are needed", where, len(argv), maxLearnArgvWords)
 			}
 			for _, w := range argv {
-				if err := checkLearnText(where+" cited word", w, maxLearnWordRunes, false); err != nil {
+				if err := checkLearnText(where+" cited word", w, maxLearnWordRunes, false, false); err != nil {
 					return Learn{}, err
-				}
-				if strings.ContainsAny(w, "\n\t") {
-					return Learn{}, invalid("%s: a cited word contains a line break or a tab", where)
 				}
 			}
 		}
