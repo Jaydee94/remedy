@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { RunnerLogin, RunnerLoginSession } from './api.ts'
 import { reasonSentence, refusalSentence } from './loginrelay.ts'
-import { stepOf, wizardView } from './loginwizard.ts'
+import { announcementKey, stepOf, wizardView } from './loginwizard.ts'
 import type { WizardView } from './loginwizard.ts'
 
 const validUrl =
@@ -21,8 +21,8 @@ const session = (over: Partial<RunnerLoginSession> = {}): RunnerLoginSession => 
 })
 const offered = (s: RunnerLoginSession | null = null, over: Partial<RunnerLogin> = {}): RunnerLogin => ({ available: true, session: s, ...over })
 
-const view = (s: RunnerLoginSession | null, over: { open?: boolean; typing?: boolean; loggedIn?: boolean } = {}): WizardView =>
-  wizardView({ offered: offered(s), open: over.open ?? true, typing: over.typing ?? false, now, loggedIn: over.loggedIn ?? false })
+const view = (s: RunnerLoginSession | null, over: { open?: boolean; typing?: boolean; loggedIn?: boolean; epoch?: number } = {}): WizardView =>
+  wizardView({ offered: offered(s), open: over.open ?? true, typing: over.typing ?? false, now, loggedIn: over.loggedIn ?? false, epoch: over.epoch ?? 1 })
 
 const action = (v: WizardView, id: string) => v.actions.find((a) => a.id === id)
 const ids = (v: WizardView) => v.actions.map((a) => a.id)
@@ -61,7 +61,7 @@ describe('stepOf', () => {
 
 describe('the view while the relay is not offered', () => {
   it('shows only the terminal when the relay is off', () => {
-    const v = wizardView({ offered: offered(null, { available: false, unavailable: 'api_key_mode' }), open: true, typing: false, now, loggedIn: false })
+    const v = wizardView({ offered: offered(null, { available: false, unavailable: 'api_key_mode' }), open: true, typing: false, now, loggedIn: false, epoch: 1 })
     assert.equal(v.step, null)
     assert.equal(v.indicator, '')
     assert.deepEqual(v.actions, [])
@@ -72,7 +72,7 @@ describe('the view while the relay is not offered', () => {
   })
 
   it('shows only the terminal when the page has no answer (an older control plane)', () => {
-    const v = wizardView({ offered: null, open: true, typing: true, now, loggedIn: false })
+    const v = wizardView({ offered: null, open: true, typing: true, now, loggedIn: false, epoch: 1 })
     assert.equal(v.step, null)
     assert.deepEqual(v.actions, [])
     assert.equal(v.showTerminal, true)
@@ -86,6 +86,7 @@ describe('the view while the relay is not offered', () => {
       typing: false,
       now,
       loggedIn: false,
+      epoch: 1,
     })
     assert.equal(v.link, null)
     assert.deepEqual(v.actions, [])
@@ -323,9 +324,33 @@ describe('the announcement', () => {
     assert.equal(keys.size, 8)
   })
 
+  it('tells step 2 from step 3 of the same session, so the move is announced both ways', () => {
+    const s = session({ state: 'awaiting_code', url: validUrl })
+    const two = view(s, { typing: false }).announcement
+    const three = view(s, { typing: true }).announcement
+    assert.ok(two && three)
+    assert.notEqual(two.key, three.key)
+    assert.equal(view(s, { typing: false }).announcement?.key, two.key)
+  })
+
+  it('tells one sign-in from the next by the epoch, with the view otherwise identical', () => {
+    const s = session({ state: 'starting' })
+    assert.notEqual(view(s, { epoch: 1 }).announcement?.key, view(s, { epoch: 2 }).announcement?.key)
+    assert.notEqual(view(null, { epoch: 1 }).announcement?.key, view(null, { epoch: 2 }).announcement?.key)
+    assert.equal(view(s, { epoch: 2 }).announcement?.key, view(s, { epoch: 2 }).announcement?.key)
+  })
+
+  it('builds the key as epoch, step, state, attempt and a reason the page knows', () => {
+    assert.equal(announcementKey(session({ state: 'failed', attempt: 3, reason: 'timeout' }), 4, 5), '5:4:failed:3:timeout')
+    assert.equal(announcementKey(null, 1, 0), '0:1:idle:0:')
+    assert.equal(announcementKey(session({ state: 'failed', reason: '<script>' }), 4, 1), '1:4:failed:1:other')
+    const key = announcementKey(session({ id: 'secret-id-123', state: 'awaiting_code', url: validUrl }), 2, 7)
+    assert.ok(!key.includes('secret-id-123') && !key.includes('claude.com'))
+  })
+
   it('does not change with the clock', () => {
     const s = session({ state: 'awaiting_code', url: validUrl })
-    const later = wizardView({ offered: offered(s), open: true, typing: false, now: now + 60000, loggedIn: false })
+    const later = wizardView({ offered: offered(s), open: true, typing: false, now: now + 60000, loggedIn: false, epoch: 1 })
     assert.deepEqual(later.announcement, view(s).announcement)
     assert.notEqual(later.countdown, view(s).countdown)
   })
