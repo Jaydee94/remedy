@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.0](https://github.com/Jaydee94/remedy/compare/v0.11.0...v0.12.0) (2026-10-21)
+
+### Features
+
+* the login wizard on the Setup page (K-7) ([#166](https://github.com/Jaydee94/remedy/issues/166)) ([171229f](https://github.com/Jaydee94/remedy/commit/171229fc5e2b08f62fdc470fb88699030f17b088))
+
 ## [0.11.0](https://github.com/Jaydee94/remedy/compare/v0.10.0...v0.11.0) (2026-10-21)
 
 ### Features
