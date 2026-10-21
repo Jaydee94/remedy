@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { api, ApiError } from './api.ts'
-import { canCancel, runFailure, runMeta, runSteps, summarizeEvent } from './runview.ts'
+import { canCancel, doneSentence, promptSummary, runFailure, runMeta, runSteps, summarizeEvent } from './runview.ts'
 import { useShellHeader } from './shellContext.ts'
 import { phaseView, runPhase } from './status.ts'
 import { dayTimeLabel } from './timeline.ts'
@@ -102,6 +102,9 @@ export default function RunPage({ id }: { id: string }) {
   const view = phaseView[phase]
   const failure = runFailure(run)
   const responder = run.role === 'responder'
+  const learner = run.role === 'learner'
+  const learnedHost = run.hosts?.[0]
+  const folded = promptSummary(run)
   const time = dayTimeLabel(run.startedAt ?? run.createdAt, now)
 
   return (
@@ -133,9 +136,9 @@ export default function RunPage({ id }: { id: string }) {
         </Alert>
       )}
 
-      {responder ? (
+      {folded !== '' ? (
         <details className="rounded-2xl border border-border bg-card p-3.5">
-          <summary className={summaryClass}>Prompt ({run.prompt.length.toLocaleString()} characters, it contains data from GitHub)</summary>
+          <summary className={summaryClass}>{folded}</summary>
           <p className="mt-2 font-mono text-xs break-words whitespace-pre-wrap text-subtle">{run.prompt}</p>
         </details>
       ) : (
@@ -161,7 +164,15 @@ export default function RunPage({ id }: { id: string }) {
             </p>
           ) : (
             <p className="font-serif text-[clamp(16.5px,1.9vw,19px)] leading-relaxed text-pretty break-words whitespace-pre-wrap">
-              {run.result.trim() === '' ? 'Done. There is nothing more to say.' : run.result}
+              {doneSentence(run)}
+              {learner && (
+                <>
+                  {' '}
+                  <Link to="/skills" className="text-primary hover:text-primary-hover">
+                    Review the proposals
+                  </Link>
+                </>
+              )}
             </p>
           ))}
         {waitingCall && !ended && <ApprovalAsk call={waitingCall} onChanged={() => void decided()} />}
@@ -183,6 +194,14 @@ export default function RunPage({ id }: { id: string }) {
               <div>
                 <Link to={`/incidents/${run.incidentId}`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
                   Back to the incident
+                </Link>
+              </div>
+            )
+          ) : learner ? (
+            learnedHost && (
+              <div>
+                <Link to={`/hosts/${learnedHost.id}`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+                  Back to {learnedHost.name}
                 </Link>
               </div>
             )

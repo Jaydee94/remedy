@@ -4,10 +4,12 @@ import { Link, useNavigate } from 'react-router'
 import { api, ApiError } from './api.ts'
 import type { Host, PresentedKey, Skill } from './api.ts'
 import { editableKey, statusSentence } from './hosts.ts'
+import { nextHost } from './learn.ts'
 import { deleteHostLabel, hostDeleteWarning } from './skills.ts'
 import { useFocusRestore } from './useFocusRestore.ts'
 import ConfirmButton from '@/components/ConfirmButton'
 import HostForm from '@/components/hosts/HostForm'
+import LearnSection from '@/components/hosts/LearnSection'
 import LoginSection from '@/components/hosts/LoginSection'
 import RightsSection from '@/components/hosts/RightsSection'
 import type { Run } from '@/components/hosts/run'
@@ -82,6 +84,13 @@ export default function HostPage({ id }: { id: number }) {
       setBusy(false)
     }
   }, [])
+
+  // The host and its skills again: while a learning run is going, and after it was started. A poll that fails keeps what the page has.
+  const refresh = useCallback(async () => {
+    const [h, s] = await Promise.allSettled([api.getHost(id), api.listSkills({ host: id })])
+    setHost((prev) => (prev ? nextHost(prev, h) : prev))
+    if (s.status === 'fulfilled') setSkills(s.value)
+  }, [id])
 
   // For the actions that remove the control that was clicked (pin, unpin, save and remove a login): the focus goes back to the heading.
   // `restore` remembers the focused control when it is called, so it comes first; it does nothing when the control stays (a failure).
@@ -174,6 +183,9 @@ export default function HostPage({ id }: { id: number }) {
             ) : (
               <p className="text-muted-foreground">Give me a login first.</p>
             )}
+          </Part>
+          <Part title="Get to know this host">
+            <LearnSection host={host} skills={skills} busy={busy} run={run} onRefresh={refresh} onNotice={setNotice} />
           </Part>
           <Part title="Set the account up">
             <SnippetSection host={host} />
