@@ -81,14 +81,47 @@ func main() {
 		log.Info("status listener", "addr", ln.Addr().String())
 	}
 	go (&runner.Reporter{Client: loop.Client, Status: status, Log: log}).Run(ctx)
-	go (&runner.LoginChecker{
-		Check:   func(c context.Context) (provider.LoginState, string) { return claude.LoginCheck(c, os.Environ()) },
+	check := func(c context.Context) (provider.LoginState, string) { return claude.LoginCheck(c, os.Environ()) }
+	checker := &runner.LoginChecker{
+		Check:   check,
 		Version: func(c context.Context) string { return claude.Version(c, os.Environ()) },
 		Status:  status,
 		Log:     log,
-	}).Run(ctx)
+	}
+	// Without the switch no code of the relay runs: no poll, nothing ever writes to a CLI's stdin.
+	var relayDone chan struct{}
+	switch {
+	case loginRelayOn(cfg):
+		pause := &runner.LoginPause{}
+		checker.Pause = pause.Active
+		relay := &runner.LoginRelay{
+			Client: loop.Client, Claude: claude, Check: check, Status: status, Env: os.Environ(),
+			Busy: loop.Busy, Pause: pause, Kick: checker.Kick, Log: log,
+		}
+		relayDone = make(chan struct{})
+		go func() {
+			defer close(relayDone)
+			relay.Run(ctx)
+		}()
+		log.Info("login relay on")
+	case cfg.LoginRelay:
+		log.Warn("the login relay stays off: the runner is not in subscription mode", "mode", cfg.AuthMode)
+	}
+	go checker.Run(ctx)
 
 	log.Info("runner started", "server", cfg.ServerURL, "workspaces", cfg.WorkspaceRoot)
 	loop.Run(ctx)
+	if relayDone != nil {
+		// The relay stops its child on the way out; it gets 5 s.
+		select {
+		case <-relayDone:
+		case <-time.After(5 * time.Second):
+			log.Warn("the login relay did not stop in time")
+		}
+	}
 	log.Info("runner stopped")
 }
+
+// loginRelayOn says whether this runner relays a login from the Setup page: only with the switch on and in
+// subscription mode.
+func loginRelayOn(cfg config.Runner) bool { return cfg.LoginRelay && cfg.AuthMode == "subscription" }
