@@ -200,7 +200,10 @@ func (h *hostTools) list() Tool {
 					units = strings.Join(i.Units, ", ")
 				}
 				fmt.Fprintf(&b, "  units: %s\n", units)
-				if i.SudoNone {
+				switch {
+				case i.SudoNone && c.Role == run.RoleLearner: // a learning run has no host_change: name no tool it cannot call
+					b.WriteString("  sudo: does not work for this account\n")
+				case i.SudoNone:
 					b.WriteString("  sudo: does not work for this account, so host_change cannot run here\n")
 				}
 			}

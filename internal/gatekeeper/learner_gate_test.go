@@ -206,3 +206,27 @@ func TestTheDescriptionOfHostReadNamesNoOtherTool(t *testing.T) {
 		t.Error("a learning run is not offered host_read")
 	}
 }
+
+// host_list tells a learning run that sudo does not work without naming host_change, which it does not have; every other run still
+// learns that host_change cannot run there.
+func TestTheSudoLineOfHostListNamesHostChangeOnlyToARunThatHasIt(t *testing.T) {
+	const learnerLine = "  sudo: does not work for this account\n"
+	const otherLine = "  sudo: does not work for this account, so host_change cannot run here\n"
+
+	fake := newFake()
+	fake.set(func(f *fakeHosts) { f.infos[0].SudoNone = true })
+	e, _ := learnerRig(t, fake)
+	text, isErr := askHost(t, e, "l1", "host_list", map[string]any{})
+	if isErr || !strings.Contains(text, learnerLine) || strings.Contains(text, "host_change") {
+		t.Errorf("host_list for a learning run = %q (error %v)", text, isErr)
+	}
+
+	otherFake := newFake()
+	otherFake.set(func(f *fakeHosts) { f.infos[0].SudoNone = true })
+	other := newEnvWith(t, func(st *store.Store) []gatekeeper.Tool { return gatekeeper.HostTools(otherFake) })
+	other.token = hostRunToken(t, other, "nas")
+	text, isErr = askHost(t, other, "o1", "host_list", map[string]any{})
+	if isErr || !strings.Contains(text, otherLine) {
+		t.Errorf("host_list for a run with hosts = %q (error %v)", text, isErr)
+	}
+}
