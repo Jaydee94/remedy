@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -105,6 +106,20 @@ func (h *hostTools) exec(ctx context.Context, runID string, info HostInfo, sudo 
 		return hostexec.Result{}, ArgumentError(readTimedOut)
 	}
 	return res, err
+}
+
+// executed is the command that goes to the host for words that were classified: `docker ps -a` carries the host's container
+// filter, everything else goes as it is. The words the agent sent stay what is stored, shown and logged. When the filter cannot
+// be built nothing runs, and the plain list is never the fallback. The note tells the agent what the filtered list is.
+func executed(verdict hostexec.Verdict, argv []string, info HostInfo) ([]string, string, error) {
+	expanded, ok := hostexec.Expand(verdict, argv, info.rules())
+	if !ok {
+		return nil, "", ArgumentError("this host's container pattern cannot be used as a filter; nothing was run")
+	}
+	if slices.Equal(expanded, argv) {
+		return argv, "", nil
+	}
+	return expanded, "only containers matching the host's pattern " + info.DockerPattern + " are listed", nil
 }
 
 // visible checks that the words show as what they are: Display does not escape a right-to-left override, a zero-width
@@ -217,6 +232,7 @@ func (h *hostTools) read() Tool {
 		Name: "host_read",
 		Description: "Runs one command on a host and returns its output, without asking. Only these commands run: " +
 			strings.Join(hostexec.ReadForms(), "; ") + ". A name in capitals is a slot: NAME a container of the host, UNIT a systemd unit, N a number from 1 to 2000. " +
+			"docker ps -a lists only the containers that match the host's container pattern. " +
 			"argv is the program and its arguments as separate words. Anything else is refused.",
 		Group:  GroupHost,
 		Schema: schema(hostCallProps, "host", "argv"),
@@ -247,10 +263,15 @@ func (h *hostTools) read() Tool {
 				}
 				return "", ArgumentError(msg + " For anything else use host_change, which waits for the maintainer's approval.")
 			}
-			res, err := h.exec(ctx, c.RunID, info, verdict.Sudo, v.Argv, false)
+			argv, note, err := executed(verdict, v.Argv, info)
 			if err != nil {
 				return "", err
 			}
+			res, err := h.exec(ctx, c.RunID, info, verdict.Sudo, argv, false)
+			if err != nil {
+				return "", err
+			}
+			res.Note = note
 			return hostText(hostexec.FormatResult(info.Name, filterInspectResult(v.Argv, res))), nil
 		},
 	}
@@ -338,10 +359,16 @@ func (h *hostTools) change() Tool {
 			if err := hostexec.ChangeCheck(v.Argv, info.rules()); err != nil {
 				return "", ArgumentError(err.Error())
 			}
-			res, err := h.exec(ctx, c.RunID, info, true, v.Argv, true)
+			// An approved command that has the words of a read form of the table runs like that read.
+			argv, note, err := executed(hostexec.Classify(v.Argv, info.rules()), v.Argv, info)
 			if err != nil {
 				return "", err
 			}
+			res, err := h.exec(ctx, c.RunID, info, true, argv, true)
+			if err != nil {
+				return "", err
+			}
+			res.Note = note
 			return hostText(hostexec.FormatResult(info.Name, filterInspectResult(v.Argv, res))), nil
 		},
 	}

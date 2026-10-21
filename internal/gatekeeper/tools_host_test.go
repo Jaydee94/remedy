@@ -183,7 +183,8 @@ func TestHostReadRunsAFormOfTheTableWithoutAnApproval(t *testing.T) {
 	fake := newFake()
 	e := newHostRig(t, fake)
 	text, isErr := askHost(t, e, "toolu_1", "host_read", map[string]any{"host": "nas", "argv": []string{"docker", "ps", "-a"}})
-	if isErr || !strings.Contains(text, hostexec.DataLine("nas")) || !strings.Contains(text, "exit code: 0") || !strings.Contains(text, "remedy-drill") {
+	if isErr || !strings.Contains(text, hostexec.DataLine("nas")) || !strings.Contains(text, "exit code: 0") || !strings.Contains(text, "remedy-drill") ||
+		!strings.Contains(text, "note: only containers matching the host's pattern remedy-* are listed") {
 		t.Fatalf("answer = %q (%v)", text, isErr)
 	}
 	if _, isErr := askHost(t, e, "toolu_2", "host_read", map[string]any{"host": "NAS", "argv": []string{"df", "-h"}}); isErr {
@@ -193,11 +194,93 @@ func TestHostReadRunsAFormOfTheTableWithoutAnApproval(t *testing.T) {
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	if len(fake.execs) != 2 || fake.execs[0].host != "nas" || !fake.execs[0].sudo || fake.execs[1].sudo ||
-		!slices.Equal(fake.execs[0].argv, []string{"docker", "ps", "-a"}) {
-		t.Fatalf("execs = %+v: docker reads run with sudo, the others without", fake.execs)
+		!slices.Equal(fake.execs[0].argv, []string{"docker", "ps", "-a", "--filter", "name=^remedy-"}) {
+		t.Fatalf("execs = %+v: docker reads run with sudo, the others without, and docker ps -a with the host's filter", fake.execs)
 	}
 	if fake.execs[1].host != "nas" {
 		t.Fatalf("the command ran on %q: the host is the one the table lists, not the spelling of the agent", fake.execs[1].host)
+	}
+}
+
+// Only the list of containers is filtered: the other reads run and answer as they did, with no note.
+func TestOtherReadsCarryNoFilterAndNoNote(t *testing.T) {
+	fake := newFake()
+	e := newHostRig(t, fake)
+	text, isErr := askHost(t, e, "toolu_1", "host_read", map[string]any{"host": "nas", "argv": []string{"docker", "logs", "--tail", "50", "remedy-a"}})
+	if isErr || strings.Contains(text, "note:") {
+		t.Fatalf("answer = %q (%v)", text, isErr)
+	}
+	if fake.execCount() != 1 || !slices.Equal(fake.execs[0].argv, []string{"docker", "logs", "--tail", "50", "remedy-a"}) {
+		t.Fatalf("execs = %+v", fake.execs)
+	}
+}
+
+func TestHostReadPsOfAnExactPatternIsAnchored(t *testing.T) {
+	fake := newFake()
+	fake.set(func(f *fakeHosts) {
+		f.infos = []gatekeeper.HostInfo{{Name: "nas", DockerPattern: "remedy-drill"}}
+	})
+	e := newHostRig(t, fake)
+	text, isErr := askHost(t, e, "toolu_1", "host_read", map[string]any{"host": "nas", "argv": []string{"docker", "ps", "-a"}})
+	if isErr || !strings.Contains(text, "note: only containers matching the host's pattern remedy-drill are listed") {
+		t.Fatalf("answer = %q (%v)", text, isErr)
+	}
+	if fake.execCount() != 1 || !slices.Equal(fake.execs[0].argv, []string{"docker", "ps", "-a", "--filter", "name=^remedy-drill$"}) {
+		t.Fatalf("execs = %+v", fake.execs)
+	}
+}
+
+// An approved host_change with the words of the read form is a read form too: it must not list every container.
+func TestAnApprovedChangeWithThePsWordsRunsFiltered(t *testing.T) {
+	fake := newFake()
+	e := newHostRig(t, fake)
+	text, isErr := approveChange(t, e, "toolu_1", "docker", "ps", "-a")
+	if isErr || !strings.Contains(text, "exit code: 0") || !strings.Contains(text, "note: only containers matching the host's pattern remedy-* are listed") {
+		t.Fatalf("answer = %q (%v)", text, isErr)
+	}
+	if fake.execCount() != 1 || !fake.execs[0].sudo || !slices.Equal(fake.execs[0].argv, []string{"docker", "ps", "-a", "--filter", "name=^remedy-"}) {
+		t.Fatalf("execs = %+v", fake.execs)
+	}
+}
+
+// A host with no container pattern has no docker forms: the read is refused and nothing is sent, in particular not the plain list.
+func TestPsOnAHostWithNoPatternRunsNothing(t *testing.T) {
+	fake := newFake()
+	fake.set(func(f *fakeHosts) { f.infos = []gatekeeper.HostInfo{{Name: "nas"}} })
+	e := newHostRig(t, fake)
+	text, isErr := askHost(t, e, "toolu_1", "host_read", map[string]any{"host": "nas", "argv": []string{"docker", "ps", "-a"}})
+	if !isErr || !strings.Contains(text, "no container rules") {
+		t.Fatalf("answer = %q (%v)", text, isErr)
+	}
+	if n := fake.execCount(); n != 0 {
+		t.Fatalf("%d commands reached the host", n)
+	}
+}
+
+// What is stored and shown as the question is what the agent asked; the filter is added only where the command runs.
+func TestTheStoredCallOfTheFilteredPsHoldsTheAgentsWords(t *testing.T) {
+	fake := newFake()
+	e := newHostRig(t, fake)
+	if _, isErr := askHost(t, e, "toolu_1", "host_read", map[string]any{"host": "nas", "argv": []string{"docker", "ps", "-a"}}); isErr {
+		t.Fatal("the read failed")
+	}
+	calls, err := e.st.ListToolCalls(context.Background(), fake.execs[0].runID)
+	if err != nil || len(calls) != 1 {
+		t.Fatalf("calls = %+v, %v", calls, err)
+	}
+	if string(calls[0].Arguments) != `{"host":"nas","argv":["docker","ps","-a"]}` || strings.Contains(string(calls[0].Arguments), "filter") {
+		t.Errorf("stored arguments = %s", calls[0].Arguments)
+	}
+	for _, a := range activityOf(t, e.st, store.KindHostAction) {
+		if strings.Contains(a.Summary, "filter") {
+			t.Errorf("activity shows the filter: %q", a.Summary)
+		}
+	}
+	// An approved change shows the agent's words on the card and in the activity too.
+	approveChange(t, e, "toolu_2", "docker", "ps", "-a")
+	acts := activityOf(t, e.st, store.KindHostAction)
+	if len(acts) != 1 || acts[0].Summary != "Ran docker ps -a on nas" {
+		t.Errorf("activity = %+v, want the agent's words", acts)
 	}
 }
 
