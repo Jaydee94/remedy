@@ -22,8 +22,10 @@ const (
 	MaxBodyBytes = 8 << 10
 	// MaxPerScope is how many skills one scope (one host, or global) may have. Proposals do not count until they are confirmed.
 	MaxPerScope = 30
-	// MaxProposalsPerRun is how many proposals one learning run may make.
+	// MaxProposalsPerRun is how many skills one learning run may propose, besides the profile (ProfileName).
 	MaxProposalsPerRun = 8
+	// MaxPendingPerHost is how many proposals may wait for a review for one host, across learning runs.
+	MaxPendingPerHost = 20
 	// MaxListed is how many skills the prompt lists.
 	MaxListed = 40
 	// ProfileName is the name of the skill a learning run proposes for what a host is.
@@ -58,6 +60,9 @@ func hasInvisible(s string) bool {
 	}
 	return false
 }
+
+// HasInvisible says whether s has a character that hides or reorders text. The learning answer is checked with it too.
+func HasInvisible(s string) bool { return hasInvisible(s) }
 
 // hasControl reports control characters. With layout set, the newline and the tab are allowed.
 func hasControl(s string, layout bool) bool {

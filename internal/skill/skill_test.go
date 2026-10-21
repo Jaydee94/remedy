@@ -218,3 +218,14 @@ func TestEvidenceRoundTripsAndNeverIsNil(t *testing.T) {
 		}
 	}
 }
+
+func TestHasInvisibleSeesWhatHidesOrReordersText(t *testing.T) {
+	for _, r := range []rune{0x200B, 0x200F, 0x2028, 0x202E, 0x2066, 0xFEFF} {
+		if !skill.HasInvisible("a" + string(r) + "b") {
+			t.Errorf("U+%04X was not seen", r)
+		}
+	}
+	if skill.HasInvisible("plain text with an accent " + string(rune(0xE9)) + " and an em dash " + string(rune(0x2014))) {
+		t.Error("visible text was reported")
+	}
+}
