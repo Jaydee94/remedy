@@ -94,3 +94,15 @@ networkPolicy:
   apiServer:
     cidrs: []
     port: 6443
+  # Where the control plane may open SSH connections (the host tools): single addresses, never a range. Each entry is
+  # one egress rule on the remedy-server policy; the runner has no such rule. The render refuses an IPv4 address that
+  # is not /32, an IPv6 address that is not /128, a port outside 1 to 65535, and the API server's own address.
+  hosts: []
+  #  - {cidr: 192.168.178.118/32, port: 22}
+  # An Alertmanager inside the cluster, one rule on the remedy-server policy: TCP to the pods that match podSelector in
+  # the namespace. Empty: no rule. namespace and a non-empty podSelector are required (an empty selector would admit
+  # every pod of the namespace); port defaults to 9093.
+  alertmanager: {}
+  #  namespace: monitoring
+  #  podSelector: {app.kubernetes.io/name: vmalertmanager}
+  #  port: 9093

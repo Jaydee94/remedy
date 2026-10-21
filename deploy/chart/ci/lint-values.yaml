@@ -17,3 +17,10 @@ cluster:
 networkPolicy:
   apiServer:
     cidrs: [172.18.0.2/32]
+  hosts:
+    - {cidr: 192.168.178.118/32, port: 22}
+    - {cidr: "fd00::1/128", port: 22}
+  alertmanager:
+    namespace: monitoring
+    podSelector: {app.kubernetes.io/name: vmalertmanager}
+    port: 9093

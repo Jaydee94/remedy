@@ -67,3 +67,16 @@ containers:
       capabilities:
         drop: [ALL]
 {{- end }}
+
+{{/* Checks a port of a networkPolicy value and prints it as an integer. Call with (dict "what" "networkPolicy.hosts[0]" "port" <value>).
+     Helm delivers a number from YAML as float64, so a whole float is accepted and a fractional one, a string and a missing port are not. */}}
+{{- define "remedy.checkPort" -}}
+{{- $p := .port -}}
+{{- if not (or (kindIs "float64" $p) (kindIs "int" $p) (kindIs "int64" $p)) -}}
+{{- fail (printf "%s.port must be an integer from 1 to 65535, got %v" .what (default "nothing" $p)) -}}
+{{- end -}}
+{{- if or (ne (float64 $p) (float64 (int64 $p))) (lt (int64 $p) 1) (gt (int64 $p) 65535) -}}
+{{- fail (printf "%s.port must be an integer from 1 to 65535, got %v" .what $p) -}}
+{{- end -}}
+{{- int64 $p -}}
+{{- end }}
