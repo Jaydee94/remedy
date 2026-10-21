@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Jaydee94/remedy/internal/diagnosis"
@@ -40,12 +41,16 @@ func NotReady(e store.HostEntry) string {
 	return ""
 }
 
-// Learner starts learning runs and closes them.
+// Learner starts learning runs and closes them. Use it by pointer: it must not be copied.
 type Learner struct {
 	Store    *store.Store
 	Provider string // default "claude"
 	Log      *slog.Logger
 	Now      func() time.Time // default time.Now
+
+	// complete serialises Complete, so that its check for a recorded outcome and the write of the outcome cannot interleave with a
+	// second call for the same run (the finish handler and the reaper).
+	complete sync.Mutex
 }
 
 func (l *Learner) provider() string {
@@ -71,6 +76,10 @@ func (l *Learner) logger() *slog.Logger {
 
 // Start queues the learning run of a host. It returns store.ErrNotFound for an unknown host, a *NotReadyError, store.ErrLearning,
 // store.ErrBusy or store.ErrProposalsWaiting; it creates nothing then.
+//
+// The readiness of the host is checked here, outside StartLearning's transaction, so the host can change between the check and the
+// start (disabled, unpinned, its login removed). That is acceptable: the check only spares the maintainer a run that cannot work, and it
+// is not the barrier. The host tools check that the host is enabled, has a login and a pinned key again at every call.
 func (l *Learner) Start(ctx context.Context, hostID int64) (run.Run, error) {
 	e, err := l.Store.GetHost(ctx, hostID)
 	if err != nil {
@@ -119,9 +128,30 @@ func CheckRun(o run.Outcome) run.Outcome {
 // and the skills are stored as proposals in one transaction. Any other end, an answer that does not parse and a store that refuses leave
 // nothing behind and only log an activity entry. Calling it for another role, a run that has not ended or a host that is gone does
 // nothing.
+//
+// Complete may be called more than once for a run (the finish handler and the reaper's OnFailed): a run whose outcome is already in the
+// activity log (skills_proposed or learn_failed) is left alone, so a second call stores no second set, does not bring back a proposal
+// that was rejected meanwhile and logs no second failure. The check and the write are not one store transaction (the failure is a
+// separate AddActivity call); the mutex of the Learner serialises them within the control plane, which is the only process that calls
+// Complete.
 func (l *Learner) Complete(ctx context.Context, runID string) {
+	l.complete.Lock()
+	defer l.complete.Unlock()
 	rn, err := l.Store.GetRun(ctx, runID)
-	if err != nil || rn.Role != run.RoleLearner || !rn.Status.Terminal() {
+	if err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			l.logger().Error("cannot read a learning run", "run", runID, "err", err)
+		}
+		return
+	}
+	if rn.Role != run.RoleLearner || !rn.Status.Terminal() {
+		return
+	}
+	switch done, err := l.Store.LearnOutcomeRecorded(ctx, runID); {
+	case err != nil:
+		l.logger().Error("cannot read the outcome of a learning run", "run", runID, "err", err)
+		return
+	case done:
 		return
 	}
 	hosts, err := l.Store.RunHosts(ctx, runID)
@@ -242,13 +272,39 @@ func profileDescription(p diagnosis.LearnProfile) string {
 	return text
 }
 
+// escapeBlock puts a backslash before a one-line value that starts with a Markdown block marker (a heading, a quote, a list item, a
+// thematic break, a setext underline, a fence, a table row), so that the value is shown as text and never starts a block of its own.
+func escapeBlock(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[0] {
+	case '#', '>', '-', '+', '*', '=', '_', '`', '|', '~':
+		return `\` + s
+	}
+	digits := len(s) - len(strings.TrimLeft(s, "0123456789"))
+	if digits > 0 && digits < len(s) && (s[digits] == '.' || s[digits] == ')') {
+		return `\` + s
+	}
+	return s
+}
+
+// field makes an agent's string one safe line of the note: whitespace of every kind becomes one space and a leading block marker is
+// escaped.
+func field(s string) string { return escapeBlock(flat(s)) }
+
+// lineBreaks are the characters that end a line of the notes. A renderer may break a line at any of them, so each one starts a new
+// line of the block quote.
+var lineBreaks = strings.NewReplacer("\r\n", "\n", "\r", "\n", "\v", "\n", "\f", "\n", string(rune(0x85)), "\n", string(rune(0x2028)), "\n", string(rune(0x2029)), "\n")
+
 // ProfileBody writes the profile as one Markdown note. Remedy writes the structure, the headings and the list markers; the agent's
 // strings only fill the fields. A one-line field is made one line, so that a line break in it cannot start a heading of its own, and the
-// notes are a block quote for the same reason. The note is shown as text and is data like every skill.
+// notes are a block quote for the same reason; every value and every line of the notes that starts with a block marker is escaped. The
+// note is shown as text and is data like every skill.
 func ProfileBody(p diagnosis.LearnProfile) string {
 	var b strings.Builder
-	b.WriteString("## Operating system\n\n" + flat(p.OS) + "\n\n")
-	b.WriteString("## Role\n\n" + flat(p.Role) + "\n\n")
+	b.WriteString("## Operating system\n\n" + field(p.OS) + "\n\n")
+	b.WriteString("## Role\n\n" + field(p.Role) + "\n\n")
 	list := func(title string, items []string) {
 		b.WriteString("## " + title + "\n\n")
 		if len(items) == 0 {
@@ -256,7 +312,7 @@ func ProfileBody(p diagnosis.LearnProfile) string {
 			return
 		}
 		for _, s := range items {
-			b.WriteString("- " + flat(s) + "\n")
+			b.WriteString("- " + field(s) + "\n")
 		}
 		b.WriteString("\n")
 	}
@@ -267,11 +323,11 @@ func ProfileBody(p diagnosis.LearnProfile) string {
 		b.WriteString("None.\n")
 		return b.String()
 	}
-	for _, line := range strings.Split(strings.ReplaceAll(p.Notes, "\r\n", "\n"), "\n") {
+	for _, line := range strings.Split(lineBreaks.Replace(p.Notes), "\n") {
 		if line = strings.TrimSpace(line); line == "" {
 			b.WriteString(">\n")
 		} else {
-			b.WriteString("> " + line + "\n")
+			b.WriteString("> " + escapeBlock(line) + "\n")
 		}
 	}
 	return b.String()

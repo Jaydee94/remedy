@@ -287,11 +287,30 @@ func TestACitedCommandOfAFailedOrRefusedCallDidNotRun(t *testing.T) {
 	if err := e.st.FinishToolCall(ctx, c.ID, store.CallFailed, "", "the host did not answer in time"); err != nil {
 		t.Fatal(err)
 	}
+	// The second cited command was refused (a command outside the table of reads is stored as a failed call).
+	raw, _ = json.Marshal(map[string]any{"host": "nas", "argv": []string{"cat", "/etc/hostname"}})
+	c, _, err = e.st.BeginToolCall(ctx, store.NewToolCall{RunID: r.ID, ToolUseID: "toolu_y", Tool: "host_read", Kind: store.CallKindRead, Arguments: raw})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.st.FinishToolCall(ctx, c.ID, store.CallFailed, "", "the command is not one of the reads"); err != nil {
+		t.Fatal(err)
+	}
 	if err := e.st.FinishRun(ctx, r.ID, run.Outcome{ExitCode: 0, Output: json.RawMessage(goodAnswer)}); err != nil {
 		t.Fatal(err)
 	}
 	e.l.Complete(ctx, r.ID)
-	for _, k := range e.proposals() {
+	got := e.proposals()
+	if len(got) != 2 {
+		t.Fatalf("%d proposals, want the profile and paperless: %+v", len(got), got)
+	}
+	for _, k := range got {
+		if k.Name == "paperless" && len(k.Evidence) != 2 {
+			t.Errorf("paperless cites %d commands, want 2", len(k.Evidence))
+		}
+		if k.Name == skill.ProfileName && len(k.Evidence) != 0 {
+			t.Errorf("the profile cites %v, but nothing ran", k.Evidence)
+		}
 		for _, ev := range k.Evidence {
 			if ev.Ran {
 				t.Errorf("%s: %v ran although its call failed", k.Name, ev.Argv)
@@ -311,13 +330,20 @@ func TestACitationOfANameThatTheHostHasMakesAReplacingProposal(t *testing.T) {
 	r, _ := e.l.Start(ctx, nas.ID)
 	done := e.ran(r, goodAnswer, 0, "")
 	e.l.Complete(ctx, done.ID)
+	found := false
 	for _, k := range e.proposals() {
+		if k.Name == "paperless" {
+			found = true
+		}
 		if k.Name == "paperless" && k.ReplacesID != old.ID {
 			t.Errorf("the proposal for paperless replaces %d, want %d", k.ReplacesID, old.ID)
 		}
 		if k.Name == skill.ProfileName && k.ReplacesID != 0 {
 			t.Errorf("the profile replaces %d", k.ReplacesID)
 		}
+	}
+	if !found || old.ID == 0 {
+		t.Errorf("no proposal for paperless (old id %d): %+v", old.ID, e.proposals())
 	}
 	if still, _ := e.st.GetSkill(ctx, old.ID); still.Body != "old body" || still.State != store.SkillActive {
 		t.Errorf("the existing skill changed before any confirmation: %+v", still)
@@ -468,7 +494,7 @@ func TestTheProfileIsWrittenByRemedyAndTheAgentsStringsOnlyFillTheFields(t *test
 	if strings.Join(headings, "|") != strings.Join(want, "|") {
 		t.Fatalf("headings = %v, want exactly %v:\n%s", headings, want, body)
 	}
-	for _, line := range []string{"Debian ## Role hacked", "NAS files", "- docker # Heading", "None found.", "> # A heading", "> - a list", ">", "> ## Another"} {
+	for _, line := range []string{"Debian ## Role hacked", "NAS files", "- docker # Heading", "None found.", `> \# A heading`, `> \- a list`, ">", `> \## Another`} {
 		if !strings.Contains(body+"\n", line+"\n") {
 			t.Errorf("the body lacks the line %q:\n%s", line, body)
 		}
@@ -484,6 +510,131 @@ func TestTheProfileIsWrittenByRemedyAndTheAgentsStringsOnlyFillTheFields(t *test
 	}
 	if _, err := (skill.Fields{Name: skill.ProfileName, Description: "d", Body: learner.ProfileBody(big)}).Validate(); err != nil {
 		t.Errorf("the biggest profile is refused as a skill: %v", err)
+	}
+}
+
+// headingLines returns the lines of a Markdown text that a renderer shows as a heading of the second level.
+func headingLines(body string) []string {
+	var out []string
+	for _, l := range strings.Split(body, "\n") {
+		if strings.HasPrefix(l, "## ") {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+func TestAFieldThatStartsWithABlockMarkerIsEscaped(t *testing.T) {
+	p := diagnosis.LearnProfile{
+		OS: "## Services", Role: "  # x", Services: []string{"## Notes", "1. first", "2) second", "plain"}, Containers: []string{"- x", "> q", "`code`"},
+		Notes: "## Another\n---\n1. item\n+ plus\n* star\n= eq\n_ under\n| pipe\n~~~ tilde\nfine",
+	}
+	body := learner.ProfileBody(p)
+	want := []string{"## Operating system", "## Role", "## Services", "## Containers", "## Notes"}
+	if got := headingLines(body); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("headings = %v, want exactly %v:\n%s", got, want, body)
+	}
+	for _, line := range []string{
+		`\## Services`, `\# x`, `- \## Notes`, `- \1. first`, `- \2) second`, "- plain", `- \- x`, `- \> q`, "- \\`code`",
+		`> \## Another`, `> \---`, `> \1. item`, `> \+ plus`, `> \* star`, `> \= eq`, `> \_ under`, `> \| pipe`, `> \~~~ tilde`, "> fine",
+	} {
+		if !strings.Contains(body+"\n", "\n"+line+"\n") {
+			t.Errorf("the body lacks the line %q:\n%s", line, body)
+		}
+	}
+	// A number that is not a list marker stays as it is.
+	if b := learner.ProfileBody(diagnosis.LearnProfile{OS: "12 bookworm", Role: "r"}); !strings.Contains(b, "\n12 bookworm\n") {
+		t.Errorf("a plain number was escaped:\n%s", b)
+	}
+}
+
+func TestEveryLineBreakInTheNotesStaysInsideTheBlockQuote(t *testing.T) {
+	for name, sep := range map[string]string{"CR": "\r", "CRLF": "\r\n", "NEL": string(rune(0x85)), "LS": string(rune(0x2028)), "PS": string(rune(0x2029)), "VT": "\v", "FF": "\f"} {
+		body := learner.ProfileBody(diagnosis.LearnProfile{OS: "o", Role: "r", Notes: "first" + sep + "## x"})
+		notes := body[strings.Index(body, "## Notes\n\n")+len("## Notes\n\n"):]
+		if notes != "> first\n> \\## x\n" {
+			t.Errorf("%s: the notes are %q", name, notes)
+		}
+		if got := headingLines(body); len(got) != 5 {
+			t.Errorf("%s: headings = %v", name, got)
+		}
+	}
+}
+
+func TestCompleteTwiceForASucceededRunStoresOneSet(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	nas := e.host("nas")
+	r, _ := e.l.Start(ctx, nas.ID)
+	done := e.ran(r, goodAnswer, 0, "", []string{"docker", "ps", "-a"})
+	e.l.Complete(ctx, done.ID)
+	first := e.proposals()
+	if len(first) != 2 {
+		t.Fatalf("%d proposals after the first call", len(first))
+	}
+	var rejected, profile int64
+	for _, k := range first {
+		switch k.Name {
+		case "paperless":
+			rejected = k.ID
+		case skill.ProfileName:
+			profile = k.ID
+		}
+	}
+	if err := e.st.RejectSkill(ctx, rejected); err != nil {
+		t.Fatal(err)
+	}
+
+	e.l.Complete(ctx, done.ID) // the reaper after the finish handler, say
+
+	again := e.proposals()
+	if len(again) != 1 || again[0].ID != profile {
+		t.Errorf("proposals after the second call = %+v, want only the first profile", again)
+	}
+	if got := e.activity(store.KindSkillsProposed); len(got) != 1 {
+		t.Errorf("skills_proposed entries = %v, want one", got)
+	}
+	if got := e.activity(store.KindLearnFailed); len(got) != 0 {
+		t.Errorf("learn_failed entries = %v", got)
+	}
+}
+
+func TestCompleteTwiceForAFailedRunLogsOneFailure(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	nas := e.host("nas")
+	r, _ := e.l.Start(ctx, nas.ID)
+	done := e.ran(r, "", -1, run.ReasonTimeout)
+	e.l.Complete(ctx, done.ID)
+	e.l.Complete(ctx, done.ID)
+	if got := e.activity(store.KindLearnFailed); len(got) != 1 {
+		t.Errorf("learn_failed entries = %v, want one", got)
+	}
+}
+
+func TestLearnOutcomeRecordedSeesOnlyTheOutcomeOfThatRun(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	nas := e.host("nas")
+	r, _ := e.l.Start(ctx, nas.ID)
+	if ok, err := e.st.LearnOutcomeRecorded(ctx, r.ID); err != nil || ok {
+		t.Fatalf("a started run = %v, %v (learn_started is not an outcome)", ok, err)
+	}
+	other, err := e.st.CreateRun(ctx, "claude", "a question")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.st.AddActivity(ctx, store.NewActivity{Kind: store.KindLearnFailed, RunID: other.ID, Summary: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := e.st.LearnOutcomeRecorded(ctx, r.ID); ok {
+		t.Error("the outcome of another run counts")
+	}
+	if err := e.st.AddActivity(ctx, store.NewActivity{Kind: store.KindSkillsProposed, RunID: r.ID, Summary: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := e.st.LearnOutcomeRecorded(ctx, r.ID); err != nil || !ok {
+		t.Errorf("after skills_proposed = %v, %v", ok, err)
 	}
 }
 

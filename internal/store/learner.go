@@ -128,6 +128,15 @@ func (s *Store) SucceededReads(ctx context.Context, runID string) ([][]string, e
 	return out, rows.Err()
 }
 
+// LearnOutcomeRecorded says whether the outcome of a learning run is already in the activity log: an entry of the kind skills_proposed
+// or learn_failed for the run. The proposals of a run and their skills_proposed entry are written in one transaction, so the entry stands
+// for the stored set.
+func (s *Store) LearnOutcomeRecorded(ctx context.Context, runID string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM activity WHERE run_id = ? AND kind IN (?, ?)`, runID, KindSkillsProposed, KindLearnFailed).Scan(&n)
+	return n > 0, err
+}
+
 // CountProposals returns how many proposals of a host wait for a review.
 func (s *Store) CountProposals(ctx context.Context, hostID int64) (int, error) {
 	var n int
