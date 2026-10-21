@@ -12,6 +12,11 @@ in-process test can fake. `docker` and `systemctl` (and `journalctl`) are small 
 `dev/ssh/sudoers-remedy` is exactly the output of `sshhost.Snippet` for those rules. `TestTheTestbedSudoersFileIsWhatTheSnippetWrites`
 (no Docker needed) fails when the snippet changes and prints the text to put in the file.
 
+The sudoers file grants `docker ps -a` only with the host's filter (`--filter name\=^remedy-`), and `hostexec` runs it with that filter
+(`hostexec.Expand`). The fake `docker` answers only the filtered form, and lists only the names that match the regular expression; its
+list has `other` besides `remedy-drill` so that a test sees the filter work. An unfiltered `ps` is answered with `fake docker: unfiltered ps`
+and exit code 1: the real `sudo` refuses it before docker starts, so the fake is never reached by one.
+
 Remedy runs `sudo -n -- docker ...` by name, so sudo finds `docker` through its own `secure_path`, not through the login's `PATH`. The
 path in a sudoers line (`/usr/bin/docker`) must be where sudo finds it: check with `sudo -l` and `sudo command -v docker`. The testbed's
 fakes are in `/usr/bin` for that reason.

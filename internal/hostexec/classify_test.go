@@ -221,12 +221,39 @@ func TestTheDockerFormsHaveSudoersLines(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"NOPASSWD: /usr/bin/docker ps -a\n",
+		`NOPASSWD: /usr/bin/docker ps -a --filter name\=^remedy-` + "\n",
 		"NOPASSWD: /usr/bin/docker logs --tail * remedy-*\n",
 		"NOPASSWD: /usr/bin/docker inspect remedy-*\n",
 	} {
 		if !strings.Contains(out.Sudoers, want) {
 			t.Errorf("the snippet lacks %q", want)
+		}
+	}
+}
+
+// The filter that hostexec appends to docker ps -a and the one the sudoers line names are two copies of one rule (sshhost does
+// not import hostexec). The line is the filter with each = written as \=, and sudo then grants exactly the command that runs.
+func TestPsFilterPin(t *testing.T) {
+	for _, pattern := range []string{"remedy-*", "remedy-drill", "my.app-*", "a", "x*"} {
+		out, err := sshhost.Snippet(sshhost.SnippetInput{Account: "remedy", DockerPattern: pattern})
+		if err != nil {
+			t.Fatalf("%q: %v", pattern, err)
+		}
+		filter, ok := hostexec.PsFilter(pattern)
+		if !ok {
+			t.Fatalf("PsFilter(%q) refused a pattern the snippet accepts", pattern)
+		}
+		want := "NOPASSWD: /usr/bin/docker ps -a --filter " + strings.ReplaceAll(filter, "=", `\=`) + "\n"
+		if !strings.Contains(out.Sudoers, want) {
+			t.Errorf("pattern %q: the sudoers file lacks %q:\n%s", pattern, want, out.Sudoers)
+		}
+	}
+	// What the snippet refuses, the filter refuses too.
+	for _, pattern := range []string{"*", "a*b", "x**", "a b", "-x", "a,b", ""} {
+		if _, ok := hostexec.PsFilter(pattern); ok {
+			if _, err := sshhost.Snippet(sshhost.SnippetInput{Account: "remedy", DockerPattern: pattern}); err != nil {
+				t.Errorf("PsFilter accepts %q, which the snippet refuses", pattern)
+			}
 		}
 	}
 }

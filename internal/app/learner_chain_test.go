@@ -31,15 +31,15 @@ func learnServer(t *testing.T) *sshtest.Server {
 	t.Helper()
 	line := func(sudo bool, argv ...string) string { return hostexec.CommandLine(argv, sudo) }
 	return sshtest.Start(t, sshtest.Config{Password: "hunter2-chain", Commands: map[string]sshtest.Reply{
-		hostexec.CanaryCommand():         {Out: hostexec.CanaryWant()},
-		"id -un":                         {Out: "remedy\n"},
-		"id -Gn":                         {Out: "remedy users\n"},
-		"uname -sr":                      {Out: "Linux 6.8.0\n"},
-		"env LC_ALL=C sudo -n -l":        {Out: "User remedy may run the following commands on nas:\n    (root) NOPASSWD: /usr/bin/docker ps -a\n"},
-		line(true, "docker", "ps", "-a"): {Out: "CONTAINER ID   NAMES\nabc123   remedy-drill\n"},
-		line(true, "docker", "logs", "--tail", "50", "remedy-drill"): {Out: "starting\n" + injectedOnHost + "\nlistening\n"},
-		line(false, "uname", "-a"):                                   {Out: "Linux nas 6.8.0 x86_64\n"},
-		line(false, "ps", "-eo", "pid,user,pcpu,pmem,etime,comm"):    {Out: "  PID USER %CPU %MEM ELAPSED COMMAND\n  1 root 0.0 0.1 10 init\n  99 root 0.0 0.1 5 " + injectedOnHost + "\n"},
+		hostexec.CanaryCommand():  {Out: hostexec.CanaryWant()},
+		"id -un":                  {Out: "remedy\n"},
+		"id -Gn":                  {Out: "remedy users\n"},
+		"uname -sr":               {Out: "Linux 6.8.0\n"},
+		"env LC_ALL=C sudo -n -l": {Out: "User remedy may run the following commands on nas:\n    (root) NOPASSWD: /usr/bin/docker ps -a --filter name\\=^remedy-\n"},
+		line(true, "docker", "ps", "-a", "--filter", "name=^remedy-"): {Out: "CONTAINER ID   NAMES\nabc123   remedy-drill\n"},
+		line(true, "docker", "logs", "--tail", "50", "remedy-drill"):  {Out: "starting\n" + injectedOnHost + "\nlistening\n"},
+		line(false, "uname", "-a"):                                    {Out: "Linux nas 6.8.0 x86_64\n"},
+		line(false, "ps", "-eo", "pid,user,pcpu,pmem,etime,comm"):     {Out: "  PID USER %CPU %MEM ELAPSED COMMAND\n  1 root 0.0 0.1 10 init\n  99 root 0.0 0.1 5 " + injectedOnHost + "\n"},
 	}})
 }
 

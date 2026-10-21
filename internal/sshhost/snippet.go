@@ -23,6 +23,17 @@ type SnippetOutput struct {
 	Sudoers        string
 }
 
+// psFilterWord is the regular expression that the sudoers line for docker ps -a names after `name\=`: `^remedy-` for the
+// pattern `remedy-*`, `^remedy-drill$` for an exact name. It is the part of hostexec.PsFilter after `name=`; sshhost does not
+// import hostexec, so a test in hostexec pins the two copies. The caller has checked the pattern, which holds no character
+// that sudoers reads as more than itself.
+func psFilterWord(pattern string) string {
+	if prefix, ok := strings.CutSuffix(pattern, "*"); ok {
+		return "^" + prefix
+	}
+	return "^" + pattern + "$"
+}
+
 // Snippet makes the text the maintainer runs on the host. It never runs anything itself. A value that does not pass its check
 // is an error, not text.
 func Snippet(in SnippetInput) (SnippetOutput, error) {
@@ -58,7 +69,8 @@ func Snippet(in SnippetInput) (SnippetOutput, error) {
 		b.WriteString("# In sudoers a * also matches spaces and further arguments, so a pattern with a star limits less than it looks.\n")
 		b.WriteString("# A name without a star is an exact match.\n")
 		a := in.Account + " ALL=(root) NOPASSWD: "
-		b.WriteString(a + "/usr/bin/docker ps -a\n")
+		b.WriteString("# docker ps -a is granted only with the filter below, so sudo itself refuses a list of every container of the host.\n")
+		b.WriteString(a + "/usr/bin/docker ps -a --filter name\\=" + psFilterWord(p) + "\n")
 		b.WriteString(a + "/usr/bin/docker logs --tail * " + p + "\n")
 		b.WriteString(a + "/usr/bin/docker inspect " + p + "\n")
 		b.WriteString(a + "/usr/bin/docker start " + p + ", /usr/bin/docker restart " + p + ", /usr/bin/docker stop " + p + "\n")

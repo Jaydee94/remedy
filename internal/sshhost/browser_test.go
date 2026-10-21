@@ -20,7 +20,7 @@ func TestServeForBrowser(t *testing.T) {
 	// The commands a call from a run needs: the canary and one read, so that host_read of "docker ps -a" can be answered.
 	cmds := okCommands()
 	cmds[hostexec.CanaryCommand()] = sshtest.Reply{Out: hostexec.CanaryWant()}
-	cmds[hostexec.CommandLine([]string{"docker", "ps", "-a"}, true)] = sshtest.Reply{Out: "CONTAINER ID   NAMES\nabc123         remedy-drill\n"}
+	cmds[hostexec.CommandLine([]string{"docker", "ps", "-a", "--filter", "name=^remedy-"}, true)] = sshtest.Reply{Out: "CONTAINER ID   NAMES\nabc123         remedy-drill\n"}
 	srv := sshtest.Start(t, sshtest.Config{Password: "browser-pw", Commands: cmds})
 	fmt.Printf("SSH test server on %s:%d, password browser-pw\n", srv.Host, srv.Port)
 	select {}

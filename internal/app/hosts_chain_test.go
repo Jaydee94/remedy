@@ -14,7 +14,7 @@ import (
 )
 
 func TestAHostIsReadAndChangedThroughTheWholeChain(t *testing.T) {
-	const psLine, restartLine = "sudo -n -- 'docker' 'ps' '-a'", "sudo -n -- 'docker' 'restart' 'remedy-drill'"
+	const psLine, restartLine = "sudo -n -- 'docker' 'ps' '-a' '--filter' 'name=^remedy-'", "sudo -n -- 'docker' 'restart' 'remedy-drill'"
 	srv := sshtest.Start(t, sshtest.Config{Password: "hunter2-chain", Commands: map[string]sshtest.Reply{
 		hostexec.CanaryCommand(): {Out: hostexec.CanaryWant()},
 		psLine:                   {Out: "CONTAINER ID   NAMES\nabc            remedy-drill\n"},
