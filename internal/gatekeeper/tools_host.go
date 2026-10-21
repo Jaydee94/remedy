@@ -12,6 +12,7 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/hostexec"
 	"github.com/Jaydee94/remedy/internal/redact"
+	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/store"
 )
 
@@ -213,7 +214,7 @@ func (h *hostTools) read() Tool {
 		Name: "host_read",
 		Description: "Runs one command on a host and returns its output, without asking. Only these commands run: " +
 			strings.Join(hostexec.ReadForms(), "; ") + ". A name in capitals is a slot: NAME a container of the host, UNIT a systemd unit, N a number from 1 to 2000. " +
-			"argv is the program and its arguments as separate words. Anything else is refused: use host_change for it.",
+			"argv is the program and its arguments as separate words. Anything else is refused.",
 		Group:  GroupHost,
 		Schema: schema(hostCallProps, "host", "argv"),
 		Decode: func(raw json.RawMessage) (json.RawMessage, error) { return decodeHostCall(raw, false) },
@@ -237,6 +238,9 @@ func (h *hostTools) read() Tool {
 				msg := "host_read runs only these commands: " + strings.Join(hostexec.ReadForms(), "; ") + "."
 				if verdict.Reason != "" {
 					msg += " " + verdict.Reason + "."
+				}
+				if c.Role == run.RoleLearner { // a learning run has no host_change
+					return "", ArgumentError(msg + " This command is not allowed in this run; go on with what you can read.")
 				}
 				return "", ArgumentError(msg + " For anything else use host_change, which waits for the maintainer's approval.")
 			}
