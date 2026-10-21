@@ -14,12 +14,12 @@ import (
 //
 // Mode is one of:
 //
-//	valid-exits    accepts only the planted Code: it creates the login marker and exits 0
-//	valid-stays    accepts only the planted Code: it creates the marker and then waits for a signal
+//	valid-exits    accepts only the planted Code: it creates the login marker, prints a success line and exits 0
+//	valid-stays    accepts only the planted Code: it creates the marker, prints the success line and waits for a signal
 //	invalid-stdout rejects every line, on stdout
 //	invalid-stderr rejects every line, on stderr
 //	no-url         prints no "visit:" line
-//	bad-url        prints a URL that is not https (URL is ignored unless set)
+//	bad-url        prints a URL on another host (claude.com.evil.test) unless URL is set
 //	exit-early     prints everything, then exits 1 without reading a line
 //	lingering      like valid-exits, but leaves a background sleeper (in the process group) that holds the output
 //	ignores-term   like valid-stays, but traps TERM, so only KILL ends it
@@ -36,8 +36,8 @@ type RelayOptions struct {
 type Relay struct{ Path, Dir string }
 
 const (
-	relayDefaultURL    = "https://claude.example.invalid/oauth/authorize?code=true&client_id=fake&state=fake"
-	relayDefaultBadURL = "http://claude.example.invalid/oauth/authorize"
+	relayDefaultURL    = "https://claude.com/cai/oauth/authorize?code=true&client_id=fake&response_type=code&code_challenge=fake&state=fake"
+	relayDefaultBadURL = "https://claude.com.evil.test/cai/oauth/authorize?code=true&client_id=fake&response_type=code&code_challenge=fake&state=fake"
 	relayDefaultCode   = "fake-code-0123456789abcdef"
 )
 
@@ -183,6 +183,7 @@ while read -r line; do
     *)
       if [ "$line" = "$CODE" ]; then
         : > "$D/loggedin"
+        echo "Login successful. Logged in as someone@example.invalid"
         case "$MODE" in
           valid-stays|ignores-term)
             while :; do sleep 1; done

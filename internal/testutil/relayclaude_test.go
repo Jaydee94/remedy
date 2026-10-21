@@ -12,11 +12,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Jaydee94/remedy/internal/loginrelay"
 	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 const (
-	testURL  = "https://claude.example.invalid/oauth/authorize?code=true&state=abc"
+	testURL  = "https://claude.com/cai/oauth/authorize?code=true&client_id=fake&response_type=code&code_challenge=fake&state=fake"
 	testCode = "planted-code-0123456789"
 )
 
@@ -124,7 +125,10 @@ func relay(t *testing.T, mode string) *testutil.Relay {
 	return testutil.FakeClaudeRelay(t, testutil.RelayOptions{Mode: mode, URL: testURL, Code: testCode})
 }
 
-const prompt = "Paste code here if prompted > "
+const (
+	prompt      = "Paste code here if prompted > "
+	successLine = "Login successful. Logged in as someone@example.invalid"
+)
 
 var loginArgs = []string{"auth", "login", "--claudeai"}
 
@@ -148,6 +152,28 @@ func TestFakeClaudeRelayPrintsTheRealShape(t *testing.T) {
 	}
 	if pids := r.PIDs(); len(pids) != 1 || pids[0] != p.cmd.Process.Pid {
 		t.Fatalf("PIDs = %v, want [%d]", pids, p.cmd.Process.Pid)
+	}
+}
+
+// The defaults must be what the relay's own validator accepts (and, for bad-url, rejects), or a session with a default
+// URL would end in bad_url before it reached awaiting_code.
+func TestFakeClaudeRelayDefaultURLsMeetTheValidator(t *testing.T) {
+	for mode, wantValid := range map[string]bool{"valid-exits": true, "bad-url": false} {
+		r := testutil.FakeClaudeRelay(t, testutil.RelayOptions{Mode: mode})
+		b, err := os.ReadFile(filepath.Join(r.Dir, "url"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = loginrelay.ValidateURL(string(b))
+		if wantValid && err != nil {
+			t.Errorf("%s: the default URL is refused: %v", mode, err)
+		}
+		if !wantValid && err == nil {
+			t.Errorf("%s: the default URL is accepted", mode)
+		}
+	}
+	if err := loginrelay.ValidateURL(testURL); err != nil {
+		t.Errorf("testURL is refused: %v", err)
 	}
 }
 
@@ -179,6 +205,9 @@ func TestFakeClaudeRelayModes(t *testing.T) {
 		if !r.LoggedIn() || r.LinesRead() != 2 {
 			t.Fatalf("LoggedIn = %v, LinesRead = %d", r.LoggedIn(), r.LinesRead())
 		}
+		if !strings.Contains(p.stdout(), successLine) {
+			t.Fatalf("stdout = %q, want the success line", p.stdout())
+		}
 		if code, _, _ := status(t, r); code != 0 {
 			t.Fatalf("status exit = %d", code)
 		}
@@ -189,6 +218,7 @@ func TestFakeClaudeRelayModes(t *testing.T) {
 		p := start(t, r, loginArgs...)
 		p.send(t, testCode)
 		eventually(t, "the marker", r.LoggedIn)
+		eventually(t, "the success line", func() bool { return strings.Contains(p.stdout(), successLine) })
 		if p.wait(300*time.Millisecond) != stillRunning {
 			t.Fatal("exited by itself")
 		}
@@ -232,11 +262,11 @@ func TestFakeClaudeRelayModes(t *testing.T) {
 		}
 	})
 
-	t.Run("bad-url prints a URL that is not https", func(t *testing.T) {
+	t.Run("bad-url prints a URL on another host", func(t *testing.T) {
 		r := testutil.FakeClaudeRelay(t, testutil.RelayOptions{Mode: "bad-url", Code: testCode})
 		p := start(t, r, loginArgs...)
 		eventually(t, "the prompt", func() bool { return strings.HasSuffix(p.stdout(), prompt) })
-		if !strings.Contains(p.stdout(), "visit: http://") {
+		if !strings.Contains(p.stdout(), "visit: https://claude.com.evil.test/") {
 			t.Fatalf("stdout = %q", p.stdout())
 		}
 	})
