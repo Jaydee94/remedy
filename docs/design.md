@@ -151,9 +151,9 @@ running as a service for other people's homelabs.
   **Cycle 4b (2026-10-19)** adds one: how long an approval of an automatic run waits before it expires
   (`auto_approval_timeout`, `REMEDY_AUTO_APPROVAL_TIMEOUT` is its default, 15 minutes, `0` means without a limit).
 
-#### 2.7.1 Exception: the runner's login from the Setup page (draft until the spec is approved)
+#### 2.7.1 Exception: the runner's login from the Setup page
 
-Decided on 2026-10-21; the specification, still a draft, is [`specs/2026-10-21-ui-login-relay-design.md`](specs/2026-10-21-ui-login-relay-design.md).
+Decided on 2026-10-21; the specification, approved the same day, is [`specs/2026-10-21-ui-login-relay-design.md`](specs/2026-10-21-ui-login-relay-design.md).
 Section 2.1 says Remedy never touches login credentials, and the hard rule of `CLAUDE.md` says never to read, copy, log or store the agent CLIs'
 credentials. That stays the rule. There is **one narrow exception**: when the maintainer starts "Log in" on the Setup page, the runner starts the
 unmodified `claude auth login`, and **two pieces of login material pass through Remedy's code, and only these two**: the authorization URL the CLI

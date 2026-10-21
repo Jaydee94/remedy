@@ -1,6 +1,6 @@
 # The runner's login from the Setup page (K-7)
 
-Status: draft, not yet approved. Nothing in this document is built; no code is written before the maintainer approves it and the exception of `docs/design.md` 2.7.1 loses its "draft" mark.
+Status: approved by the maintainer on 2026-10-21 (this spec, the exception of `docs/design.md` 2.7.1 and the matching hard rule of `CLAUDE.md`). The terms of use must still be re-read in their primary text before the feature is offered to anyone but the maintainer (section 4). Nothing in this document is built yet.
 Parent documents: [`2026-10-06-kubernetes-deployment-design.md`](2026-10-06-kubernetes-deployment-design.md) (sections 4, 10.1 and 11: this is the "K-7" it demands),
 [`../design.md`](../design.md) (2.1, 2.7, the exception 2.7.1 and 4),
 [`../research/subscription-cli-usage.md`](../research/subscription-cli-usage.md) (the terms-of-use constraints; on conflict the research wins until it is updated),
@@ -182,7 +182,7 @@ The environment of the child is `FilterEnv(os.Environ())` plus `DISABLE_UPDATES=
 
 Each task is test first where it has logic, and small. The exception text is already recorded in this commit; the first task of the plan is the maintainer's approval of it.
 
-1. Approve this spec and the exception (flip 2.7.1 and the hard rule from "draft"); clarify cycle 7 §4 (section 17).
+1. Done on 2026-10-21: the spec and the exception are approved, and 2.7.1 and the hard rule lost their "draft" mark. Still to do: clarify cycle 7 §4 (section 17).
 2. `internal/loginrelay`: `Material`, `ValidateURL`, `ValidateCode`, the reasons; their tables.
 3. `Manager`: the state machine, timers, rate limits, commands and acks, activity hook; its transition tests (no HTTP).
 4. Server: `REMEDY_LOGIN_RELAY` in `config`, the admin and runner routes, `Deps.Login`, the claim gate, `no-store`, the Setup fact; the API tests.
@@ -221,8 +221,8 @@ Each task is test first where it has logic, and small. The exception text is alr
 
 ## 17. Documents to change
 
-- **In this commit:** [`../design.md`](../design.md) a new 2.7.1, "Exception: the runner's login from the Setup page (draft until the spec is approved)"; `CLAUDE.md` the first hard rule, now naming the exception. Nothing else of those files.
-- On approval: drop "draft" from both; `CLAUDE.md` "Current state" (this cycle), the new variable `REMEDY_LOGIN_RELAY` under the optional variables, and the two new runner-API routes in Architecture; `docs/design.md` 2.7 line "CLI login once via `kubectl exec`" gains "or from the Setup page (2.7.1)".
+- **In this commit:** [`../design.md`](../design.md) a new 2.7.1, "Exception: the runner's login from the Setup page"; `CLAUDE.md` the first hard rule, now naming the exception. Nothing else of those files.
+- Done on approval: "draft" dropped from both. With the implementation: `CLAUDE.md` "Current state" (this cycle), the new variable `REMEDY_LOGIN_RELAY` under the optional variables, and the two new runner-API routes in Architecture; `docs/design.md` 2.7 line "CLI login once via `kubectl exec`" gains "or from the Setup page (2.7.1)".
 - [`../research/subscription-cli-usage.md`](../research/subscription-cli-usage.md): a dated paragraph on the relay once the primary text is re-read; consequence 1 ("Remedy never reads, copies or stores the credentials") gains the exception.
 - [`2026-10-21-self-hosted-for-others-design.md`](2026-10-21-self-hosted-for-others-design.md) §4 item 1 ("No image, chart, script or document may ship, collect or relay a login") and §13 open point 1: reword to "no installation may ship, collect or relay a login **of anyone but its own operator**, and the relay of this cycle is opt-in" and say the primary text decides whether the relay is offered to others. Not edited here.
 - [`2026-10-06-kubernetes-deployment-design.md`](2026-10-06-kubernetes-deployment-design.md) §10.1: a pointer to this spec. `deploy/chart/README.md`, `docs/runbook/homelab-deploy.md` and `dummy-setup.md` (the optional login from the page), `docs/runbook/login-relay-real-run.md` (new), `docs/research/login-relay-real-run.md` (new).
