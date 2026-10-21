@@ -358,6 +358,8 @@ stored or logged. That conflicts with the hard rule of `CLAUDE.md` (never read, 
 `docs/design.md` records the exception. It therefore needs its own design decision, spec and plan (K-7) before any code, and nothing in K-1 to
 K-6 prepares for it. Until then the login stays the `kubectl exec -it` of section 4.
 
+Update of 2026-10-21: K-7 has its own design, [`2026-10-21-ui-login-relay-design.md`](2026-10-21-ui-login-relay-design.md), and the exception is recorded in `docs/design.md` 2.7.1. The control plane, the runner and the chart value `loginRelay.enabled` (off by default) are implemented; the real run with the real CLI is not made, and `kubectl exec -it` stays the fallback.
+
 ## 11. Accepted risks
 
 | # | Risk | Mitigation |
