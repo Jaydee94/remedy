@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.0](https://github.com/Jaydee94/remedy/compare/v0.10.0...v0.11.0) (2026-10-21)
+
+### Features
+
+* log the runner in from the Setup page, server, runner and chart (K-7) ([#165](https://github.com/Jaydee94/remedy/issues/165)) ([735c742](https://github.com/Jaydee94/remedy/commit/735c742ae580da47f93104c85821659a6c210f7d))
+
 ## [0.10.0](https://github.com/Jaydee94/remedy/compare/v0.9.0...v0.10.0) (2026-10-21)
 
 ### Features
