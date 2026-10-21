@@ -29,7 +29,8 @@ import (
 // proposal the way the learner of plan 5b will).
 type skillChain struct {
 	*chain
-	st *store.Store
+	st          *store.Store
+	application *app.App
 }
 
 func newSkillChain(t *testing.T) *skillChain {
@@ -55,7 +56,7 @@ func newSkillChain(t *testing.T) *skillChain {
 	if code, _ := c.admin(http.MethodPost, "/api/login", `{"password":"`+password+`"}`); code != http.StatusNoContent {
 		t.Fatalf("login = %d", code)
 	}
-	return &skillChain{chain: c, st: st}
+	return &skillChain{chain: c, st: st, application: a}
 }
 
 // addNAS creates the host nas (id 1) with a password login, tests the connection and pins the key it showed, as the maintainer does.
