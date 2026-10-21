@@ -53,8 +53,12 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 			token := ""
 			if claimed.MCP {
 				if token, err = s.d.Store.MintRunToken(r.Context(), claimed.ID); err != nil {
-					_ = s.d.Store.FinishRun(context.WithoutCancel(r.Context()), claimed.ID,
-						run.Outcome{ExitCode: -1, Result: "The run token could not be created."})
+					done := context.WithoutCancel(r.Context())
+					_ = s.d.Store.FinishRun(done, claimed.ID, run.Outcome{ExitCode: -1, Result: "The run token could not be created."})
+					// A learning run that ends here tells its host, like every other failed learning run.
+					if s.d.Learner != nil {
+						s.d.Learner.Complete(done, claimed.ID)
+					}
 					writeErr(w, http.StatusInternalServerError, "could not create the run token")
 					return
 				}
@@ -66,6 +70,9 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 				_ = s.d.Store.FinishRun(done, claimed.ID, run.Outcome{ExitCode: -1, Result: "The incident or the skills of the run could not be read."})
 				if s.d.Responder != nil {
 					s.d.Responder.Complete(done, claimed.ID)
+				}
+				if s.d.Learner != nil {
+					s.d.Learner.Complete(done, claimed.ID)
 				}
 				writeErr(w, http.StatusInternalServerError, "could not read what the run needs")
 				return

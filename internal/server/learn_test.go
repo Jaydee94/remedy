@@ -30,12 +30,13 @@ type learnEnv struct {
 
 func newLearnEnv(t *testing.T) *learnEnv {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := store.Open(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	he := newHostEnv(t, st, filepath.Join(t.TempDir(), "unused.db"), secret.Key{}, sshtest.Start(t, sshtest.Config{}), func(d *server.Deps) {
+	he := newHostEnv(t, st, dbPath, secret.Key{}, sshtest.Start(t, sshtest.Config{}), func(d *server.Deps) {
 		d.Learner = &learner.Learner{Store: st}
 	})
 	return &learnEnv{hostEnv: he, st: st}
