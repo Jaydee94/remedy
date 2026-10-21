@@ -153,7 +153,22 @@ func (s *srv) listRuns(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not list runs")
 		return
 	}
-	writeJSON(w, http.StatusOK, runs)
+	// A learning run's prompt holds the host's own text and its output the whole learning answer: the list leaves them out and names the
+	// host instead. GET /api/runs/{id} still has everything.
+	items := make([]runListItem, 0, len(runs))
+	for _, rn := range runs {
+		item := runListItem{Run: rn}
+		if rn.Role == run.RoleLearner {
+			item.Prompt, item.Result, item.Output = "", "", nil
+			if entries, err := s.d.Store.RunHosts(r.Context(), rn.ID); err == nil {
+				for _, e := range entries {
+					item.Hosts = append(item.Hosts, runHost{ID: e.Host.ID, Name: e.Host.Name})
+				}
+			}
+		}
+		items = append(items, item)
+	}
+	writeJSON(w, http.StatusOK, items)
 }
 
 func (s *srv) getRun(w http.ResponseWriter, r *http.Request) {

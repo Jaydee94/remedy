@@ -27,6 +27,11 @@ func claimFor(r run.Run, mcpToken string, skills []prompt.Skill) run.Claim {
 		c.Schema = json.RawMessage(diagnosis.Schema)
 		c.Snapshot = true
 	}
+	// A learning run carries its whole prompt (built when it was started, with the host and the skills it already has) and asks for the
+	// learning answer; it has no repository to download.
+	if r.Role == run.RoleLearner {
+		c.Schema = json.RawMessage(diagnosis.LearnSchema)
+	}
 	switch {
 	case r.Role == run.RoleAdhoc && r.IncidentID != nil:
 		c.Prompt = prompt.QuestionWithSkills(*r.IncidentID, r.Prompt, skills)

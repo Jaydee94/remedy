@@ -12,6 +12,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/gatekeeper"
 	"github.com/Jaydee94/remedy/internal/incident"
+	"github.com/Jaydee94/remedy/internal/learner"
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/settings"
@@ -55,6 +56,10 @@ type Deps struct {
 
 	// Hosts connects to the machines in the inventory. When it is nil the host routes are not registered.
 	Hosts *sshhost.Service
+
+	// Learner starts the learning run of a host and stores what it finds. When it is nil there is no POST /api/hosts/{id}/learn, and a
+	// finished learning run stores nothing.
+	Learner *learner.Learner
 
 	// Settings holds the values the maintainer changes in the Setup page. When it is nil the settings routes are not registered and
 	// the claim carries no run timeout.
@@ -170,6 +175,9 @@ func (s *srv) routes(public, internal *http.ServeMux) {
 		public.HandleFunc("POST /api/hosts/{id}/test", s.session(s.testHost))
 		public.HandleFunc("POST /api/hosts/{id}/hostkey", s.session(s.pinHostKey))
 		public.HandleFunc("DELETE /api/hosts/{id}/hostkey", s.session(s.unpinHostKey))
+		if d.Learner != nil {
+			public.HandleFunc("POST /api/hosts/{id}/learn", s.session(s.learnHost))
+		}
 	}
 
 	if d.Incidents != nil {

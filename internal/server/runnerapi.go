@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jaydee94/remedy/internal/learner"
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/settings"
 	"github.com/Jaydee94/remedy/internal/store"
@@ -135,6 +136,14 @@ func (s *srv) finish(w http.ResponseWriter, r *http.Request) {
 			out = s.d.Responder.CheckRun(r.Context(), rn, out)
 		}
 	}
+	// The same for a learning run: its answer must be valid, or the run counts as failed and nothing is stored.
+	learnerRun := false
+	if s.d.Learner != nil {
+		if rn, err := s.d.Store.GetRun(r.Context(), id); err == nil && rn.Role == run.RoleLearner {
+			learnerRun = true
+			out = learner.CheckRun(out)
+		}
+	}
 	err := s.d.Store.FinishRun(r.Context(), id, out)
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "run not found or not running")
@@ -146,6 +155,9 @@ func (s *srv) finish(w http.ResponseWriter, r *http.Request) {
 	}
 	if responderRun {
 		s.d.Responder.Complete(r.Context(), id)
+	}
+	if learnerRun {
+		s.d.Learner.Complete(r.Context(), id)
 	}
 	s.hub.notify(id)
 	w.WriteHeader(http.StatusNoContent)
