@@ -1,6 +1,6 @@
 # The runner's login from the Setup page (K-7)
 
-Status: approved by the maintainer on 2026-10-21 (this spec, the exception of `docs/design.md` 2.7.1 and the matching hard rule of `CLAUDE.md`). The terms of use must still be re-read in their primary text before the feature is offered to anyone but the maintainer (section 4). The server, the runner and the chart are built (pull request A); the wizard and the real run are not, and nothing is proven.
+Status: approved by the maintainer on 2026-10-21 (this spec, the exception of `docs/design.md` 2.7.1 and the matching hard rule of `CLAUDE.md`). The terms of use must still be re-read in their primary text before the feature is offered to anyone but the maintainer (section 4). The server, the runner and the chart are built (pull request A), and the wizard is built (pull request B); the real run is not, and nothing is proven.
 Parent documents: [`2026-10-06-kubernetes-deployment-design.md`](2026-10-06-kubernetes-deployment-design.md) (sections 4, 10.1 and 11: this is the "K-7" it demands),
 [`../design.md`](../design.md) (2.1, 2.7, the exception 2.7.1 and 4),
 [`../research/subscription-cli-usage.md`](../research/subscription-cli-usage.md) (the terms-of-use constraints; on conflict the research wins until it is updated),

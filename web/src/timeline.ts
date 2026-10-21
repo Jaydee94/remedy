@@ -78,6 +78,10 @@ const kindDots: Record<string, string> = {
   skills_proposed: 'bg-info',
   learn_started: 'bg-primary',
   learn_failed: 'bg-destructive',
+  login_started: 'bg-primary',
+  login_succeeded: 'bg-success',
+  login_failed: 'bg-destructive',
+  login_cancelled: 'bg-muted-foreground',
 }
 
 export function kindDotClass(kind: string): string {

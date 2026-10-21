@@ -42,10 +42,10 @@ Then open `http://127.0.0.1:18080` and sign in. The password is `REMEDY_ADMIN_PA
 
 ## Optional: log in from the Setup page
 
-The login from the Setup page is off in the dummy setup. Status: the server, the runner and the chart are implemented, the wizard on the Setup page
-is not built yet, and the real run with the real CLI is not made, so it is not proven (`docs/specs/2026-10-21-ui-login-relay-design.md`,
+The login from the Setup page is off in the dummy setup. Status: the server, the runner, the chart and the wizard on the Setup page
+are implemented, and the real run with the real CLI is not made, so it is not proven (`docs/specs/2026-10-21-ui-login-relay-design.md`,
 `docs/plans/ui-login-relay.md`). To try it, add `loginRelay:` with `enabled: true` to `dev/kind/dummy-values.yaml` and run `make dummy-redeploy`; Setup
-then shows "Login from this page: on". `make dummy-login` (the terminal) stays the fallback and works as before. The address and the one-time code are
+then shows "Login from this page: on", and the runner card offers "Log in from here". `make dummy-login` (the terminal) stays the fallback and works as before. The address and the one-time code are
 kept in memory only (`docs/design.md` 2.7.1). No script of the dummy setup opens the login directory, relay or not.
 
 ## Where things are

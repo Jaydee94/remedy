@@ -127,3 +127,77 @@ describe('the skill calls', () => {
     assert.deepEqual(bodies, [undefined, JSON.stringify({ description: 'd', body: 'b' })])
   })
 })
+
+describe('the runner login calls', () => {
+  afterEach(() => {
+    globalThis.fetch = realFetch
+  })
+
+  interface Seen {
+    method?: string
+    path: string
+    body?: string
+    csrf?: string
+  }
+
+  function record(res: () => Response): Seen[] {
+    const seen: Seen[] = []
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push({
+        method: init?.method,
+        path: String(input),
+        body: init?.body as string | undefined,
+        csrf: (init?.headers as Record<string, string> | undefined)?.['X-Remedy-CSRF'],
+      })
+      return Promise.resolve(res())
+    }) as typeof fetch
+    return seen
+  }
+
+  it('reads the offer', async () => {
+    const seen = record(() => respond(200, { available: true, unavailable: '', session: null }))
+    const login = await api.getRunnerLogin()
+    assert.deepEqual(login, { available: true, unavailable: '', session: null })
+    assert.deepEqual(seen, [{ method: 'GET', path: '/api/runner/login', body: undefined, csrf: '1' }])
+  })
+
+  it('starts with the replace flag in the body', async () => {
+    const seen = record(() => respond(201, { id: 's', state: 'starting', attempt: 1, expiresAt: '2026-10-21T12:00:00Z', waitingRuns: 0 }))
+    const s = await api.startRunnerLogin(true)
+    assert.equal(s.state, 'starting')
+    assert.deepEqual(
+      seen.map((x) => [x.method, x.path, x.body]),
+      [['POST', '/api/runner/login', '{"replace":true}']],
+    )
+  })
+
+  it('sends the code to the code route and accepts an answer without a body', async () => {
+    const seen = record(() => new Response(null, { status: 202 }))
+    await api.sendRunnerLoginCode('sess-1', 'abcdefgh')
+    assert.deepEqual(
+      seen.map((x) => [x.method, x.path, x.body]),
+      [['POST', '/api/runner/login/code', '{"session":"sess-1","code":"abcdefgh"}']],
+    )
+  })
+
+  it('cancels with the session id in the body and not in the path', async () => {
+    const seen = record(() => respond(204))
+    await api.cancelRunnerLogin('sess-1')
+    assert.deepEqual(
+      seen.map((x) => [x.method, x.path, x.body]),
+      [['POST', '/api/runner/login/cancel', '{"session":"sess-1"}']],
+    )
+  })
+
+  it('exposes the status and the reason word of a refusal, and keeps the status of a 429', async () => {
+    record(() => respond(409, { error: 'A run is running.', reason: 'run_active' }))
+    await assert.rejects(api.startRunnerLogin(false), (err: unknown) => err instanceof ApiError && err.status === 409 && err.reason === 'run_active')
+    record(() => respond(429, { error: 'too many attempts, try again later' }))
+    await assert.rejects(api.startRunnerLogin(false), (err: unknown) => err instanceof ApiError && err.status === 429 && err.reason === undefined)
+  })
+
+  it('does not take a reason that is not a plain word', async () => {
+    record(() => respond(409, { error: 'x', reason: { a: 1 } }))
+    await assert.rejects(api.startRunnerLogin(false), (err: unknown) => err instanceof ApiError && err.reason === undefined)
+  })
+})
