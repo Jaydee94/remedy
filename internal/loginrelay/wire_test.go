@@ -123,6 +123,9 @@ func TestDecodePoll(t *testing.T) {
 		"negative ack":  `{"boot":"b1","session":"s1","ack":-1}`,
 		"second object": `{"boot":"b1"}{"boot":"b2"}`,
 		"empty":         ``,
+		"empty boot":    `{"boot":"","session":"s1","ack":1}`,
+		"no boot":       `{"session":"s1","ack":1}`,
+		"no fields":     `{}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := DecodePoll(strings.NewReader(body)); !errors.Is(err, ErrBadBody) {

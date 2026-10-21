@@ -97,7 +97,8 @@ type LoginRelay struct {
 	Timings LoginTimings
 	Log     *slog.Logger
 
-	onCodeWritten func(loginrelay.Material) // tests only: the code holder after the write
+	onCodeWritten  func(loginrelay.Material) // tests only: the code holder after the write
+	beforeCodeWait func(*loginChild)         // tests only: runs in the watcher before it waits for the code
 
 	timings LoginTimings
 	boot    string
@@ -419,6 +420,8 @@ func (l *LoginRelay) watch(ctx context.Context, ch *loginChild) {
 	defer close(ch.done)
 	state, reason := l.drive(ctx, ch)
 	ch.stop()
+	// Wait has returned, so the output is complete: a head result drive did not take is zeroed now, not at GC.
+	ch.out.dropHead()
 	exit := -1
 	if ch.cmd.ProcessState != nil {
 		exit = ch.cmd.ProcessState.ExitCode()
@@ -467,11 +470,21 @@ func (l *LoginRelay) drive(ctx context.Context, ch *loginChild) (loginrelay.Stat
 		h.url.Zero()
 	}
 
+	if l.beforeCodeWait != nil {
+		l.beforeCodeWait(ch)
+	}
 	select {
 	case <-ctx.Done():
 		return "", ""
 	case <-ch.exited:
-		return loginrelay.StateFailed, loginrelay.ReasonProcessExited
+		// The code may have been written before the child exited, with both ready and the exit picked: then the exit
+		// is judged like any other after a code.
+		l.mu.Lock()
+		written := ch.written
+		l.mu.Unlock()
+		if !written {
+			return loginrelay.StateFailed, loginrelay.ReasonProcessExited
+		}
 	case <-ch.code:
 	}
 	if ch.loggedIn {
@@ -576,6 +589,15 @@ func newCLIOutput() *cliOutput {
 	return &cliOutput{
 		head: make(chan headResult, 1), invalid: make(chan struct{}),
 		buf: make([]byte, 0, maxLoginHead),
+	}
+}
+
+// dropHead takes a head result nobody received, without blocking, and zeroes its URL.
+func (o *cliOutput) dropHead() {
+	select {
+	case h := <-o.head:
+		h.url.Zero()
+	default:
 	}
 }
 

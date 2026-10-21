@@ -374,8 +374,9 @@ func TestTheCodeRoute(t *testing.T) {
 	if resp, body := codePost(`{"session":"` + id + `","code":"` + relayCode + `","x":1}`); resp.StatusCode != http.StatusBadRequest || strings.Contains(body, relayCode) {
 		t.Errorf("unknown field = %d %s, want 400", resp.StatusCode, body)
 	}
-	if resp, _ := codePost(`{"session":"` + id + `","code":"` + strings.Repeat("a", 1100) + `"}`); resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("a body over 1 KiB = %d, want 400", resp.StatusCode)
+	// A valid code with an overlong session id: only the 1 KiB body rule refuses it (without it, the id would be 409).
+	if resp, body := codePost(`{"session":"` + id + strings.Repeat("x", 1100) + `","code":"` + relayCode + `"}`); resp.StatusCode != http.StatusBadRequest || strings.Contains(body, relayCode) {
+		t.Errorf("a body over 1 KiB = %d %s, want 400", resp.StatusCode, body)
 	}
 	if resp, body := codePost(`{"session":"other","code":"` + relayCode + `"}`); resp.StatusCode != http.StatusConflict || strings.Contains(body, relayCode) {
 		t.Errorf("another id = %d %s, want 409", resp.StatusCode, body)
@@ -460,6 +461,9 @@ func TestPollAnswers204OrACommand(t *testing.T) {
 	le.online(t)
 	if resp, _ := le.rpost(t, "/runner/v1/login/poll", `{"boot":"b1","x":1}`); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("poll with an unknown field = %d, want 400", resp.StatusCode)
+	}
+	if resp, _ := le.rpost(t, "/runner/v1/login/poll", `{"boot":"","session":"","ack":0}`); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("poll with an empty boot = %d, want 400", resp.StatusCode)
 	}
 	id := le.start(t)
 	resp, raw := le.rpost(t, "/runner/v1/login/poll", `{"boot":"b1"}`)

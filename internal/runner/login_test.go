@@ -406,6 +406,20 @@ func TestACodeResentAfterALostResponseIsWrittenOnce(t *testing.T) {
 	if n := fake.LinesRead(); n != 1 {
 		t.Fatalf("the CLI read %d lines, want 1: a resent code was written again", n)
 	}
+	// A code with a new seq for the same child passes the seq check; only the child's written flag stops it.
+	r.cp.push(code(3, plantedCode))
+	eventually(t, "a poll that acknowledges seq 3", func() bool {
+		for _, p := range r.cp.snapshotPolls() {
+			if p.Session == sess && p.Ack == 3 {
+				return true
+			}
+		}
+		return false
+	})
+	time.Sleep(150 * time.Millisecond)
+	if n := fake.LinesRead(); n != 1 {
+		t.Fatalf("the CLI read %d lines, want 1: a second code was written to the same child", n)
+	}
 }
 
 func TestARestartedRunnerNeverReplaysACode(t *testing.T) {
@@ -588,6 +602,34 @@ func TestSuccessPaths(t *testing.T) {
 		}
 		waitGone(t, fake, 5*time.Second)
 	})
+}
+
+// TestAWrittenCodeWhoseChildExitedIsJudgedBySuccess forces the ordering in which the code was written and the child
+// exited before the watcher waits for the code, with the exit picked: the outcome is the success path's, not
+// process_exited.
+func TestAWrittenCodeWhoseChildExitedIsJudgedBySuccess(t *testing.T) {
+	for _, loggedIn := range []bool{false, true} {
+		name := map[bool]string{false: "missing before, confirm", true: "ok before, relogin"}[loggedIn]
+		t.Run(name, func(t *testing.T) {
+			fake := testutil.FakeClaudeRelay(t, testutil.RelayOptions{Mode: "valid-exits", Code: plantedCode, LoggedIn: loggedIn})
+			r := startRelay(t, fake, runner.SetExitedWinsTheCodeWait)
+			if loggedIn {
+				r.status.SetLogin(provider.LoginOK, time.Now())
+			} else {
+				r.status.SetLogin(provider.LoginMissing, time.Now())
+			}
+			r.cp.push(start(1))
+			r.cp.waitReport(t, loginrelay.StateAwaitingCode, "", 1)
+			r.cp.push(code(2, plantedCode))
+			r.cp.waitReport(t, loginrelay.StateSucceeded, "", 1)
+			for _, rep := range r.cp.snapshotReports() {
+				if rep.State == string(loginrelay.StateFailed) {
+					t.Fatalf("a failed report (%s) for a written code whose child exited 0", rep.Reason)
+				}
+			}
+			waitGone(t, fake, 5*time.Second)
+		})
+	}
 }
 
 func TestRunActiveGuard(t *testing.T) {

@@ -118,9 +118,11 @@ func (r Report) LogValue() slog.Value {
 // decodeStrict reads at most max bytes, decodes exactly one JSON object into v
 // with unknown fields refused and nothing but white space after it. It returns
 // ErrBadBody for every failure and never the decoder's error, which may quote
-// the body.
+// the body. The body (for the code route, the code) is cleared on every return;
+// the decoded strings are copies.
 func decodeStrict(r io.Reader, max int64, v any) error {
 	data, err := io.ReadAll(io.LimitReader(r, max+1))
+	defer clear(data)
 	if err != nil || int64(len(data)) > max {
 		return ErrBadBody
 	}
@@ -135,13 +137,14 @@ func decodeStrict(r io.Reader, max int64, v any) error {
 	return nil
 }
 
-// DecodePoll reads a poll request (4 KiB, strict).
+// DecodePoll reads a poll request (4 KiB, strict). The boot is required: a
+// session first served to an empty boot could never see a runner restart.
 func DecodePoll(r io.Reader) (PollRequest, error) {
 	var p PollRequest
 	if err := decodeStrict(r, maxPollBytes, &p); err != nil {
 		return PollRequest{}, err
 	}
-	if p.Ack < 0 {
+	if p.Boot == "" || p.Ack < 0 {
 		return PollRequest{}, ErrBadBody
 	}
 	return p, nil

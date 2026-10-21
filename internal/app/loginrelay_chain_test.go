@@ -531,6 +531,19 @@ func (c *loginChain) loginEntries() []string {
 	return out
 }
 
+// loginKinds is loginEntries for a failure message: the kinds and the length of each data, never the data, which on a
+// regression could hold a planted value.
+func (c *loginChain) loginKinds() string {
+	var out []string
+	log := c.activity()
+	for i := len(log) - 1; i >= 0; i-- {
+		if a := log[i]; strings.HasPrefix(a.Kind, "login_") {
+			out = append(out, fmt.Sprintf("%s (data of %d bytes)", a.Kind, len(a.Data)))
+		}
+	}
+	return strings.Join(out, ", ")
+}
+
 // readDB opens a second, read-only connection to the database file.
 func (c *loginChain) readDB() *sql.DB {
 	c.t.Helper()
@@ -575,7 +588,7 @@ func TestALoginSucceedsThroughTheWholeChain(t *testing.T) {
 	loginSucceeds(t, c)
 
 	if got, want := strings.Join(c.loginEntries(), ", "), "login_started {}, login_succeeded {}"; got != want {
-		t.Errorf("login activity = %s, want %s", got, want)
+		t.Errorf("login activity = %s, want %s", c.loginKinds(), want)
 	}
 	code, raw := c.do(http.MethodGet, "/api/activity", "")
 	if code != http.StatusOK || !bytes.Contains(raw, []byte(`"login_started"`)) || !bytes.Contains(raw, []byte(`"login_succeeded"`)) {
@@ -619,7 +632,7 @@ func TestAnInvalidCodeStartsAFreshSignInThroughTheChain(t *testing.T) {
 	c := newLoginChain(t, testutil.RelayOptions{Mode: "valid-exits", URL: plantedURL1, Code: plantedCode})
 	invalidThenValid(t, c)
 	if got, want := strings.Join(c.loginEntries(), ", "), "login_started {}, login_succeeded {}"; got != want {
-		t.Errorf("login activity = %s, want %s", got, want)
+		t.Errorf("login activity = %s, want %s", c.loginKinds(), want)
 	}
 	waitFor(t, "the fake CLI to be gone", 5*time.Second, func() bool { return len(c.fake.Alive()) == 0 })
 }
@@ -908,7 +921,7 @@ func TestARunnerRestartMidSessionFailsTheSession(t *testing.T) {
 		t.Errorf("after the runner restarted: %s, want reason runner_restarted", v.describe())
 	}
 	if got, want := strings.Join(c.loginEntries(), ", "), `login_started {}, login_failed {"reason":"runner_restarted"}`; got != want {
-		t.Errorf("login activity = %s, want %s", got, want)
+		t.Errorf("login activity = %s, want %s", c.loginKinds(), want)
 	}
 }
 
@@ -961,6 +974,6 @@ func TestARunWaitsForASessionAndNoSessionStartsWhileARunRuns(t *testing.T) {
 		t.Errorf("start while a run runs = %d, reason %q, want 409 run_active", code, refusal.Reason)
 	}
 	if got, want := strings.Join(c.loginEntries(), ", "), `login_started {}, login_cancelled {}`; got != want {
-		t.Errorf("login activity = %s, want %s", got, want)
+		t.Errorf("login activity = %s, want %s", c.loginKinds(), want)
 	}
 }
