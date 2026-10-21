@@ -1,6 +1,6 @@
 # Hosts, skills and configuration in the UI
 
-Status: draft for the maintainer's review, 2026-10-09; cycles 1 to 5 are implemented (cycle 4: the real run was made on 2026-10-19; the real run of cycle 5 is outstanding), 6 is not. This is the umbrella specification of six cycles. Each cycle gets its own spec and plan before it is built;
+Status: draft for the maintainer's review, 2026-10-09; cycles 1 to 5 are implemented (the real runs: cycle 4 on 2026-10-19, cycle 5 on 2026-10-21), 6 is not. This is the umbrella specification of six cycles. Each cycle gets its own spec and plan before it is built;
 this document fixes the decisions they share and the order.
 Parent documents: [`../design.md`](../design.md) (2.2, 2.5, 2.7 and the roadmap),
 [`2026-10-05-phase-2d-signals-design.md`](2026-10-05-phase-2d-signals-design.md) (the Alertmanager source and the responder for outages, which this narrows and

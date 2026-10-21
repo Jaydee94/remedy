@@ -199,7 +199,8 @@ Decided on 2026-10-09; the specification is
   risk (4); the retrofit is two identities per host, and the data model leaves room for it.
 - **Skills** are Markdown per host or global, with an origin. They are built (cycle 5a): the maintainer writes them, runs list their names and
   descriptions and load a body with `skill_get`, and no skill can widen the table of reads or remove an approval. Remedy gets to know a host in a
-  read-only run (cycle 5b, built; the real run with the real CLI is outstanding): the learner is offered `host_list`, `host_read` and `skill_get` only, its answer
+  read-only run (cycle 5b, built; the real run with the real CLI was made on 2026-10-21, [record](research/skills-5-real-run.md): a valid answer
+  after 6 to 10 host reads, citations that all ran, an instruction planted in host output not followed): the learner is offered `host_list`, `host_read` and `skill_get` only, its answer
   (a profile and at most 8 skills) is validated by the control plane and stored as proposals with the commands that showed each fact, marked when a cited command did
   not run, and the maintainer confirms them; unconfirmed proposals are not used as fact: the store keeps them invisible to every run.
 - The Argo CD source of part 2D is postponed. The Alertmanager source and the host mapping (the rules are a field

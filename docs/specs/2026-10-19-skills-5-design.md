@@ -1,6 +1,6 @@
 # Skills and the learning run, cycle 5
 
-Status: approved by the maintainer, 2026-10-19. Plans 5a (skills, `docs/plans/skills-5a-skills.md`) and 5b (the learning run, `docs/plans/skills-5b-learning-run.md`) are implemented; the real run with the real CLI is not made yet (`docs/runbook/skills-real-run.md`).
+Status: approved by the maintainer, 2026-10-19. Plans 5a (skills, `docs/plans/skills-5a-skills.md`) and 5b (the learning run, `docs/plans/skills-5b-learning-run.md`) are implemented; the real run with the real CLI was made on 2026-10-21 (`docs/research/skills-5-real-run.md`, runbook `docs/runbook/skills-real-run.md`).
 Parent documents: [`2026-10-09-hosts-and-skills-design.md`](2026-10-09-hosts-and-skills-design.md) (the umbrella: sections 2, 8 and 11 are binding here),
 [`2026-10-11-hosts-2-tools-design.md`](2026-10-11-hosts-2-tools-design.md) (the host tools and the table of reads that no skill can change),
 [`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md) (the responder for outages whose prompt gets the skill list),

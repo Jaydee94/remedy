@@ -3,8 +3,8 @@
 A skill is a short note about your lab, with a name, a one-line description and a body of plain text, bound to one host or global ("the NAS keeps
 Paperless in `/volume1/docker`", "node_exporter on this host fails when the old instance still holds the port: a restart is safe"). This is cycle
 5 of the hosts and skills series ([spec](../specs/2026-10-19-skills-5-design.md)). You write skills yourself, and a read-only **learning run** can propose
-a profile and skills for a host; those wait in the review list (section 4) until you confirm them. The real run of the learning run against the real CLI is
-described in [skills-real-run.md](skills-real-run.md).
+a profile and skills for a host; those wait in the review list (section 4) until you confirm them. The real run of the learning run against the real CLI
+was made on 2026-10-21 ([record](../research/skills-5-real-run.md)); how to repeat it is in [skills-real-run.md](skills-real-run.md).
 
 ## 1. Write one
 

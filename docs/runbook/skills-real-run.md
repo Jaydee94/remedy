@@ -1,7 +1,8 @@
 # Runbook: the learning run against the real CLI (the real run of cycle 5)
 
-**This run has not been made yet.** It costs subscription quota (two or three learning runs and one diagnosis), so you start it, on purpose. Everything it needs is built and tested against
-a fake `claude`; this run is the proof against the real one. Plan on about an hour. The record goes to `docs/research/skills-5-real-run.md`.
+**This run was made on 2026-10-21** and is recorded in `docs/research/skills-5-real-run.md`. Repeat it after a change to the learning prompt, the answer schema or the CLI version. It costs
+subscription quota (two or three learning runs and one or two diagnoses, about 0.3 USD notional in total), so you start it, on purpose. Plan on about an hour.
+Write the new record next to the old one.
 
 ## 1. Why
 
