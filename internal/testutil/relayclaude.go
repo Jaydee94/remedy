@@ -25,14 +25,17 @@ import (
 //	ignores-term   like valid-stays, but traps TERM, so only KILL ends it
 //
 // URL and Code have defaults. LoggedIn creates the login marker before the first call. Flap makes `auth status --text`
-// exit 3 with unrelated text while an `auth login` of the fake runs and the marker is absent.
+// exit 3 with unrelated text while an `auth login` of the fake runs and the marker is absent. Noisy prints the URL and the
+// code on stderr right after the URL line, as material that a careless reader of the output would pick up.
 type RelayOptions struct {
 	Mode, URL, Code string
 	LoggedIn        bool
 	Flap            bool
+	Noisy           bool
 }
 
-// Relay is a fake `claude` for the login relay. Dir holds its state: url, code, loggedin (the marker), pids, lines, flap.
+// Relay is a fake `claude` for the login relay. Dir holds its state: url, code, loggedin (the marker), pids, lines, flap,
+// noisy.
 type Relay struct{ Path, Dir string }
 
 const (
@@ -72,6 +75,9 @@ func FakeClaudeRelay(t testing.TB, o RelayOptions) *Relay {
 	if o.Flap {
 		touch(t, filepath.Join(dir, "flap"))
 	}
+	if o.Noisy {
+		touch(t, filepath.Join(dir, "noisy"))
+	}
 	path := filepath.Join(dir, "claude")
 	if err := os.WriteFile(path, []byte(fmt.Sprintf(relayScript, dir)), 0o755); err != nil {
 		t.Fatalf("write fake claude: %v", err)
@@ -83,6 +89,14 @@ func touch(t testing.TB, path string) {
 	t.Helper()
 	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+// SetURL changes the URL that the next `auth login` prints; a running one keeps the URL it read.
+func (r *Relay) SetURL(t testing.TB, url string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(r.Dir, "url"), []byte(url), 0o600); err != nil {
+		t.Fatalf("write fake claude url: %v", err)
 	}
 }
 
@@ -163,7 +177,11 @@ fi
 printf 'Opening browser to sign in'
 printf '\342\200\246\n'
 if [ "$MODE" != "no-url" ]; then
-  echo "If the browser didn't open, visit: $URL"
+  printf '%%s\n' "If the browser didn't open, visit: $URL"
+  if [ -f "$D/noisy" ]; then
+    printf '%%s\n' "$URL" >&2
+    printf '%%s\n' "$CODE" >&2
+  fi
 fi
 printf 'Paste code here if prompted > '
 if [ "$MODE" = "exit-early" ]; then

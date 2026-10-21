@@ -155,6 +155,27 @@ func TestFakeClaudeRelayPrintsTheRealShape(t *testing.T) {
 	}
 }
 
+// Noisy prints the URL and the code on stderr after the URL line, as material a careless reader could pick up; stdout
+// keeps its shape. SetURL changes the URL of the next `auth login`.
+func TestFakeClaudeRelayNoisyAndSetURL(t *testing.T) {
+	r := testutil.FakeClaudeRelay(t, testutil.RelayOptions{Mode: "valid-exits", URL: testURL, Code: testCode, Noisy: true})
+	next := strings.Replace(testURL, "state=fake", "state=second", 1)
+	r.SetURL(t, next)
+	p := start(t, r, loginArgs...)
+	p.send(t, testCode)
+	if code := p.wait(5 * time.Second); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if got, want := p.stderr(), next+"\n"+testCode+"\n"; got != want {
+		t.Fatalf("stderr = %q, want %q", got, want)
+	}
+	want := "Opening browser to sign in" + string(rune(0x2026)) + "\n" +
+		"If the browser didn't open, visit: " + next + "\n" + prompt + successLine + "\n"
+	if got := p.stdout(); got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
 // The defaults must be what the relay's own validator accepts (and, for bad-url, rejects), or a session with a default
 // URL would end in bad_url before it reached awaiting_code.
 func TestFakeClaudeRelayDefaultURLsMeetTheValidator(t *testing.T) {
