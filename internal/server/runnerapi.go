@@ -160,11 +160,14 @@ func (s *srv) finish(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not finish run")
 		return
 	}
+	// The run has ended: what follows must not depend on the runner's connection. With the request's context a connection that drops
+	// now would abort the diagnosis or the proposals silently, and a repeated finish finds the run ended and completes nothing.
+	done := context.WithoutCancel(r.Context())
 	if responderRun {
-		s.d.Responder.Complete(r.Context(), id)
+		s.d.Responder.Complete(done, id)
 	}
 	if learnerRun {
-		s.d.Learner.Complete(r.Context(), id)
+		s.d.Learner.Complete(done, id)
 	}
 	s.hub.notify(id)
 	w.WriteHeader(http.StatusNoContent)
