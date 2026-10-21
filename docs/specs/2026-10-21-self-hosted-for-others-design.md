@@ -155,8 +155,8 @@ Found by reading, with the fix 7a makes. "Lab value" means something only the ma
 
 | Where | Assumes | Fix |
 |---|---|---|
-| Repository root | **No `LICENSE`, no `SECURITY.md`, no `CONTRIBUTING.md`.** Without a licence nobody else may lawfully run or change it. | The maintainer chooses the licence (open point 2); `SECURITY.md` with a private reporting address; neither is drafted here. |
-| `docs/runbook/homelab-deploy.md:6` and the release record | Images and chart are "expected to be private", no tag, no `X.Y.Z`, the OCI install under Argo CD "not proven". A stranger cannot pull anything today. | Packages public, first release made, then a generic `docs/runbook/install.md` (plain `helm install`, a `kubectl create secret`, the one-time login). |
+| Repository root | **No `SECURITY.md`, no `CONTRIBUTING.md`.** (The licence is decided: MIT, 2026-10-21, `LICENSE` merged in #161.) | `SECURITY.md` with a private reporting address; neither file is drafted here. |
+| `docs/runbook/homelab-deploy.md:6` and the release record | Images and chart were "expected to be private" and the OCI install under Argo CD is "not proven". Update of 2026-10-21: releases exist (up to `0.8.0`) and the three packages are public (an anonymous `helm show chart` and an anonymous image manifest request worked), so a stranger can pull; the OCI install under Argo CD is still unproven. | A generic `docs/runbook/install.md` (plain `helm install`, a `kubectl create secret`, the one-time login); the runbook's status line updated. |
 | `deploy/chart/values.yaml:82-87` | `networkPolicy.public.from` defaults to `kube-system` ("where k3s's Traefik runs"). On ingress-nginx or others the UI is unreachable. | No default (the template already fails on an empty list); the README lists presets (k3s, ingress-nginx, a node CIDR). |
 | `deploy/chart/values.yaml` `runner.cli.*`, `deploy/cli-pin.yaml:1` | The CLI pin is required and lives in a values file named for "the homelab". | Ship the pin with the chart as its default (the cli-pin workflow already bumps one file); reword the comment. |
 | `deploy/chart/Chart.yaml:3`, `README.md` intro | "an AI operator for a homelab GitOps setup"; "Antigravity CLI" named though only Claude is implemented. | Section 12. |
@@ -199,7 +199,7 @@ Found by reading, with the fix 7a makes. "Lab value" means something only the ma
 
 ## 10. Order of work
 
-1. **7a, a stranger can install it.** The licence and `SECURITY.md` (the maintainer's decision), the inventory fixes of section 7, chart defaults without a lab, the generic install runbook, the positioning edits of section 12, the lab-values script. Small code, mostly copy and docs; no migration.
+1. **7a, a stranger can install it.** `SECURITY.md` (the licence is MIT and merged), the inventory fixes of section 7, chart defaults without a lab, the generic install runbook, the positioning edits of section 12, the lab-values script. Small code, mostly copy and docs; no migration.
 2. **7b, API-key mode.** Migration 017, `EnvFor`, the runner guard and scrub, the claim field, the two settings, the status field, Setup and run UI, chart `runner.auth`, the real run with a key, the record.
 3. **7c, the webhook source.** Migration 018 (`webhook_endpoints`, `incidents` rebuild), `internal/webhook`, the third listener and chart pieces, the sweeper, the responder pieces of 6.7, the Setup block, the runbook with sender recipes (Grafana, Uptime Kuma, `curl`), the chain test.
 Cycle 6 is independent of all three. 7b before 7c because a webhook can start paid runs and the budget must exist first.
@@ -225,12 +225,12 @@ Cycle 6 is independent of all three. 7b before 7c because a webhook can start pa
 - [`../research/subscription-cli-usage.md`](../research/subscription-cli-usage.md): a dated paragraph on installations by strangers once the maintainer has read the primary text; consequence 3 ("single-person tool for the owner's own homelab") is reworded to "for the operator's own hosts".
 - [`2026-10-09-hosts-and-skills-design.md`](2026-10-09-hosts-and-skills-design.md): a line that cycle 7 follows the series and cycle 6 is unchanged.
 - `CLAUDE.md`: "Current state" (cycle 7), the `--bare` rule, the trust-boundary paragraphs (key mode, the webhook listener), the new variables (`REMEDY_AUTH_MODE`, `REMEDY_WEBHOOK_ADDR`), the lab-values script under Commands.
-- `deploy/chart/README.md`, `docs/runbook/install.md` (new), `docs/runbook/webhooks.md` (new), `docs/runbook/api-key-mode.md` (new), `docs/runbook/homelab-deploy.md` (becomes the maintainer's example), `LICENSE`, `SECURITY.md`.
+- `deploy/chart/README.md`, `docs/runbook/install.md` (new), `docs/runbook/webhooks.md` (new), `docs/runbook/api-key-mode.md` (new), `docs/runbook/homelab-deploy.md` (becomes the maintainer's example), `SECURITY.md`.
 
 ## 13. Open points for the plans
 
 1. **Primary text of the terms** (the maintainer): re-read the vendor's legal page; decide how the README words key mode versus subscription. Nothing here depends on the answer except wording.
-2. **The licence** and whether the packages are public: the maintainer's decision, a precondition of 7a being worth doing.
+2. ~~The licence and whether the packages are public~~ Settled on 2026-10-21: the licence is MIT (`LICENSE`, #161, holder `Jaydee94`), and the packages are public (measured anonymously). Remaining: `SECURITY.md` with a private reporting address, and whether a `CONTRIBUTING.md` is wanted.
 3. 7b: the `apiKeySource` value with a key; precedence of the key over a stored login; the behaviour at `--max-budget-usd`; the login check in key mode; the key format for `redact`; whether to combine `--bare` later.
 4. 7b: where the "billed to" line sits on the run page and in Today's digest; whether `auth_source` shows in the activity feed.
 5. 7c: the endpoint limits' defaults; whether `Authorization` is enough or a sender-side `?token=` is needed for tools that cannot set headers (rejected for now); the exact `webhook` wording in thread sentences ("not reported for 24 h").
