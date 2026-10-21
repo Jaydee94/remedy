@@ -20,7 +20,8 @@ CLIs (Claude Code, Antigravity CLI), without API tokens.
 > are diagnosed like the failed checks (a read-only run with the cluster tools and the tools of the mapped host; the real
 > run with the real CLI was made on 2026-10-19, see [`docs/research/phase-2d-real-run.md`](docs/research/phase-2d-real-run.md)).
 > You can also write **skills**, short notes about your hosts and your lab that runs list and load when they fit (see
-> [`docs/runbook/skills.md`](docs/runbook/skills.md); the learning run that proposes skills is not built yet). The fixer (a branch and a pull request), the Argo CD
+> [`docs/runbook/skills.md`](docs/runbook/skills.md); the button "Get to know this host" starts a read-only run that proposes a profile and skills for a host, which wait for your
+> review). The fixer (a branch and a pull request), the Argo CD
 > source and the learning graph come next (see [`docs/design.md`](docs/design.md), [`docs/specs/`](docs/specs/) and
 > [`docs/plans/`](docs/plans/)).
 
@@ -34,7 +35,7 @@ Seven places, in the sidebar on a desktop and in a tab bar on a phone:
 | **Conversations** (`/incidents`) | One card per incident, filtered by Active, Resolved and Ignored. Open one to get its **thread**. |
 | **Needs you** (`/approvals`) | Every action an agent asks to take, oldest first, with exactly what would run. Yes or No, with an optional reason. A badge in the navigation counts what waits. |
 | **Ask Remedy** (`/runs`) | Start an agent run by hand, with or without the gatekeeper tools and, if the cluster is configured, the cluster read tools. The earlier runs are listed below. |
-| **Hosts** (`/hosts`) | The machines Remedy may log in to: login, pinned key, what the account can do, and the rules that map an alert to the host. |
+| **Hosts** (`/hosts`) | The machines Remedy may log in to: login, pinned key, what the account can do, the rules that map an alert to the host, and a button that lets a read-only run find out what the host is and runs. |
 | **Skills** (`/skills`) | Short notes about your lab that runs list and load when they fit: write, turn on or off, edit and delete them, and review what an agent proposes. A badge counts the proposals that wait. |
 | **Setup** (`/settings`) | Connect GitHub, choose the repositories to watch and see the limits of automatic diagnosis. |
 
