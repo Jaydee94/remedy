@@ -73,17 +73,20 @@ func Learn(in LearnInput, delimiter string) string {
 	}
 	dataBlock(&b, delimiter, "systemd_units", strings.Join(units, "\n"))
 
-	lines := make([]string, 0, len(in.Skills))
-	for i, k := range in.Skills {
+	// A skill the maintainer turned off is invisible to every run, a learning run included: its name and text never reach the prompt.
+	shown := make([]LearnSkill, 0, len(in.Skills))
+	for _, k := range in.Skills {
+		if !k.Off {
+			shown = append(shown, k)
+		}
+	}
+	lines := make([]string, 0, len(shown))
+	for i, k := range shown {
 		if i == maxLearnExisting {
-			lines = append(lines, fmt.Sprintf("[... %d more skills not shown ...]", len(in.Skills)-i))
+			lines = append(lines, fmt.Sprintf("[... %d more skills not shown ...]", len(shown)-i))
 			break
 		}
-		line := lineOf(k.Name, maxSkillName) + " — " + lineOf(k.Description, maxLearnSkillTxt)
-		if k.Off {
-			line += " (turned off)"
-		}
-		lines = append(lines, line)
+		lines = append(lines, lineOf(k.Name, maxSkillName)+" — "+lineOf(k.Description, maxLearnSkillTxt))
 	}
 	dataBlock(&b, delimiter, "existing_skills", strings.Join(lines, "\n"))
 	return b.String()

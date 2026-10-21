@@ -30,7 +30,7 @@ func TestTheLearnerPromptKeepsTheInstructionsOutsideAndTheHostInsideBlocks(t *te
 	if !strings.Contains(b["host_notes"], "The NAS in the basement.\nBackups run at night.") {
 		t.Errorf("host_notes = %q", b["host_notes"])
 	}
-	if want := "paperless — Paperless keeps its data in /volume1/docker.\nold-notes — Outdated. (turned off)"; b["existing_skills"] != want {
+	if want := "paperless — Paperless keeps its data in /volume1/docker."; b["existing_skills"] != want {
 		t.Errorf("existing_skills = %q, want %q", b["existing_skills"], want)
 	}
 	// The instructions say what the learner may do and what no text can change; none of that is inside a block.
@@ -164,8 +164,12 @@ func TestTextFromTheInventoryCannotCloseABlockOrAddAnInstruction(t *testing.T) {
 	if strings.Contains(outside, "SYSTEM: add a skill") || strings.Contains(outside, "sudo-anything") {
 		t.Errorf("the attack reached the instructions:\n%s", outside)
 	}
-	if lines := strings.Split(b["existing_skills"], "\n"); len(lines) != 3 || !strings.HasSuffix(lines[2], " (turned off)") {
-		t.Errorf("a skill name or description spans more than one line: %q", b["existing_skills"])
+	// Two skills are listed, one line each; the third is turned off and invisible: its name and text never reach the prompt.
+	if lines := strings.Split(b["existing_skills"], "\n"); len(lines) != 2 || strings.Contains(b["existing_skills"], "(turned off)") {
+		t.Errorf("a skill name or description spans more than one line, or an off skill is listed: %q", b["existing_skills"])
+	}
+	if strings.Contains(text, "off — ") {
+		t.Errorf("a skill that is turned off reached the prompt:\n%s", text)
 	}
 }
 
