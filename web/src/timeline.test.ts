@@ -28,6 +28,8 @@ describe('kindDotClass', () => {
     skill_confirmed: 'bg-success',
     skill_rejected: 'bg-neutral',
     skills_proposed: 'bg-info',
+    learn_started: 'bg-primary',
+    learn_failed: 'bg-destructive',
   }
 
   for (const [kind, cls] of Object.entries(expected)) {
@@ -36,8 +38,8 @@ describe('kindDotClass', () => {
     })
   }
 
-  it('covers all 24 kinds', () => {
-    assert.equal(Object.keys(expected).length, 24)
+  it('covers all 26 kinds', () => {
+    assert.equal(Object.keys(expected).length, 26)
   })
 
   it('falls back to neutral for a kind it does not know', () => {

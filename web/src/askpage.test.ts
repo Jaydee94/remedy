@@ -51,6 +51,11 @@ describe('recentRun', () => {
     assert.equal(r.title, 'Diagnosis of incident #27')
     assert.equal(recentRun(run({ role: 'responder', prompt: 'x' }), []).title, 'Diagnosis of an incident')
   })
+  it('names a learning run by its host and never shows its prompt', () => {
+    const learner = run({ role: 'learner', prompt: "the host's own notes", hosts: [{ id: 1, name: 'nas' }], mcp: true })
+    assert.equal(recentRun(learner, []).title, 'Learning about nas')
+    assert.equal(recentRun(run({ role: 'learner', prompt: 'secret notes' }), []).title, 'Learning about a host')
+  })
   it('names a run without a question', () => {
     assert.equal(recentRun(run({ prompt: '   ' }), []).title, 'A run without a question')
   })

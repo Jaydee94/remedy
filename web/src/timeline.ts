@@ -76,6 +76,8 @@ const kindDots: Record<string, string> = {
   skill_confirmed: 'bg-success',
   skill_rejected: 'bg-neutral',
   skills_proposed: 'bg-info',
+  learn_started: 'bg-primary',
+  learn_failed: 'bg-destructive',
 }
 
 export function kindDotClass(kind: string): string {

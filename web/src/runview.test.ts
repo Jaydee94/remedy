@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Run, RunEvent } from './api.ts'
-import { canCancel, effectiveStatus, runFailure, runMeta, runSteps, shortTool, stepLabel, summarizeEvent } from './runview.ts'
+import { canCancel, doneSentence, effectiveStatus, promptSummary, roleLabel, runFailure, runMeta, runSteps, shortTool, stepLabel, summarizeEvent } from './runview.ts'
 
 const ev = (seq: number, kind: string, payload: unknown): RunEvent => ({ seq, kind, payload, createdAt: '2026-10-05T08:00:00Z' })
 const use = (id: string, name: string, input: unknown) => ({ type: 'tool_use', id, name, input })
@@ -227,6 +227,27 @@ describe('runMeta', () => {
   it('lists the kind of the run and its tools', () => {
     assert.equal(runMeta({ role: 'responder', mcp: true, cluster: true } as Run, '08:38'), 'Responder · tools · cluster · 08:38')
     assert.equal(runMeta({ role: 'adhoc' } as Run, '08:38'), 'Ad-hoc · 08:38')
+  })
+})
+
+describe('a learning run', () => {
+  const learner = { role: 'learner', mcp: true, hostCount: 1, hosts: [{ id: 1, name: 'nas' }], prompt: 'x'.repeat(1234), result: 'done' } as Run
+  it('is a learning run in the line under its status, with its host', () => {
+    assert.equal(roleLabel(learner), 'Learning')
+    assert.equal(runMeta(learner, '08:38'), 'Learning · tools · hosts nas · 08:38')
+    assert.equal(roleLabel({ role: 'adhoc' } as Run), 'Ad-hoc')
+    assert.equal(roleLabel({ role: 'responder' } as Run), 'Responder')
+  })
+  it('keeps its prompt behind a fold that says what is in it, as a responder run does', () => {
+    assert.equal(promptSummary(learner), "Prompt (1,234 characters, it contains the host's own text)")
+    assert.equal(promptSummary({ role: 'responder', prompt: 'abc' } as Run), 'Prompt (3 characters, it contains data from GitHub)')
+    assert.equal(promptSummary({ role: 'adhoc', prompt: 'abc' } as Run), '')
+  })
+  it('says where the result went instead of showing the answer', () => {
+    assert.equal(doneSentence(learner), 'Done. What I found is on the Skills page, waiting for your review.')
+    assert.equal(doneSentence({ role: 'responder', result: 'x' } as Run), 'Done. The diagnosis is on the incident.')
+    assert.equal(doneSentence({ role: 'adhoc', result: '  ' } as Run), 'Done. There is nothing more to say.')
+    assert.equal(doneSentence({ role: 'adhoc', result: 'It is fine.' } as Run), 'It is fine.')
   })
 })
 

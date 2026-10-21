@@ -12,7 +12,7 @@ export interface Run {
   createdAt: string
   startedAt?: string
   finishedAt?: string
-  role: 'adhoc' | 'responder'
+  role: 'adhoc' | 'responder' | 'learner'
   incidentId?: number
   /** Why a failed run failed, when it was not the agent's own exit code. */
   failureReason?: 'timeout' | 'invalid_output' | 'cancelled' | 'runner_lost'
@@ -22,7 +22,7 @@ export interface Run {
   cluster?: boolean
   /** The number of hosts the run was started with. */
   hostCount?: number
-  /** The hosts of the run by name. Only `GET /api/runs/{id}` has them. */
+  /** The hosts of the run by name. `GET /api/runs/{id}` has them, and the list has them for a learning run. */
   hosts?: { id: number; name: string }[]
   /** The maintainer cancelled the run; the runner is stopping the agent. */
   cancelRequested?: boolean
@@ -134,6 +134,15 @@ export interface HostOnboarding {
   error?: string
 }
 
+/** The newest learning run of a host. Only `GET /api/hosts/{id}` has it, and only once a run was started. */
+export interface HostLearning {
+  runId: string
+  status: RunStatus
+  failureReason?: Run['failureReason']
+  createdAt: string
+  finishedAt?: string
+}
+
 export interface Host {
   id: number
   name: string
@@ -155,6 +164,7 @@ export interface Host {
   pinnedAt?: string
   credential?: HostCredentialView
   onboarding?: HostOnboarding
+  learning?: HostLearning
   createdAt: string
   updatedAt: string
 }
@@ -463,6 +473,8 @@ export const api = {
   testHost: (id: number) => request<HostTest>('POST', `/api/hosts/${id}/test`),
   pinHostKey: (id: number, fingerprint: string) => request<Host>('POST', `/api/hosts/${id}/hostkey`, { fingerprint }),
   unpinHostKey: (id: number) => request<void>('DELETE', `/api/hosts/${id}/hostkey`),
+  /** Starts the learning run of a host: it reads the host and proposes skills. Costs one run. */
+  learnHost: (id: number) => request<{ runId: string }>('POST', `/api/hosts/${id}/learn`),
 
   /** All skills, global first. `host` is one host's skills only; `state` one state. */
   listSkills: (filter: { host?: number; state?: SkillState } = {}) => {
