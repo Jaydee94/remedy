@@ -2,8 +2,9 @@
 
 A skill is a short note about your lab, with a name, a one-line description and a body of plain text, bound to one host or global ("the NAS keeps
 Paperless in `/volume1/docker`", "node_exporter on this host fails when the old instance still holds the port: a restart is safe"). This is cycle
-5a of the hosts and skills series ([spec](../specs/2026-10-19-skills-5-design.md)). The learning run that proposes skills for a host is plan 5b and is
-not built yet: until then every skill is one you write, and the review list (section 4) stays empty.
+5 of the hosts and skills series ([spec](../specs/2026-10-19-skills-5-design.md)). You write skills yourself, and a read-only **learning run** can propose
+a profile and skills for a host; those wait in the review list (section 4) until you confirm them. The real run of the learning run against the real CLI
+was made on 2026-10-21 ([record](../research/skills-5-real-run.md)); how to repeat it is in [skills-real-run.md](skills-real-run.md).
 
 ## 1. Write one
 
@@ -39,9 +40,23 @@ On the list, the switch turns a skill on or off (off keeps it and hides it from 
 
 Deleting a host deletes its skills and the proposals that wait for it. The host page names them before the second click, and the activity feed says how many went.
 
-## 4. Proposals (from plan 5b on)
+## 4. Get to know a host, and the proposals
 
-Not built yet: nothing makes a proposal today, so this section describes what the review list is for. A proposal from an agent is invisible to every run
+**Get to know this host.** On a host's page the button **Get to know this host** starts one run that reads the host with the host tools (`host_list`, `host_read`) and proposes what
+it found. It is never automatic: it costs one run of your subscription, and the page says so. The run can only read, with the fixed commands that `host_read` allows;
+it has no way to change anything or to store anything itself.
+
+- The button works when the host is turned on, has a login and a pinned key, and its last connection test worked. After you pin a key or change the login, **test the
+  connection again**. When it does not work, the page says why.
+- Only one run goes at a time: another run, or a learning run for this host, blocks it. It is also blocked while 12 or more proposals of this host wait for your review
+  (review or reject some first): at most 20 proposals wait per host.
+- It proposes a **profile** (what the host is: operating system, role, services, containers, notes; Remedy writes them into one note named `profile` with fixed headings) and at most 8
+  **skills**, each one fact or habit of the host, with the commands that showed it. Everything is a proposal. A skill with the name of one the host already has (also one you turned
+  off) replaces that skill when you confirm it; a new profile replaces the confirmed one. A skill you turned off is not shown to the learning run either.
+- If the run fails, times out, is cancelled (**Cancel run** on its page), loses its runner or gives an answer that is not valid, nothing is stored; the host's page says so and the
+  activity feed has a line. The run is listed on the Ask page as `Learning about NAME`; its prompt is not shown there.
+
+**The review list.** A proposal from an agent is invisible to every run
 until you confirm it. **Waiting for your review** shows each one: the host, the name, the description, the note as text, and **the commands that produced
 the facts** (at most ten, redacted). A command that the learning run did not actually run is marked "not run": do not trust a fact that rests on it. A
 proposal that replaces a skill shows the current text beside the new one.
@@ -64,3 +79,7 @@ into the note.
 | A proposal can only be confirmed or rejected. | A proposal is not edited, deleted or switched on directly. |
 | This skill is not waiting for a review. | Only a proposal is confirmed or rejected. |
 | The description is one line of plain text... | Line breaks, control characters and invisible characters (zero-width, right-to-left marks, variation selectors) are refused in a description and in a note. |
+| the host NAME is not ready: it is disabled / it has no login / its key is not pinned / its last connection test did not succeed; test the connection first | The learning run needs a host that is on, with a login, a pinned key and a successful test. |
+| a learning run for this host is already queued or running | One learning run per host at a time. |
+| another run is queued or running; try again when it has finished | A learning run starts only when no other run is queued or running. |
+| too many proposals of this host wait for your review; confirm or reject some on the Skills page first | At most 20 proposals wait per host; a new run needs room for a profile and 8 skills. |

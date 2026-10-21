@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jaydee94/remedy/internal/learner"
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/settings"
 	"github.com/Jaydee94/remedy/internal/store"
@@ -52,8 +53,12 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 			token := ""
 			if claimed.MCP {
 				if token, err = s.d.Store.MintRunToken(r.Context(), claimed.ID); err != nil {
-					_ = s.d.Store.FinishRun(context.WithoutCancel(r.Context()), claimed.ID,
-						run.Outcome{ExitCode: -1, Result: "The run token could not be created."})
+					done := context.WithoutCancel(r.Context())
+					_ = s.d.Store.FinishRun(done, claimed.ID, run.Outcome{ExitCode: -1, Result: "The run token could not be created."})
+					// A learning run that ends here tells its host, like every other failed learning run.
+					if s.d.Learner != nil {
+						s.d.Learner.Complete(done, claimed.ID)
+					}
 					writeErr(w, http.StatusInternalServerError, "could not create the run token")
 					return
 				}
@@ -65,6 +70,9 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 				_ = s.d.Store.FinishRun(done, claimed.ID, run.Outcome{ExitCode: -1, Result: "The incident or the skills of the run could not be read."})
 				if s.d.Responder != nil {
 					s.d.Responder.Complete(done, claimed.ID)
+				}
+				if s.d.Learner != nil {
+					s.d.Learner.Complete(done, claimed.ID)
 				}
 				writeErr(w, http.StatusInternalServerError, "could not read what the run needs")
 				return
@@ -135,6 +143,14 @@ func (s *srv) finish(w http.ResponseWriter, r *http.Request) {
 			out = s.d.Responder.CheckRun(r.Context(), rn, out)
 		}
 	}
+	// The same for a learning run: its answer must be valid, or the run counts as failed and nothing is stored.
+	learnerRun := false
+	if s.d.Learner != nil {
+		if rn, err := s.d.Store.GetRun(r.Context(), id); err == nil && rn.Role == run.RoleLearner {
+			learnerRun = true
+			out = learner.CheckRun(out)
+		}
+	}
 	err := s.d.Store.FinishRun(r.Context(), id, out)
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "run not found or not running")
@@ -144,8 +160,14 @@ func (s *srv) finish(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not finish run")
 		return
 	}
+	// The run has ended: what follows must not depend on the runner's connection. With the request's context a connection that drops
+	// now would abort the diagnosis or the proposals silently, and a repeated finish finds the run ended and completes nothing.
+	done := context.WithoutCancel(r.Context())
 	if responderRun {
-		s.d.Responder.Complete(r.Context(), id)
+		s.d.Responder.Complete(done, id)
+	}
+	if learnerRun {
+		s.d.Learner.Complete(done, id)
 	}
 	s.hub.notify(id)
 	w.WriteHeader(http.StatusNoContent)

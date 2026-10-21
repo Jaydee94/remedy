@@ -22,8 +22,10 @@ const (
 	MaxBodyBytes = 8 << 10
 	// MaxPerScope is how many skills one scope (one host, or global) may have. Proposals do not count until they are confirmed.
 	MaxPerScope = 30
-	// MaxProposalsPerRun is how many proposals one learning run may make.
+	// MaxProposalsPerRun is how many skills one learning run may propose, besides the profile (ProfileName).
 	MaxProposalsPerRun = 8
+	// MaxPendingPerHost is how many proposals may wait for a review for one host, across learning runs.
+	MaxPendingPerHost = 20
 	// MaxListed is how many skills the prompt lists.
 	MaxListed = 40
 	// ProfileName is the name of the skill a learning run proposes for what a host is.
@@ -59,8 +61,12 @@ func hasInvisible(s string) bool {
 	return false
 }
 
-// hasControl reports control characters. With layout set, the newline and the tab are allowed.
-func hasControl(s string, layout bool) bool {
+// HasInvisible says whether s has a character that hides or reorders text. The learning answer is checked with it too.
+func HasInvisible(s string) bool { return hasInvisible(s) }
+
+// HasControl reports control characters. With layout set, the newline and the tab are allowed. The learning answer is checked with
+// it too.
+func HasControl(s string, layout bool) bool {
 	for _, r := range s {
 		if !unicode.IsControl(r) {
 			continue
@@ -86,7 +92,7 @@ func (f Fields) Validate() (Fields, error) {
 		return f, &FieldError{"description", "The description must not be empty."}
 	case utf8.RuneCountInString(f.Description) > MaxDescriptionRunes:
 		return f, &FieldError{"description", "The description has at most 200 characters."}
-	case !utf8.ValidString(f.Description) || hasControl(f.Description, false) || hasInvisible(f.Description):
+	case !utf8.ValidString(f.Description) || HasControl(f.Description, false) || hasInvisible(f.Description):
 		return f, &FieldError{"description", "The description is one line of plain text: no line breaks, control characters or invisible characters."}
 	}
 	body := strings.TrimSpace(strings.ReplaceAll(f.Body, "\r\n", "\n"))
@@ -95,7 +101,7 @@ func (f Fields) Validate() (Fields, error) {
 		return f, &FieldError{"body", "The body must not be empty."}
 	case len(body) > MaxBodyBytes:
 		return f, &FieldError{"body", "The body has at most 8 KB."}
-	case !utf8.ValidString(body) || hasControl(body, true) || hasInvisible(body):
+	case !utf8.ValidString(body) || HasControl(body, true) || hasInvisible(body):
 		return f, &FieldError{"body", "The body is plain text: line breaks and tabs are fine, other control characters and invisible characters are not."}
 	}
 	f.Body = body

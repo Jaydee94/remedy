@@ -28,6 +28,9 @@ const (
 	RoleAdhoc Role = "adhoc"
 	// RoleResponder is a run that diagnoses an incident.
 	RoleResponder Role = "responder"
+	// RoleLearner is a run that gets to know one host and proposes skills for it (cycle 5b). It is offered host_list, host_read and
+	// skill_get and nothing else.
+	RoleLearner Role = "learner"
 )
 
 // Failure reasons. A runner can only report ReasonTimeout; ReasonInvalidOutput is set by the control

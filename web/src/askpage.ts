@@ -67,7 +67,7 @@ export interface RecentRun {
 
 /**
  * A row of "Earlier conversations". An ad-hoc run is its question; a responder run is named by its incident and never shows its
- * prompt (it holds data from GitHub). A running run waits for you when a pending approval belongs to it: the run list does not say so.
+ * prompt (it holds data from GitHub); a learning run is named by its host and never shows its prompt (it holds the host's own text). A running run waits for you when a pending approval belongs to it: the run list does not say so.
  */
 export function recentRun(run: Run, asks: readonly ToolCall[]): RecentRun {
   const waiting = run.status === 'running' && asks.some((c) => c.runId === run.id)
@@ -76,6 +76,8 @@ export function recentRun(run: Run, asks: readonly ToolCall[]): RecentRun {
       ? run.incidentId !== undefined
         ? `Diagnosis of incident #${run.incidentId}`
         : 'Diagnosis of an incident'
-      : oneLine(run.prompt, TITLE_MAX) || 'A run without a question'
+      : run.role === 'learner'
+        ? `Learning about ${run.hosts?.[0]?.name ?? 'a host'}`
+        : oneLine(run.prompt, TITLE_MAX) || 'A run without a question'
   return { id: run.id, title, phase: runPhase(run.status, waiting), at: run.createdAt, tools: run.mcp === true, cluster: run.cluster === true }
 }

@@ -63,6 +63,9 @@ type Call struct {
 	// RequestedAt is when the call was made, which for a mutating tool is when the approval was asked for. A tool can
 	// tell with it whether the world changed after the question was asked.
 	RequestedAt time.Time
+	// Role is the role of the run, so that a tool can word its answer for the tools the run has (a learning run has no
+	// host_change). It is set for a tool that does not mutate; an approved call runs without it.
+	Role run.Role
 }
 
 // ArgumentError is an error the agent can fix: its text is shown to the agent. Any other error of a tool is shown as
@@ -87,8 +90,17 @@ func DecodeArgs(raw json.RawMessage, v any) error {
 	return nil
 }
 
-// offeredTo says whether a run is offered the tool.
+// learnerTools are the only tools a learning run is offered: it reads one host and loads skills, and it can change nothing. The list is
+// an allowlist: a tool that is added later is not offered to a learning run unless it is named here, and the incident and note tools
+// (which have no group) are not.
+var learnerTools = map[string]bool{"host_list": true, "host_read": true, "skill_get": true}
+
+// offeredTo says whether a run is offered the tool. A learning run gets the tools of learnerTools and no other; for every other run
+// the group of the tool decides.
 func (t Tool) offeredTo(r run.Run) bool {
+	if r.Role == run.RoleLearner && !learnerTools[t.Name] {
+		return false
+	}
 	switch t.Group {
 	case "":
 		return true

@@ -1,6 +1,6 @@
 # Skills and the learning run, cycle 5
 
-Status: approved by the maintainer, 2026-10-19. Plan 5a (skills, `docs/plans/skills-5a-skills.md`) is implemented; plan 5b (the learning run) is not.
+Status: approved by the maintainer, 2026-10-19. Plans 5a (skills, `docs/plans/skills-5a-skills.md`) and 5b (the learning run, `docs/plans/skills-5b-learning-run.md`) are implemented; the real run with the real CLI was made on 2026-10-21 (`docs/research/skills-5-real-run.md`, runbook `docs/runbook/skills-real-run.md`).
 Parent documents: [`2026-10-09-hosts-and-skills-design.md`](2026-10-09-hosts-and-skills-design.md) (the umbrella: sections 2, 8 and 11 are binding here),
 [`2026-10-11-hosts-2-tools-design.md`](2026-10-11-hosts-2-tools-design.md) (the host tools and the table of reads that no skill can change),
 [`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md) (the responder for outages whose prompt gets the skill list),
@@ -211,4 +211,4 @@ cancelled or times out leaves nothing.
 ## 13. Open points for the plans
 
 - 5a (answered in the plan): the visible set is read at the claim for an ad-hoc run (`Store.RunSkills`) and when the responder starts a run (`Store.VisibleSkills`); the responder's stored prompt keeps the list; the wording is `skillsInstructions` in `internal/prompt/skills.go`.
-- 5b: the exact Markdown layout of the profile skill; whether the learner run appears on the Ask page's run list (it is a run of role `learner` and shows there with its host).
+- 5b (answered in the plan): the profile is one Markdown note with the headings `## Operating system`, `## Role`, `## Services`, `## Containers` and `## Notes` (`learner.ProfileBody`: one-line fields flattened, a leading Markdown block marker escaped, lists as `- item`, the notes as a block quote, the note always cut to fit 8 KiB: notes first, then containers, then services), its name `profile` is reserved and it is not one of the 8 proposals; the learner run appears on the Ask page's list as `Learning about NAME` (its prompt and answer are left out of the list); at most 20 proposals wait per host across runs, and a run starts only with at most 11 waiting; a learning run can be cancelled; the host must be tested again after a pin or a new login (status `ok`) before it can be learned about.

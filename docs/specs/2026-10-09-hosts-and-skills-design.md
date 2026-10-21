@@ -1,6 +1,6 @@
 # Hosts, skills and configuration in the UI
 
-Status: draft for the maintainer's review, 2026-10-09; cycles 1 to 4 and 5a (skills) are implemented (cycle 4: the real run was made on 2026-10-19), 5b (the learning run) and 6 are not. This is the umbrella specification of six cycles. Each cycle gets its own spec and plan before it is built;
+Status: draft for the maintainer's review, 2026-10-09; cycles 1 to 5 are implemented (the real runs: cycle 4 on 2026-10-19, cycle 5 on 2026-10-21), 6 is not. This is the umbrella specification of six cycles. Each cycle gets its own spec and plan before it is built;
 this document fixes the decisions they share and the order.
 Parent documents: [`../design.md`](../design.md) (2.2, 2.5, 2.7 and the roadmap),
 [`2026-10-05-phase-2d-signals-design.md`](2026-10-05-phase-2d-signals-design.md) (the Alertmanager source and the responder for outages, which this narrows and
@@ -199,5 +199,5 @@ A log line that contains an instruction must not become a skill. The defence is 
 - Cycle 2: the first contents of the table of reads (the set is small and grows by a decision recorded with a test); concurrency and timeouts; whether a host tool of an unreachable host fails the run or only the call (decided in the cycle 2 spec: the call).
 - Cycle 3: decided in [`2026-10-14-settings-3-design.md`](2026-10-14-settings-3-design.md) (the registry has six keys: `poll_interval`, `diagnose_cooldown`, `diagnose_max_per_incident`, `diagnose_max_per_day`, `k8s_write_namespaces` and `run_timeout`; a stored value that fails is shown on its row as a problem).
 - Cycle 4: how a matcher conflict is shown (answered: a tie is shown as `alsoMatches` on the incident, see the [cycle 4 spec](2026-10-16-alertmanager-4-design.md)); what an incident without a host gets for tools (answered in plan 4b: section 7 of the cycle 4 spec gives the run the incident's host only when there is one, so an incident without a host gets no host tools).
-- Cycle 5: decided in [`2026-10-19-skills-5-design.md`](2026-10-19-skills-5-design.md) (the learner's answer schema: its section 7; at most 8 proposals per learning run; a host's skills are deleted with it).
+- Cycle 5: decided in [`2026-10-19-skills-5-design.md`](2026-10-19-skills-5-design.md) (the learner's answer schema: its section 7; at most 8 proposals per learning run; a host's skills are deleted with it). Plan 5b: the profile is one Markdown note with fixed headings, and at most 20 proposals wait per host.
 - Cycle 6: how the SSH egress rule is written for the chart's NetworkPolicies, and the `VMRule` for the drill in the `home-server` repository.

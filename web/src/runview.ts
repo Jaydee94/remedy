@@ -201,7 +201,30 @@ export function runMeta(run: Run, time: string): string {
     : run.hostCount
       ? `${run.hostCount} host${run.hostCount === 1 ? '' : 's'}`
       : false
-  return [run.role === 'responder' ? 'Responder' : 'Ad-hoc', run.mcp && 'tools', run.cluster && 'cluster', hosts, time].filter(Boolean).join(' · ')
+  return [roleLabel(run), run.mcp && 'tools', run.cluster && 'cluster', hosts, time].filter(Boolean).join(' · ')
+}
+
+/** The kind of a run in a word. */
+export function roleLabel(run: Run): string {
+  return run.role === 'responder' ? 'Responder' : run.role === 'learner' ? 'Learning' : 'Ad-hoc'
+}
+
+/**
+ * The line over the prompt of a run whose prompt is kept behind a fold (it holds text from outside: GitHub's, or the host's own); '' for a
+ * run whose prompt is the maintainer's own question and is shown as it is.
+ */
+export function promptSummary(run: Run): string {
+  const size = run.prompt.length.toLocaleString('en-US')
+  if (run.role === 'responder') return `Prompt (${size} characters, it contains data from GitHub)`
+  if (run.role === 'learner') return `Prompt (${size} characters, it contains the host's own text)`
+  return ''
+}
+
+/** What Remedy says when a run has succeeded and the answer is not text to show: where the result went. */
+export function doneSentence(run: Run): string {
+  if (run.role === 'responder') return 'Done. The diagnosis is on the incident.'
+  if (run.role === 'learner') return 'Done. What I found is on the Skills page, waiting for your review.'
+  return run.result.trim() === '' ? 'Done. There is nothing more to say.' : run.result
 }
 
 /** One line of text for the raw output: the text of a result, a plain string, or the start of the JSON. */

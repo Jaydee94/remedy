@@ -21,6 +21,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/github"
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/kube"
+	"github.com/Jaydee94/remedy/internal/learner"
 	"github.com/Jaydee94/remedy/internal/poller"
 	"github.com/Jaydee94/remedy/internal/reaper"
 	"github.com/Jaydee94/remedy/internal/responder"
@@ -41,6 +42,7 @@ type App struct {
 	Poller     *poller.Poller
 	Reaper     *reaper.Reaper
 	Responder  *responder.Responder
+	Learner    *learner.Learner
 	Gatekeeper *gatekeeper.Gatekeeper
 
 	// KubeReader reads the cluster; nil when no cluster is configured. KubeWriter does the approved actions; it is built
@@ -145,6 +147,9 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		log.Warn("abandoned the approvals a restart left behind", "count", n)
 	}
 
+	// The learning run of a host: it starts on a click and stores proposals when the run is over.
+	learning := &learner.Learner{Store: st, Log: log}
+
 	sigs := signalRunner(cfg, st, engine, set, log)
 	// The same responder as the poller's hook: an alert is diagnosed with no GitHub connection, in which case the poller's cycle
 	// stops before its hook. Both hooks may run at once; the responder keeps its limits inside one store transaction.
@@ -160,6 +165,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		NewGitHub:    func(token secret.Value) server.GitHub { return reader(token) },
 		Incidents:    engine,
 		Responder:    diagnoser,
+		Learner:      learning,
 		PollInterval: cfg.PollInterval,
 		Gatekeeper:   gate,
 		Cluster:      clusterCapabilities(cluster, kubeReader, kubeWriter),
@@ -179,6 +185,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		Handler:         handler,
 		InternalHandler: internalHandler,
 		Responder:       diagnoser,
+		Learner:         learning,
 		Gatekeeper:      gate,
 		KubeReader:      kubeReader,
 		KubeWriter:      kubeWriter,
@@ -201,6 +208,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 			OnFailed: func(ctx context.Context, ids []string) {
 				for _, id := range ids {
 					diagnoser.Complete(ctx, id)
+					learning.Complete(ctx, id) // each ignores a run of another role
 				}
 			},
 		},

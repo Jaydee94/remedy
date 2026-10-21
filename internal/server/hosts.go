@@ -51,8 +51,10 @@ type hostView struct {
 	PinnedAt          *time.Time      `json:"pinnedAt,omitempty"`
 	Credential        *credentialView `json:"credential,omitempty"`
 	Onboarding        *onboardingView `json:"onboarding,omitempty"`
-	CreatedAt         time.Time       `json:"createdAt"`
-	UpdatedAt         time.Time       `json:"updatedAt"`
+	// Learning is the newest learning run of the host. Only GET /api/hosts/{id} has it.
+	Learning  *learningView `json:"learning,omitempty"`
+	CreatedAt time.Time     `json:"createdAt"`
+	UpdatedAt time.Time     `json:"updatedAt"`
 }
 
 type presentedKey struct {
@@ -245,7 +247,9 @@ func (s *srv) loadHost(w http.ResponseWriter, r *http.Request) (store.HostEntry,
 
 func (s *srv) getHost(w http.ResponseWriter, r *http.Request) {
 	if e, ok := s.loadHost(w, r); ok {
-		writeJSON(w, http.StatusOK, hostViewOf(e, true))
+		v := hostViewOf(e, true)
+		v.Learning = s.learningOf(r, e.Host.ID)
+		writeJSON(w, http.StatusOK, v)
 	}
 }
 

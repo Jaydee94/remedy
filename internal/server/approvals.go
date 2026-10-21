@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -136,6 +137,11 @@ func (s *srv) cancelRun(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		writeErr(w, http.StatusInternalServerError, "could not cancel the run")
 	default:
+		// A learning run cancelled while queued has ended here, and nobody else completes it: its host learns of the cancel. A
+		// running one is completed by its finish; Complete ignores a run that has not ended and one whose outcome is recorded.
+		if s.d.Learner != nil {
+			s.d.Learner.Complete(context.WithoutCancel(r.Context()), id)
+		}
 		s.hub.notify(id) // a queued run has just ended: let its event stream see it
 		w.WriteHeader(http.StatusNoContent)
 	}
