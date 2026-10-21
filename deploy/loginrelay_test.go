@@ -133,3 +133,18 @@ func TestLoginRelayInServerEnvIsRefused(t *testing.T) {
 	set(values, "server.env", map[string]any{loginRelayVar: "off"})
 	mustFail(t, values, "server.env."+loginRelayVar)
 }
+
+// The refusal does not depend on the switch: a server.env entry with the switch off or unset would turn the control
+// plane on and leave the runner off.
+func TestLoginRelayInServerEnvIsRefusedWithTheSwitchOffOrUnset(t *testing.T) {
+	for _, name := range []string{"switch false", "switch unset"} {
+		t.Run(name, func(t *testing.T) {
+			values := baseValues()
+			if name == "switch false" {
+				set(values, "loginRelay.enabled", false)
+			}
+			set(values, "server.env", map[string]any{loginRelayVar: "on"})
+			mustFail(t, values, "loginRelay.enabled")
+		})
+	}
+}

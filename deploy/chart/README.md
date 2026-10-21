@@ -35,7 +35,7 @@ login material: the page shows the sign-in address that the CLI prints and takes
 hands both to the CLI's own login command. The code is write-only, neither value is stored or logged, and the CLI's login
 files are never read. Re-read the vendor's terms of use before you offer this to anyone but yourself. The one value sets
 `REMEDY_LOGIN_RELAY=on` on the control plane and on the runner and on nothing else, so the two cannot disagree, and the
-render refuses a `server.env.REMEDY_LOGIN_RELAY` next to it. It changes no NetworkPolicy. Without it the login stays the
+render refuses a `server.env.REMEDY_LOGIN_RELAY` at all. It changes no NetworkPolicy. Without it the login stays the
 `kubectl exec` one.
 
 ## NetworkPolicies: what the address rules mean
