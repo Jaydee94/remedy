@@ -4,7 +4,7 @@
 
 CLUSTER=remedy-dev
 CTX=kind-$CLUSTER
-ARGOCD_VERSION=v3.5.5
+ARGOCD_VERSION=v3.5.6
 KIND_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$KIND_DIR/../.." && pwd)
 # Outside the repository on purpose: it holds credentials.
