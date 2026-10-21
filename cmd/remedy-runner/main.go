@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -97,6 +98,15 @@ func main() {
 		relay := &runner.LoginRelay{
 			Client: loop.Client, Claude: claude, Check: check, Status: status, Env: os.Environ(),
 			Busy: loop.Busy, Pause: pause, Kick: checker.Kick, Log: log,
+		}
+		if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+			// An abandoned attempt leaves a backup of the CLI's config behind; only names are listed and removed.
+			backups := filepath.Join(dir, "backups")
+			relay.Prune = func() {
+				if _, err := runner.PruneBackups(backups, 5); err != nil {
+					log.Warn("cannot remove old login backups")
+				}
+			}
 		}
 		relayDone = make(chan struct{})
 		go func() {
