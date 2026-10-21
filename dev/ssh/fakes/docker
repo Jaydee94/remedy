@@ -2,7 +2,26 @@
 # A fake docker for the SSH testbed. It knows the verbs the host tools use and nothing else.
 case "$1" in
 ps)
-  printf 'CONTAINER ID   NAMES\nabc123         remedy-drill\ndef456         other\n'
+  # The real sudo refuses an unfiltered `docker ps -a` before docker starts (the sudoers file names the filter), so the fake
+  # never answers one: if this line shows up, sudo let a command through that the file does not grant.
+  if [ "$2" != "-a" ] || [ "$3" != "--filter" ] || [ $# -ne 4 ]; then
+    echo "fake docker: unfiltered ps" >&2
+    exit 1
+  fi
+  # --filter name=<regexp>: the names are matched like docker does, as a regular expression anywhere in the name unless the
+  # expression is anchored.
+  re=${4#name=}
+  if [ "$re" = "$4" ]; then
+    echo "fake docker: only the name filter is supported: $4" >&2
+    exit 1
+  fi
+  printf 'CONTAINER ID   NAMES\n'
+  # `other` stays in the unfiltered list so that a test sees the filter work.
+  printf 'abc123 remedy-drill\ndef456 other\n' | while read -r id name; do
+    if printf '%s\n' "$name" | grep -Eq -e "$re"; then
+      printf '%s         %s\n' "$id" "$name"
+    fi
+  done
   ;;
 logs)
   # docker logs --tail N NAME

@@ -28,13 +28,14 @@ has its own loop and does not need a GitHub connection, but it uses the same int
 ### Reaching Alertmanager from the chart
 
 With the chart's default `networkPolicy.enabled: true`, the control plane's pod may open connections only to DNS, the Kubernetes API (when
-`cluster.enabled`) and **public addresses on port 443**; every private range is excepted (`deploy/chart/templates/networkpolicy.yaml`). The chart has no value
-for extra egress yet. So an Alertmanager inside the cluster (`http://alertmanager:9093`) or on a private address **cannot be reached** by default, and the state
-line shows a connection error or a timeout. The options:
+`cluster.enabled`) and **public addresses on port 443**; every private range is excepted (`deploy/chart/templates/networkpolicy.yaml`). So an Alertmanager inside the
+cluster (`http://alertmanager:9093`) or on a private address **cannot be reached** by default, and the state line shows a connection error or a timeout. The options:
 
-- put Alertmanager behind a public HTTPS address on port 443 (an Ingress with a certificate) and enter that address;
-- turn `networkPolicy.enabled` off (this opens all egress of the control plane: weigh it);
-- wait for a chart value for extra egress, which is follow-up work of the operation cycle.
+- **for an Alertmanager inside the cluster, set the chart value `networkPolicy.alertmanager`** (cycle 6): `namespace`, `podSelector` (the labels of the Alertmanager's pods; an empty selector is refused) and `port` (default 9093). It opens one
+  egress rule from the control plane to those pods and nothing else. Read the namespace, labels and port from the cluster, do not guess. The Alertmanager's own namespace may have an ingress policy that must admit the Remedy namespace too
+  (on the home server, the monitoring app's `monitoring-namespace-isolation`). This value is implemented on the branch of the cycle-6a pull request and has not been run on a cluster;
+- for a private address outside the cluster, the chart has no value (`networkPolicy.hosts` is for SSH to hosts, not for Alertmanager): put Alertmanager behind a public HTTPS address on port 443 (an Ingress with a certificate) and enter that address;
+- turn `networkPolicy.enabled` off (this opens all egress of the control plane: weigh it).
 
 The address can also come from the chart: `REMEDY_ALERTMANAGER_URL` can be passed through `server.env` (the setting saved on the Setup page wins over it).
 

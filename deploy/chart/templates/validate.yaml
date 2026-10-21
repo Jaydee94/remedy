@@ -27,3 +27,34 @@
 {{- end }}
 {{- end }}
 {{- end }}
+{{- if .Values.networkPolicy.enabled }}
+{{- $octet := "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])" }}
+{{- range $i, $h := .Values.networkPolicy.hosts }}
+{{- $what := printf "networkPolicy.hosts[%d]" $i }}
+{{- if not (kindIs "map" $h) }}
+{{- fail (printf "%s must be an object with cidr and port, got %v" $what $h) }}
+{{- end }}
+{{- if not (kindIs "string" $h.cidr) }}
+{{- fail (printf "%s.cidr is required: a single address, an IPv4 address with /32 or an IPv6 address with /128" $what) }}
+{{- end }}
+{{- if not (or (regexMatch (printf "^(%s\\.){3}%s/32$" $octet $octet) $h.cidr) (regexMatch "^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}/128$" $h.cidr)) }}
+{{- fail (printf "%s.cidr %q is not a single address: egress to a host is by one address only, an IPv4 address with /32 or an IPv6 address with /128 (a range would open every machine in it to the pod that holds the credentials)" $what $h.cidr) }}
+{{- end }}
+{{- $_ := include "remedy.checkPort" (dict "what" $what "port" $h.port) }}
+{{- if and $.Values.cluster.enabled (has $h.cidr ($.Values.networkPolicy.apiServer.cidrs | default list)) }}
+{{- fail (printf "%s.cidr %q is an address of networkPolicy.apiServer.cidrs: the API server's rule is that value's, not a host's" $what $h.cidr) }}
+{{- end }}
+{{- end }}
+{{- $am := .Values.networkPolicy.alertmanager | default dict }}
+{{- if $am }}
+{{- if not (and (kindIs "string" $am.namespace) (regexMatch "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" $am.namespace)) }}
+{{- fail (printf "networkPolicy.alertmanager.namespace is required and must be a namespace name (lower case letters, digits and dashes, at most 63 characters), got %v" (default "nothing" $am.namespace)) }}
+{{- end }}
+{{- if not (and (kindIs "map" $am.podSelector) $am.podSelector) }}
+{{- fail "networkPolicy.alertmanager.podSelector is required and must not be empty: an empty selector would admit every pod of the namespace; name the Alertmanager pods by their labels" }}
+{{- end }}
+{{- if hasKey $am "port" }}
+{{- $_ := include "remedy.checkPort" (dict "what" "networkPolicy.alertmanager" "port" $am.port) }}
+{{- end }}
+{{- end }}
+{{- end }}

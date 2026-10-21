@@ -19,7 +19,7 @@ Spec: [`docs/specs/2026-10-06-kubernetes-deployment-design.md`](../../docs/specs
 | PVC | `remedy-data` | kept on uninstall; `server.persistence.existingClaim` uses your own |
 | StatefulSet | `remedy-runner` | init container `install-cli`; no Kubernetes token |
 | Ingress | `remedy` | optional |
-| NetworkPolicies | `remedy-server`, `remedy-runner`, `remedy-token-refresher` (only with `cluster.write.enabled`: DNS and the API server, nothing else) | on by default; `networkPolicy.*` |
+| NetworkPolicies | `remedy-server`, `remedy-runner`, `remedy-token-refresher` (only with `cluster.write.enabled`: DNS and the API server, nothing else) | on by default; `networkPolicy.*` (`hosts` and `alertmanager` add egress to the control plane only) |
 
 With `cluster.enabled` the control plane runs as the read account (a projected token) and the chart creates a read-only ClusterRole.
 With `cluster.write.enabled` a CronJob (default schedule `*/30 * * * *`, `cluster.write.tokenRefresh.schedule`) and a Job that runs as a post-install and post-upgrade
@@ -36,6 +36,24 @@ runner may reach TCP 443 on public addresses only, so an API server on 6443 is o
 443 with a public address would not be protected by the excepted private ranges; the usual homelab node addresses
 (`192.168.0.0/16`, `10.0.0.0/8`) are inside them. Pods in the cluster have addresses in `10.0.0.0/8` too: allow traffic to a
 pod with a pod or namespace selector, never with an address.
+
+Two more values open egress of the **control plane only** (the `remedy-server` policy; the runner and the token refresher
+never get them). `networkPolicy.hosts` is a list of `{cidr, port}`, one SSH rule per entry for the host tools: the `cidr`
+must be a single address (`/32` for IPv4, `/128` for IPv6), the port an integer from 1 to 65535, and an entry may not be an
+address of `networkPolicy.apiServer.cidrs`. `networkPolicy.alertmanager` is `{namespace, podSelector, port}`, one rule to the
+pods that match `podSelector` in `namespace` (`port` defaults to 9093); `namespace` and a non-empty `podSelector` are
+required, because an empty selector would admit every pod of the namespace. There is no free list of extra rules on
+purpose: one typo (`0.0.0.0/0`, no port) would open all egress of the pod that holds the credentials. Both default to empty
+and then render nothing; the render fails for a value that breaks a rule, and ignores both when `networkPolicy.enabled` is false.
+
+```yaml
+networkPolicy:
+  hosts:
+    - {cidr: 192.168.178.118/32, port: 22}
+  alertmanager:
+    namespace: monitoring
+    podSelector: {app.kubernetes.io/name: vmalertmanager}
+```
 
 ## Install from the OCI registry
 

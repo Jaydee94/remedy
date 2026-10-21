@@ -17,7 +17,7 @@ const (
 func grantLine(account string) *regexp.Regexp {
 	a := regexp.QuoteMeta(account)
 	return regexp.MustCompile(`^` + a + ` ALL=\(root\) NOPASSWD: (` +
-		`/usr/bin/docker ps -a` +
+		`/usr/bin/docker ps -a --filter name\\=\^[A-Za-z0-9][A-Za-z0-9_.-]*\$?` +
 		`|/usr/bin/docker logs --tail \* ` + pat +
 		`|/usr/bin/docker inspect ` + pat +
 		`|/usr/bin/docker start ` + pat + `, /usr/bin/docker restart ` + pat + `, /usr/bin/docker stop ` + pat +
@@ -43,7 +43,7 @@ func TestSnippetForTheNAS(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"remedy ALL=(root) NOPASSWD: /usr/bin/docker ps -a\n",
+		`remedy ALL=(root) NOPASSWD: /usr/bin/docker ps -a --filter name\=^remedy-` + "\n",
 		"remedy ALL=(root) NOPASSWD: /usr/bin/docker logs --tail * remedy-*\n",
 		"remedy ALL=(root) NOPASSWD: /usr/bin/docker inspect remedy-*\n",
 		"remedy ALL=(root) NOPASSWD: /usr/bin/docker start remedy-*, /usr/bin/docker restart remedy-*, /usr/bin/docker stop remedy-*\n",
@@ -66,6 +66,22 @@ func TestSnippetForTheNAS(t *testing.T) {
 	if !warned {
 		t.Errorf("no comment before the docker lines says that * also matches spaces:\n%s", out.Sudoers)
 	}
+}
+
+// A host with an exact name gets a filter that ends in $, and sudoers enforces it: the unfiltered command is not granted.
+func TestSnippetForAnExactContainerNameAnchorsTheFilter(t *testing.T) {
+	out, err := sshhost.Snippet(sshhost.SnippetInput{Account: "remedy", DockerPattern: "remedy-drill"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `remedy ALL=(root) NOPASSWD: /usr/bin/docker ps -a --filter name\=^remedy-drill$` + "\n"
+	if !strings.Contains(out.Sudoers, want) {
+		t.Errorf("sudoers lacks %q:\n%s", want, out.Sudoers)
+	}
+	if strings.Contains(out.Sudoers, "docker ps -a\n") {
+		t.Errorf("sudoers still grants the unfiltered docker ps -a:\n%s", out.Sudoers)
+	}
+	assertOnlyGrants(t, out.Sudoers, "remedy")
 }
 
 func assertOnlyGrants(t *testing.T, sudoers, account string) {

@@ -18,6 +18,9 @@ type Result struct {
 	Stdout, Stderr       string
 	ExitCode             int
 	StdoutCut, StderrCut bool
+	// Note is a line of the control plane's own about what the command was (for example that its list was filtered). It is
+	// not output of the host.
+	Note string
 }
 
 // DataLine opens every result. What a host prints is written by programs and people: log lines, error messages, file
@@ -32,6 +35,9 @@ func FormatResult(host string, r Result) string {
 	var b strings.Builder
 	b.WriteString(DataLine(host))
 	fmt.Fprintf(&b, "\nexit code: %d\n", r.ExitCode)
+	if r.Note != "" {
+		b.WriteString("note: " + r.Note + "\n")
+	}
 	stream := func(name, text string, cut bool) {
 		b.WriteString(name + ":\n")
 		if text == "" {

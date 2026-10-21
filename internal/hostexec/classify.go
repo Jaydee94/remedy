@@ -108,7 +108,7 @@ func mustForm(text string, docker bool) form {
 
 // readForms is the table of reads. It is code: versioned, tested, and nothing outside it can add to it.
 var readForms = []form{
-	mustForm("docker ps -a", true),
+	mustForm(psForm, true),
 	mustForm("docker logs --tail {N} {NAME}", true),
 	mustForm("docker inspect {NAME}", true),
 	mustForm("systemctl status {UNIT} --no-pager", false),
