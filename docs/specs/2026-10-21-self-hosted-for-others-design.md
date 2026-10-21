@@ -1,6 +1,6 @@
 # Remedy for other operators, cycle 7 (self-hosted, API-key mode, generic webhook)
 
-Status: draft, not yet approved (2026-10-21). Three plans follow it: 7a (a stranger can install it), 7b (API-key mode), 7c (the webhook source).
+Status: approved by the maintainer for merge on 2026-10-21; the defaults marked **(call)** are the author's and stay open to change in the plans, and the terms of use must be re-read in their primary text before 7b (open point 1). Three plans follow it: 7a (a stranger can install it), 7b (API-key mode), 7c (the webhook source).
 Parent documents: [`../design.md`](../design.md) (1 Purpose, 2.1, 2.3, 2.7, 4 Accepted risks),
 [`../research/subscription-cli-usage.md`](../research/subscription-cli-usage.md) (the terms-of-use constraints; on conflict the research wins until it is updated),
 [`2026-10-09-hosts-and-skills-design.md`](2026-10-09-hosts-and-skills-design.md) (the series this follows; cycle 6, the home-server drill, continues separately and is not blocked by this),
