@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Jaydee94/remedy/internal/diagnosis"
 	"github.com/Jaydee94/remedy/internal/prompt"
@@ -301,34 +303,114 @@ var lineBreaks = strings.NewReplacer("\r\n", "\n", "\r", "\n", "\v", "\n", "\f",
 // strings only fill the fields. A one-line field is made one line, so that a line break in it cannot start a heading of its own, and the
 // notes are a block quote for the same reason; every value and every line of the notes that starts with a block marker is escaped. The
 // note is shown as text and is data like every skill.
+//
+// The note always fits a skill (skill.MaxBodyBytes): an answer within the limits of diagnosis.ParseLearn can still be longer (many items
+// of multi-byte characters, notes of many short lines), and Remedy, which writes the note, cuts it rather than refuse the answer. The
+// cut is deterministic and says so: first the notes (at a line, else at a character, then the quoted line "(cut: too long)"), then the
+// containers and then the services (items from the end, then the line "- ... (N more not shown)"). The headings and the lines of the
+// operating system and the role always stay.
 func ProfileBody(p diagnosis.LearnProfile) string {
-	var b strings.Builder
-	b.WriteString("## Operating system\n\n" + field(p.OS) + "\n\n")
-	b.WriteString("## Role\n\n" + field(p.Role) + "\n\n")
-	list := func(title string, items []string) {
-		b.WriteString("## " + title + "\n\n")
-		if len(items) == 0 {
-			b.WriteString("None found.\n\n")
-			return
-		}
-		for _, s := range items {
-			b.WriteString("- " + field(s) + "\n")
-		}
-		b.WriteString("\n")
-	}
-	list("Services", p.Services)
-	list("Containers", p.Containers)
-	b.WriteString("## Notes\n\n")
-	if strings.TrimSpace(p.Notes) == "" {
-		b.WriteString("None.\n")
-		return b.String()
-	}
-	for _, line := range strings.Split(lineBreaks.Replace(p.Notes), "\n") {
-		if line = strings.TrimSpace(line); line == "" {
-			b.WriteString(">\n")
-		} else {
-			b.WriteString("> " + escapeBlock(line) + "\n")
+	head := "## Operating system\n\n" + field(p.OS) + "\n\n" + "## Role\n\n" + field(p.Role) + "\n\n"
+	services, containers := listLines(p.Services), listLines(p.Containers)
+	var notes []string
+	if strings.TrimSpace(p.Notes) != "" {
+		for _, line := range strings.Split(lineBreaks.Replace(p.Notes), "\n") {
+			if line = strings.TrimSpace(line); line == "" {
+				notes = append(notes, ">\n")
+			} else {
+				notes = append(notes, "> "+escapeBlock(line)+"\n")
+			}
 		}
 	}
-	return b.String()
+	svc := listSection("Services", services, 0)
+	ctr := listSection("Containers", containers, 0)
+	nts := notesSection(notes, false)
+	if len(head)+len(svc)+len(ctr)+len(nts) <= skill.MaxBodyBytes {
+		return head + svc + ctr + nts
+	}
+	if len(notes) > 0 {
+		room := skill.MaxBodyBytes - len(head) - len(svc) - len(ctr) - len(notesSection(nil, true))
+		nts = notesSection(fitNotes(notes, room), true)
+	}
+	if len(head)+len(svc)+len(ctr)+len(nts) > skill.MaxBodyBytes {
+		ctr = cutList("Containers", containers, skill.MaxBodyBytes-len(head)-len(svc)-len(nts))
+	}
+	if len(head)+len(svc)+len(ctr)+len(nts) > skill.MaxBodyBytes {
+		svc = cutList("Services", services, skill.MaxBodyBytes-len(head)-len(ctr)-len(nts))
+	}
+	return head + svc + ctr + nts
+}
+
+// cutNote ends notes that were cut.
+const cutNote = "> (cut: too long)\n"
+
+// listLines makes each item one list line of the note.
+func listLines(items []string) []string {
+	out := make([]string, 0, len(items))
+	for _, s := range items {
+		out = append(out, "- "+field(s)+"\n")
+	}
+	return out
+}
+
+// listSection writes a list of the profile; more is the number of items that are not shown.
+func listSection(title string, lines []string, more int) string {
+	s := "## " + title + "\n\n"
+	if len(lines) == 0 && more == 0 {
+		return s + "None found.\n\n"
+	}
+	s += strings.Join(lines, "")
+	if more > 0 {
+		s += "- " + string(rune(0x2026)) + " (" + strconv.Itoa(more) + " more not shown)\n"
+	}
+	return s + "\n"
+}
+
+// cutList writes a list with as many of its first lines as fit room bytes, and the line that counts the others.
+func cutList(title string, lines []string, room int) string {
+	for k := len(lines) - 1; k > 0; k-- {
+		if s := listSection(title, lines[:k], len(lines)-k); len(s) <= room {
+			return s
+		}
+	}
+	return listSection(title, nil, len(lines))
+}
+
+// notesSection writes the notes; cut ends them with cutNote.
+func notesSection(lines []string, cut bool) string {
+	s := "## Notes\n\n"
+	if len(lines) == 0 && !cut {
+		return s + "None.\n"
+	}
+	s += strings.Join(lines, "")
+	if cut {
+		s += cutNote
+	}
+	return s
+}
+
+// fitNotes keeps the first lines of the notes that fit room bytes; a line that does not fit whole is cut at a character. A prefix of an
+// escaped line starts like the line, so it starts no block of its own.
+func fitNotes(lines []string, room int) []string {
+	var out []string
+	for _, l := range lines {
+		if len(l) <= room {
+			out = append(out, l)
+			room -= len(l)
+			continue
+		}
+		if l == ">\n" || room < len("> x\n") {
+			break
+		}
+		text := l[len("> ") : len(l)-1]
+		end := room - len("> \n")
+		for end > 0 && !utf8.RuneStart(text[end]) {
+			end--
+		}
+		if text = strings.TrimRight(text[:end], " \t"); text != "" {
+			out = append(out, "> "+text+"\n")
+		}
+		break
+	}
+	return out
 }

@@ -7,9 +7,11 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Jaydee94/remedy/internal/diagnosis"
 	"github.com/Jaydee94/remedy/internal/learner"
@@ -711,5 +713,139 @@ func TestALaterLearningRunProposesAProfileThatReplacesTheConfirmedOne(t *testing
 	}
 	if profiles != 1 {
 		t.Errorf("%d skills named profile, want 1", profiles)
+	}
+}
+
+// checkProfile asserts what every profile body keeps: it fits a skill, is valid UTF-8 and has the five headings once each.
+func checkProfile(t *testing.T, body string) {
+	t.Helper()
+	if len(body) > skill.MaxBodyBytes {
+		t.Errorf("the body has %d bytes, at most %d", len(body), skill.MaxBodyBytes)
+	}
+	if !utf8.ValidString(body) {
+		t.Errorf("the body is not valid UTF-8")
+	}
+	if _, err := (skill.Fields{Name: skill.ProfileName, Description: "d", Body: body}).Validate(); err != nil {
+		t.Errorf("the body is refused as a skill: %v", err)
+	}
+	want := []string{"## Operating system", "## Role", "## Services", "## Containers", "## Notes"}
+	if got := headingLines(body); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("headings = %v, want exactly %v", got, want)
+	}
+}
+
+func TestAProfileOfManyLongListItemsIsCutToFitAndSaysHowManyAreNotShown(t *testing.T) {
+	item := strings.Repeat(string(rune(0x1F600)), 100)
+	p := diagnosis.LearnProfile{OS: "Debian 12", Role: "NAS", Notes: "Backups run at night."}
+	for i := 0; i < 40; i++ {
+		p.Services = append(p.Services, item)
+	}
+	body := learner.ProfileBody(p)
+	checkProfile(t, body)
+	for _, line := range []string{"Debian 12", "NAS", "> (cut: too long)"} {
+		if !strings.Contains(body+"\n", "\n"+line+"\n") {
+			t.Errorf("the body lacks the line %q:\n%s", line, body)
+		}
+	}
+	shown := strings.Count(body, "- "+item+"\n")
+	if shown == 0 || shown == 40 {
+		t.Fatalf("%d of 40 services shown", shown)
+	}
+	more := "\n- " + string(rune(0x2026)) + " (" + strconv.Itoa(40-shown) + " more not shown)\n"
+	if !strings.Contains(body, more) {
+		t.Errorf("the body lacks %q:\n%s", more, body)
+	}
+	if strings.Contains(body, "Backups run at night.") {
+		t.Errorf("the notes were kept although the services were cut:\n%s", body)
+	}
+}
+
+func TestTheBiggestAnswerTheLimitsAllowStoresTheSkillsAndTheProfile(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	nas := e.host("nas")
+	r, err := e.l.Start(ctx, nas.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wide := string(rune(0x1F600))
+	profile := map[string]any{
+		"os": strings.Repeat(wide, diagnosis.MaxLearnOS), "role": strings.Repeat(wide, diagnosis.MaxLearnRole),
+		"notes": strings.Repeat(wide, diagnosis.MaxLearnNotes),
+	}
+	var services, containers []string
+	for i := 0; i < diagnosis.MaxLearnList; i++ {
+		services = append(services, strings.Repeat(wide, diagnosis.MaxLearnListItem))
+		containers = append(containers, strings.Repeat(wide, diagnosis.MaxLearnListItem))
+	}
+	profile["services"], profile["containers"] = services, containers
+	raw, err := json.Marshal(map[string]any{"profile": profile, "skills": []any{map[string]any{
+		"name": "paperless", "description": "Paperless keeps its data in /volume1.", "body": "b", "evidence": [][]string{{"docker", "ps", "-a"}},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := diagnosis.ParseLearn(raw); err != nil {
+		t.Fatalf("the answer does not pass the limits: %v", err)
+	}
+	e.l.Complete(ctx, e.ran(r, string(raw), 0, "").ID)
+	if failed := e.activity(store.KindLearnFailed); len(failed) != 0 {
+		t.Fatalf("the run failed: %v", failed)
+	}
+	got := e.proposals()
+	if len(got) != 2 {
+		t.Fatalf("%d proposals, want the profile and one skill", len(got))
+	}
+	for _, k := range got {
+		if k.Name == skill.ProfileName {
+			checkProfile(t, k.Body)
+		}
+	}
+}
+
+func TestNotesOfManyLinesAreCutAtALineAndStayABlockQuote(t *testing.T) {
+	p := diagnosis.LearnProfile{OS: "o", Role: "r", Services: []string{"docker"}, Containers: []string{"web"}, Notes: strings.Repeat("line of notes\n", 1000)}
+	body := learner.ProfileBody(p)
+	checkProfile(t, body)
+	notes := body[strings.Index(body, "## Notes\n\n")+len("## Notes\n\n"):]
+	lines := strings.Split(strings.TrimSuffix(notes, "\n"), "\n")
+	for _, l := range lines {
+		if !strings.HasPrefix(l, ">") {
+			t.Errorf("a notes line outside the quote: %q", l)
+		}
+	}
+	if last := lines[len(lines)-1]; last != "> (cut: too long)" {
+		t.Errorf("the last notes line = %q", last)
+	}
+	if len(lines) < 100 || lines[len(lines)-2] != "> line of notes" {
+		t.Errorf("the notes were not cut at a line: %d lines, before the cut %q", len(lines), lines[len(lines)-2])
+	}
+	if !strings.Contains(body, "\n- docker\n") || !strings.Contains(body, "\n- web\n") {
+		t.Errorf("the lists were cut although the notes sufficed:\n%s", body[:200])
+	}
+	// One long line is cut at a rune boundary.
+	one := learner.ProfileBody(diagnosis.LearnProfile{OS: "o", Role: "r", Notes: strings.Repeat(string(rune(0xE9)), 5000)})
+	checkProfile(t, one)
+	if !strings.HasSuffix(one, "\n> (cut: too long)\n") || !strings.Contains(one, "\n> "+string(rune(0xE9))) {
+		t.Errorf("one long line of notes:\n%s", one[len(one)-100:])
+	}
+}
+
+func TestABodyOfExactlyTheLimitIsNotCut(t *testing.T) {
+	p := diagnosis.LearnProfile{OS: "o", Role: "r", Notes: "x"}
+	for i := 0; i < 20; i++ {
+		p.Services = append(p.Services, strings.Repeat("s", 100))
+		p.Containers = append(p.Containers, strings.Repeat("c", 100))
+	}
+	base := len(learner.ProfileBody(p))
+	p.Notes = strings.Repeat("x", skill.MaxBodyBytes-base+1)
+	body := learner.ProfileBody(p)
+	if len(body) != skill.MaxBodyBytes || strings.Contains(body, "(cut: too long)") || !strings.HasSuffix(body, "\n> "+p.Notes+"\n") {
+		t.Errorf("a body of exactly the limit (%d bytes) was changed", len(body))
+	}
+	checkProfile(t, body)
+	p.Notes += "x"
+	if over := learner.ProfileBody(p); !strings.HasSuffix(over, "\n> (cut: too long)\n") || len(over) > skill.MaxBodyBytes {
+		t.Errorf("one byte more was not cut: %d bytes", len(over))
 	}
 }
