@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/Jaydee94/remedy/internal/version"
 )
 
 // runnerGrace is how long after its last authenticated request the runner counts as connected. The runner claims every
@@ -24,6 +26,7 @@ type RunnerStatus struct {
 	login      string
 	checkedAt  time.Time
 	cliVersion string
+	build      version.Info // the runner's own version and commit; empty for a runner that does not send them
 }
 
 func NewRunnerStatus() *RunnerStatus { return &RunnerStatus{login: "unknown"} }
@@ -63,6 +66,16 @@ func (r *RunnerStatus) Report(login string, checkedAt time.Time, cliVersion stri
 	return nil
 }
 
+// ReportBuild records the runner's own version and commit. They are untrusted: anything but a short string of
+// [0-9A-Za-z._+-] is replaced by "unknown", and the commit is cut to seven characters. Empty values stay empty (an older
+// runner does not send them).
+func (r *RunnerStatus) ReportBuild(v, commit string) {
+	b := version.Info{Version: version.CleanVersion(v), Commit: version.CleanCommit(commit)}
+	r.mu.Lock()
+	r.build = b
+	r.mu.Unlock()
+}
+
 // RunnerView is what GET /api/runner answers.
 type RunnerView struct {
 	Connected bool `json:"connected"`
@@ -71,6 +84,9 @@ type RunnerView struct {
 	Login          string     `json:"login"` // ok, missing or unknown; unknown whenever the runner is not connected
 	LoginCheckedAt *time.Time `json:"loginCheckedAt,omitempty"`
 	CLIVersion     string     `json:"cliVersion,omitempty"`
+	// Version and Commit are the runner's own build. Empty when it has not said, as an older runner does not.
+	Version string `json:"version,omitempty"`
+	Commit  string `json:"commit,omitempty"`
 }
 
 // View is the status as of now. A runner that is not connected has an unknown login, whatever it said last: a stale
@@ -78,7 +94,7 @@ type RunnerView struct {
 func (r *RunnerStatus) View(now time.Time) RunnerView {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	v := RunnerView{Login: "unknown", CLIVersion: r.cliVersion}
+	v := RunnerView{Login: "unknown", CLIVersion: r.cliVersion, Version: r.build.Version, Commit: r.build.Commit}
 	if !r.lastSeen.IsZero() {
 		seen := r.lastSeen
 		v.LastSeenAt = &seen
@@ -100,6 +116,8 @@ func (s *srv) postRunnerStatus(w http.ResponseWriter, r *http.Request) {
 		Login          string    `json:"login"`
 		LoginCheckedAt time.Time `json:"loginCheckedAt"`
 		CLIVersion     string    `json:"cliVersion"`
+		Version        string    `json:"version"`
+		Commit         string    `json:"commit"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 	dec.DisallowUnknownFields()
@@ -116,10 +134,16 @@ func (s *srv) postRunnerStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.d.RunnerStatus.ReportBuild(body.Version, body.Commit)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // getRunner is GET /api/runner, behind the admin session.
 func (s *srv) getRunner(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.d.RunnerStatus.View(time.Now()))
+}
+
+// getVersion is GET /api/version, behind the admin session: the control plane's own build.
+func (s *srv) getVersion(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, version.Get())
 }

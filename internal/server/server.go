@@ -122,6 +122,7 @@ func (s *srv) routes(public, internal *http.ServeMux) {
 		public.HandleFunc("POST /api/approvals/{id}/approve", s.session(s.decide(true)))
 		public.HandleFunc("POST /api/approvals/{id}/deny", s.session(s.decide(false)))
 	}
+	public.HandleFunc("GET /api/version", s.session(s.getVersion))
 	public.HandleFunc("GET /api/activity", s.session(s.listActivity))
 	public.HandleFunc("GET /api/activity/stream", s.session(s.streamActivity))
 

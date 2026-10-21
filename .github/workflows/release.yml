@@ -108,6 +108,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # What the binaries and the UI say about themselves. plan checked the version as X.Y.Z; without a release the image is "edge".
+          build-args: |
+            VERSION=${{ needs.plan.outputs.version || 'edge' }}
+            COMMIT=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,scope=${{ matrix.name }},mode=max,ignore-error=true
 

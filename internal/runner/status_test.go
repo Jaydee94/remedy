@@ -13,7 +13,20 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/provider"
 	"github.com/Jaydee94/remedy/internal/runner"
+	"github.com/Jaydee94/remedy/internal/version"
 )
+
+func TestAReportNamesTheBuildOfTheRunner(t *testing.T) {
+	oldV, oldC := version.Version, version.Commit
+	t.Cleanup(func() { version.Version, version.Commit = oldV, oldC })
+	version.Version, version.Commit = "0.9.0", "abc1234def"
+	raw, _ := json.Marshal(runner.NewStatus().Report())
+	var back map[string]any
+	_ = json.Unmarshal(raw, &back)
+	if back["version"] != "0.9.0" || back["commit"] != "abc1234" || back["cliVersion"] != nil {
+		t.Fatalf("json = %s", raw)
+	}
+}
 
 func eventually(t *testing.T, what string, cond func() bool) {
 	t.Helper()

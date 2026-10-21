@@ -73,7 +73,7 @@ The Go tests of the cluster tools run on recordings of a real cluster (`internal
 
 ## Architecture
 
-Two Go processes (module `github.com/Jaydee94/remedy`, `go 1.27.1`) plus a UI in `web/`, and one small third binary: `cmd/remedy-tokenrefresh` (stdlib only; it runs as a CronJob and as a Helm hook in the cluster and mints the write identity's short-lived token). The runner can also serve `/livez` and `/readyz` on `REMEDY_RUNNER_STATUS_ADDR` for the pod's probes.
+Two Go processes (module `github.com/Jaydee94/remedy`, `go 1.27.1`) plus a UI in `web/`, and one small third binary: `cmd/remedy-tokenrefresh` (stdlib only; it runs as a CronJob and as a Helm hook in the cluster and mints the write identity's short-lived token). The runner can also serve `/livez` and `/readyz` on `REMEDY_RUNNER_STATUS_ADDR` for the pod's probes. The running version is `internal/version` (`Version`, `Commit`, set with `-ldflags -X`: `make build`, `make images` and the images' `VERSION` and `COMMIT` build arguments in `release.yml` do it; a plain `go build` says `dev`): the sidebar shows it (`GET /api/version`), and the runner reports its own in `POST /runner/v1/status`, so Setup warns when the two differ.
 
 The two processes and the UI:
 

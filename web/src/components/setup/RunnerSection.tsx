@@ -2,7 +2,10 @@ import { useEffect, useId, useState } from 'react'
 import { api, ApiError } from '@/api.ts'
 import type { RunnerStatus } from '@/api.ts'
 import { hideOnError, runnerView, type Chip } from '@/runnerstatus.ts'
+import { useControlPlaneVersion } from '@/shellContext.ts'
 import { useClock } from '@/useClock.ts'
+import { runnerVersionLine, versionNotice } from '@/version.ts'
+import VersionText from '@/components/VersionText'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
@@ -25,6 +28,7 @@ export default function RunnerSection() {
   // An older control plane has no route for this: the section then says nothing.
   const [absent, setAbsent] = useState(false)
   const now = useClock()
+  const build = useControlPlaneVersion()
   const headingId = useId()
 
   useEffect(() => {
@@ -60,6 +64,8 @@ export default function RunnerSection() {
   if (absent) return null
 
   const view = status ? runnerView(status, now) : null
+  const runnerVersion = runnerVersionLine(status)
+  const notice = versionNotice(build, status)
 
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3.5">
@@ -86,7 +92,13 @@ export default function RunnerSection() {
           {view.command && (
             <code className="rounded-xl bg-muted px-3 py-2 font-mono text-xs break-words whitespace-pre-wrap text-foreground select-all">{view.command}</code>
           )}
-          {view.version && <span className="text-[13px] break-words text-subtle">Agent CLI: {view.version}</span>}
+          {notice && <p className="text-[13px] leading-relaxed text-muted-foreground">{notice}</p>}
+          {(runnerVersion || view.version) && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <VersionText line={runnerVersion} className="text-[13px]" />
+              {view.version && <span className="text-[13px] break-words text-subtle">Agent CLI: {view.version}</span>}
+            </div>
+          )}
         </div>
       )}
     </section>

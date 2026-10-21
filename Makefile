@@ -2,6 +2,11 @@
 
 IMAGE_TAG ?= dev
 
+# What the binaries and the images say about themselves (internal/version).
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null)
+LDFLAGS = -X github.com/Jaydee94/remedy/internal/version.Version=$(VERSION) -X github.com/Jaydee94/remedy/internal/version.Commit=$(COMMIT)
+
 .PHONY: help build build-go images test vet fmt web-install web-build web-lint web-test dev-server dev-web chart-check shell-test release-test check \
 	dummy-up dummy-down dummy-login dummy-logout dummy-redeploy dummy-reset dummy-smoke dummy-status dummy-logs
 
@@ -9,16 +14,16 @@ help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
 build-go: ## Build both Go binaries into ./bin (no UI embedded)
-	go build -o bin/remedy-server ./cmd/remedy-server
-	go build -o bin/remedy-runner ./cmd/remedy-runner
+	go build -ldflags '$(LDFLAGS)' -o bin/remedy-server ./cmd/remedy-server
+	go build -ldflags '$(LDFLAGS)' -o bin/remedy-runner ./cmd/remedy-runner
 
 build: web-build ## Build the UI, then both Go binaries with the UI embedded
-	go build -tags webui -o bin/remedy-server ./cmd/remedy-server
-	go build -o bin/remedy-runner ./cmd/remedy-runner
+	go build -tags webui -ldflags '$(LDFLAGS)' -o bin/remedy-server ./cmd/remedy-server
+	go build -ldflags '$(LDFLAGS)' -o bin/remedy-runner ./cmd/remedy-runner
 
 images: ## Build the control plane and runner images for this machine (tag $(IMAGE_TAG), default dev)
-	docker build -t remedy-server:$(IMAGE_TAG) .
-	docker build -f Dockerfile.runner -t remedy-runner:$(IMAGE_TAG) .
+	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t remedy-server:$(IMAGE_TAG) .
+	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -f Dockerfile.runner -t remedy-runner:$(IMAGE_TAG) .
 
 test: ## Run Go tests
 	go test ./...
