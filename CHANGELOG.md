@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.0](https://github.com/Jaydee94/remedy/compare/v0.7.0...v0.8.0) (2026-10-21)
+
+### Features
+
+* the learning run, Remedy gets to know a host (cycle 5b) ([#155](https://github.com/Jaydee94/remedy/issues/155)) ([fe890b7](https://github.com/Jaydee94/remedy/commit/fe890b78623c4b30acaf5e1e0dada790d775331f))
+
 ## [0.7.0](https://github.com/Jaydee94/remedy/compare/v0.6.1...v0.7.0) (2026-10-20)
 
 ### Features
