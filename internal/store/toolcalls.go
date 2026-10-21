@@ -605,10 +605,11 @@ func (s *Store) ListNotes(ctx context.Context, incidentID int64) ([]Note, error)
 	return notes, rows.Err()
 }
 
-// CancelRun cancels an ad-hoc run. A queued run ends as failed with ReasonCancelled at once. A running run that has
+// CancelRun cancels an ad-hoc run or a learning run. A queued run ends as failed with ReasonCancelled at once. A running run that has
 // gatekeeper access gets cancel_requested, which stops its token and new calls, and its waiting calls are abandoned;
 // the runner learns of it from its heartbeat, stops the agent and reports the end. Any other run is ErrNotCancellable:
-// a running run without gatekeeper access has no heartbeat to hear it, and a responder run belongs to its incident.
+// a running run without gatekeeper access has no heartbeat to hear it, and a responder run belongs to its incident. A learning run has
+// gatekeeper access and belongs to no incident, so the maintainer may cancel it; it then stores nothing.
 func (s *Store) CancelRun(ctx context.Context, id string) (run.Run, error) {
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		r, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runCols+` FROM runs WHERE id = ?`, id))
@@ -618,7 +619,7 @@ func (s *Store) CancelRun(ctx context.Context, id string) (run.Run, error) {
 		if err != nil {
 			return err
 		}
-		if r.Role != run.RoleAdhoc {
+		if r.Role == run.RoleResponder {
 			return ErrNotCancellable
 		}
 		now := time.Now()

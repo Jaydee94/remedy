@@ -88,7 +88,14 @@ func (s *Store) CreateProposals(ctx context.Context, p ProposalSet) ([]Skill, er
 	if len(p.Items) == 0 {
 		return []Skill{}, nil
 	}
-	if len(p.Items) > skill.MaxProposalsPerRun {
+	// The profile is not counted: a learning run proposes it and at most skill.MaxProposalsPerRun skills.
+	skills := 0
+	for _, it := range p.Items {
+		if strings.TrimSpace(it.Name) != skill.ProfileName {
+			skills++
+		}
+	}
+	if skills > skill.MaxProposalsPerRun {
 		return nil, &skill.FieldError{Field: "skills", Msg: fmt.Sprintf("At most %d skills may be proposed at a time.", skill.MaxProposalsPerRun)}
 	}
 	items := make([]Proposal, 0, len(p.Items))
@@ -115,6 +122,9 @@ func (s *Store) CreateProposals(ctx context.Context, p ProposalSet) ([]Skill, er
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		host, err := hostName(ctx, tx, p.HostID)
 		if err != nil {
+			return err
+		}
+		if err := checkPending(ctx, tx, p.HostID, items); err != nil {
 			return err
 		}
 		now := formatTS(time.Now())
