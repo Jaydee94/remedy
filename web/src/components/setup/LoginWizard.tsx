@@ -4,6 +4,7 @@ import { api } from '@/api.ts'
 import { validateCode } from '@/loginrelay.ts'
 import {
   codeProblem,
+  epochAfter,
   labels,
   opensByItself,
   sessionPhase,
@@ -123,12 +124,24 @@ export default function LoginWizard({ terminal, loggedIn, onSessionChange }: Pro
     if (nowhere(active) || panelRef.current?.contains(active)) headingRef.current?.focus({ preventScroll: true })
   }, [step, relay.offered, headingRef])
 
+  // ONE live region, always mounted at the same place (the first child of every branch below), so it is on the page before its first
+  // message: a region inserted together with its text is often not announced. The span is keyed by the message: a new message with the
+  // same words still replaces the node and is announced.
+  const announcer = (
+    <p className="sr-only" aria-live="polite" aria-atomic="true">
+      {announcement && <span key={announcement.key}>{announcement.text}</span>}
+    </p>
+  )
+
   if (relay.absent || relay.offered === null || !relay.offered.available) {
     // The relay is off, not there, or not read yet: the section is what it was before it.
     return (
       <>
-        {relay.error && <p className="text-[13px] text-muted-foreground">{relay.error}</p>}
-        {terminal && <TerminalBlock terminal={terminal} />}
+        {announcer}
+        <>
+          {relay.error && <p className="text-[13px] text-muted-foreground">{relay.error}</p>}
+          {terminal && <TerminalBlock terminal={terminal} />}
+        </>
       </>
     )
   }
@@ -148,10 +161,16 @@ export default function LoginWizard({ terminal, loggedIn, onSessionChange }: Pro
     }
   }
 
-  const start = () =>
+  // The epoch is bumped per opened sign-in and per Try again, never by Start sign-in itself (`epochAfter`): step 1 is on the page already.
+  function openWizard() {
+    setEpoch((e) => epochAfter(e, 'open'))
+    setOpened(true)
+  }
+
+  const start = (event: 'start' | 'again') =>
     request(async () => {
       if (session !== null) setDismissed((d) => new Set([...d, session.id]))
-      setEpoch((e) => e + 1)
+      setEpoch((e) => epochAfter(e, event))
       setOpened(true)
       return relay.run('start', () => api.startRunnerLogin(loggedIn))
     })
@@ -204,8 +223,8 @@ export default function LoginWizard({ terminal, loggedIn, onSessionChange }: Pro
   }
 
   const handlers: Partial<Record<ActionId, () => void>> = {
-    start: () => void start(),
-    again: () => void start(),
+    start: () => void start('start'),
+    again: () => void start('again'),
     cancel,
     back,
     done,
@@ -231,37 +250,32 @@ export default function LoginWizard({ terminal, loggedIn, onSessionChange }: Pro
     )
   }
 
-  const announcer = (
-    // The span is keyed by the message: a new message with the same words still replaces the node and is announced.
-    <p className="sr-only" aria-live="polite" aria-atomic="true">
-      {announcement && <span key={announcement.key}>{announcement.text}</span>}
-    </p>
-  )
-
   if (view.step === null) {
     return (
       <>
         {announcer}
-        <div ref={openerRef} className="flex flex-wrap items-center gap-2">
-          {loggedIn ? (
-            <ConfirmButton label={labels.openAgain} confirmLabel="Confirm: log in again" className="h-10" onConfirm={() => setOpened(true)} />
-          ) : (
-            <Button type="button" className="h-10" onClick={() => setOpened(true)}>
-              {labels.open}
-            </Button>
-          )}
-        </div>
-        {message && (
-          <p role="alert" className="text-[13px] text-destructive">
-            {message}
-          </p>
-        )}
-        {terminal && (
-          <div className="flex flex-col gap-2">
-            <h3 className="text-[13px] font-semibold text-muted-foreground">{terminalHeading}</h3>
-            <TerminalBlock terminal={terminal} />
+        <>
+          <div ref={openerRef} className="flex flex-wrap items-center gap-2">
+            {loggedIn ? (
+              <ConfirmButton label={labels.openAgain} confirmLabel="Confirm: log in again" className="h-10" onConfirm={openWizard} />
+            ) : (
+              <Button type="button" className="h-10" onClick={openWizard}>
+                {labels.open}
+              </Button>
+            )}
           </div>
-        )}
+          {message && (
+            <p role="alert" className="text-[13px] text-destructive">
+              {message}
+            </p>
+          )}
+          {terminal && (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-[13px] font-semibold text-muted-foreground">{terminalHeading}</h3>
+              <TerminalBlock terminal={terminal} />
+            </div>
+          )}
+        </>
       </>
     )
   }
@@ -273,91 +287,92 @@ export default function LoginWizard({ terminal, loggedIn, onSessionChange }: Pro
   const otherActions = view.actions.filter((a) => a.id !== 'send' && a.id !== 'open')
 
   return (
-    <section ref={panelRef} aria-labelledby={headingId} className="flex flex-col gap-3 rounded-2xl border border-border bg-background p-4">
+    <>
       {announcer}
-      <div key={`top-${current}`} className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1.5">
-          <p className="text-[12px] font-semibold text-muted-foreground">
-            {view.indicator}: {view.stepName}
-          </p>
-          <ol aria-hidden className="grid grid-cols-4 gap-1">
-            {steps.map((n) => (
-              <li key={n} title={stepNames[n]} className={cn('h-1.5 rounded-full', n <= current ? 'bg-primary' : 'bg-muted')} />
-            ))}
-          </ol>
-        </div>
-        <h3 id={headingId} ref={headingRef} tabIndex={-1} className="font-serif text-[19px] leading-snug outline-none">
-          {view.heading}
-        </h3>
-        {view.paragraphs.map((p, i) => (
-          <p key={i} className="text-[14px] leading-relaxed text-pretty">
-            {p}
-          </p>
-        ))}
-        {view.link && (
-          <div className="flex flex-wrap items-center gap-2">
-            <a href={view.link.href} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ variant: 'default' }), 'h-10')}>
-              {labels.openLink}
-            </a>
-            <span className="text-[13px] text-muted-foreground">on {view.link.host}</span>
-            <Button type="button" variant="outline" className="h-10" onClick={() => view.link && copy(view.link.href)}>
-              {labels.copy}
-            </Button>
+      <section ref={panelRef} aria-labelledby={headingId} className="flex flex-col gap-3 rounded-2xl border border-border bg-background p-4">
+        <div key={`top-${current}`} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[12px] font-semibold text-muted-foreground">
+              {view.indicator}: {view.stepName}
+            </p>
+            <ol aria-hidden className="grid grid-cols-4 gap-1">
+              {steps.map((n) => (
+                <li key={n} title={stepNames[n]} className={cn('h-1.5 rounded-full', n <= current ? 'bg-primary' : 'bg-muted')} />
+              ))}
+            </ol>
           </div>
-        )}
-        {copied && (
-          <p aria-live="polite" className="text-[13px] text-muted-foreground">
-            {copied}
-          </p>
-        )}
-      </div>
-      {showField && (
-        // Kept outside the keyed part: the field keeps the focus when typing moves the wizard from step 2 to step 3.
-        <form key="code" onSubmit={send} autoComplete="off" className="flex flex-col gap-1.5">
-          <label htmlFor={codeId} className="text-[14px] font-semibold">
-            One-time code
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              id={codeId}
-              type="text"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              data-1p-ignore
-              data-lpignore="true"
-              data-bwignore
-              value={code}
-              onChange={(e) => {
-                setCode(e.target.value)
-                if (e.target.value !== '') setTyping(true)
-              }}
-              className="h-11 max-w-80 min-w-0 flex-1 font-mono text-base md:text-sm"
-            />
-            {current === 3 && sendAction && (
-              <Button type="submit" aria-disabled={sendOff || undefined} className={cn('h-10', ariaDisabled)}>
-                {sendAction.label}
+          <h3 id={headingId} ref={headingRef} tabIndex={-1} className="font-serif text-[19px] leading-snug outline-none">
+            {view.heading}
+          </h3>
+          {view.paragraphs.map((p, i) => (
+            <p key={i} className="text-[14px] leading-relaxed text-pretty">
+              {p}
+            </p>
+          ))}
+          {view.link && (
+            <div className="flex flex-wrap items-center gap-2">
+              <a href={view.link.href} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ variant: 'default' }), 'h-10')}>
+                {labels.openLink}
+              </a>
+              <span className="text-[13px] text-muted-foreground">on {view.link.host}</span>
+              <Button type="button" variant="outline" className="h-10" onClick={() => view.link && copy(view.link.href)}>
+                {labels.copy}
               </Button>
-            )}
-          </div>
-        </form>
-      )}
-      <div key={`bottom-${current}`} className="flex flex-col gap-3">
-        {view.countdown && <p className="text-[13px] text-muted-foreground">{view.countdown}</p>}
-        {message && (
-          <p role="alert" className="text-[13px] text-destructive">
-            {message}
-          </p>
+            </div>
+          )}
+        </div>
+        {/* Mounted with the panel and outside the keyed part, so only its text changes when the link is copied (and is announced). */}
+        <p aria-live="polite" className={copied ? 'text-[13px] text-muted-foreground' : 'sr-only'}>
+          {copied}
+        </p>
+        {showField && (
+          // Kept outside the keyed part: the field keeps the focus when typing moves the wizard from step 2 to step 3.
+          <form key="code" onSubmit={send} autoComplete="off" className="flex flex-col gap-1.5">
+            <label htmlFor={codeId} className="text-[14px] font-semibold">
+              One-time code
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                id={codeId}
+                type="text"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                data-1p-ignore
+                data-lpignore="true"
+                data-bwignore
+                value={code}
+                onChange={(e) => {
+                  setCode(e.target.value)
+                  if (e.target.value !== '') setTyping(true)
+                }}
+                className="h-11 max-w-80 min-w-0 flex-1 font-mono text-base md:text-sm"
+              />
+              {current === 3 && sendAction && (
+                <Button type="submit" aria-disabled={sendOff || undefined} className={cn('h-10', ariaDisabled)}>
+                  {sendAction.label}
+                </Button>
+              )}
+            </div>
+          </form>
         )}
-        {otherActions.length > 0 && <div className="flex flex-wrap items-center gap-2">{otherActions.map(actionButton)}</div>}
-        {view.showTerminal && terminal && (
-          <div className="flex flex-col gap-2 border-t border-border pt-3">
-            <h4 className="text-[13px] font-semibold text-muted-foreground">{terminalHeading}</h4>
-            <TerminalBlock terminal={terminal} />
-          </div>
-        )}
-      </div>
-    </section>
+        <div key={`bottom-${current}`} className="flex flex-col gap-3">
+          {view.countdown && <p className="text-[13px] text-muted-foreground">{view.countdown}</p>}
+          {message && (
+            <p role="alert" className="text-[13px] text-destructive">
+              {message}
+            </p>
+          )}
+          {otherActions.length > 0 && <div className="flex flex-wrap items-center gap-2">{otherActions.map(actionButton)}</div>}
+          {view.showTerminal && terminal && (
+            <div className="flex flex-col gap-2 border-t border-border pt-3">
+              <h4 className="text-[13px] font-semibold text-muted-foreground">{terminalHeading}</h4>
+              <TerminalBlock terminal={terminal} />
+            </div>
+          )}
+        </div>
+      </section>
+    </>
   )
 }

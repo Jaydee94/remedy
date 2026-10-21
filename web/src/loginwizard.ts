@@ -101,7 +101,7 @@ export interface WizardInput {
   now: number
   /** The runner is logged in already. */
   loggedIn: boolean
-  /** A client counter that the page bumps on every start of a sign-in; it makes the live-region keys of one sign-in differ from the next. */
+  /** A client counter that the page bumps per opened sign-in and per Try again (`epochAfter`); it makes the live-region keys of one sign-in differ from the next. */
   epoch: number
 }
 
@@ -162,13 +162,11 @@ function buildView(i: WizardInput): WizardView {
 }
 
 function make(step: Step, over: Partial<WizardView> & Pick<WizardView, 'heading' | 'paragraphs' | 'actions'>): WizardView {
-  const indicator = `Step ${step} of 4`
   return bare({
     step,
-    indicator,
+    indicator: `Step ${step} of 4`,
     stepName: stepNames[step],
-    // The key is set by wizardView, which knows the epoch.
-    announcement: { key: '', text: `${indicator}: ${over.heading}` },
+    announcement: told(step, over.heading, []),
     ...over,
   })
 }
@@ -177,9 +175,12 @@ function make(step: Step, over: Partial<WizardView> & Pick<WizardView, 'heading'
  * The live region's key: `${epoch}:${step}:${state}:${attempt}:${reason}`. `useAnnouncement` never announces a key it has already seen,
  * so the key must differ whenever the message should be heard again:
  * - the step is in it, so going from step 2 to step 3 (typing flips) and back is announced;
- * - the epoch is in it, because the key cannot carry the session id: THE COMPONENT KEEPS A COUNTER (`WizardInput.epoch`) and bumps it on
- *   every start of a sign-in ("Start sign-in", "Try again", a new start after Cancel). Without that, a second sign-in on the same page
- *   visit repeats keys the live region has seen and stays silent.
+ * - the epoch is in it, because the key cannot carry the session id: THE COMPONENT KEEPS A COUNTER (`WizardInput.epoch`) and bumps it
+ *   per opened sign-in (the opener, "Log in again" once confirmed) and per "Try again" (`epochAfter`). Without that, a second sign-in on
+ *   the same page visit repeats keys the live region has seen and stays silent. "Start sign-in" itself does not bump it: step 1 is on
+ *   the page already, and a new key there would say "Start the sign-in" again just before "Starting the sign-in".
+ * The text says what is new: `submitting` has its own ("Checking the code"), and on steps 1 and 2 of a later attempt the rejection
+ * sentence follows the step, so a screen-reader user hears why the wizard went back.
  * The reason goes through `knownReason`; the session's id, address and time, and any word the server sent that the page does not know,
  * are never in the key. A missing session (nothing started) is `idle`, attempt 0.
  */
@@ -188,6 +189,20 @@ export function announcementKey(s: RunnerLoginSession | null, step: Step, epoch:
   const attempt = s === null ? 0 : s.attempt
   const reason = s === null ? '' : knownReason(s.reason)
   return `${epoch}:${step}:${state}:${attempt}:${reason}`
+}
+
+/** What changes the epoch: a sign-in that is opened, and Try again. Start sign-in does not (see `announcementKey`). */
+export type EpochEvent = 'open' | 'start' | 'again'
+
+export function epochAfter(epoch: number, event: EpochEvent): number {
+  return event === 'start' ? epoch : epoch + 1
+}
+
+/** The step's announcement with what is news on it appended: `Step 2 of 4: Open the sign-in page. The last code was not accepted ...`. */
+function told(step: Step, heading: string, extra: string[]): { key: string; text: string } {
+  const text = [`Step ${step} of 4: ${heading}`, ...extra].join('. ')
+  // The key is set by wizardView, which knows the epoch.
+  return { key: '', text }
 }
 
 /** A code that was not accepted starts a fresh sign-in on the server: the state goes back to starting with the next attempt. */
@@ -215,6 +230,7 @@ function step1(i: WizardInput, s: RunnerLoginSession | null, pollMs: number): Wi
   if (waiting) paragraphs.push(waiting)
   return make(1, {
     heading: 'Starting the sign-in',
+    announcement: told(1, 'Starting the sign-in', rejected(s)),
     paragraphs,
     actions: [action('start', labels.start, false), action('cancel', labels.cancel)],
     showTerminal: false,
@@ -231,6 +247,7 @@ function step2(s: RunnerLoginSession, now: number, pollMs: number): WizardView {
   if (waiting) paragraphs.push(waiting)
   return make(2, {
     heading: 'Open the sign-in page',
+    announcement: told(2, 'Open the sign-in page', rejected(s)),
     paragraphs,
     link: href === null ? null : { host: LOGIN_HOST, href },
     countdown: countdownText(s.expiresAt, now),
@@ -249,6 +266,8 @@ function step3(s: RunnerLoginSession, now: number, pollMs: number): WizardView {
   if (waiting) paragraphs.push(waiting)
   return make(3, {
     heading: 'Paste the code',
+    // Sending moves awaiting_code to submitting on the same step: without its own words the step would be said again.
+    announcement: told(3, submitting ? 'Checking the code' : 'Paste the code', []),
     paragraphs,
     countdown: countdownText(s.expiresAt, now),
     actions: [action('send', labels.send, !submitting), action('back', labels.back, !submitting), action('cancel', labels.cancel)],
@@ -270,6 +289,7 @@ function step4(s: RunnerLoginSession): WizardView {
     // The server starts a fresh sign-in on its own in this case; a failure like this would be a session it has not restarted yet.
     return make(2, {
       heading: 'Open the sign-in page',
+      announcement: told(2, 'Open the sign-in page', ['The last code was not accepted. I am starting a fresh sign-in.']),
       paragraphs: ['The last code was not accepted. I am starting a fresh sign-in.'],
       actions: [action('back', labels.fresh), action('cancel', labels.cancel)],
       showTerminal: false,
@@ -290,7 +310,10 @@ export type LoginRoute = 'start' | 'code' | 'cancel'
 /** What the page says when a code does not have the shape of one (the page's own check, or the server's 400). It never repeats the code. */
 export const codeProblem = 'This does not look like a one-time code. Copy the whole code from the vendor’s page and paste it again.'
 
-const unreachable = 'I could not reach the control plane. Please try again.'
+/** A request that got no answer at all (a network failure). */
+export const unreachable = 'I could not reach the control plane. Please try again.'
+/** A request the control plane answered with a status the page has no sentence for (a 500, a 502 of a proxy, ...). */
+export const unexpectedAnswer = 'The control plane could not do this just now. Please try again.'
 
 /**
  * The sentence for a request of the sign-in that did not work. Only the start's 409 carries a word (a refusal); the 409 of the code and
@@ -301,7 +324,24 @@ export function requestProblem(route: LoginRoute, status: number, reason?: strin
   if (status === 429) return conflictSentence(429) as string
   if (status === 400 && route === 'code') return codeProblem
   if (status === 404) return notOffered
-  return unreachable
+  return status === 0 ? unreachable : unexpectedAnswer
+}
+
+/**
+ * Drops answers that arrive out of order: a poll sent before a request of the sign-in can resolve after the read that follows it, and
+ * must not bring back the older state. `next` numbers a read when it is sent; `accept` says whether its answer is still the newest.
+ */
+export function answerOrder(): { next: () => number; accept: (n: number) => boolean } {
+  let sent = 0
+  let applied = 0
+  return {
+    next: () => ++sent,
+    accept: (n: number) => {
+      if (n < applied) return false
+      applied = n
+      return true
+    },
+  }
 }
 
 const ended = (s: RunnerLoginSession | null): s is RunnerLoginSession => s !== null && endedStates.has(s.state)

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from './api.ts'
 import type { RunnerLogin } from './api.ts'
-import { requestProblem } from './loginwizard.ts'
+import { answerOrder, requestProblem } from './loginwizard.ts'
 import type { LoginRoute } from './loginwizard.ts'
 import { hideOnError } from './runnerstatus.ts'
 
@@ -31,29 +31,30 @@ export function useLoginRelay(pollMs: number): LoginRelay {
   const [absent, setAbsent] = useState(false)
   const [error, setError] = useState('')
   const alive = useRef(true)
+  // A poll sent before a request of the sign-in can answer after the read that follows the request: its older state is dropped.
+  const order = useRef(answerOrder())
 
-  const refresh = useCallback(
-    () =>
-      api.getRunnerLogin().then(
-        (v) => {
-          if (!alive.current) return
-          setOffered(v)
-          setAbsent(false)
-          setError('')
-        },
-        (e: unknown) => {
-          if (!alive.current) return
-          setOffered(null)
+  const refresh = useCallback(() => {
+    const n = order.current.next()
+    return api.getRunnerLogin().then(
+      (v) => {
+        if (!alive.current || !order.current.accept(n)) return
+        setOffered(v)
+        setAbsent(false)
+        setError('')
+      },
+      (e: unknown) => {
+        if (!alive.current || !order.current.accept(n)) return
+        setOffered(null)
           if (e instanceof ApiError && hideOnError(e.status)) {
             setAbsent(true)
             setError('')
             return
           }
-          setError('I could not load the sign-in from this page.')
-        },
-      ),
-    [],
-  )
+        setError('I could not load the sign-in from this page.')
+      },
+    )
+  }, [])
 
   useEffect(() => {
     alive.current = true
@@ -62,11 +63,14 @@ export function useLoginRelay(pollMs: number): LoginRelay {
     }
   }, [])
 
+  // Once the route answered 404 the polling stops: turning the relay on needs a restart of the control plane, which ends the admin
+  // session (it is in memory) and so reloads the page.
   useEffect(() => {
+    if (absent) return
     void refresh()
     const timer = setInterval(() => void refresh(), pollMs)
     return () => clearInterval(timer)
-  }, [refresh, pollMs])
+  }, [refresh, pollMs, absent])
 
   const run = useCallback(
     async (route: LoginRoute, request: () => Promise<unknown>) => {

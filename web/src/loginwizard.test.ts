@@ -2,8 +2,24 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { RunnerLogin, RunnerLoginSession } from './api.ts'
 import { conflictSentence, reasonSentence, refusalSentence } from './loginrelay.ts'
-import { announcementKey, codeProblem, opensByItself, requestProblem, runnerPollMs, sessionPhase, shownLogin, stepOf, wizardView } from './loginwizard.ts'
+import {
+  announcementKey,
+  answerOrder,
+  codeProblem,
+  epochAfter,
+  opensByItself,
+  requestProblem,
+  runnerPollMs,
+  sessionPhase,
+  shownLogin,
+  stepOf,
+  unexpectedAnswer,
+  unreachable,
+  wizardView,
+} from './loginwizard.ts'
 import type { WizardView } from './loginwizard.ts'
+import { announcedAtStart, nextAnnounced } from './useAnnouncement.ts'
+import type { Announced } from './useAnnouncement.ts'
 
 const validUrl =
   'https://claude.com/cai/oauth/authorize?code=true&client_id=c-1&response_type=code&redirect_uri=r-1&scope=s-1&code_challenge=ch-1&code_challenge_method=S256&state=st-1'
@@ -406,13 +422,126 @@ describe('what a refused request says', () => {
     assert.equal(requestProblem('code', 400), codeProblem)
   })
 
-  it('has a fixed sentence for anything else, a network failure included', () => {
-    for (const status of [0, 400, 404, 500, 502]) {
-      const s = requestProblem('start', status)
-      assert.ok(s.length > 0)
-      assert.ok(!/[0-9]/.test(s), s)
+  it('says it could not reach the control plane only for a network failure (no status)', () => {
+    for (const route of ['start', 'code', 'cancel'] as const) assert.equal(requestProblem(route, 0), unreachable)
+    assert.equal(unreachable, 'I could not reach the control plane. Please try again.')
+  })
+
+  it('has one neutral fixed sentence for any other status the server answered', () => {
+    for (const route of ['start', 'code', 'cancel'] as const) {
+      for (const status of [500, 502, 503, 418, 403]) assert.equal(requestProblem(route, status), unexpectedAnswer, `${route} ${status}`)
     }
-    assert.match(requestProblem('cancel', 500), /try again/i)
+    assert.equal(requestProblem('start', 400), unexpectedAnswer)
+    assert.equal(requestProblem('cancel', 400), unexpectedAnswer)
+    assert.notEqual(unexpectedAnswer, unreachable)
+    assert.doesNotMatch(unexpectedAnswer, /reach/)
+    assert.match(unexpectedAnswer, /try again/i)
+  })
+})
+
+describe('the order of the answers', () => {
+  it('drops an answer to a request that was sent before the one already applied', () => {
+    const order = answerOrder()
+    const poll = order.next()
+    const refresh = order.next()
+    assert.equal(order.accept(refresh), true)
+    assert.equal(order.accept(poll), false)
+    const later = order.next()
+    assert.equal(order.accept(later), true)
+  })
+
+  it('applies answers that arrive in order', () => {
+    const order = answerOrder()
+    const a = order.next()
+    assert.equal(order.accept(a), true)
+    const b = order.next()
+    assert.equal(order.accept(b), true)
+  })
+})
+
+describe('the announcement of a sign-in, each message once', () => {
+  const awaiting = (over: Partial<RunnerLoginSession> = {}) => session({ state: 'awaiting_code', url: validUrl, ...over })
+
+  it('bumps the epoch when a sign-in is opened and on Try again, not on the start itself', () => {
+    assert.equal(epochAfter(3, 'open'), 4)
+    assert.equal(epochAfter(3, 'again'), 4)
+    assert.equal(epochAfter(3, 'start'), 3)
+  })
+
+  it('keeps the key of step 1 when Start sign-in is pressed, so "Start the sign-in" is not heard again', () => {
+    const before = view(null, { epoch: 1 }).announcement
+    const after = view(null, { epoch: epochAfter(1, 'start') }).announcement
+    assert.ok(before && after)
+    assert.equal(after.key, before.key)
+  })
+
+  it('has its own text while the code is checked', () => {
+    const typed = view(awaiting(), { typing: true }).announcement
+    const checking = view(session({ state: 'submitting' })).announcement
+    assert.ok(typed && checking)
+    assert.notEqual(checking.text, typed.text)
+    assert.equal(checking.text, 'Step 3 of 4: Checking the code')
+  })
+
+  it('says the rejection in the announcement on steps 1 and 2 of a later attempt', () => {
+    const rejection = 'The last code was not accepted, so I started a fresh sign-in (attempt 2 of 3). Open the new page and copy a fresh code.'
+    const two = view(awaiting({ attempt: 2 })).announcement
+    assert.ok(two)
+    assert.ok(two.text.startsWith('Step 2 of 4: Open the sign-in page'))
+    assert.ok(two.text.includes(rejection), two.text)
+    const one = view(session({ state: 'starting', attempt: 2 })).announcement
+    assert.ok(one && one.text.includes(rejection), one?.text)
+    assert.doesNotMatch(view(awaiting({ attempt: 1 })).announcement?.text ?? '', /not accepted/)
+  })
+
+  it('announces each message of one sign-in once, and a second sign-in again', () => {
+    let state: Announced = announcedAtStart
+    const heard: string[] = []
+    const show = (v: WizardView) => {
+      state = nextAnnounced(state, v.announcement ? [v.announcement] : [], true)
+      if (state.announcement && heard[heard.length - 1] !== state.announcement.key) heard.push(state.announcement.key)
+      return state.announcement?.text ?? ''
+    }
+    const texts: string[] = []
+    const step = (v: WizardView) => {
+      const before = heard.length
+      const text = show(v)
+      if (heard.length > before) texts.push(text)
+    }
+    // The page loads with the wizard closed: nothing is said.
+    step(view(null, { open: false, epoch: 0 }))
+    let epoch = epochAfter(0, 'open')
+    step(view(null, { epoch }))
+    epoch = epochAfter(epoch, 'start')
+    step(view(null, { epoch }))
+    step(view(session({ state: 'starting' }), { epoch }))
+    step(view(awaiting(), { epoch }))
+    step(view(awaiting(), { epoch, typing: true }))
+    step(view(session({ state: 'submitting' }), { epoch, typing: true }))
+    step(view(session({ state: 'starting', attempt: 2 }), { epoch }))
+    step(view(awaiting({ attempt: 2 }), { epoch }))
+    step(view(awaiting({ attempt: 2 }), { epoch, typing: true }))
+    step(view(session({ state: 'submitting', attempt: 2 }), { epoch, typing: true }))
+    step(view(session({ state: 'succeeded', attempt: 2 }), { epoch }))
+    assert.deepEqual(texts.map((t) => t.split('.')[0]), [
+      'Step 1 of 4: Start the sign-in',
+      'Step 1 of 4: Starting the sign-in',
+      'Step 2 of 4: Open the sign-in page',
+      'Step 3 of 4: Paste the code',
+      'Step 3 of 4: Checking the code',
+      'Step 1 of 4: Starting the sign-in',
+      'Step 2 of 4: Open the sign-in page',
+      'Step 3 of 4: Paste the code',
+      'Step 3 of 4: Checking the code',
+      'Step 4 of 4: The agent is logged in',
+    ])
+    assert.equal(new Set(heard).size, heard.length)
+    // Done, then the maintainer opens a second sign-in on the same page visit: it is heard again.
+    const count = texts.length
+    epoch = epochAfter(epoch, 'open')
+    step(view(null, { epoch }))
+    assert.equal(texts.length, count + 1)
+    assert.equal(texts[count], 'Step 1 of 4: Start the sign-in')
   })
 })
 
