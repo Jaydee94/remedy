@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.9.0](https://github.com/Jaydee94/remedy/compare/v0.8.0...v0.9.0) (2026-10-21)
+
+### Features
+
+* filtered docker ps -a and egress values for hosts and Alertmanager (cycle 6a) ([#157](https://github.com/Jaydee94/remedy/issues/157)) ([2153185](https://github.com/Jaydee94/remedy/commit/21531857d2fd8baf3bbb35d29f5f82fd4005355d))
+
 ## [0.8.0](https://github.com/Jaydee94/remedy/compare/v0.7.0...v0.8.0) (2026-10-21)
 
 ### Features
