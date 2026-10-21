@@ -28,6 +28,12 @@ const (
 	KindDiagnosisStarted  = "diagnosis_started"
 	KindDiagnosisFinished = "diagnosis_finished"
 	KindDiagnosisFailed   = "diagnosis_failed"
+
+	// The runner's login from the Setup page. A login is not a run: these entries link to nothing.
+	KindLoginStarted   = "login_started"
+	KindLoginSucceeded = "login_succeeded"
+	KindLoginFailed    = "login_failed"
+	KindLoginCancelled = "login_cancelled"
 )
 
 // The sources of an incident. A source decides what its incidents are called (Key) and whether the responder may

@@ -27,9 +27,27 @@ type RunnerStatus struct {
 	checkedAt  time.Time
 	cliVersion string
 	build      version.Info // the runner's own version and commit; empty for a runner that does not send them
+	authMode   string       // empty is subscription; only a test sets another mode until the runner reports one (cycle 7b)
 }
 
 func NewRunnerStatus() *RunnerStatus { return &RunnerStatus{login: "unknown"} }
+
+// AuthModeSubscription is the runner's only mode today: the agent CLI uses the subscription login.
+const AuthModeSubscription = "subscription"
+
+// AuthMode is how the runner's agent CLI is billed. The login relay is offered only in subscription mode. A nil
+// *RunnerStatus is subscription mode.
+func (r *RunnerStatus) AuthMode() string {
+	if r == nil {
+		return AuthModeSubscription
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.authMode == "" {
+		return AuthModeSubscription
+	}
+	return r.authMode
+}
 
 // Touch notes an authenticated request of the runner. A nil *RunnerStatus does nothing.
 func (r *RunnerStatus) Touch(now time.Time) {

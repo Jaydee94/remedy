@@ -22,6 +22,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/kube"
 	"github.com/Jaydee94/remedy/internal/learner"
+	"github.com/Jaydee94/remedy/internal/loginrelay"
 	"github.com/Jaydee94/remedy/internal/poller"
 	"github.com/Jaydee94/remedy/internal/reaper"
 	"github.com/Jaydee94/remedy/internal/responder"
@@ -56,6 +57,10 @@ type App struct {
 
 	// Signals asks the signal sources (Alertmanager) and gives what they find to the incident engine.
 	Signals *signals.Runner
+
+	// Login relays the runner's login from the Setup page; nil unless REMEDY_LOGIN_RELAY is on. Its Run applies the time
+	// rules of a session and is started with the other loops.
+	Login *loginrelay.Manager
 
 	log *slog.Logger
 }
@@ -155,6 +160,11 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	// stops before its hook. Both hooks may run at once; the responder keeps its limits inside one store transaction.
 	sigs.AfterCycle = diagnoser.AutoStart
 
+	var login *loginrelay.Manager
+	if cfg.LoginRelay {
+		login = loginRelay(st, log)
+	}
+
 	deps := server.Deps{
 		Store:        st,
 		Signals:      sigs.States,
@@ -173,6 +183,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		Hosts:        hostSvc,
 		Settings:     set,
 		Facts:        facts(cfg, kubeReader, kubeWriter),
+		Login:        login,
 	}
 	var handler, internalHandler http.Handler
 	if cfg.InternalAddr != "" {
@@ -191,6 +202,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		KubeWriter:      kubeWriter,
 		Settings:        set,
 		Signals:         sigs,
+		Login:           login,
 		log:             log,
 		Poller: &poller.Poller{
 			Store:        st,
@@ -309,6 +321,11 @@ func facts(cfg config.Server, reader *kube.Reader, writer *kube.Writer) []server
 		{Label: "Cluster, reading", Value: yesNo(reader != nil)},
 		{Label: "Cluster, actions", Value: yesNo(writer != nil)},
 	}
+	relay := "off"
+	if cfg.LoginRelay {
+		relay = "on"
+	}
+	out = append(out, server.Fact{Label: "Login from this page", Value: relay})
 	if cfg.AlertmanagerCAFile != "" {
 		out = append(out, server.Fact{Label: "Alertmanager CA file", Value: cfg.AlertmanagerCAFile})
 	}
