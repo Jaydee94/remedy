@@ -1,5 +1,5 @@
 import type { RunnerLogin, RunnerLoginSession } from './api.ts'
-import { LOGIN_HOST, badAddressSentence, knownReason, reasonSentence, refusalSentence, validateUrl } from './loginrelay.ts'
+import { LOGIN_HOST, badAddressSentence, conflictSentence, knownReason, reasonSentence, refusalSentence, validateUrl } from './loginrelay.ts'
 
 export type Step = 1 | 2 | 3 | 4
 
@@ -282,4 +282,62 @@ function step4(s: RunnerLoginSession): WizardView {
     paragraphs: [sentence],
     actions: [action('done', labels.done), action('again', labels.again)],
   })
+}
+
+/** The routes of the sign-in that the page calls. */
+export type LoginRoute = 'start' | 'code' | 'cancel'
+
+/** What the page says when a code does not have the shape of one (the page's own check, or the server's 400). It never repeats the code. */
+export const codeProblem = 'This does not look like a one-time code. Copy the whole code from the vendor’s page and paste it again.'
+
+const unreachable = 'I could not reach the control plane. Please try again.'
+
+/**
+ * The sentence for a request of the sign-in that did not work. Only the start's 409 carries a word (a refusal); the 409 of the code and
+ * cancel routes means the session moved on, whatever the body says. Every sentence is a template: the server's message is never shown.
+ */
+export function requestProblem(route: LoginRoute, status: number, reason?: string): string {
+  if (status === 409) return route === 'start' ? refusalSentence(reason) : (conflictSentence(409) as string)
+  if (status === 429) return conflictSentence(429) as string
+  if (status === 400 && route === 'code') return codeProblem
+  if (status === 404) return notOffered
+  return unreachable
+}
+
+const ended = (s: RunnerLoginSession | null): s is RunnerLoginSession => s !== null && endedStates.has(s.state)
+
+/**
+ * The view of the sign-in the wizard works on: a finished session that the maintainer dismissed with Done is left out, so the wizard
+ * starts over at step 1 instead of showing the old result again. The dismissals are ids the page keeps in memory.
+ */
+export function shownLogin(offered: RunnerLogin | null, dismissed: ReadonlySet<string>): RunnerLogin | null {
+  if (offered === null) return null
+  const s = offered.session
+  if (ended(s) && dismissed.has(s.id)) return { ...offered, session: null }
+  return offered
+}
+
+/**
+ * Whether the wizard opens without a click for a finished session: the server keeps the result readable for ten minutes, and the page
+ * shows it until the maintainer dismisses it (after a reload too). An open session opens the wizard in `wizardView` itself.
+ */
+export function opensByItself(offered: RunnerLogin | null, dismissed: ReadonlySet<string>): boolean {
+  if (offered === null || !offered.available) return false
+  const s = offered.session
+  return ended(s) && !dismissed.has(s.id)
+}
+
+/**
+ * How often the runner card reads the runner while a sign-in is about: every 2 s while a session is open, and after a success until the
+ * runner reports the login (its report can come a few seconds after the session ended well), so the chip turns green soon. 10 s otherwise.
+ */
+export function runnerPollMs(sessionState: string, login: string): number {
+  if (openStates.has(sessionState)) return livePollMs
+  if (sessionState === 'succeeded' && login !== 'ok') return livePollMs
+  return idlePollMs
+}
+
+/** One sign-in attempt: a new session or a fresh start after a code that was not accepted changes it, a state change within it does not. */
+export function sessionPhase(s: RunnerLoginSession | null): string {
+  return s === null ? '' : `${s.id}:${s.attempt}`
 }

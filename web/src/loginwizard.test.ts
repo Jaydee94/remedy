@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { RunnerLogin, RunnerLoginSession } from './api.ts'
-import { reasonSentence, refusalSentence } from './loginrelay.ts'
-import { announcementKey, stepOf, wizardView } from './loginwizard.ts'
+import { conflictSentence, reasonSentence, refusalSentence } from './loginrelay.ts'
+import { announcementKey, codeProblem, opensByItself, requestProblem, runnerPollMs, sessionPhase, shownLogin, stepOf, wizardView } from './loginwizard.ts'
 import type { WizardView } from './loginwizard.ts'
 
 const validUrl =
@@ -382,5 +382,99 @@ describe('the code', () => {
     assert.equal(wizardView.length, 1)
     const v = view(session({ state: 'submitting' }), { typing: true })
     assert.ok(!/code=|[A-Za-z0-9]{20,}/.test(JSON.stringify(v)))
+  })
+})
+
+describe('what a refused request says', () => {
+  it('names the refusal of a start by its word', () => {
+    assert.equal(requestProblem('start', 409, 'run_active'), refusalSentence('run_active'))
+    assert.equal(requestProblem('start', 409, 'replace_required'), refusalSentence('replace_required'))
+    assert.equal(requestProblem('start', 409, undefined), refusalSentence(undefined))
+    assert.equal(requestProblem('start', 409, 'made-up'), refusalSentence('made-up'))
+  })
+
+  it('says the session moved on for a 409 of the code and cancel routes, whatever the body says', () => {
+    assert.equal(requestProblem('code', 409, 'already_active'), conflictSentence(409))
+    assert.equal(requestProblem('cancel', 409), conflictSentence(409))
+  })
+
+  it('says wait for a 429 on every route', () => {
+    for (const route of ['start', 'code', 'cancel'] as const) assert.equal(requestProblem(route, 429), conflictSentence(429))
+  })
+
+  it('says the code does not look right for a 400 of the code route', () => {
+    assert.equal(requestProblem('code', 400), codeProblem)
+  })
+
+  it('has a fixed sentence for anything else, a network failure included', () => {
+    for (const status of [0, 400, 404, 500, 502]) {
+      const s = requestProblem('start', status)
+      assert.ok(s.length > 0)
+      assert.ok(!/[0-9]/.test(s), s)
+    }
+    assert.match(requestProblem('cancel', 500), /try again/i)
+  })
+})
+
+describe('the shown session', () => {
+  const ended = session({ id: 'old', state: 'succeeded' })
+
+  it('hides a finished session the maintainer dismissed, so the wizard starts over', () => {
+    const shown = shownLogin(offered(ended), new Set(['old']))
+    assert.equal(shown?.session, null)
+    assert.equal(shown?.available, true)
+  })
+
+  it('keeps a finished session that was not dismissed, and every open one', () => {
+    assert.equal(shownLogin(offered(ended), new Set())?.session?.id, 'old')
+    const live = session({ id: 'old', state: 'awaiting_code', url: validUrl })
+    assert.equal(shownLogin(offered(live), new Set(['old']))?.session?.id, 'old')
+  })
+
+  it('passes null through', () => {
+    assert.equal(shownLogin(null, new Set()), null)
+  })
+})
+
+describe('the wizard opens by itself', () => {
+  it('for a finished session that was not dismissed (a reload shows the result until Done)', () => {
+    assert.equal(opensByItself(offered(session({ state: 'failed', reason: 'timeout' })), new Set()), true)
+    assert.equal(opensByItself(offered(session({ id: 'x', state: 'cancelled' })), new Set(['x'])), false)
+  })
+
+  it('not without a session, not for an open one (the view opens those), and not when the relay is not offered', () => {
+    assert.equal(opensByItself(offered(null), new Set()), false)
+    assert.equal(opensByItself(offered(session({ state: 'awaiting_code', url: validUrl })), new Set()), false)
+    assert.equal(opensByItself(null, new Set()), false)
+    assert.equal(opensByItself(offered(session({ state: 'succeeded' }), { available: false }), new Set()), false)
+  })
+
+  it('opens the step 4 of such a session in the view', () => {
+    const o = offered(session({ state: 'cancelled' }))
+    const v = wizardView({ offered: shownLogin(o, new Set()), open: opensByItself(o, new Set()), typing: false, now, loggedIn: false, epoch: 0 })
+    assert.equal(v.step, 4)
+  })
+})
+
+describe('the poll of the runner card', () => {
+  it('is 2 s while a session is open, and after a success until the runner reports the login', () => {
+    for (const state of ['starting', 'awaiting_code', 'submitting']) assert.equal(runnerPollMs(state, 'missing'), 2000, state)
+    assert.equal(runnerPollMs('succeeded', 'missing'), 2000)
+    assert.equal(runnerPollMs('succeeded', 'unknown'), 2000)
+  })
+
+  it('is 10 s otherwise', () => {
+    assert.equal(runnerPollMs('succeeded', 'ok'), 10000)
+    for (const state of ['', 'failed', 'cancelled', 'expired', 'made-up']) assert.equal(runnerPollMs(state, 'missing'), 10000, state)
+  })
+})
+
+describe('the phase of a sign-in', () => {
+  it('changes with a new session or a new attempt, not with the state', () => {
+    const a = session({ id: 'a', attempt: 1, state: 'awaiting_code' })
+    assert.equal(sessionPhase(a), sessionPhase({ ...a, state: 'submitting' }))
+    assert.notEqual(sessionPhase(a), sessionPhase({ ...a, attempt: 2 }))
+    assert.notEqual(sessionPhase(a), sessionPhase({ ...a, id: 'b' }))
+    assert.equal(sessionPhase(null), '')
   })
 })

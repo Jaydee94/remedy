@@ -1,16 +1,16 @@
 import { useEffect, useId, useState } from 'react'
 import { api, ApiError } from '@/api.ts'
 import type { RunnerStatus } from '@/api.ts'
+import { runnerPollMs } from '@/loginwizard.ts'
 import { hideOnError, runnerView, type Chip } from '@/runnerstatus.ts'
 import { useControlPlaneVersion } from '@/shellContext.ts'
 import { useClock } from '@/useClock.ts'
 import { runnerVersionLine, versionNotice } from '@/version.ts'
 import VersionText from '@/components/VersionText'
+import LoginWizard from '@/components/setup/LoginWizard'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-
-const POLL_MS = 10_000
 
 function ChipView({ chip }: { chip: Chip }) {
   return (
@@ -30,6 +30,11 @@ export default function RunnerSection() {
   const now = useClock()
   const build = useControlPlaneVersion()
   const headingId = useId()
+
+  // The wizard reports its session's state: a change reads the runner at once, and around a sign-in the card reads it every 2 s, so the
+  // login chip follows a sign-in within seconds.
+  const [sessionState, setSessionState] = useState('')
+  const pollMs = runnerPollMs(sessionState, status?.login ?? '')
 
   useEffect(() => {
     let alive = true
@@ -54,12 +59,12 @@ export default function RunnerSection() {
           setError(e instanceof ApiError ? e.message : 'Could not load the runner')
         })
     load()
-    const timer = setInterval(load, POLL_MS)
+    const timer = setInterval(load, pollMs)
     return () => {
       alive = false
       clearInterval(timer)
     }
-  }, [])
+  }, [pollMs, sessionState])
 
   if (absent) return null
 
@@ -88,10 +93,13 @@ export default function RunnerSection() {
             {view.sentence}
           </p>
           {view.detail && <p className="text-[13px] leading-relaxed text-muted-foreground">{view.detail}</p>}
-          {view.hint && <p className="text-[13px] leading-relaxed text-muted-foreground">{view.hint}</p>}
-          {view.command && (
-            <code className="rounded-xl bg-muted px-3 py-2 font-mono text-xs break-words whitespace-pre-wrap text-foreground select-all">{view.command}</code>
-          )}
+          {view.hint && !view.command && <p className="text-[13px] leading-relaxed text-muted-foreground">{view.hint}</p>}
+          {/* The wizard, when the control plane offers it; without it the hint and the command, as before the relay. */}
+          <LoginWizard
+            terminal={view.command ? { hint: view.hint, command: view.command } : null}
+            loggedIn={status.connected && status.login === 'ok'}
+            onSessionChange={setSessionState}
+          />
           {notice && <p className="text-[13px] leading-relaxed text-muted-foreground">{notice}</p>}
           {(runnerVersion || view.version) && (
             <div className="flex flex-wrap gap-x-4 gap-y-1">
