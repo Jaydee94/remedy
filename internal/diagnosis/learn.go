@@ -27,15 +27,16 @@ const LearnSchema = `{"type":"object","additionalProperties":false,"required":["
 	`"body":{"type":"string","description":"The note: plain text, at most 8 KB."},` +
 	`"evidence":{"type":"array","items":{"type":"array","items":{"type":"string"}},"description":"The commands you ran with host_read that showed this fact, each as its list of words."}}}}}}`
 
-// The limits of a learning answer (spec section 7).
+// The limits of a learning answer (spec section 7). The exported ones are stated in the learner's instructions (prompt.Learn), whose
+// test pins them to these values.
 const (
-	maxLearnOS        = 200
-	maxLearnRole      = 300
-	maxLearnList      = 20
-	maxLearnListItem  = 100
-	maxLearnNotes     = 2000
-	maxLearnEvidence  = 10
-	maxLearnArgvWords = 12
+	MaxLearnOS        = 200
+	MaxLearnRole      = 300
+	MaxLearnList      = 20
+	MaxLearnListItem  = 100
+	MaxLearnNotes     = 2000
+	MaxLearnEvidence  = 10
+	MaxLearnArgvWords = 12
 	// maxLearnWordRunes is not in the spec: it is defence in depth, so that 10 commands of 12 words cannot carry an unbounded text.
 	maxLearnWordRunes = 400
 	reservedSkillName = skill.ProfileName
@@ -195,7 +196,7 @@ func ParseLearn(raw []byte) (Learn, error) {
 		max     int
 		blank   bool
 		layout  bool
-	}{{"profile.os", p.OS, maxLearnOS, false, false}, {"profile.role", p.Role, maxLearnRole, false, false}, {"profile.notes", p.Notes, maxLearnNotes, true, true}} {
+	}{{"profile.os", p.OS, MaxLearnOS, false, false}, {"profile.role", p.Role, MaxLearnRole, false, false}, {"profile.notes", p.Notes, MaxLearnNotes, true, true}} {
 		// os, role and the entries of the lists are one line each, so that none can fake a heading of the profile note; the notes may
 		// have layout.
 		if err := checkLearnText(c.name, c.s, c.max, c.blank, c.layout); err != nil {
@@ -206,11 +207,11 @@ func ParseLearn(raw []byte) (Learn, error) {
 		name  string
 		items []string
 	}{{"profile.services", p.Services}, {"profile.containers", p.Containers}} {
-		if len(list.items) > maxLearnList {
-			return Learn{}, invalid("%s has %d entries, at most %d", list.name, len(list.items), maxLearnList)
+		if len(list.items) > MaxLearnList {
+			return Learn{}, invalid("%s has %d entries, at most %d", list.name, len(list.items), MaxLearnList)
 		}
 		for _, s := range list.items {
-			if err := checkLearnText(list.name+" entry", s, maxLearnListItem, false, false); err != nil {
+			if err := checkLearnText(list.name+" entry", s, MaxLearnListItem, false, false); err != nil {
 				return Learn{}, err
 			}
 		}
@@ -242,12 +243,12 @@ func ParseLearn(raw []byte) (Learn, error) {
 		if k.Evidence == nil {
 			return Learn{}, invalid("%s: evidence must be a list", where)
 		}
-		if len(k.Evidence) < 1 || len(k.Evidence) > maxLearnEvidence {
-			return Learn{}, invalid("%s: %d cited commands, between 1 and %d are needed", where, len(k.Evidence), maxLearnEvidence)
+		if len(k.Evidence) < 1 || len(k.Evidence) > MaxLearnEvidence {
+			return Learn{}, invalid("%s: %d cited commands, between 1 and %d are needed", where, len(k.Evidence), MaxLearnEvidence)
 		}
 		for _, argv := range k.Evidence {
-			if len(argv) < 1 || len(argv) > maxLearnArgvWords {
-				return Learn{}, invalid("%s: a cited command has %d words, between 1 and %d are needed", where, len(argv), maxLearnArgvWords)
+			if len(argv) < 1 || len(argv) > MaxLearnArgvWords {
+				return Learn{}, invalid("%s: a cited command has %d words, between 1 and %d are needed", where, len(argv), MaxLearnArgvWords)
 			}
 			for _, w := range argv {
 				if err := checkLearnText(where+" cited word", w, maxLearnWordRunes, false, false); err != nil {
