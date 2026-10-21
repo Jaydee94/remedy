@@ -67,7 +67,7 @@ Anything not described is not a read.
 
 | Form | Runs as | Notes |
 |---|---|---|
-| `docker ps -a` | sudo | Needs a container pattern on the host. |
+| `docker ps -a` | sudo | Needs a container pattern on the host. Since cycle 6 it runs as `docker ps -a --filter name=^PREFIX` (`^NAME$` for an exact name), so only the host's containers are listed; the agent still asks for the plain words (section 5 of [`2026-10-21-operation-6-design.md`](2026-10-21-operation-6-design.md)). |
 | `docker logs --tail N NAME` | sudo | |
 | `docker inspect NAME` | sudo | The output is filtered (section 2). |
 | `systemctl status UNIT --no-pager` | the account | |

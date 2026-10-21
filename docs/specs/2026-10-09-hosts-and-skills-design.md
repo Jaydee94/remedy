@@ -1,6 +1,6 @@
 # Hosts, skills and configuration in the UI
 
-Status: draft for the maintainer's review, 2026-10-09; cycles 1 to 5 are implemented (the real runs: cycle 4 on 2026-10-19, cycle 5 on 2026-10-21), 6 is not. This is the umbrella specification of six cycles. Each cycle gets its own spec and plan before it is built;
+Status: draft for the maintainer's review, 2026-10-09; cycles 1 to 5 are implemented (the real runs: cycle 4 on 2026-10-19, cycle 5 on 2026-10-21); cycle 6 is specified ([`2026-10-21-operation-6-design.md`](2026-10-21-operation-6-design.md)), its filtered `docker ps -a` and two chart values for egress are implemented on the branch of the cycle-6a pull request, and the install on the home server, the drill and the NAS onboarding are not made. This is the umbrella specification of six cycles. Each cycle gets its own spec and plan before it is built;
 this document fixes the decisions they share and the order.
 Parent documents: [`../design.md`](../design.md) (2.2, 2.5, 2.7 and the roadmap),
 [`2026-10-05-phase-2d-signals-design.md`](2026-10-05-phase-2d-signals-design.md) (the Alertmanager source and the responder for outages, which this narrows and
@@ -69,7 +69,7 @@ This is the one place where a mistake means an action without an approval, so it
 The privileges of the account are the second barrier and the one that does not depend on this code. That is why the connection test reports them (section 5) and
 why the onboarding snippet of a host is a `sudoers` file with exact lines (section 4), not a group membership.
 
-A host whose account may use `docker` through `sudo -n` only for exact commands can show a container's state and logs for the containers the `sudoers` file names, and nothing else. For the NAS the drill of section 10 uses `remedy-*`: the Paperless containers are not visible to the account.
+A host whose account may use `docker` through `sudo -n` only for exact commands can show a container's state and logs for the containers the `sudoers` file names, and nothing else. For the NAS the drill of section 10 uses `remedy-*`: the Paperless containers are not visible to the account. (Not true of the first design, whose `docker ps -a` listed every container of the machine; cycle 6 fixes that: `docker ps -a` runs with the host's container pattern as a filter and the `sudoers` line allows only that command, see section 5 of [`2026-10-21-operation-6-design.md`](2026-10-21-operation-6-design.md).)
 
 ## 4. Cycle 1: hosts and access
 
@@ -84,13 +84,13 @@ A host whose account may use `docker` through `sudo -n` only for exact commands 
 The onboarding snippet is text for the maintainer to read and run on the host. It names the account to create, the line for `authorized_keys` (the public key derived from the private key the maintainer entered; a password needs no such line), and a `sudoers` file with **exact** lines. For the NAS:
 
 ```
-remedy ALL=(root) NOPASSWD: /usr/bin/docker ps -a
+remedy ALL=(root) NOPASSWD: /usr/bin/docker ps -a --filter name\=^remedy-
 remedy ALL=(root) NOPASSWD: /usr/bin/docker logs --tail * remedy-*
 remedy ALL=(root) NOPASSWD: /usr/bin/docker inspect remedy-*
 remedy ALL=(root) NOPASSWD: /usr/bin/docker start remedy-*, /usr/bin/docker restart remedy-*, /usr/bin/docker stop remedy-*
 ```
 
-The snippet is a suggestion generated from the host's kind; it is never run by Remedy. The cycle's spec says how the lines are chosen and shows the known limits of wildcards in `sudoers`.
+The first line is the filtered `docker ps -a` of cycle 6 (no star on it, a backslash before the `=` as `sudoers` needs; for an exact container name the filter is `name\=^NAME$`): a host that had the unfiltered line in its file applies the new snippet again. The snippet is a suggestion generated from the host's kind; it is never run by Remedy. The cycle's spec says how the lines are chosen and shows the known limits of wildcards in `sudoers`.
 
 **Connection test.** Connects, shows the fingerprint when none is pinned, and after confirmation runs a fixed set of reads (`id`, `groups`, `sudo -n -l`, `uname -a`) and reports: reachable, host key matches, who the account is, its groups, whether `sudo -n` works and for what. It **warns** when the account is root, when it is in the `docker` group, or when `sudo -n -l` shows `(ALL) NOPASSWD: ALL`. The test is not an agent run and does not use the host tools.
 
@@ -200,4 +200,4 @@ A log line that contains an instruction must not become a skill. The defence is 
 - Cycle 3: decided in [`2026-10-14-settings-3-design.md`](2026-10-14-settings-3-design.md) (the registry has six keys: `poll_interval`, `diagnose_cooldown`, `diagnose_max_per_incident`, `diagnose_max_per_day`, `k8s_write_namespaces` and `run_timeout`; a stored value that fails is shown on its row as a problem).
 - Cycle 4: how a matcher conflict is shown (answered: a tie is shown as `alsoMatches` on the incident, see the [cycle 4 spec](2026-10-16-alertmanager-4-design.md)); what an incident without a host gets for tools (answered in plan 4b: section 7 of the cycle 4 spec gives the run the incident's host only when there is one, so an incident without a host gets no host tools).
 - Cycle 5: decided in [`2026-10-19-skills-5-design.md`](2026-10-19-skills-5-design.md) (the learner's answer schema: its section 7; at most 8 proposals per learning run; a host's skills are deleted with it). Plan 5b: the profile is one Markdown note with fixed headings, and at most 20 proposals wait per host.
-- Cycle 6: how the SSH egress rule is written for the chart's NetworkPolicies, and the `VMRule` for the drill in the `home-server` repository.
+- Cycle 6: decided in [`2026-10-21-operation-6-design.md`](2026-10-21-operation-6-design.md) (two typed chart values, `networkPolicy.hosts` for single SSH addresses and `networkPolicy.alertmanager`, not a free list; the filtered `docker ps -a`; the wrapper chart under the home-server's ApplicationSet; the `VMRule` of the drill is a pull request in the `home-server` repository and is removed afterwards). Implemented on the branch of the cycle-6a pull request: the filter and the chart values. Not made: the install, the drill and the NAS onboarding ([runbook](../runbook/home-server-drill.md)).

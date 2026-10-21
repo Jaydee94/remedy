@@ -209,6 +209,10 @@ Decided on 2026-10-09; the specification is
   valid structured answer in runs that also used MCP tools, and `host_list`, `host_read`, the cluster tools, the approval and
   its expiry worked; after the follow-up fixes a control run proved `host_change` too (approved, run as root through `sudo -n`).
   Not covered: a refused or expired `host_change`, the chart's in-cluster runner with an outage, the home server and a real Prometheus.
+- **Operation on the home server (cycle 6)** is specified ([`specs/2026-10-21-operation-6-design.md`](specs/2026-10-21-operation-6-design.md), [plan](plans/operation-6-home-server.md)): Remedy is installed from a release as a wrapper chart under
+  the home server's ApplicationSet, reads that lab's Alertmanager, looks at the NAS and runs the drill of the umbrella spec (section 10) end to end. Two changes come first and are implemented on the branch of the cycle-6a pull request:
+  `docker ps -a` runs with the host's container pattern as a filter (the Paperless containers stay invisible, enforced by `sudoers` as well), and the chart gets two typed egress values, `networkPolicy.hosts` and
+  `networkPolicy.alertmanager`, instead of a free list. The install, the drill and the NAS onboarding are not made ([runbook](runbook/home-server-drill.md)).
 
 ## 3. Roadmap
 
