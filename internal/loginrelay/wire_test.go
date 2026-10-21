@@ -1,9 +1,11 @@
 package loginrelay
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 )
@@ -17,11 +19,11 @@ func TestDecodeReportIsStrict(t *testing.T) {
 		t.Fatal(err)
 	}
 	if r.Session != "s1" || r.State != "awaiting_code" || r.Attempt != 1 || r.URL != validURL {
-		t.Fatalf("report = %+v", r)
+		t.Fatalf("report: session %q state %q attempt %d (url masked)", r.Session, r.State, r.Attempt)
 	}
 	r, err = DecodeReport(strings.NewReader(`{"session":"s1","state":"failed","attempt":3,"reason":"invalid_code"}`))
 	if err != nil || r.Reason != ReasonInvalidCode {
-		t.Fatalf("failed report: %+v %v", r, err)
+		t.Fatalf("failed report: reason %q err %v", r.Reason, err)
 	}
 	if _, err = DecodeReport(strings.NewReader(`{"session":"s1","state":"succeeded","attempt":2}`)); err != nil {
 		t.Fatalf("succeeded report: %v", err)
@@ -148,7 +150,7 @@ func TestCommandWireJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	if a.Seq != 3 || a.Session != "s1" || a.Action != "code" || a.Code != planted {
-		t.Fatalf("answer = %+v", a)
+		t.Fatalf("answer: seq %d session %q action %q (code masked)", a.Seq, a.Session, a.Action)
 	}
 
 	start := Command{Seq: 1, Session: "s1", Action: ActionStart}
@@ -157,5 +159,60 @@ func TestCommandWireJSON(t *testing.T) {
 	}
 	if ActionStart != "start" || ActionCode != "code" || ActionCancel != "cancel" {
 		t.Fatal("action words changed")
+	}
+}
+
+func TestReportAndAnswerMaskTheirSecrets(t *testing.T) {
+	secretURL := "https://claude.com/cai/oauth/authorize?planted-url-7x"
+	secretCode := "planted-code-4q"
+	rep := Report{Session: "s1", State: "awaiting_code", Attempt: 2, URL: secretURL}
+	ans := PollAnswer{Seq: 4, Session: "s1", Action: "code", Code: secretCode}
+
+	for _, tc := range []struct {
+		name   string
+		v      any
+		secret string
+	}{
+		{"report", rep, secretURL},
+		{"report pointer", &rep, secretURL},
+		{"answer", ans, secretCode},
+		{"answer pointer", &ans, secretCode},
+		{"report in struct", struct{ R Report }{rep}, secretURL},
+		{"answer in struct", struct{ A PollAnswer }{ans}, secretCode},
+	} {
+		for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q", "%x", "%d"} {
+			noLeakOf(t, tc.name+" "+verb, fmt.Sprintf(verb, tc.v), tc.secret)
+		}
+		noLeakOf(t, tc.name+" Sprint", fmt.Sprint(tc.v), tc.secret)
+		for hname, mk := range map[string]func(*bytes.Buffer) *slog.Logger{
+			"text": func(w *bytes.Buffer) *slog.Logger { return slog.New(slog.NewTextHandler(w, nil)) },
+			"json": func(w *bytes.Buffer) *slog.Logger { return slog.New(slog.NewJSONHandler(w, nil)) },
+		} {
+			if hname == "json" && strings.Contains(tc.name, "in struct") {
+				// slog's JSON handler marshals an anonymous struct with
+				// encoding/json, whose output is the wire form by design.
+				continue
+			}
+			var buf bytes.Buffer
+			mk(&buf).Info("x", slog.Any("v", tc.v))
+			noLeakOf(t, tc.name+" slog "+hname, buf.String(), tc.secret)
+			buf.Reset()
+			mk(&buf).Info("x", "v", tc.v)
+			noLeakOf(t, tc.name+" slog pair "+hname, buf.String(), tc.secret)
+		}
+	}
+
+	// The wire is unchanged: the runner needs the url, the poll needs the code.
+	b, err := json.Marshal(rep)
+	if err != nil || !strings.Contains(string(b), `"url":"`+secretURL+`"`) {
+		t.Fatalf("json of a report lost the url: %s %v", b, err)
+	}
+	b, err = json.Marshal(ans)
+	if err != nil || !strings.Contains(string(b), `"code":"`+secretCode+`"`) {
+		t.Fatalf("json of an answer lost the code: %s %v", b, err)
+	}
+	var back Report
+	if err := json.Unmarshal([]byte(`{"session":"s1","state":"awaiting_code","attempt":1,"url":"u-1"}`), &back); err != nil || back.URL != "u-1" {
+		t.Fatalf("decode changed: %v", err)
 	}
 }

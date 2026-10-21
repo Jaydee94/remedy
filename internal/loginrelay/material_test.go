@@ -16,13 +16,72 @@ type holder struct {
 	Code Material `json:"code"`
 }
 
-func noLeak(t *testing.T, what, got string) {
+// leakForms lists every form of secret that must not appear in an output: the
+// text, its hex, the decimal-bytes form of a byte slice and the hex of that.
+func leakForms(secret string) []string {
+	dec := fmt.Sprint([]byte(secret))
+	hx := hex.EncodeToString([]byte(secret))
+	return []string{
+		secret, hx, strings.ToUpper(hx),
+		dec, strings.Trim(dec, "[]"), hex.EncodeToString([]byte(dec)),
+	}
+}
+
+func noLeakOf(t *testing.T, what, got, secret string) {
 	t.Helper()
-	if strings.Contains(got, planted) || strings.Contains(got, hex.EncodeToString([]byte(planted))) {
-		t.Fatalf("%s leaks the material: %q", what, got)
+	for _, form := range leakForms(secret) {
+		if strings.Contains(got, form) {
+			t.Fatalf("%s leaks the material (form %q): %q", what, form, got)
+		}
 	}
 	if !strings.Contains(got, "***") {
 		t.Fatalf("%s has no stars: %q", what, got)
+	}
+}
+
+func noLeak(t *testing.T, what, got string) {
+	t.Helper()
+	noLeakOf(t, what, got, planted)
+}
+
+// hidden has an UNEXPORTED Material field: fmt cannot call methods there and
+// prints the field by reflection, so the holder's own layout must hide it.
+type hidden struct{ m Material }
+
+type hiddenPtr struct{ m *Material }
+
+func TestMaterialInAnUnexportedFieldHidesItsBytes(t *testing.T) {
+	m := NewMaterial(planted)
+	h := hidden{m: m}
+	hp := hiddenPtr{m: &m}
+	values := map[string]any{"value": h, "pointer": &h, "ptr field": hp, "ptr to ptr field": &hp}
+
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q", "%x", "%X", "%d", "%08.3v"} {
+		for name, v := range values {
+			got := fmt.Sprintf(verb, v)
+			for _, form := range leakForms(planted) {
+				if strings.Contains(got, form) {
+					t.Fatalf("%s %s leaks (form %q): %q", name, verb, form, got)
+				}
+			}
+		}
+	}
+	for hname, mk := range map[string]func(*bytes.Buffer) *slog.Logger{
+		"text": func(w *bytes.Buffer) *slog.Logger { return slog.New(slog.NewTextHandler(w, nil)) },
+		"json": func(w *bytes.Buffer) *slog.Logger { return slog.New(slog.NewJSONHandler(w, nil)) },
+	} {
+		for name, v := range values {
+			var buf bytes.Buffer
+			mk(&buf).Info("x", slog.Any("h", v))
+			for _, form := range leakForms(planted) {
+				if strings.Contains(buf.String(), form) {
+					t.Fatalf("slog %s %s leaks (form %q): %q", hname, name, form, buf.String())
+				}
+			}
+		}
+	}
+	if string(h.m.Bytes()) != planted {
+		t.Fatal("content lost")
 	}
 }
 

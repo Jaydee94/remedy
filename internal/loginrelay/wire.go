@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 )
 
 const (
@@ -71,6 +73,46 @@ type Report struct {
 	Attempt int    `json:"attempt"`
 	URL     string `json:"url,omitempty"`
 	Reason  Reason `json:"reason,omitempty"`
+}
+
+// URL and Code are plain strings because they are JSON decode targets. The
+// methods below keep them out of fmt and slog: every verb and every handler
+// shows stars in their place. JSON encoding is unchanged, the runner needs the
+// url on the wire.
+
+func (a PollAnswer) text() string {
+	return fmt.Sprintf("{seq=%d session=%s action=%s code=%s}", a.Seq, a.Session, a.Action, stars)
+}
+
+// Format writes the answer with the code masked, for every verb.
+func (a PollAnswer) Format(f fmt.State, _ rune) { _, _ = f.Write([]byte(a.text())) }
+
+// String is the answer with the code masked.
+func (a PollAnswer) String() string { return a.text() }
+
+// LogValue keeps the code out of slog.
+func (a PollAnswer) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Int64("seq", a.Seq), slog.String("session", a.Session),
+		slog.String("action", a.Action), slog.String("code", stars))
+}
+
+func (r Report) text() string {
+	return fmt.Sprintf("{session=%s state=%s attempt=%d url=%s reason=%s}", r.Session, r.State, r.Attempt, stars, string(r.Reason))
+}
+
+// Format writes the report with the url masked, for every verb.
+func (r Report) Format(f fmt.State, _ rune) { _, _ = f.Write([]byte(r.text())) }
+
+// String is the report with the url masked.
+func (r Report) String() string { return r.text() }
+
+// LogValue keeps the url out of slog.
+func (r Report) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("session", r.Session), slog.String("state", r.State),
+		slog.Int("attempt", r.Attempt), slog.String("url", stars),
+		slog.String("reason", string(r.Reason)))
 }
 
 // decodeStrict reads at most max bytes, decodes exactly one JSON object into v
