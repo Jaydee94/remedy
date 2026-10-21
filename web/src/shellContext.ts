@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef } from 'react'
+import type { VersionInfo } from './api.ts'
 import { emptyShell } from './shell.ts'
 import type { Header, ShellState } from './shell.ts'
 import { useToast } from './toast.ts'
@@ -16,6 +17,13 @@ export const ShellStateContext = createContext<ShellState>(emptyShell)
 
 export function useShellState(): ShellState {
   return useContext(ShellStateContext)
+}
+
+/** The control plane's build, asked once by the shell. Null until it answers, and when it cannot. */
+export const VersionContext = createContext<VersionInfo | null>(null)
+
+export function useControlPlaneVersion(): VersionInfo | null {
+  return useContext(VersionContext)
 }
 
 /** The way to sign out, for a page or the sidebar. A failed request keeps the session and says so; it never rejects. A second call while one runs is ignored. */

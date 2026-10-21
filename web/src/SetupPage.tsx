@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from './api.ts'
 import type { GitHubConnection } from './api.ts'
-import { useSignOut } from './shellContext.ts'
+import { useControlPlaneVersion, useSignOut } from './shellContext.ts'
+import { sidebarVersion } from './version.ts'
+import VersionText from '@/components/VersionText'
 import GitHubSection from '@/components/setup/GitHubSection'
 import ReposSection from '@/components/setup/ReposSection'
 import RunnerSection from '@/components/setup/RunnerSection'
@@ -12,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 /** What Remedy watches and how much it does on its own. One column; on a phone "Sign out" is the last thing on the page. */
 export default function SetupPage() {
   const signOut = useSignOut()
+  const build = useControlPlaneVersion()
   const [connection, setConnection] = useState<GitHubConnection | null>(null)
   const [error, setError] = useState('')
 
@@ -51,7 +54,7 @@ export default function SetupPage() {
 
       <SettingsSection />
 
-      <div className="border-t border-border pt-4 md:hidden">
+      <div className="flex items-center justify-between gap-3 border-t border-border pt-4 md:hidden">
         <button
           type="button"
           onClick={signOut}
@@ -59,6 +62,7 @@ export default function SetupPage() {
         >
           Sign out
         </button>
+        <VersionText line={sidebarVersion(build)} />
       </div>
     </div>
   )

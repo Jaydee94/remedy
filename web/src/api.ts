@@ -53,6 +53,15 @@ export interface RunnerStatus {
   loginCheckedAt?: string
   /** The CLI's version line, plain text. */
   cliVersion?: string
+  /** The runner's own version and short commit. Left out by a runner that is older than this field. */
+  version?: string
+  commit?: string
+}
+
+/** The control plane's own build. */
+export interface VersionInfo {
+  version: string
+  commit: string
 }
 
 /** A call of an agent to a gatekeeper tool: a row of the audit log, and for a mutating tool an approval. */
@@ -510,6 +519,7 @@ export const api = {
   putSetting: (key: string, value: SettingValue) => request<Setting>('PUT', `/api/settings/${key}`, { value }),
   deleteSetting: (key: string) => request<void>('DELETE', `/api/settings/${key}`),
   getRunner: () => request<RunnerStatus>('GET', '/api/runner'),
+  getVersion: () => request<VersionInfo>('GET', '/api/version'),
 
   /** The newest entries, or the ones before the entry with the id `before`. */
   listActivity: (before?: number) =>

@@ -2,10 +2,12 @@ import { Link } from 'react-router'
 import { askFor, filterIncidents, incidentPreview } from '@/conversation.ts'
 import { incidentStateColor, timeAgo } from '@/incidents.ts'
 import { navBadge, navItems } from '@/shell.ts'
-import { useSignOut } from '@/shellContext.ts'
+import { useControlPlaneVersion, useSignOut } from '@/shellContext.ts'
 import { useClock } from '@/useClock.ts'
+import { sidebarVersion } from '@/version.ts'
 import type { Section, ShellState } from '@/shell.ts'
 import RemedyMark from '@/components/RemedyMark'
+import VersionText from '@/components/VersionText'
 import { navIcons } from '@/components/shell/navIcons.ts'
 import PendingBadge from '@/components/shell/PendingBadge'
 import { cn } from '@/lib/utils'
@@ -22,6 +24,7 @@ const focus = 'outline-none focus-visible:ring-3 focus-visible:ring-ring/50'
 /** The desktop sidebar: the navigation, the open conversations, what is coming later. Hidden below the md breakpoint. */
 export default function Sidebar({ section, pathname, shell, proposals }: Props) {
   const signOut = useSignOut()
+  const build = useControlPlaneVersion()
   const now = useClock()
   return (
     <aside className="hidden w-75 shrink-0 flex-col border-r border-border bg-sidebar md:flex">
@@ -99,13 +102,16 @@ export default function Sidebar({ section, pathname, shell, proposals }: Props) 
             </span>
           ))}
         </span>
-        <button
-          type="button"
-          onClick={signOut}
-          className={cn('mt-1 self-start rounded-full text-[13px] text-subtle transition-colors hover:text-foreground', focus)}
-        >
-          Sign out
-        </button>
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={signOut}
+            className={cn('rounded-full text-[13px] text-subtle transition-colors hover:text-foreground', focus)}
+          >
+            Sign out
+          </button>
+          <VersionText line={sidebarVersion(build)} />
+        </div>
       </div>
     </aside>
   )

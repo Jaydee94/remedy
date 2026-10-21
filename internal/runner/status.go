@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Jaydee94/remedy/internal/provider"
+	"github.com/Jaydee94/remedy/internal/version"
 )
 
 // Status is what the runner knows about itself: whether the control plane answers, whether the CLI is logged in, and
@@ -19,9 +20,10 @@ type Status struct {
 	login      provider.LoginState
 	checkedAt  time.Time
 	cliVersion string
+	build      version.Info // the runner's own build, as it was when the status was made
 }
 
-func NewStatus() *Status { return &Status{login: provider.LoginUnknown} }
+func NewStatus() *Status { return &Status{login: provider.LoginUnknown, build: version.Get()} }
 
 // SetConnected records whether the control plane answered the runner's last request.
 func (s *Status) SetConnected(ok bool) {
@@ -61,12 +63,14 @@ func (s *Status) SetCLIVersion(v string) {
 	s.mu.Unlock()
 }
 
-// Report is what the runner tells the control plane: the body of POST /runner/v1/status. It carries a state and a version
-// line, never output of the CLI.
+// Report is what the runner tells the control plane: the body of POST /runner/v1/status. It carries a state, the CLI's
+// version line and the runner's own version and commit, never output of the CLI.
 type Report struct {
 	Login          string    `json:"login"`
 	LoginCheckedAt time.Time `json:"loginCheckedAt"`
 	CLIVersion     string    `json:"cliVersion,omitempty"`
+	Version        string    `json:"version,omitempty"`
+	Commit         string    `json:"commit,omitempty"`
 }
 
 func (s *Status) Report() Report {
@@ -75,7 +79,7 @@ func (s *Status) Report() Report {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return Report{Login: string(s.login), LoginCheckedAt: s.checkedAt, CLIVersion: s.cliVersion}
+	return Report{Login: string(s.login), LoginCheckedAt: s.checkedAt, CLIVersion: s.cliVersion, Version: s.build.Version, Commit: s.build.Commit}
 }
 
 // StatusHandler serves the probes of the runner pod. /livez answers 200 whenever the process serves HTTP. /readyz

@@ -14,7 +14,31 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/provider"
 	"github.com/Jaydee94/remedy/internal/runner"
+	"github.com/Jaydee94/remedy/internal/version"
 )
+
+func TestTheReportCarriesTheRunnersOwnVersion(t *testing.T) {
+	oldV, oldC := version.Version, version.Commit
+	t.Cleanup(func() { version.Version, version.Commit = oldV, oldC })
+	version.Version, version.Commit = "9.9.9-test", "0123456789abcdef"
+
+	srv := &statusServer{}
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+	rep := &runner.Reporter{
+		Client: &runner.Client{BaseURL: ts.URL, Token: "runner-token-with-at-least-24-chars", HTTP: ts.Client()},
+		Status: runner.NewStatus(), Interval: 20 * time.Millisecond, Log: quiet(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { rep.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	eventually(t, "the first report", func() bool { return srv.count() >= 1 })
+	if got := srv.last(); got.Version != "9.9.9-test" || got.Commit != "0123456" {
+		t.Fatalf("the report = %+v, want version 9.9.9-test and commit 0123456", got)
+	}
+}
 
 func TestNextCheckIsLazyWhenLoggedInAndEagerOtherwise(t *testing.T) {
 	ok, other := 10*time.Minute, time.Minute

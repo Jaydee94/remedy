@@ -22,7 +22,8 @@ expected, not seen: section 3 lists the three things the first run proves.
 What is published where:
 
 - Images `ghcr.io/jaydee94/remedy-server` and `ghcr.io/jaydee94/remedy-runner`: `sha-<short>` and `edge` on every push to `main`,
-  and `X.Y.Z` when there is a release. No `latest`.
+  and `X.Y.Z` when there is a release. No `latest`. The binaries in them carry the version (`X.Y.Z`, or `edge` without a release) and the
+  commit (`internal/version`, build arguments `VERSION` and `COMMIT`); the UI shows it in the sidebar and on Setup.
 - The chart `oci://ghcr.io/jaydee94/charts/remedy` at version `X.Y.Z` (its `appVersion` is `X.Y.Z` too, so it pulls the images `X.Y.Z`).
 - The git tag `vX.Y.Z`.
 - The GitHub release `vX.Y.Z` with the changelog as its notes and the chart `remedy-X.Y.Z.tgz` attached.

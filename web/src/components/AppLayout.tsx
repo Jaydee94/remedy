@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 import { Outlet, useLocation } from 'react-router'
 import { defaultHeader, sectionOf } from '@/shell.ts'
 import type { Header } from '@/shell.ts'
-import { ShellContext, ShellStateContext } from '@/shellContext.ts'
+import { ShellContext, ShellStateContext, VersionContext } from '@/shellContext.ts'
 import { useProposals } from '@/useProposals.ts'
 import { useShell } from '@/useShell.ts'
+import { useVersion } from '@/useVersion.ts'
 import MobileBar from '@/components/shell/MobileBar'
 import OfflineBanner from '@/components/shell/OfflineBanner'
 import Sidebar from '@/components/shell/Sidebar'
@@ -16,6 +17,7 @@ export default function AppLayout({ onSignOut }: { onSignOut: () => void | Promi
   const { pathname } = useLocation()
   const shell = useShell()
   const proposals = useProposals()
+  const build = useVersion()
   const [custom, setCustom] = useState<Header | null>(null)
   const context = useMemo(() => ({ setHeader: setCustom, signOut: onSignOut }), [onSignOut])
   const section = sectionOf(pathname)
@@ -24,21 +26,23 @@ export default function AppLayout({ onSignOut }: { onSignOut: () => void | Promi
   return (
     <ShellContext.Provider value={context}>
       <ShellStateContext.Provider value={shell}>
-        <ToastProvider>
-          <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-            {!shell.online && <OfflineBanner />}
-            <div className="flex min-h-0 flex-1">
-              <Sidebar section={section} pathname={pathname} shell={shell} proposals={proposals} />
-              <main className="flex min-w-0 flex-1 flex-col">
-                <MobileBar header={header} online={shell.online} />
-                <div className="min-h-0 flex-1 overflow-auto">
-                  <Outlet />
-                </div>
-                <TabBar section={section} pathname={pathname} pending={shell.pending} proposals={proposals} />
-              </main>
+        <VersionContext.Provider value={build}>
+          <ToastProvider>
+            <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+              {!shell.online && <OfflineBanner />}
+              <div className="flex min-h-0 flex-1">
+                <Sidebar section={section} pathname={pathname} shell={shell} proposals={proposals} />
+                <main className="flex min-w-0 flex-1 flex-col">
+                  <MobileBar header={header} online={shell.online} />
+                  <div className="min-h-0 flex-1 overflow-auto">
+                    <Outlet />
+                  </div>
+                  <TabBar section={section} pathname={pathname} pending={shell.pending} proposals={proposals} />
+                </main>
+              </div>
             </div>
-          </div>
-        </ToastProvider>
+          </ToastProvider>
+        </VersionContext.Provider>
       </ShellStateContext.Provider>
     </ShellContext.Provider>
   )

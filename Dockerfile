@@ -12,7 +12,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web /src/web/dist ./web/dist
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags webui -o /out/remedy-server ./cmd/remedy-server
+# The release passes the version and the commit (release.yml); a build without them says "dev". internal/version reads them.
+ARG VERSION=dev
+ARG COMMIT=
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags webui -ldflags "-X github.com/Jaydee94/remedy/internal/version.Version=$VERSION -X github.com/Jaydee94/remedy/internal/version.Commit=$COMMIT" -o /out/remedy-server ./cmd/remedy-server
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/remedy-tokenrefresh ./cmd/remedy-tokenrefresh
 RUN mkdir /out/data
 

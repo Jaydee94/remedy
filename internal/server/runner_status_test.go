@@ -33,6 +33,8 @@ type runnerView struct {
 	Login          string     `json:"login"`
 	LoginCheckedAt *time.Time `json:"loginCheckedAt"`
 	CLIVersion     string     `json:"cliVersion"`
+	Version        string     `json:"version"`
+	Commit         string     `json:"commit"`
 }
 
 func getRunnerView(t *testing.T, e *env, c *http.Client) runnerView {
