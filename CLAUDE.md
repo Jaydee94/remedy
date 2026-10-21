@@ -100,7 +100,7 @@ Trust boundaries that span several files and are easy to break:
 
 ## Hard rules
 
-- Never read, copy, log or store the agent CLIs' credentials; only start the unmodified binary (terms of use).
+- Never read, copy, log or store the agent CLIs' credentials; only start the unmodified binary (terms of use). One narrow, named exception (`docs/design.md` 2.7.1, approved on 2026-10-21 with `docs/specs/2026-10-21-ui-login-relay-design.md`): the login relay of the Setup page passes the authorization URL of `claude auth login` and the one-time code through the control plane and the runner, in memory only, for one attempt, never in a database row, an activity entry, a log line, an event, an error or an answer to a browser (the code is write-only); nothing the CLI writes in its config directory is ever read, and tokens never pass through Remedy.
 - No auto-merge, no force-push (additional commits only; abort on new foreign commits).
 - Logs, alert text, PR text and commit messages are untrusted input and never go to an agent as instructions.
 - Secrets are redacted before anything is handed to a CLI. Repository files are handed over as they are, minus `.env*`, `*.pem`, `*.key` and `id_rsa*`; a secret committed elsewhere reaches the agent (accepted in the spec).

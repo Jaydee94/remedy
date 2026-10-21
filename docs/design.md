@@ -151,6 +151,23 @@ running as a service for other people's homelabs.
   **Cycle 4b (2026-10-19)** adds one: how long an approval of an automatic run waits before it expires
   (`auto_approval_timeout`, `REMEDY_AUTO_APPROVAL_TIMEOUT` is its default, 15 minutes, `0` means without a limit).
 
+#### 2.7.1 Exception: the runner's login from the Setup page
+
+Decided on 2026-10-21; the specification, approved the same day, is [`specs/2026-10-21-ui-login-relay-design.md`](specs/2026-10-21-ui-login-relay-design.md).
+Section 2.1 says Remedy never touches login credentials, and the hard rule of `CLAUDE.md` says never to read, copy, log or store the agent CLIs'
+credentials. That stays the rule. There is **one narrow exception**: when the maintainer starts "Log in" on the Setup page, the runner starts the
+unmodified `claude auth login`, and **two pieces of login material pass through Remedy's code, and only these two**: the authorization URL the CLI
+prints (it holds OAuth state and a PKCE challenge) and the one-time code the maintainer pastes from the vendor's page. Both stay **in memory** for one
+attempt (at most ten minutes). They are never written to the database, the activity feed, a log, an error text, an event or a run's output; they are
+shown only to the signed-in admin; the code is write-only (no answer to a browser ever contains it). Everything the CLI writes in its own directory
+(tokens, its config, its output after a login) is never read, copied, stored or forwarded; the runner confirms the login with `claude auth status`
+as a boolean. The relay is opt-in (a bootstrap value, off by default), exists only in subscription mode, and `kubectl exec -it` into the runner stays
+the fallback.
+**Terms of use.** The research ([`research/subscription-cli-usage.md`](research/subscription-cli-usage.md)) says it is forbidden to "collect, store
+or intermediate" credentials or session tokens and allowed for "an end user signing in to the unmodified Claude Code binary with their own
+subscription". A relay through a web UI is a **borderline case**: for the maintainer's own installation the page replaces a terminal on his own login;
+for other operators (cycle 7) it weighs more. This is not legal advice; the primary text is re-read before the feature is offered to anyone else.
+
 ### 2.8 Web UI (branch 8)
 
 - React, Vite, TypeScript, Tailwind, shadcn/ui. The Go binary serves the static files;
