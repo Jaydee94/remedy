@@ -115,7 +115,7 @@ running as a service for other people's homelabs.
 
 - **Everything in the cluster**, managed by Argo. Control plane as a Deployment, runner as
   a StatefulSet with a PVC for CLI logins and workspaces.
-- CLI login once via `kubectl exec`. The runner checks login status regularly, shows it in
+- CLI login once via `kubectl exec` or from the Setup page (2.7.1). The runner checks login status regularly, shows it in
   the UI (Setup shows the login state; it does not notify on expiry).
 - GitHub Actions builds the control plane image and the runner image to GHCR. Delivered as
   a **Helm chart** in `deploy/chart` (2026-10-06,

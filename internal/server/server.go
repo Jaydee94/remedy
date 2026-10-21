@@ -13,6 +13,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/gatekeeper"
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/learner"
+	"github.com/Jaydee94/remedy/internal/loginrelay"
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/settings"
@@ -70,6 +71,10 @@ type Deps struct {
 
 	// Signals reports the state of the signal sources. When it is nil there is no GET /api/signals.
 	Signals func() []signals.State
+
+	// Login relays the runner's login from the Setup page. When it is nil (REMEDY_LOGIN_RELAY is not on) none of its
+	// routes is registered and the claim is not gated.
+	Login *loginrelay.Manager
 }
 
 type srv struct {
@@ -133,6 +138,15 @@ func (s *srv) routes(public, internal *http.ServeMux) {
 	if d.RunnerStatus != nil {
 		internal.HandleFunc("POST /runner/v1/status", s.runner(s.postRunnerStatus))
 		public.HandleFunc("GET /api/runner", s.session(s.getRunner))
+	}
+	if d.Login != nil {
+		// noStore wraps the guards, so a 401 or a 403 carries the header too.
+		public.HandleFunc("GET /api/runner/login", noStore(s.session(s.getLogin)))
+		public.HandleFunc("POST /api/runner/login", noStore(s.session(s.startLogin)))
+		public.HandleFunc("POST /api/runner/login/code", noStore(s.session(s.submitLoginCode)))
+		public.HandleFunc("POST /api/runner/login/cancel", noStore(s.session(s.cancelLogin)))
+		internal.HandleFunc("POST /runner/v1/login/poll", noStore(s.runner(s.pollLogin)))
+		internal.HandleFunc("POST /runner/v1/login/report", noStore(s.runner(s.reportLogin)))
 	}
 
 	if d.NewGitHub != nil {

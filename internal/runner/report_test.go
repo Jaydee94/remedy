@@ -218,6 +218,46 @@ func TestTheCheckerTreatsAnUnknownAnswerAsUnknownNeverAsMissing(t *testing.T) {
 	}
 }
 
+func TestAnInFlightCheckIsDiscardedWhenASessionOpens(t *testing.T) {
+	status := runner.NewStatus()
+	before := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	status.SetLogin(provider.LoginMissing, before)
+	var paused atomic.Bool
+	var calls atomic.Int32
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	checker := &runner.LoginChecker{
+		Check: func(context.Context) (provider.LoginState, string) {
+			calls.Add(1)
+			select {
+			case entered <- struct{}{}:
+			default:
+			}
+			<-release
+			return provider.LoginUnknown, "the CLI is busy"
+		},
+		Status: status, Pause: paused.Load, OKEvery: time.Hour, ElseEvery: 10 * time.Millisecond, Log: quiet(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { checker.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	<-entered
+	paused.Store(true) // a session opens while the check runs
+	close(release)
+	time.Sleep(100 * time.Millisecond)
+	if r := status.Report(); r.Login != "missing" || !r.LoginCheckedAt.Equal(before) {
+		t.Fatalf("report = %+v: a result obtained while the pause turned on was published", r)
+	}
+	if n := calls.Load(); n != 1 {
+		t.Fatalf("%d checks, want 1: the checker checks while paused", n)
+	}
+	paused.Store(false)
+	checker.Kick()
+	eventually(t, "a check after the pause", func() bool { return status.Report().Login == "unknown" })
+}
+
 func TestTheCheckerBoundsACheckWithATimeout(t *testing.T) {
 	status := runner.NewStatus()
 	deadline := make(chan bool, 1)

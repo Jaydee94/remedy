@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -121,4 +122,34 @@ func (c Claude) Version(ctx context.Context, parentEnv []string) string {
 		return ""
 	}
 	return line
+}
+
+// LoginCommand builds `claude auth login --claudeai`, the command of the login relay. It starts the unmodified binary
+// with the allowlisted environment plus DISABLE_UPDATES=1 (for this child only: FilterEnv does not carry it), in the
+// temp directory and in a process group of its own, so that a signal reaches whatever the CLI starts too. Cancelling ctx
+// sends SIGTERM to the group, and WaitDelay ends the wait after 3 s. Stdin and stdout belong to the caller, who sets
+// them before Start; they may carry the sign-in URL and the code and must never be logged.
+func (c Claude) LoginCommand(ctx context.Context, parentEnv []string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, c.binary(), "auth", "login", "--claudeai")
+	cmd.Env = append(FilterEnv(parentEnv), "DISABLE_UPDATES=1")
+	cmd.Dir = os.TempDir()
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return SignalGroup(cmd, syscall.SIGTERM) }
+	cmd.WaitDelay = 3 * time.Second
+	return cmd
+}
+
+// SignalGroup sends sig to the whole process group of a command that was started with Setpgid. It does nothing when the
+// command has not been started, and answers os.ErrProcessDone when the group is gone.
+func SignalGroup(cmd *exec.Cmd, sig syscall.Signal) error {
+	if cmd == nil || cmd.Process == nil {
+		return nil
+	}
+	if err := syscall.Kill(-cmd.Process.Pid, sig); err != nil {
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	return nil
 }

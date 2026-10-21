@@ -65,6 +65,14 @@ runner:
       amd64: {name: "", sha256: ""}
       arm64: {name: "", sha256: ""}
 
+# The login from the Setup page. It handles the login material of the vendor's CLI: the Setup page shows the sign-in
+# address the CLI prints and takes the one-time code back, and the runner passes both to the CLI's own login command.
+# Neither is stored or logged, and the CLI's login files are never read (docs/design.md 2.7.1). The vendor's terms of use
+# are to be re-read before this is offered to anyone but the maintainer. One switch: it sets REMEDY_LOGIN_RELAY=on on the
+# control plane and on the runner and nowhere else, so the two cannot disagree; it changes no NetworkPolicy.
+loginRelay:
+  enabled: false
+
 cluster:
   enabled: false       # the control plane reads the cluster; it runs as the read account (needs networkPolicy.apiServer.cidrs)
   api: https://kubernetes.default.svc

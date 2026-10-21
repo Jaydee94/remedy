@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"github.com/Jaydee94/remedy/internal/loginrelay"
 	"github.com/Jaydee94/remedy/internal/run"
 )
 
@@ -123,6 +125,58 @@ func (c *Client) Finish(ctx context.Context, runID string, o run.Outcome) error 
 	}
 	defer resp.Body.Close()
 	return expect(resp, http.StatusNoContent)
+}
+
+// ErrLoginAbsent says that the control plane has no login relay (its route answered 404).
+var ErrLoginAbsent = errors.New("runner: the control plane has no login relay")
+
+// errLoginAnswer is every unreadable poll answer. It never quotes the body, which may hold the code.
+var errLoginAnswer = errors.New("runner: unreadable login poll answer")
+
+// maxLoginAnswer bounds a poll answer: a code is at most 512 bytes.
+const maxLoginAnswer = 4 << 10
+
+// LoginPoll is the relay's long poll: nil when the control plane has no command (204), ErrLoginAbsent when it has no
+// relay (404). The answer may carry the code: the caller wraps it in a Material at once. The body buffer is cleared.
+func (c *Client) LoginPoll(ctx context.Context, req loginrelay.PollRequest) (*loginrelay.PollAnswer, error) {
+	resp, err := c.do(ctx, claimTimeout, "/runner/v1/login/poll", req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		return nil, nil
+	case http.StatusNotFound:
+		return nil, ErrLoginAbsent
+	case http.StatusOK:
+	default:
+		return nil, fmt.Errorf("login poll: unexpected status %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxLoginAnswer+1))
+	defer clear(body)
+	if err != nil || len(body) > maxLoginAnswer {
+		return nil, errLoginAnswer
+	}
+	var a loginrelay.PollAnswer
+	if err := json.Unmarshal(body, &a); err != nil {
+		return nil, errLoginAnswer
+	}
+	return &a, nil
+}
+
+// LoginReport posts the relay's state report. The error names a status code, never the body of either side.
+func (c *Client) LoginReport(ctx context.Context, r loginrelay.Report) error {
+	resp, err := c.do(ctx, requestTimeout, "/runner/v1/login/report", r)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("login report: unexpected status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 // ReportStatus tells the control plane the runner's login state. It is best effort: the reporter decides what a failure means.

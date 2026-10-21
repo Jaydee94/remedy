@@ -40,7 +40,7 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 	tick := time.NewTicker(claimInterval)
 	defer tick.Stop()
 	for {
-		claimed, err := s.d.Store.ClaimNext(r.Context())
+		claimed, err := s.claimGated(r.Context())
 		if err != nil {
 			if r.Context().Err() == nil {
 				writeErr(w, http.StatusInternalServerError, "claim failed")
@@ -96,6 +96,20 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// claimGated is one ClaimNext behind the login relay's claim gate: while a login session is open nothing is claimed (nil,
+// nil), and the gate is released only after ClaimNext has committed, so a login that starts next sees the claimed run.
+func (s *srv) claimGated(ctx context.Context) (*run.Run, error) {
+	if s.d.Login == nil {
+		return s.d.Store.ClaimNext(ctx)
+	}
+	release, open := s.d.Login.ClaimGate()
+	defer release()
+	if !open {
+		return nil, nil
+	}
+	return s.d.Store.ClaimNext(ctx)
 }
 
 func (s *srv) postEvent(w http.ResponseWriter, r *http.Request) {

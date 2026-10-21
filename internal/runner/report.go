@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/Jaydee94/remedy/internal/provider"
@@ -72,7 +73,33 @@ type LoginChecker struct {
 	OKEvery   time.Duration // default DefaultLoginCheckOK
 	ElseEvery time.Duration // default DefaultLoginCheckElse
 	Log       *slog.Logger
+	// Pause, when set and true, skips the check: a login of the relay is rewriting the CLI's config. It is asked before
+	// each check and again after it, and a result obtained while it turned true is discarded.
+	Pause func() bool
+
+	kickMu sync.Mutex
+	kick   chan struct{}
 }
+
+// kicks is the kick channel, made on first use so that Kick is safe before Run.
+func (c *LoginChecker) kicks() chan struct{} {
+	c.kickMu.Lock()
+	defer c.kickMu.Unlock()
+	if c.kick == nil {
+		c.kick = make(chan struct{}, 1)
+	}
+	return c.kick
+}
+
+// Kick runs the next check now instead of after the wait. It never blocks, and kicks before a check coalesce.
+func (c *LoginChecker) Kick() {
+	select {
+	case c.kicks() <- struct{}{}:
+	default:
+	}
+}
+
+func (c *LoginChecker) paused() bool { return c.Pause != nil && c.Pause() }
 
 func (c *LoginChecker) Run(ctx context.Context) {
 	okEvery, elseEvery := c.OKEvery, c.ElseEvery
@@ -82,6 +109,7 @@ func (c *LoginChecker) Run(ctx context.Context) {
 	if elseEvery <= 0 {
 		elseEvery = DefaultLoginCheckElse
 	}
+	kick := c.kicks()
 	if c.Version != nil {
 		// Read once at start: a CLI upgrade restarts the pod.
 		vctx, cancel := context.WithTimeout(ctx, loginCheckTimeout)
@@ -89,20 +117,35 @@ func (c *LoginChecker) Run(ctx context.Context) {
 		cancel()
 	}
 	for {
-		cctx, cancel := context.WithTimeout(ctx, loginCheckTimeout)
-		state, reason := c.Check(cctx)
-		cancel()
-		if ctx.Err() != nil {
-			return
+		wait := elseEvery
+		if !c.paused() {
+			cctx, cancel := context.WithTimeout(ctx, loginCheckTimeout)
+			state, reason := c.Check(cctx)
+			cancel()
+			if ctx.Err() != nil {
+				return
+			}
+			switch {
+			case c.paused():
+				c.Log.Info("login check discarded: a login is in progress")
+			case state == provider.LoginUnknown:
+				c.Status.SetLogin(state, time.Now())
+				c.Log.Warn("cannot tell whether the CLI is logged in", "reason", reason)
+				wait = NextCheck(state, okEvery, elseEvery)
+			default:
+				c.Status.SetLogin(state, time.Now())
+				c.Log.Info("login check", "login", string(state))
+				wait = NextCheck(state, okEvery, elseEvery)
+			}
 		}
-		c.Status.SetLogin(state, time.Now())
-		if state == provider.LoginUnknown {
-			c.Log.Warn("cannot tell whether the CLI is logged in", "reason", reason)
-		} else {
-			c.Log.Info("login check", "login", string(state))
-		}
-		if !sleepCtx(ctx, NextCheck(state, okEvery, elseEvery)) {
+		t := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			t.Stop()
 			return
+		case <-t.C:
+		case <-kick:
+			t.Stop()
 		}
 	}
 }

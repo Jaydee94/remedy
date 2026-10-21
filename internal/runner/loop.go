@@ -34,7 +34,12 @@ type Loop struct {
 	RunTimeout        time.Duration // longest a run may take while it does not wait for an approval, default DefaultRunTimeout
 	HeartbeatInterval time.Duration // how often a run with tools reports to the control plane, default DefaultHeartbeatInterval
 	Status            *Status       // optional: told whether the control plane answers the claim
+
+	busy atomic.Bool // a run is claimed and its outcome not yet posted
 }
+
+// Busy says whether the loop holds a run, from its claim to its finish. The login relay refuses a start while it does.
+func (l *Loop) Busy() bool { return l.busy.Load() }
 
 func (l *Loop) Run(ctx context.Context) {
 	backoff := l.Backoff
@@ -58,7 +63,9 @@ func (l *Loop) Run(ctx context.Context) {
 		if r == nil {
 			continue // long-poll timed out, ask again
 		}
+		l.busy.Store(true)
 		l.handle(ctx, *r)
+		l.busy.Store(false)
 	}
 }
 

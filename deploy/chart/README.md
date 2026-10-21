@@ -28,6 +28,16 @@ hook mint a two-hour token of the write account into the Secret
 `cluster.argoNamespace`. `cluster.write.namespaces` can never contain the release namespace or `cluster.argoNamespace`, and `cluster.argoNamespace` can never be the release namespace (the chart refuses to render). If the refresher stops, actions
 fail closed after the token expires. Under Argo CD add an `ignoreDifferences` for the Secret's `/data`.
 
+## The login from the Setup page
+
+`loginRelay.enabled` (default `false`) lets the Setup page sign the runner in to the vendor's CLI. It handles the CLI's
+login material: the page shows the sign-in address that the CLI prints and takes the one-time code back, and the runner
+hands both to the CLI's own login command. The code is write-only, neither value is stored or logged, and the CLI's login
+files are never read. Re-read the vendor's terms of use before you offer this to anyone but yourself. The one value sets
+`REMEDY_LOGIN_RELAY=on` on the control plane and on the runner and on nothing else, so the two cannot disagree, and the
+render refuses a `server.env.REMEDY_LOGIN_RELAY` at all. It changes no NetworkPolicy. Without it the login stays the
+`kubectl exec` one.
+
 ## NetworkPolicies: what the address rules mean
 
 The rules are by address **and port**. The control plane reaches the API server through `networkPolicy.apiServer.cidrs`

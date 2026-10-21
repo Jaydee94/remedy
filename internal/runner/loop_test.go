@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -124,4 +125,54 @@ func TestLoopFailsRunWithUnknownProvider(t *testing.T) {
 	if got.Status != run.Failed || got.ExitCode == nil || *got.ExitCode != 127 {
 		t.Fatalf("run = %+v", got)
 	}
+}
+
+func TestLoopBusyIsTrueFromClaimToFinish(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	var loop *runner.Loop
+	busyAtFinish := make(chan bool, 1)
+	inner := server.New(server.Deps{Store: st, Auth: auth.New("correct horse battery"), RunnerToken: token})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/finish") {
+			select {
+			case busyAtFinish <- loop.Busy():
+			default:
+			}
+		}
+		inner.ServeHTTP(w, r)
+	}))
+	t.Cleanup(ts.Close)
+	loop = &runner.Loop{
+		Client:        &runner.Client{BaseURL: ts.URL, Token: token, HTTP: ts.Client()},
+		Providers:     map[string]provider.Provider{"claude": provider.Claude{Binary: testutil.FakeClaudeAfter(t, "0.3")}},
+		WorkspaceRoot: t.TempDir(),
+		Env:           os.Environ(),
+		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Backoff:       50 * time.Millisecond,
+	}
+	if loop.Busy() {
+		t.Fatal("busy before any claim")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { loop.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	queued, _ := st.CreateRun(context.Background(), "claude", "hello")
+	eventually(t, "busy while the run runs", loop.Busy)
+	waitTerminal(t, st, queued.ID)
+	select {
+	case b := <-busyAtFinish:
+		if !b {
+			t.Fatal("not busy when the outcome was posted")
+		}
+	default:
+		t.Fatal("no finish request")
+	}
+	eventually(t, "not busy after the finish", func() bool { return !loop.Busy() })
 }

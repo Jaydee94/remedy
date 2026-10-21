@@ -65,6 +65,9 @@ func main() {
 	background(a.Poller.Run)
 	background(a.Signals.Run)
 	background(a.Reaper.Run)
+	if a.Login != nil {
+		background(a.Login.Run)
+	}
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,

@@ -292,6 +292,25 @@ kubectl -n remedy exec -it remedy-runner-0 -c runner -- /opt/claude/claude
 Type `/login`, open the URL in a browser, paste the code, `/exit`. (A form `claude auth login` is proposed in the follow-ups and unverified here: if it does not print the URL, use the form above.) The login is on the runner's volume and survives restarts of
 the pod, but not the loss of the volume. Setup shows whether the runner is connected and what the CLI's own status command says about the login ("Logged in", "Not logged in" or "Login unknown"); the runner checks every minute while the login is not fine and every 10 minutes while it is. A login that has expired on the server side may still read as "Logged in" until a run fails with "Not logged in": that was not measured (`docs/research/k8s-runner-status-real-run.md`).
 
+### Optional: log in from the Setup page
+
+Status: the control plane, the runner and the chart are implemented; the wizard on the Setup page is not built yet (pull request B of
+`docs/plans/ui-login-relay.md`), and the real run with the real CLI is not made (record: `docs/research/login-relay-real-run.md`, to be written), so the
+feature is not proven. The `kubectl exec` login above stays the way that works and is the fallback.
+
+It is off by default. To turn it on set `loginRelay.enabled: true` in the values (section 5); it sets `REMEDY_LOGIN_RELAY=on` on the control plane and
+on the runner together and changes no NetworkPolicy. Setup then shows the fact "Login from this page: on". That fact is all the page shows today: the wizard
+(pull request B) is still to come, so until it lands the page shows only the `kubectl exec` command and the four admin routes (`/api/runner/login`) have no
+page. What the wizard will do, and what the server and the runner already support: the runner starts the CLI's own `claude auth login`, the page will show the
+sign-in address, you sign in at the vendor with your own account and paste the one-time code into the page, and the runner hands it to the CLI. The address
+and the code are kept in memory only, for one attempt of at most ten minutes (`docs/design.md` 2.7.1); the code is write-only. While a login session is
+open no queued run is started, and a login is refused while a run is running (the admin API answers 409 `run_active`; no page shows that yet).
+
+Two things to check yourself. A reverse proxy or an Ingress controller in front of the control plane may log request bodies, and the code is in the body
+of a POST: make sure yours does not. And after a successful login the runner card in Setup can take up to about 15 seconds to turn green, because the
+runner reports its status every 15 seconds. Read the vendor's terms of use before you offer this to anyone but yourself
+(`docs/research/subscription-cli-usage.md`).
+
 ## 8. First use
 
 Open the host name, sign in with the admin password of section 4 (the login page has no user name), then in Setup connect GitHub (the token is write-only) and
