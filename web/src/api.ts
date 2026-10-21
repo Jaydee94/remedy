@@ -58,6 +58,33 @@ export interface RunnerStatus {
   commit?: string
 }
 
+/**
+ * The session of the login from the Setup page. `state` is one of the control plane's fixed words (starting, awaiting_code, submitting,
+ * succeeded, failed, cancelled, expired); the page maps a word it does not know to a generic sentence. There is no field for a code, in
+ * any state: the code is write-only.
+ */
+export interface RunnerLoginSession {
+  id: string
+  state: string
+  /** 1 to 3: a code that is not accepted starts a fresh sign-in, up to three. */
+  attempt: number
+  /** The vendor's sign-in address. Only while `state` is awaiting_code. Show the host, and check it (`validateUrl`) before it is a link. */
+  url?: string
+  /** Why a sign-in failed: a fixed word. */
+  reason?: string
+  expiresAt: string
+  /** How many runs wait for the sign-in to end. */
+  waitingRuns: number
+}
+
+/** `GET /api/runner/login`: whether a login can be started from the page, and the session, if there is one. */
+export interface RunnerLogin {
+  available: boolean
+  /** Why it is not available: a fixed word (api_key_mode). */
+  unavailable?: string
+  session: RunnerLoginSession | null
+}
+
 /** The control plane's own build. */
 export interface VersionInfo {
   version: string
@@ -403,10 +430,13 @@ export interface TimelinePage {
 
 export class ApiError extends Error {
   status: number
+  /** The fixed word of a `409` that has one (the refusal of a login start). Left out when the body has none. */
+  reason?: string
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, reason?: string) {
     super(message)
     this.status = status
+    this.reason = reason
   }
 }
 
@@ -439,12 +469,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     credentials: 'same-origin',
   })
   if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    const data = (await res.json().catch(() => ({}))) as { error?: string; reason?: unknown }
     if (res.status === 401 && path !== '/api/login' && path !== '/api/me' && path !== '/api/logout' && epoch === handlerEpoch) onUnauthorized?.()
-    throw new ApiError(res.status, data.error ?? res.statusText)
+    throw new ApiError(res.status, data.error ?? res.statusText, typeof data.reason === 'string' ? data.reason : undefined)
   }
   if (res.status === 204) return undefined as T
-  return (await res.json()) as T
+  // An answer such as the 202 of the login code has no body.
+  const text = await res.text()
+  return (text === '' ? undefined : JSON.parse(text)) as T
 }
 
 export const api = {
@@ -520,6 +552,14 @@ export const api = {
   deleteSetting: (key: string) => request<void>('DELETE', `/api/settings/${key}`),
   getRunner: () => request<RunnerStatus>('GET', '/api/runner'),
   getVersion: () => request<VersionInfo>('GET', '/api/version'),
+
+  /** The login from the Setup page. A control plane without it answers 404 (`hideOnError`). */
+  getRunnerLogin: () => request<RunnerLogin>('GET', '/api/runner/login'),
+  /** Starts a sign-in. `replace` must be true when the runner is logged in; a refusal is a 409 whose `reason` is a fixed word. */
+  startRunnerLogin: (replace: boolean) => request<RunnerLoginSession>('POST', '/api/runner/login', { replace }),
+  /** Sends the one-time code. It is write-only: nothing of it comes back, and the caller must not keep it. */
+  sendRunnerLoginCode: (session: string, code: string) => request<void>('POST', '/api/runner/login/code', { session, code }),
+  cancelRunnerLogin: (session: string) => request<void>('POST', '/api/runner/login/cancel', { session }),
 
   /** The newest entries, or the ones before the entry with the id `before`. */
   listActivity: (before?: number) =>
