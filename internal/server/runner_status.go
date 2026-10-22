@@ -35,7 +35,7 @@ func NewRunnerStatus() *RunnerStatus { return &RunnerStatus{login: "unknown"} }
 // AuthModeSubscription is the runner's only mode today: the agent CLI uses the subscription login.
 const AuthModeSubscription = "subscription"
 
-// AuthMode is how the runner's agent CLI is billed. The login relay is offered only in subscription mode. A nil
+// AuthMode is how the runner's agent CLI is billed. The login relay is offered only in subscription mode; until the runner reports its mode (cycle 7b) only a test sets another one. A nil
 // *RunnerStatus is subscription mode.
 func (r *RunnerStatus) AuthMode() string {
 	if r == nil {

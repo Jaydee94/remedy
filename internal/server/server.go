@@ -72,8 +72,8 @@ type Deps struct {
 	// Signals reports the state of the signal sources. When it is nil there is no GET /api/signals.
 	Signals func() []signals.State
 
-	// Login relays the runner's login from the Setup page. When it is nil (REMEDY_LOGIN_RELAY is not on) none of its
-	// routes is registered and the claim is not gated.
+	// Login relays the runner's login from the Setup page. internal/app always sets it (the relay has no switch); nil is a
+	// seam for tests: then none of its routes is registered and the claim is not gated.
 	Login *loginrelay.Manager
 }
 

@@ -65,9 +65,7 @@ func main() {
 	background(a.Poller.Run)
 	background(a.Signals.Run)
 	background(a.Reaper.Run)
-	if a.Login != nil {
-		background(a.Login.Run)
-	}
+	background(a.Login.Run) // the login relay has no switch: app.New always builds it
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,

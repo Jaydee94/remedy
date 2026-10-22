@@ -89,10 +89,10 @@ func main() {
 		Status:  status,
 		Log:     log,
 	}
-	// Without the switch no code of the relay runs: no poll, nothing ever writes to a CLI's stdin.
+	// The relay has no switch: it runs in subscription mode. In another mode no code of the relay runs: no poll, nothing
+	// ever writes to a CLI's stdin.
 	var relayDone chan struct{}
-	switch {
-	case loginRelayOn(cfg):
+	if loginRelayOn(cfg.AuthMode) {
 		pause := &runner.LoginPause{}
 		checker.Pause = pause.Active
 		relay := &runner.LoginRelay{
@@ -114,7 +114,7 @@ func main() {
 			relay.Run(ctx)
 		}()
 		log.Info("login relay on")
-	case cfg.LoginRelay:
+	} else {
 		log.Warn("the login relay stays off: the runner is not in subscription mode", "mode", cfg.AuthMode)
 	}
 	go checker.Run(ctx)
@@ -132,6 +132,6 @@ func main() {
 	log.Info("runner stopped")
 }
 
-// loginRelayOn says whether this runner relays a login from the Setup page: only with the switch on and in
-// subscription mode.
-func loginRelayOn(cfg config.Runner) bool { return cfg.LoginRelay && cfg.AuthMode == "subscription" }
+// loginRelayOn says whether this runner relays a login from the Setup page. There is no switch (decision 2026-10-22):
+// only the mode decides, and only exactly "subscription" (the default of REMEDY_AUTH_MODE) runs it.
+func loginRelayOn(authMode string) bool { return authMode == "subscription" }

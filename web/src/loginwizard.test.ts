@@ -76,7 +76,7 @@ describe('stepOf', () => {
 })
 
 describe('the view while the relay is not offered', () => {
-  it('shows only the terminal when the relay is off', () => {
+  it('shows only the terminal when the login is not available', () => {
     const v = wizardView({ offered: offered(null, { available: false, unavailable: 'api_key_mode' }), open: true, typing: false, now, loggedIn: false, epoch: 1 })
     assert.equal(v.step, null)
     assert.equal(v.indicator, '')

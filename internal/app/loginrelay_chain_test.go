@@ -197,7 +197,7 @@ func (t *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error
 	return resp, nil
 }
 
-// chainRunner is the runner side as main wires it with the relay on: the login relay, the login checker with its pause
+// chainRunner is the runner side as main wires it in subscription mode: the login relay, the login checker with its pause
 // and kick, and the status reporter. The checker waits an hour between its own checks, so only the kick can turn the
 // login green within seconds; the reporter reports every 300 ms instead of every 15 s.
 type chainRunner struct {
@@ -243,7 +243,7 @@ func newLoginChain(t *testing.T, fake testutil.RelayOptions) *loginChain {
 	}
 	c.cfg = config.Server{
 		AdminPassword: password, RunnerToken: runnerToken, MasterKey: key, PollInterval: time.Minute,
-		DiagnoseCooldown: 15 * time.Minute, DiagnoseMaxPerIncident: 3, DiagnoseMaxPerDay: 20, LoginRelay: true,
+		DiagnoseCooldown: 15 * time.Minute, DiagnoseMaxPerIncident: 3, DiagnoseMaxPerDay: 20,
 	}
 	c.startApp()
 	c.ts = httptest.NewServer(c.rec.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -272,7 +272,7 @@ func newLoginChain(t *testing.T, fake testutil.RelayOptions) *loginChain {
 func (c *loginChain) startApp() {
 	a := app.New(c.cfg, c.st, c.log, nil)
 	if a.Login == nil {
-		c.t.Fatal("the relay is on but the app has no login manager")
+		c.t.Fatal("the app has no login manager")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

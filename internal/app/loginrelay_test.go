@@ -28,7 +28,7 @@ type relayStack struct {
 	app    *app.App
 }
 
-func newRelayStack(t *testing.T, relay bool) *relayStack {
+func newRelayStack(t *testing.T) *relayStack {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -41,7 +41,7 @@ func newRelayStack(t *testing.T, relay bool) *relayStack {
 	}
 	cfg := config.Server{
 		AdminPassword: password, RunnerToken: runnerToken, MasterKey: key, PollInterval: time.Minute,
-		DiagnoseCooldown: 15 * time.Minute, DiagnoseMaxPerIncident: 3, DiagnoseMaxPerDay: 20, LoginRelay: relay,
+		DiagnoseCooldown: 15 * time.Minute, DiagnoseMaxPerIncident: 3, DiagnoseMaxPerDay: 20,
 	}
 	a := app.New(cfg, st, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	ts := httptest.NewServer(a.Handler)
@@ -83,46 +83,49 @@ func (s *relayStack) runner(t *testing.T, path, body string, timeout time.Durati
 	return resp.StatusCode, string(raw)
 }
 
-func loginFact(t *testing.T, s *relayStack) string {
-	t.Helper()
-	resp, body := s.admin(t, http.MethodGet, "/api/settings", "")
+// The login relay has no switch (decision 2026-10-22): the app always builds the manager and registers its routes, and
+// Setup shows no on/off fact for it.
+func TestTheAppAlwaysOffersTheLoginRelay(t *testing.T) {
+	s := newRelayStack(t)
+	if s.app.Login == nil {
+		t.Fatal("the app built no login manager")
+	}
+	resp, body := s.admin(t, http.MethodGet, "/api/runner/login", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/runner/login = %d %s, want 200", resp.StatusCode, body)
+	}
+	var view struct {
+		Available bool `json:"available"`
+	}
+	if err := json.Unmarshal([]byte(body), &view); err != nil || !view.Available {
+		t.Errorf("GET /api/runner/login = %s (%v), want available", body, err)
+	}
+	if code, raw := s.runner(t, "/runner/v1/login/poll", `{"boot":"b1"}`, 300*time.Millisecond); code == http.StatusNotFound {
+		t.Errorf("the runner's poll = %d %s: the route is not registered", code, raw)
+	}
+	if code, raw := s.runner(t, "/runner/v1/login/report", `{}`, 5*time.Second); code == http.StatusNotFound || code == 0 {
+		t.Errorf("the runner's report = %d %s: the route is not registered", code, raw)
+	}
+
+	resp, body = s.admin(t, http.MethodGet, "/api/settings", "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /api/settings = %d %s", resp.StatusCode, body)
 	}
-	var v struct {
+	var settingsView struct {
 		Facts []struct{ Label, Value string } `json:"facts"`
 	}
-	if err := json.Unmarshal([]byte(body), &v); err != nil {
+	if err := json.Unmarshal([]byte(body), &settingsView); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range v.Facts {
-		if f.Label == "Login from this page" {
-			return f.Value
+	for _, f := range settingsView.Facts {
+		if strings.Contains(strings.ToLower(f.Label), "login") {
+			t.Errorf("Setup still shows a fact about the login relay: %+v", f)
 		}
 	}
-	t.Fatalf("no fact Login from this page in %s", body)
-	return ""
 }
 
-func TestTheSetupFactAndActivity(t *testing.T) {
-	off := newRelayStack(t, false)
-	if got := loginFact(t, off); got != "off" {
-		t.Errorf("fact with the relay off = %q, want off", got)
-	}
-	if off.app.Login != nil {
-		t.Error("the relay is off but the app built a manager")
-	}
-	if resp, _ := off.admin(t, http.MethodGet, "/api/runner/login", ""); resp.StatusCode != http.StatusNotFound {
-		t.Errorf("GET /api/runner/login with the relay off = %d, want 404", resp.StatusCode)
-	}
-
-	on := newRelayStack(t, true)
-	if got := loginFact(t, on); got != "on" {
-		t.Errorf("fact with the relay on = %q, want on", got)
-	}
-	if on.app.Login == nil {
-		t.Fatal("the relay is on but the app has no manager")
-	}
+func TestTheLoginActivity(t *testing.T) {
+	on := newRelayStack(t)
 	// A queued run waits for the session: the view counts it.
 	if _, err := on.st.CreateRun(context.Background(), "claude", "p"); err != nil {
 		t.Fatal(err)

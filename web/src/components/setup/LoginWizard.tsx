@@ -134,7 +134,8 @@ export default function LoginWizard({ terminal, loggedIn, onSessionChange }: Pro
   )
 
   if (relay.absent || relay.offered === null || !relay.offered.available) {
-    // The relay is off, not there, or not read yet: the section is what it was before it.
+    // The relay is not offered (another mode than subscription), not there (an older server answers 404), or not read
+    // yet: the section is what it was before it.
     return (
       <>
         {announcer}

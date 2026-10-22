@@ -30,13 +30,17 @@ fail closed after the token expires. Under Argo CD add an `ignoreDifferences` fo
 
 ## The login from the Setup page
 
-`loginRelay.enabled` (default `false`) lets the Setup page sign the runner in to the vendor's CLI. It handles the CLI's
-login material: the page shows the sign-in address that the CLI prints and takes the one-time code back, and the runner
-hands both to the CLI's own login command. The code is write-only, neither value is stored or logged, and the CLI's login
-files are never read. Re-read the vendor's terms of use before you offer this to anyone but yourself. The one value sets
-`REMEDY_LOGIN_RELAY=on` on the control plane and on the runner and on nothing else, so the two cannot disagree, and the
-render refuses a `server.env.REMEDY_LOGIN_RELAY` at all. It changes no NetworkPolicy. Without it the login stays the
-`kubectl exec` one.
+The Setup page can sign the runner in to the vendor's CLI. There is no value for it: the runner card offers
+"Log in from here", and the runner runs the login when it is in subscription mode (the default). A runner in another
+mode starts no relay; until it reports its mode (cycle 7b) the page still offers the button, and a start is refused as
+"runner not connected" (`runner_offline`). It handles the
+CLI's login material: the page shows the sign-in address that the CLI prints and takes the one-time code back, and the
+runner hands both to the CLI's own login command. The code is write-only, neither value is stored or logged, and the CLI's
+login files are never read. It ships enabled, so re-read the vendor's terms of use before you offer this chart to anyone
+but yourself. It changes no NetworkPolicy. The `kubectl exec` login stays the fallback. The real run with the real CLI is
+not made, so the login from the page is not proven. Until 2026-10-22 it was behind the value `loginRelay.enabled`; that
+value is gone, and a values file that still sets it renders without an error (Helm ignores an unknown value) and has no
+effect.
 
 ## NetworkPolicies: what the address rules mean
 

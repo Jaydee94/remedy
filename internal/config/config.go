@@ -37,7 +37,6 @@ type Server struct {
 	DiagnoseMaxPerDay      int           // REMEDY_DIAGNOSE_MAX_PER_DAY
 	Cluster                kube.Config   // REMEDY_K8S_*: how to reach the cluster; the zero value means no cluster
 	AlertmanagerCAFile     string        // REMEDY_ALERTMANAGER_CA_FILE: a PEM bundle for an https Alertmanager; empty means the system's roots
-	LoginRelay             bool          // REMEDY_LOGIN_RELAY, exactly "on": the runner login from the web UI is offered
 	// Env holds the variables of the registry that were set (poll interval, diagnosis limits, namespaces, run timeout). They are
 	// the defaults of the settings, which the Setup page can override.
 	Env settings.Layer
@@ -50,7 +49,6 @@ func ServerFromEnv(get func(string) string) (Server, error) {
 		AdminPassword: get("REMEDY_ADMIN_PASSWORD"),
 		RunnerToken:   get("REMEDY_RUNNER_TOKEN"),
 		GitHubAPIURL:  orDefault(get("REMEDY_GITHUB_API_URL"), defaultGitHub),
-		LoginRelay:    LoginRelayOn(get("REMEDY_LOGIN_RELAY")),
 	}
 	if len(c.AdminPassword) < minPasswordLen {
 		return Server{}, errors.New("REMEDY_ADMIN_PASSWORD must be set and at least 12 characters")
@@ -124,8 +122,7 @@ type Runner struct {
 	ClaudeModel   string        // REMEDY_CLAUDE_MODEL, empty means the adapter's default
 	RunTimeout    time.Duration // REMEDY_RUN_TIMEOUT, a Go duration, default 10m, at least 10s
 	StatusAddr    string        // REMEDY_RUNNER_STATUS_ADDR, default empty: no status listener; set, it serves /livez and /readyz
-	LoginRelay    bool          // REMEDY_LOGIN_RELAY, exactly "on": this runner relays a login from the web UI
-	AuthMode      string        // REMEDY_AUTH_MODE, default "subscription"; the login relay refuses any other mode
+	AuthMode      string        // REMEDY_AUTH_MODE, default "subscription"; the login relay, which has no switch, runs only in this mode
 }
 
 func RunnerFromEnv(get func(string) string) (Runner, error) {
@@ -135,7 +132,6 @@ func RunnerFromEnv(get func(string) string) (Runner, error) {
 		WorkspaceRoot: orDefault(get("REMEDY_WORKSPACES"), filepath.Join(os.TempDir(), "remedy-workspaces")),
 		ClaudeBin:     orDefault(get("REMEDY_CLAUDE_BIN"), "claude"),
 		ClaudeModel:   get("REMEDY_CLAUDE_MODEL"),
-		LoginRelay:    LoginRelayOn(get("REMEDY_LOGIN_RELAY")),
 		AuthMode:      orDefault(get("REMEDY_AUTH_MODE"), "subscription"),
 	}
 	if len(c.Token) < minTokenLen {
@@ -156,9 +152,6 @@ func RunnerFromEnv(get func(string) string) (Runner, error) {
 	}
 	return c, nil
 }
-
-// LoginRelayOn is the switch of the login relay: only exactly "on" turns it on ("ON", "true", "1" and " on" do not).
-func LoginRelayOn(v string) bool { return v == "on" }
 
 func orDefault(v, def string) string {
 	if v == "" {

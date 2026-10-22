@@ -58,8 +58,8 @@ type App struct {
 	// Signals asks the signal sources (Alertmanager) and gives what they find to the incident engine.
 	Signals *signals.Runner
 
-	// Login relays the runner's login from the Setup page; nil unless REMEDY_LOGIN_RELAY is on. Its Run applies the time
-	// rules of a session and is started with the other loops.
+	// Login relays the runner's login from the Setup page; New always builds it (there is no switch). Its Run applies the
+	// time rules of a session and is started with the other loops.
 	Login *loginrelay.Manager
 
 	log *slog.Logger
@@ -160,10 +160,10 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	// stops before its hook. Both hooks may run at once; the responder keeps its limits inside one store transaction.
 	sigs.AfterCycle = diagnoser.AutoStart
 
-	var login *loginrelay.Manager
-	if cfg.LoginRelay {
-		login = loginRelay(st, log)
-	}
+	// The login relay has no switch (decision 2026-10-22): the manager is always built and its routes always registered.
+	// Only the runner's mode withholds it: in another mode the runner starts no driver. The server cannot tell the mode
+	// until the runner reports it (cycle 7b), so a start then ends as runner_offline; the api_key_mode answer comes with 7b.
+	login := loginRelay(st, log)
 
 	deps := server.Deps{
 		Store:        st,
@@ -321,11 +321,6 @@ func facts(cfg config.Server, reader *kube.Reader, writer *kube.Writer) []server
 		{Label: "Cluster, reading", Value: yesNo(reader != nil)},
 		{Label: "Cluster, actions", Value: yesNo(writer != nil)},
 	}
-	relay := "off"
-	if cfg.LoginRelay {
-		relay = "on"
-	}
-	out = append(out, server.Fact{Label: "Login from this page", Value: relay})
 	if cfg.AlertmanagerCAFile != "" {
 		out = append(out, server.Fact{Label: "Alertmanager CA file", Value: cfg.AlertmanagerCAFile})
 	}

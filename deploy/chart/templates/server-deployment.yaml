@@ -67,9 +67,6 @@ spec:
             {{- if and .Values.runner.runTimeout (not (hasKey .Values.server.env "REMEDY_RUN_TIMEOUT")) }}
             - {name: REMEDY_RUN_TIMEOUT, value: {{ .Values.runner.runTimeout | quote }}}
             {{- end }}
-            {{- if .Values.loginRelay.enabled }}
-            - {name: REMEDY_LOGIN_RELAY, value: "on"}
-            {{- end }}
             {{- range $name, $value := .Values.server.env }}
             {{- if regexMatch "PASSWORD|TOKEN|KEY" $name }}
             {{- fail (printf "server.env.%s: a name that contains PASSWORD, TOKEN or KEY is refused; secrets belong in the existing Secret, not in values" $name) }}
