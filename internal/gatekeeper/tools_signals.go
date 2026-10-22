@@ -114,10 +114,11 @@ func alertErr(ctx context.Context, err error) error {
 	return &sourceError{"Alertmanager could not be asked, or its answer was not one Remedy reads. The details are in the control plane's log.", err}
 }
 
-// metricsErr turns what the metrics client returned into a fixed sentence. The one exception (decided in the spec, section 2): a query
-// the store itself refused is the agent's to fix, so the store's reason is shown. It can quote label sets of series, which exporters
-// write, so it is treated like any other monitoring data: framed by the note, redacted, made one line of at most 200 characters with
-// its control and bidirectional characters neutralised, and quoted so that its end is visible.
+// metricsErr turns what the metrics client returned into a fixed sentence. The one exception (decided in the spec, section 2): an answer
+// whose JSON body says status "error", whatever its HTTP status (a metrics.QueryError: the store refused the query), is the agent's to
+// fix, so the store's reason is shown. It can quote label sets of series, which exporters write, so it is treated like any other
+// monitoring data: framed by the note, redacted, made one line of at most 200 characters (plus "..." when it was cut) with its control
+// and bidirectional characters neutralised, and quoted so that its end is visible.
 func metricsErr(ctx context.Context, err error) error {
 	var api *metrics.APIError
 	var q *metrics.QueryError
