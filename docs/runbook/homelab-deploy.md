@@ -292,20 +292,20 @@ kubectl -n remedy exec -it remedy-runner-0 -c runner -- /opt/claude/claude
 Type `/login`, open the URL in a browser, paste the code, `/exit`. (A form `claude auth login` is proposed in the follow-ups and unverified here: if it does not print the URL, use the form above.) The login is on the runner's volume and survives restarts of
 the pod, but not the loss of the volume. Setup shows whether the runner is connected and what the CLI's own status command says about the login ("Logged in", "Not logged in" or "Login unknown"); the runner checks every minute while the login is not fine and every 10 minutes while it is. A login that has expired on the server side may still read as "Logged in" until a run fails with "Not logged in": that was not measured (`docs/research/k8s-runner-status-real-run.md`).
 
-### Optional: log in from the Setup page
+### Or: log in from the Setup page
 
 Status: the control plane, the runner, the chart and the wizard on the Setup page are implemented (pull requests A and B of
 `docs/plans/ui-login-relay.md`); the wizard was walked in a browser with a fake CLI only, and the real run with the real CLI is not made (record:
 `docs/research/login-relay-real-run.md`, to be written), so the feature is not proven. The `kubectl exec` login above stays the way that works and is the
 fallback.
 
-It is off by default. To turn it on set `loginRelay.enabled: true` in the values (section 5); it sets `REMEDY_LOGIN_RELAY=on` on the control plane and
-on the runner together and changes no NetworkPolicy. Setup then shows the fact "Login from this page: on", and the runner card offers "Log in from here"
-("Log in again", with a confirmation, when the agent is logged in). It opens a wizard of four steps: start the sign-in, open the sign-in page, paste the
+There is nothing to turn on (since 2026-10-22 the login from the page has no switch and no chart value): whenever the runner is in subscription mode,
+the default, the runner card offers "Log in from here" ("Log in again", with a confirmation, when the agent is logged in). It opens a wizard of four steps: start the sign-in, open the sign-in page, paste the
 code, result. The runner starts the CLI's own `claude auth login`, the page shows a link to the sign-in page, you sign in at the vendor with your own
 account and paste the one-time code into the page, and the runner hands it to the CLI. The `kubectl exec` command stays below the opener as "or do it in a
 terminal" (and on the steps where it helps: before the start, for an address the page does not recognise, after a failure), and it is the only thing shown
-when the relay is off. The address and the code are kept in memory only, for one attempt of at most ten minutes (`docs/design.md` 2.7.1); the code is
+when the login from the page is not offered (a runner in another mode). An older values file that still sets `loginRelay.enabled` renders without an
+error; the value has no effect. The address and the code are kept in memory only, for one attempt of at most ten minutes (`docs/design.md` 2.7.1); the code is
 write-only. While a login session is open no queued run is started, and a login is refused while a run is running (the admin API answers 409
 `run_active`, and the page says that a run is running and that the sign-in can start when it has ended).
 

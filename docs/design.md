@@ -161,12 +161,14 @@ prints (it holds OAuth state and a PKCE challenge) and the one-time code the mai
 attempt (at most ten minutes). They are never written to the database, the activity feed, a log, an error text, an event or a run's output; they are
 shown only to the signed-in admin; the code is write-only (no answer to a browser ever contains it). Everything the CLI writes in its own directory
 (tokens, its config, its output after a login) is never read, copied, stored or forwarded; the runner confirms the login with `claude auth status`
-as a boolean. The relay is opt-in (a bootstrap value, off by default), exists only in subscription mode, and `kubectl exec -it` into the runner stays
-the fallback.
+as a boolean. The relay has no switch (decided by the maintainer on 2026-10-22; it was first built off by default): it is available whenever the
+runner is in subscription mode and never in another mode, and `kubectl exec -it` into the runner stays the fallback.
 **Terms of use.** The research ([`research/subscription-cli-usage.md`](research/subscription-cli-usage.md)) says it is forbidden to "collect, store
 or intermediate" credentials or session tokens and allowed for "an end user signing in to the unmodified Claude Code binary with their own
 subscription". A relay through a web UI is a **borderline case**: for the maintainer's own installation the page replaces a terminal on his own login;
-for other operators (cycle 7) it weighs more. This is not legal advice; the primary text is re-read before the feature is offered to anyone else.
+for other operators (cycle 7) it weighs more, and since the relay **ships enabled** in every installation it weighs more than it did while it was off
+by default. The maintainer decided this knowingly. This is not legal advice; the primary text is re-read before the project is announced to or used by
+anyone but the maintainer.
 
 ### 2.8 Web UI (branch 8)
 

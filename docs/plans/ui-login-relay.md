@@ -1,5 +1,7 @@
 # The runner's login from the Setup page (K-7) Implementation Plan
 
+Amended 2026-10-22: the switch of Tasks 3, 4, 5 and 7 was removed (see the spec, section 12)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The maintainer logs the runner's `claude` CLI in from a four-step wizard on the Setup page: the runner starts `claude auth login`, the page shows the sign-in link, the maintainer pastes the one-time code, the control plane hands it to the runner, and success is confirmed with `claude auth status`. Off by default, memory only, nothing of the material in any sink.
