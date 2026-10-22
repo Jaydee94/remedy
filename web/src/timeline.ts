@@ -55,6 +55,7 @@ export function mergeEntries(current: TimelineEntry[], incoming: TimelineEntry[]
 const kindDots: Record<string, string> = {
   incident_opened: 'bg-destructive',
   incident_recurred: 'bg-destructive',
+  incident_reopened: 'bg-destructive',
   incident_resolved: 'bg-success',
   incident_ignored: 'bg-neutral',
   incident_unignored: 'bg-primary',

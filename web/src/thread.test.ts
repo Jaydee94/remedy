@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { ActivityEntry, Diagnosis, Incident, OutageDiagnosis, Run, ToolCall } from './api.ts'
 import { allAnnouncements, buildThread } from './thread.ts'
+import { timeOfDay } from './timeline.ts'
 import type { ThreadItem } from './thread.ts'
 
 const inc = (over: Partial<Incident> = {}): Incident => ({
@@ -46,6 +47,47 @@ describe('buildThread: the events', () => {
   it('colours a pill by the kind of the entry', () => {
     const [pill] = buildThread({ incident: inc({ state: 'ignored' }), activity: [act(1, 'incident_opened', '2026-10-05T07:00:00Z')], questionRuns: [], asks: [] })
     assert.equal(pill.type === 'event' && pill.dot, 'bg-destructive')
+  })
+})
+
+describe('buildThread: an alert that fired again', () => {
+  const am = (over: Partial<Incident> = {}) => inc({ source: 'alertmanager', ...over })
+  const texts = (items: ThreadItem[]) => items.flatMap((i) => (i.type === 'event' ? [i.text] : []))
+  const reopened = (id: number, at: string) => act(id, 'incident_reopened', at, 'Incident reopened: alert X fired again')
+
+  it('turns each reopening into a muted line with its time, in time order after the opening', () => {
+    const activity = [
+      reopened(3, '2026-10-05T11:20:00Z'),
+      reopened(2, '2026-10-05T09:59:00Z'),
+      act(1, 'incident_opened', '2026-10-05T07:00:00Z', 'Alert X is firing'),
+    ]
+    const items = buildThread({ incident: am({ occurrences: 3 }), activity, questionRuns: [], asks: [] })
+    assert.deepEqual(texts(items), ['Alert X is firing', `Fired again ${timeOfDay('2026-10-05T09:59:00Z')}`, `Fired again ${timeOfDay('2026-10-05T11:20:00Z')}`])
+    const lines = items.filter((i) => i.type === 'event')
+    assert.equal(lines[0].type === 'event' && lines[0].muted, undefined)
+    assert.equal(lines[1].type === 'event' && lines[1].muted, true)
+    assert.equal(lines[1].type === 'event' && lines[1].dot, 'bg-destructive')
+  })
+
+  it('shows five lines as they are', () => {
+    const activity = [1, 2, 3, 4, 5].map((n) => reopened(n + 1, `2026-10-05T0${n}:00:00Z`))
+    const items = buildThread({ incident: am(), activity, questionRuns: [], asks: [] })
+    assert.equal(texts(items).length, 5)
+    assert.ok(texts(items).every((t) => t.startsWith('Fired again ')))
+  })
+
+  it('collapses more than five into the latest five and a line "and N more"', () => {
+    const activity = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => reopened(n + 1, `2026-10-05T0${n}:00:00Z`))
+    const items = buildThread({ incident: am(), activity, questionRuns: [], asks: [] })
+    assert.deepEqual(texts(items), [
+      'and 3 more',
+      ...[4, 5, 6, 7, 8].map((n) => `Fired again ${timeOfDay(`2026-10-05T0${n}:00:00Z`)}`),
+    ])
+  })
+
+  it('says a reopening to a screen reader', () => {
+    const items = buildThread({ incident: am(), activity: [reopened(2, '2026-10-05T09:59:00Z')], questionRuns: [], asks: [] })
+    assert.deepEqual(allAnnouncements(items).map((a) => a.text), ['This alert fired again.'])
   })
 })
 

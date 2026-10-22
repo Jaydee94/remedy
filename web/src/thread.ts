@@ -2,10 +2,10 @@ import { plainText } from './agenttext.ts'
 import { askText } from './ask.ts'
 import type { ActivityEntry, AnyDiagnosis, Incident, Run, ToolCall } from './api.ts'
 import { sourceLabel } from './incidents.ts'
-import { kindDotClass } from './timeline.ts'
+import { kindDotClass, timeOfDay } from './timeline.ts'
 
 export type ThreadItem =
-  | { type: 'event'; key: string; at: string; dot: string; text: string; /** What a screen reader hears when the entry appears, if anything. */ say?: string }
+  | { type: 'event'; key: string; at: string; dot: string; text: string; /** What a screen reader hears when the entry appears, if anything. */ say?: string; /** A quiet line under the opening rather than a pill: a recurrence. */ muted?: boolean }
   | { type: 'working'; key: string; at: string; runId?: string }
   | { type: 'diagnosis'; key: string; at: string; diagnosis: AnyDiagnosis; outdated: boolean; sha: string; runId?: string }
   | { type: 'undiagnosed'; key: string; at: string; reason: 'fresh' | 'manual' | 'source' | 'failed'; sourceLabel: string; runId?: string }
@@ -32,6 +32,9 @@ const REPLACED = new Set(['diagnosis_started', 'diagnosis_finished', 'approval_r
 
 const time = (at: string) => Date.parse(at) || 0
 
+/** How many recurrences are listed one by one; the rest are counted in one line. */
+const MAX_RECURRENCE_LINES = 5
+
 /**
  * The messages of an incident's thread, oldest first: its history as pills, Remedy's diagnosis (or that it is working, or that it can be
  * asked), the questions of the maintainer with their answers, and the calls that wait for a decision. The approval of a question run
@@ -40,8 +43,21 @@ const time = (at: string) => Date.parse(at) || 0
 export function buildThread({ incident, activity, questionRuns, asks, lastResponder, diagnosisRun }: ThreadInput): ThreadItem[] {
   const items: ThreadItem[] = []
 
-  for (const a of [...activity].sort((x, y) => x.id - y.id)) {
-    if (REPLACED.has(a.kind)) continue
+  const sorted = [...activity].sort((x, y) => x.id - y.id)
+
+  // A re-fired alert reopens the incident: each time is a muted line, the latest few in full and the earlier ones as a count.
+  const reopened = sorted.filter((a) => a.kind === 'incident_reopened')
+  const hidden = Math.max(0, reopened.length - MAX_RECURRENCE_LINES)
+  reopened.forEach((a, n) => {
+    if (n < hidden) return
+    items.push({ type: 'event', key: `a${a.id}`, at: a.at, dot: kindDotClass(a.kind), text: `Fired again ${timeOfDay(a.at)}`, say: 'This alert fired again.', muted: true })
+  })
+  if (hidden > 0) {
+    items.push({ type: 'event', key: 'reopened-more', at: reopened[0].at, dot: kindDotClass('incident_reopened'), text: `and ${hidden} more`, muted: true })
+  }
+
+  for (const a of sorted) {
+    if (REPLACED.has(a.kind) || a.kind === 'incident_reopened') continue
     // A failed diagnosis of an incident with no diagnosis is said by the undiagnosed message; with one, nothing else changes in the thread.
     const say = a.kind === 'diagnosis_failed' && incident.diagnosis ? 'My latest diagnosis did not finish: this is the earlier one.' : undefined
     items.push({ type: 'event', key: `a${a.id}`, at: a.at, dot: kindDotClass(a.kind), text: a.summary, say })
