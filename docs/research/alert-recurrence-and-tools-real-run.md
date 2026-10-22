@@ -21,15 +21,22 @@ code (`docs/specs/2026-10-22-alert-recurrence-and-signal-tools-design.md`) again
 5. The diagnosis named the failed Job of a CronJob, the DNS errors in its pod log, a later run that had succeeded, and proposed one `kubectl` command for the maintainer. It said it could only read. Whether its statements are right about the cluster was **not** checked independently.
 6. No warning or error in the server log; no restart of the server, the runner or PostgreSQL.
 
+### Part 2: the metrics store and the silences (same day, after the home-server change opened the egress)
+
+7. The home server's values got `networkPolicy.metrics` (namespace `monitoring`, the `vmsingle` pod, port 8428); the monitoring namespace already admitted the namespace `remedy`. The address of VictoriaMetrics (`http://vmsingle-...monitoring.svc:8428`, no token) was saved in Setup (the first click did not save; the second did). About a minute later Setup said "I asked the metrics store 8 seconds ago and it answered."
+8. A question typed into the thread of the vmagent incident asked for the targets per job and the current silences. The ad-hoc run ended `succeeded`; its tool calls, all `succeeded`: `incident_get`, four `metrics_query` and `silence_list`. The answer named the scrape pool with zero targets (an Argo workflows service monitor), listed the jobs with an `up` series, said that no silence was active and that the tool shows only 20 series per query (it could not see three jobs), and said it did not know why the pool was empty. Whether the numbers are right was **not** checked against VictoriaMetrics.
+9. Still no warning or error in the server log, and no restart.
+
 ## Proven by this run
 
 - The Alertmanager source reaches a real Alertmanager through the chart's NetworkPolicy and the setting saved in the UI, and opens incidents in PostgreSQL.
 - The tool `alert_list` works with the real CLI in a run that also used cluster tools, and the CLI returns a valid structured answer.
-- Setup, the settings write, the incident list and thread, a click-started diagnosis and the run's events work on PostgreSQL.
+- `metrics_query` and `silence_list` work with the real CLI against the real VictoriaMetrics and Alertmanager, through `networkPolicy.metrics` on k3s; the metrics probe in Setup works.
+- Setup, the settings write, the incident list and thread, a click-started diagnosis, a question in a thread and the runs' events work on PostgreSQL.
 
 ## Not covered (so not proven)
 
-- `silence_list`, `metrics_query` and `metrics_query_range`: no metrics address was set and the chart value `networkPolicy.metrics` is not set on the home server, so the egress is closed.
+- `metrics_query_range` (the agent used the instant query only).
 - The recurrence: no alert cleared and returned during the run, so the reopening (`occurrences`, `incident_reopened`, an ignored incident staying ignored) was not seen on the real system.
 - The interval setting `alertmanager_poll_interval` (left at its default), the freshness limit and the automatic start, and an approval of an automatic run.
 - The host tools, the learner and GitHub (no token, no host were entered).
