@@ -295,8 +295,7 @@ the pod, but not the loss of the volume. Setup shows whether the runner is conne
 ### Or: log in from the Setup page
 
 Status: the control plane, the runner, the chart and the wizard on the Setup page are implemented (pull requests A and B of
-`docs/plans/ui-login-relay.md`); the wizard was walked in a browser with a fake CLI only, and the real run with the real CLI is not made (record:
-`docs/research/login-relay-real-run.md`, to be written), so the feature is not proven. The `kubectl exec` login above stays the way that works and is the
+`docs/plans/ui-login-relay.md`); the wizard was walked in a browser with a fake CLI only, and the full real run with the real CLI is not made (runbook `docs/runbook/login-relay-real-run.md`); one use on the home server on 2026-10-22 logged the runner in with CLI 2.1.292 (record `docs/research/login-relay-real-run.md`), so the success path works, but the feature is not proven. The `kubectl exec` login above stays the way that works and is the
 fallback.
 
 There is nothing to turn on (since 2026-10-22 the login from the page has no switch and no chart value): whenever the runner is in subscription mode,
