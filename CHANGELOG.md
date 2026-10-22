@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.16.0](https://github.com/Jaydee94/remedy/compare/v0.15.0...v0.16.0) (2026-10-22)
+
+### ⚠ BREAKING CHANGES
+
+* use PostgreSQL as the only database (#175)
+
+### Features
+
+* use PostgreSQL as the only database ([#175](https://github.com/Jaydee94/remedy/issues/175)) ([ee19306](https://github.com/Jaydee94/remedy/commit/ee19306a73d966af86ce2fee0327ef34b63e1fea))
+
 ## [0.15.0](https://github.com/Jaydee94/remedy/compare/v0.14.1...v0.15.0) (2026-10-22)
 
 ### Features
