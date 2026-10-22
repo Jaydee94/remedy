@@ -1,6 +1,6 @@
 # PostgreSQL as the only database
 
-Status: implemented except the cutover on the home server; not proven by a real run (see "Verification status" at the end). Approved by the maintainer on 2026-10-22. The decisions below were the author's calls (written without a question round; the maintainer said "just start") and the maintainer approved all ten; decision 11 (the chart's own Postgres) is the maintainer's own, added later the same day. `docs/design.md` (the line on the backend, formerly "SQLite") was changed first (plan task 0): on conflict the design document wins.
+Status: implemented; not installed on the home server and not proven by a real run (see "Verification status" at the end). Approved by the maintainer on 2026-10-22. The decisions below were the author's calls (written without a question round; the maintainer said "just start") and the maintainer approved all ten; decision 11 (the chart's own Postgres) is the maintainer's own, added later the same day. Later that day the maintainer dropped decisions 9 (the SQLite importer) and 10 (the bridge release): existing installations are reinstalled with an empty database (see "Existing installations"). The numbers of the other decisions are unchanged. `docs/design.md` (the line on the backend, formerly "SQLite") was changed first (plan task 0): on conflict the design document wins.
 
 ## Why (assumed) and what this does not promise
 
@@ -8,8 +8,7 @@ The maintainer asked to "switch completely to Postgres" and gave no reason. Plau
 
 ## Goals
 
-- The control plane talks only to PostgreSQL. SQLite is gone from the server binary, the chart, the docs and the tests, and from the images except for the one-time importer (decision 9), which the control plane's image carries for one release.
-- Nothing is lost in the move: the existing data (runs, events, incidents, activity, hosts and their sealed credentials, skills, settings, tool calls) is carried over by a one-time import tool, ids unchanged, so that every sealed value (`store.HostCredentialAAD` binds the row id) still opens with the same master key.
+- The control plane talks only to PostgreSQL. SQLite is gone from the binaries, the images, the chart, the docs, the tests and `go.mod`.
 - The behaviour the store guarantees today holds under a pool of connections: the claim of a run, the daily and per-incident limits of automatic diagnosis, `BeginExecution`, `ExpireCall` against `Decide`, `ReopenIncident`. These guarantees rest on SQLite's single connection today and must be re-established, not assumed (see "Concurrency").
 - The Helm chart, the kind testbed, CI, the Dockerfile, the runbooks and `CLAUDE.md` describe and exercise Postgres only.
 
@@ -19,20 +18,20 @@ The maintainer asked to "switch completely to Postgres" and gave no reason. Plau
 - No ORM, no query builder, no code generation. The store keeps hand-written SQL on `database/sql`.
 - No change of the data model, the API or the UI. Timestamps stay fixed-width text, booleans stay 0/1 integers and JSON stays text in this work (decision 3); typed columns are a possible later cleanup.
 - No database operator, no high-availability or replicated Postgres in the chart. The chart installs one small single-node Postgres by default and takes a connection to a database of your own instead (decision 11, which replaced the earlier non-goal "The chart does not install a Postgres server").
-- Anti-goal: a cutover that can lose or silently alter data, or that cannot be rolled back. The old PVC is not deleted by any step of this work.
+- No migration of existing SQLite data (the maintainer's decision of 2026-10-22, see "Existing installations").
 
 ## Decisions (author's calls)
 
-1. **Driver:** `github.com/jackc/pgx/v5` through its `database/sql` adapter (`pgx/v5/stdlib`). It is the maintained pure-Go driver, supports `RETURNING`, error codes (`*pgconn.PgError`) and connection settings in the DSN. This is a new dependency with a reason (CLAUDE.md: "a new dependency needs a reason"). `modernc.org/sqlite` leaves the server's imports. It stays in `go.mod` for exactly one release for the importer (decision 9), then goes.
+1. **Driver:** `github.com/jackc/pgx/v5` through its `database/sql` adapter (`pgx/v5/stdlib`). It is the maintained pure-Go driver, supports `RETURNING`, error codes (`*pgconn.PgError`) and connection settings in the DSN. This is a new dependency with a reason (CLAUDE.md: "a new dependency needs a reason"). `modernc.org/sqlite` leaves `go.mod`.
 2. **Placeholders:** the roughly 366 `?` placeholders stay in the source. A thin wrapper (`internal/store/db.go`) around `*sql.DB` and `*sql.Tx` rewrites `?` to `$1, $2, ...` once per statement and caches the result. A statement that contains a literal question mark inside quotes is refused (a test scans the sources; none exists today). This keeps the port a dialect fix and not a rewrite of every query.
-3. **Timestamps, booleans, JSON:** unchanged column types (`TEXT` fixed-width timestamps, `INTEGER` 0/1, `TEXT` JSON). String order equals time order, which the code and the tests rely on; the import is a plain copy. (Typed `timestamptz`/`boolean`/`jsonb` columns are a candidate follow-up, not part of this work.)
+3. **Timestamps, booleans, JSON:** unchanged column types (`TEXT` fixed-width timestamps, `INTEGER` 0/1, `TEXT` JSON). String order equals time order, which the code and the tests rely on. (Typed `timestamptz`/`boolean`/`jsonb` columns are a candidate follow-up, not part of this work.)
 4. **Case-insensitive names:** `COLLATE NOCASE` (repository full names, host names) becomes a unique index on `lower(column)` and the comparing queries use `lower()`. No `citext` extension (it needs a privilege the maintainer's database role may not have).
-5. **Identity columns:** `INTEGER PRIMARY KEY AUTOINCREMENT` becomes `BIGINT GENERATED BY DEFAULT AS IDENTITY`; the Go types stay `int64`. `LastInsertId` (not available with pgx) is replaced by `RETURNING id`. The importer sets each sequence to the highest imported id and keeps SQLite's `sqlite_sequence` high-water mark (as migration 008 already does for incidents), so an id of a deleted row is never reused.
-6. **Schema history:** one new baseline migration describes the schema as it is after SQLite migration 018, in Postgres SQL. The 18 SQLite migration files are removed from the server (they stay in git history and, for the importer's fixture, in the importer's testdata). New migrations continue as `002_...`. The migration runner takes a Postgres advisory lock, so that two starting processes cannot migrate at once, and records versions in `schema_migrations` as before. The `-- remedy:foreign-keys-off` mechanism is deleted: Postgres has transactional DDL and `ALTER TABLE` for everything those rebuilds did.
+5. **Identity columns:** `INTEGER PRIMARY KEY AUTOINCREMENT` becomes `BIGINT GENERATED BY DEFAULT AS IDENTITY`; the Go types stay `int64`. `LastInsertId` (not available with pgx) is replaced by `RETURNING id`.
+6. **Schema history:** one new baseline migration describes the schema as it is after SQLite migration 018, in Postgres SQL. The 18 SQLite migration files are removed from the server (they stay in git history). New migrations continue as `002_...`. The migration runner takes a Postgres advisory lock, so that two starting processes cannot migrate at once, and records versions in `schema_migrations` as before. The `-- remedy:foreign-keys-off` mechanism is deleted: Postgres has transactional DDL and `ALTER TABLE` for everything those rebuilds did.
 7. **Configuration:** `REMEDY_DATABASE_URL` (a libpq-style URL; `sslmode`, `sslrootcert` and the like travel in it) replaces `REMEDY_DB`; `REMEDY_DATABASE_MAX_CONNS` (default 10, 2 to 100) sizes the pool. The URL holds a password, so the chart reads it from a Secret (never from `values.yaml`), it is wrapped in `secret.Value` and never appears in a log, an error or an answer. A server that cannot connect at start-up retries for a bounded 30 s (a database that is still starting is normal in a cluster) and then exits with a clear error.
 8. **Tests:** no testcontainers dependency. Tests use a Postgres reached through `REMEDY_TEST_DATABASE_URL`; a helper creates a fresh schema per test (`search_path` set on the connection) and drops it afterwards, so packages run in parallel against one server. `make test` starts a throwaway container with `dev/pg/up.sh` when the variable is unset and Docker is available, and fails with instructions otherwise. Silent skipping would hide the coverage (unlike helm, almost every test needs the store). CI gets a `postgres` service.
-9. **Data import:** a separate command `cmd/remedy-import-sqlite` reads a SQLite file at schema 018 and writes into an empty Postgres database (it refuses a non-empty one, and a SQLite file at another schema version with an instruction to upgrade through the last SQLite-capable release first). It copies table by table in dependency order inside one transaction, resets the sequences, and verifies row counts and the id set of each table. It opens the SQLite file read-only. It is kept for one release and removed afterwards.
-10. **Last SQLite release:** the release before this work lands is the "bridge" release; anyone on SQLite upgrades to it, then imports. The maintainer's home server runs 0.14.x, which is schema 017 or 018 depending on whether the alert-recurrence work (migration 018) was released first: the importer therefore accepts exactly the schema of the last SQLite migration in the tree it is built from, and the plan's task 7 pins that number when it starts.
+Decisions 9 (a one-time importer from SQLite) and 10 (a bridge release for it) were dropped on 2026-10-22; see "Existing installations".
+
 11. **The chart's own Postgres (the maintainer's decision of 2026-10-22, after the approval of 1 to 10):** the maintainer asked for a Postgres setup in the chart, and then for it to be the default. By default the chart installs a single-node Postgres (`postgres.*`: a StatefulSet `remedy-postgres` with one pod and one claim, an exact image tag, default `postgres:16.15`, the restricted Pod Security Standard, a headless Service). Exactly one database is configured: `database.existingSecret` set means a database of your own and nothing of the bundled one renders; `postgres.enabled` is unset by default, and `true` together with `database.existingSecret`, or `false` without it, is refused. The password comes from a Secret that exists already (`postgres.existingSecret`); the chart never generates it (a generated password would change on every render, and Helm's `lookup` does not work under Argo CD) and composes the control plane's URL from it in the Deployment (`$(REMEDY_POSTGRES_PASSWORD)`), so the password must be URL-safe. The connection uses `sslmode=disable`: the bundled server has no TLS, the traffic stays on the pod network of the namespace, and a NetworkPolicy `remedy-postgres` admits only the control plane and the backup job. A CronJob dumps the database nightly (`pg_dump --format=custom`) to a second claim with a retention in days; that claim is in the same cluster (on a single-node cluster on the same disk), so it protects against a damaged database, not against a lost disk. Not provided: an operator, high availability, replication, off-node backups, TLS and major-version upgrades (a new major version needs a dump and a restore).
 
 ## Concurrency (the one hard part)
@@ -48,52 +47,45 @@ The rule "inside `Store.inTx` use only the `tx`" stays: with a pool a call on `s
 
 ## Constraints that carry over
 
-- Sealed secrets stay sealed (`internal/secret`, AES-256-GCM, row id as additional data). The import must not touch a ciphertext.
-- Activity entries are written in the same transaction as the state change; the SSE stream follows `activity` by id; ids are never reused or backfilled. The importer keeps ids and the `activity` order.
+- Sealed secrets stay sealed (`internal/secret`, AES-256-GCM, row id as additional data).
+- Activity entries are written in the same transaction as the state change; the SSE stream follows `activity` by id; ids are never reused or backfilled.
 - A migration that changes data keeps the rule: a test on a database built from the earlier schema.
 - `internal/store` stays the only package that issues SQL.
 
 ## Parts left to the builder
 
-SQL formatting of the baseline; exact retry and backoff values within the stated bounds; the layout of the test helper; names inside `internal/store`; the importer's progress output; whether `dev/pg/up.sh` uses `docker` or `podman` when both exist.
+SQL formatting of the baseline; exact retry and backoff values within the stated bounds; the layout of the test helper; names inside `internal/store`; whether `dev/pg/up.sh` uses `docker` or `podman` when both exist.
 
-## Rollout (the maintainer's decisions; each step needs a go)
+## Existing installations
 
-1. Release the bridge version (the current release is enough, nothing to build).
-2. Provide a Postgres for the home server: an operator (for example CloudNativePG, an Argo CD app of the home-server repository), a plain StatefulSet, or a database on another host. The author does not choose; the plan lists what each needs from the chart (`networkPolicy.database`).
-3. Scale the control plane to zero, run the importer against a copy of `/data/remedy.db` (a Job or `kubectl cp` to a workstation), check its report, deploy the Postgres version, look at the Setup page and the activity feed. The old PVC stays until the maintainer deletes it.
-4. Rollback: scale to zero, deploy the previous version with the old PVC. Data written to Postgres after the cutover is not carried back (stated in the runbook).
+An installation that runs on SQLite is reinstalled with an empty PostgreSQL database: its data is not migrated. The project is work in progress, and the maintainer decided on 2026-10-22 to reinstall rather than migrate; the importer that had been built for decision 9 was removed (it stays in the repository's history). What a reinstall means in practice (what to copy out first, what to enter again, what stays) is in `docs/runbook/postgres.md`, section "Upgrading from the SQLite versions". `REMEDY_DB` is refused with an error that points there.
 
 ## Verification
 
 - All Go tests run against Postgres; `go test -race -cpu 1` over the store, gatekeeper, incident, responder and app packages is part of the acceptance (the repository's own note that some ordering bugs show only there).
-- A parity test: the importer's fixture is the SQLite schema filled with a row in every table; after the import, the new store reads back what was written.
 - Parallel tests for each concurrency class above.
-- A real run on the kind testbed (`make dummy-up` with Postgres) and one on the home server after the cutover, recorded in `docs/research/`. Until then the status says implemented, not proven.
+- A real run on the kind testbed (`make dummy-up` with Postgres) and one on the home server after the reinstall, recorded in `docs/research/`. Until then the status says implemented, not proven.
 
 ### Verification status
 
 Run, and passing, at the time this status was written:
 
-- the Go tests of every package on PostgreSQL 16 (`make test` against the throwaway server of `dev/pg/`), including the parity and schema tests of `internal/store` and the importer's tests (`internal/importsqlite`, `cmd/remedy-import-sqlite`), which build a SQLite file at schema 018 with a row in every table, import it and compare;
+- the Go tests of every package on PostgreSQL 16 (`make test` against the throwaway server of `dev/pg/`), including the schema tests of `internal/store`;
 - the chart's render tests (`make chart-check`), which pin the database Secret, `networkPolicy.database` in both forms and the refusals;
 - `docker build` of the control plane image and a start of the container against a PostgreSQL, answering `/healthz`;
-- the runbook's commands for the importer (`--dry-run`, the import, the refusal of a second import into a filled database), run by hand against a fixture file and a scratch database on the test server, and the server started on the imported database (`docs/runbook/postgres-cutover.md`);
-- in the Go tests only (not run by hand): the store's replacement of a NUL byte or invalid UTF-8 in text arguments with U+FFFD (bytes untouched), the importer's `--replace-invalid-text` with its counts and dry run, the importer's refusal of a destination that holds other tables before anything is created, and the `503` with `Retry-After` of a delete that stays busy.
+- in the Go tests only (not run by hand): the store's replacement of a NUL byte or invalid UTF-8 in text arguments with U+FFFD (bytes untouched) and the `503` with `Retry-After` of a delete that stays busy.
 
-After the integration fix wave (review findings, the importer in the image), also run and passing:
+After the integration fix wave (review findings), also run and passing:
 
 - the two gatekeeper tests that had been switched off during the port, `TestExactlyOnceUnderRacingReplaysAndDecisions` and `TestADecisionAndTheDeadlineHaveExactlyOneWinner`, enabled again and run with `-race -cpu 1 -count=20` (20 passes of each);
-- the importer in the control plane's image: the image was built from the tree and `docker run --rm --entrypoint /remedy-import-sqlite <image> --help` printed the usage and exited with 2;
 - the tests of the new behaviour: the incident row lock in `UnignoreIncident` and `ReopenIncident` (a deterministic reproduction of the stuck state, `internal/store/state_snapshot_test.go`), `store.ErrDatabaseBusy`, the `deadlock_timeout` warning threshold, the rollback on `runtime.Goexit`, the stricter database URL checks, and the chart's database range rules (IPv4 `/16` to `/32` without host bits, no IPv6 range inside `::/16`);
 - `make check` green (formatting, vet, all Go tests on PostgreSQL 16 including `-race`, the chart check, the shell tests, the web lint, tests and build).
 
 NOT run, so not proven:
 
 - the kind testbed with the chart and its PostgreSQL (`make dummy-up`, `dev/kind/postgres.yaml`), and any real run with the real CLI on PostgreSQL;
-- the install of the chart on the home server, the import of the real `remedy.db`, and the checks after it (Setup, the activity feed, an approval, a diagnosis);
+- the install of the chart on the home server and the checks after it (Setup, the activity feed, an approval, a diagnosis);
 - a restart of the PostgreSQL server under a running server (only the termination of the pool's connections by `pg_terminate_backend` was tried, by hand: the next requests worked and the log said nothing), TLS (`sslmode=verify-full`) against a real server, and a `pg_restore` onto the maintainer's cluster (a `pg_dump`/`pg_restore` round trip was run by hand on a scratch database);
-- the rollback to the SQLite release;
-- the behaviour of Argo CD when a rendered resource disappears (the old `remedy-data` claim under `prune: true`): the runbook protects the claim with an annotation and a `Retain` volume and does not rely on Argo CD honoring `helm.sh/resource-policy: keep`.
+- the behaviour of Argo CD when the old `remedy-data` claim is no longer rendered (with `prune: true` it is expected to be deleted, and with it a `local-path` volume's data).
 
 The first two are the records this section asks for in `docs/research/`; they do not exist yet.

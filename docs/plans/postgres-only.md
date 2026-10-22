@@ -1,5 +1,7 @@
 # PostgreSQL as the only database: Implementation Plan
 
+> **Note:** Tasks 7 (importer) and 11 (cutover) were dropped on 2026-10-22: the maintainer decided on a reinstall with an empty database; see the spec.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The control plane, its tests, the images, the chart and the docs use PostgreSQL only, and the existing SQLite data is carried over by a one-time importer without changing an id.

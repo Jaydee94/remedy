@@ -105,15 +105,16 @@ running as a service for other people's homelabs.
   plane (decision of 2026-10-22, replacing SQLite;
   [spec](specs/2026-10-22-postgres-only-design.md), plan
   [`plans/postgres-only.md`](plans/postgres-only.md); approved by the maintainer; implemented
-  except the cutover on the home server, and not proven by a real run). The reasons are
+  but not installed on the home server, and not proven by a real run). The reasons are
   assumed, because the maintainer gave none: backups and restores with ordinary Postgres
   tooling, no single-node volume that holds the only copy of
   the data, a database that other tools can read, and room to grow. **This is not a
   high-availability change:** sessions, the claim of runs, the gatekeeper's waiting handlers,
   the signals state and the SSE streams stay in one process, and two replicas against one
   database are a non-goal. Column types stay as they are (fixed-width text timestamps,
-  integer booleans, text JSON), and the existing data is carried over by a one-time import
-  tool with ids unchanged, so that sealed values still open with the same master key.
+  integer booleans, text JSON). Existing SQLite data is not migrated: the project is work in
+  progress, and an installation is reinstalled with an empty database (the maintainer's
+  decision of 2026-10-22; [`runbook/postgres.md`](runbook/postgres.md)).
   The Helm chart installs a small single-node PostgreSQL of its own by default and takes a connection to a database of
   your own instead (`database.existingSecret`); it has no operator, no replication and no off-node backup (spec, decision 11).
 - Two processes:
