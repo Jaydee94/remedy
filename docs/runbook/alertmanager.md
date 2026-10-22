@@ -120,7 +120,7 @@ diagnosis), and the activity feed says the approval expired. The card of such an
 
 ## 7. If it does not work
 
-These rows are the expected causes. They were **not tried against a live Alertmanager**; the source was tested against a fake that speaks the same API.
+These rows are the expected causes. The source was tested against a fake that speaks the same API, and on 2026-10-22 against the home server's real Alertmanager with the chart's NetworkPolicy (`docs/research/alert-recurrence-and-tools-real-run.md`): it listed three alerts and opened three incidents. The rows below were not provoked there: none of these failures was seen.
 
 | The line says | Look at |
 |---|---|

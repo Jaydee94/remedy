@@ -430,10 +430,18 @@ row; a Job made from the CronJob wrote a dump; a pod with other labels was block
 `pg_restore --clean` command of `deploy/chart/README.md` brought a changed row back. That was not the control plane
 itself, not installed with `helm install` or Argo CD, and not on k3s.
 
+On the home server (k3s, Argo CD, 2026-10-22): release 0.16.0 was installed by Argo CD from the chart with the bundled
+PostgreSQL 16.15 and an empty database. `remedy-postgres-0`, the control plane and the runner became Ready with no restart
+(the runner logged a few `connection refused` lines in the seconds before the server listened), the server connected with
+`PGPASSWORD` from the sealed Secret and the URL without a password, the baseline migration was applied once (15 tables), the
+old claim `remedy-data` and its volume were pruned, the claim `remedy-postgres-backup` stayed `Pending` (it waits for the
+CronJob's first pod) and Argo CD showed the application as `Progressing` (cause not confirmed). A diagnosis then wrote its
+rows (incident, run, run events, three tool calls, activity); see `docs/research/alert-recurrence-and-tools-real-run.md`.
+
 Not tried: the blocks of this runbook on a cluster (the job wait loop, the tools pod with or without the backup claim, the
 copy off the node, the restore of section 3 with `dropdb`/`createdb`, the password change of section 2, the new major
-version), the control plane itself against the bundled PostgreSQL, TLS against a real server, and a restart of the server
-under a running control plane.
+version), the first nightly dump and a restore from it, TLS against a real server, and a restart of the database pod or the
+server under a running control plane.
 
 ## 10. Upgrading from the SQLite versions
 
