@@ -1,4 +1,5 @@
 import type { Incident, IncidentSource, ToolCall } from './api.ts'
+import { plainText } from './agenttext.ts'
 import { askText } from './ask.ts'
 import { reasonText } from './incidents.ts'
 
@@ -61,7 +62,7 @@ export function askFor(asks: readonly ToolCall[], incidentId: number): ToolCall 
 /**
  * The line under an incident in the list and in the sidebar. Ignored and resolved come first: the maintainer's decision and the
  * end of the incident outrank a call that still waits. The sentences are ours; the diagnosis summary is the agent's text and is
- * only shown.
+ * only shown, as one line of plain text without its Markdown markers.
  */
 export function incidentPreview(incident: Incident, ask?: ToolCall): string {
   if (incident.state === 'ignored') return 'You ignored this incident.'
@@ -71,7 +72,7 @@ export function incidentPreview(incident: Incident, ask?: ToolCall): string {
   }
   if (ask) return askText(ask).question
   if (incident.state === 'diagnosing') return "I'm looking into it…"
-  if (incident.diagnosis) return incident.diagnosis.summary
+  if (incident.diagnosis) return plainText(incident.diagnosis.summary, 300)
   // lastDiagnosisAt is set when any diagnosis starts; an open incident without a diagnosis that has one failed it.
   if (incident.state === 'open' && incident.lastDiagnosisAt !== undefined) return "My last diagnosis didn't finish."
   if (!incident.autoDiagnose) return "I don't diagnose this kind of result automatically. Ask me if you want."

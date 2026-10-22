@@ -1,3 +1,4 @@
+import { plainText } from './agenttext.ts'
 import { askText } from './ask.ts'
 import type { ActivityEntry, AnyDiagnosis, Incident, Run, ToolCall } from './api.ts'
 import { sourceLabel } from './incidents.ts'
@@ -112,7 +113,7 @@ function announcementOf(item: ThreadItem): Announcement | null {
     case 'diagnosis':
       // The key is the item and its text: a re-diagnosis with an identical summary is not announced twice (the `working` message
       // before it was).
-      text = `Remedy diagnosed this incident: ${oneLine(item.diagnosis.summary, 100)}`
+      text = `Remedy diagnosed this incident: ${oneLine(plainText(item.diagnosis.summary, 200), 100)}`
       break
     case 'answer':
       if (item.run.status === 'succeeded') text = `Remedy answered your question: ${oneLine(item.run.prompt, 60)}`
