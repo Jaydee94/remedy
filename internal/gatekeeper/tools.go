@@ -20,6 +20,10 @@ const GroupCluster = "cluster"
 // GroupHost is the group of the host tools. They are offered only to runs that were started with hosts.
 const GroupHost = "host"
 
+// GroupSignals is the group of the tools that read the monitoring (Alertmanager, the metrics store). They are offered to every run with
+// gatekeeper access but a learning run, while their source is configured (Tool.Available).
+const GroupSignals = "signals"
+
 // Tool is something an agent can call. Its arguments are validated by Decode, strictly: a tool never sees an argument
 // that Decode did not return.
 type Tool struct {
@@ -29,6 +33,10 @@ type Tool struct {
 	// that were started with cluster tools. A run that is not offered a tool cannot call it either, and its attempt is
 	// answered like a call of a tool that does not exist.
 	Group string
+	// Available, when set, says whether the tool can be offered at this moment (its source is configured). It is asked at every
+	// tools/list and every call, because a source is a setting that changes while the control plane runs. A tool that is not
+	// available is not offered, and a call of it is answered like a call of a tool that does not exist. Nil means always.
+	Available func() bool
 	// Mutating tools change something and wait for the maintainer's approval before they run.
 	Mutating bool
 	// Schema is the JSON schema of the arguments, shown to the model by tools/list. It documents; Decode enforces.
@@ -101,6 +109,9 @@ func (t Tool) offeredTo(r run.Run) bool {
 	if r.Role == run.RoleLearner && !learnerTools[t.Name] {
 		return false
 	}
+	if t.Available != nil && !t.Available() {
+		return false
+	}
 	switch t.Group {
 	case "":
 		return true
@@ -108,6 +119,8 @@ func (t Tool) offeredTo(r run.Run) bool {
 		return r.Cluster
 	case GroupHost:
 		return r.HostCount > 0
+	case GroupSignals:
+		return true
 	}
 	return false
 }
@@ -120,7 +133,7 @@ func validateTool(t Tool) error {
 		return fmt.Errorf("tool name %q is not lower case letters, digits and underscores", t.Name)
 	case t.Decode == nil || t.Run == nil:
 		return fmt.Errorf("tool %q needs Decode and Run", t.Name)
-	case t.Group != "" && t.Group != GroupCluster && t.Group != GroupHost:
+	case t.Group != "" && t.Group != GroupCluster && t.Group != GroupHost && t.Group != GroupSignals:
 		return fmt.Errorf("tool %q is in the group %q, which does not exist", t.Name, t.Group)
 	}
 	return nil
