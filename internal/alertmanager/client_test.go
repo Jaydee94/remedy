@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
 	"strings"
@@ -220,5 +221,130 @@ func TestTheAnswerOfTheHomeServerIsReadAsItIs(t *testing.T) {
 	}
 	if nas != 2 {
 		t.Errorf("%d alerts of the NAS, want 2", nas)
+	}
+}
+
+func TestListAlertsFilteredSendsEncodedFiltersAndKeepsSuppressedAlerts(t *testing.T) {
+	fake := alertmanagertest.New(t, "tok")
+	silenced := alertmanagertest.Alert("f2", "NodeDown", map[string]string{"instance": "nas"}, time.Now())
+	silenced["status"] = map[string]any{"state": "suppressed", "silencedBy": []string{"s-1"}, "inhibitedBy": []string{"f9"}}
+	fake.SetAlerts(alertmanagertest.Alert("f1", "KubePodCrashLooping", nil, time.Now()), silenced)
+	filters := []string{`alertname=~"Node.*"`, `instance="nas box&x=1"`}
+	got, err := newClient(t, creds(fake.URL, "tok")).ListAlertsFiltered(context.Background(), filters, false)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("%+v, %v", got, err)
+	}
+	if got[0].Status.State != "active" || len(got[0].Status.SilencedBy) != 0 {
+		t.Errorf("first alert: %+v", got[0].Status)
+	}
+	if st := got[1].Status; st.State != "suppressed" || !reflect.DeepEqual(st.SilencedBy, []string{"s-1"}) || !reflect.DeepEqual(st.InhibitedBy, []string{"f9"}) {
+		t.Errorf("second alert: %+v", st)
+	}
+	reqs := fake.Requests()
+	if len(reqs) != 1 || reqs[0].Method != http.MethodGet || reqs[0].Path != "/api/v2/alerts" || reqs[0].Auth != "Bearer tok" {
+		t.Fatalf("requests = %+v", reqs)
+	}
+	vals, err := url.ParseQuery(reqs[0].Query)
+	if err != nil || !reflect.DeepEqual(vals["filter"], filters) || vals.Has("active") || vals.Has("silenced") {
+		t.Fatalf("query %q -> %v, %v", reqs[0].Query, vals, err)
+	}
+	if strings.Contains(reqs[0].Query, " ") || strings.Contains(reqs[0].Query, `"`) {
+		t.Errorf("the filters are not URL-encoded: %q", reqs[0].Query)
+	}
+}
+
+func TestListAlertsFilteredActiveOnlyAsksForActiveAlerts(t *testing.T) {
+	fake := alertmanagertest.New(t, "")
+	if _, err := newClient(t, creds(fake.URL, "")).ListAlertsFiltered(context.Background(), nil, true); err != nil {
+		t.Fatal(err)
+	}
+	if reqs := fake.Requests(); len(reqs) != 1 || reqs[0].Query != "active=true&inhibited=false&silenced=false" {
+		t.Fatalf("requests = %+v", reqs)
+	}
+}
+
+func TestListAlertsFilteredRefusesBadFiltersWithoutSendingAnything(t *testing.T) {
+	fake := alertmanagertest.New(t, "")
+	cl := newClient(t, creds(fake.URL, ""))
+	many := make([]string, 11)
+	for i := range many {
+		many[i] = `a="b"`
+	}
+	for name, f := range map[string][]string{
+		"newline": {"a=\"b\"\nc=\"d\""}, "tab": {"a=\"b\t\""}, "nul": {"a=\"\x00\""}, "del": {"a=\"\x7f\""}, "empty": {""}, "eleven": many,
+	} {
+		if _, err := cl.ListAlertsFiltered(context.Background(), f, false); !errors.Is(err, alertmanager.ErrBadFilter) {
+			t.Errorf("%s: error = %v", name, err)
+		}
+	}
+	if _, err := cl.ListAlertsFiltered(context.Background(), many[:10], false); err != nil {
+		t.Errorf("ten filters: %v", err)
+	}
+	if reqs := fake.Requests(); len(reqs) != 1 {
+		t.Errorf("%d requests, want only the one with ten filters", len(reqs))
+	}
+}
+
+func TestListSilencesReadsMatchersAndState(t *testing.T) {
+	fake := alertmanagertest.New(t, "tok")
+	start := time.Date(2026, 10, 22, 8, 0, 0, 0, time.UTC)
+	fake.SetSilences(
+		alertmanagertest.Silence("s-1", "active", start, start.Add(2*time.Hour), "ops", "maintenance",
+			map[string]any{"name": "alertname", "value": "Node.*", "isRegex": true, "isEqual": true},
+			map[string]any{"name": "instance", "value": "nas", "isRegex": false, "isEqual": false}),
+		alertmanagertest.Silence("s-2", "expired", start.Add(-3*time.Hour), start.Add(-time.Hour), "me", ""),
+	)
+	got, err := newClient(t, creds(fake.URL, "tok")).ListSilences(context.Background())
+	if err != nil || len(got) != 2 {
+		t.Fatalf("%+v, %v", got, err)
+	}
+	s := got[0]
+	want := []alertmanager.Matcher{{Name: "alertname", Value: "Node.*", IsRegex: true, IsEqual: true}, {Name: "instance", Value: "nas", IsEqual: false}}
+	if s.ID != "s-1" || s.State != "active" || s.CreatedBy != "ops" || s.Comment != "maintenance" || !s.StartsAt.Equal(start) ||
+		!s.EndsAt.Equal(start.Add(2*time.Hour)) || !reflect.DeepEqual(s.Matchers, want) {
+		t.Errorf("silence = %+v", s)
+	}
+	if got[1].State != "expired" {
+		t.Errorf("second = %+v", got[1])
+	}
+	reqs := fake.Requests()
+	if len(reqs) != 1 || reqs[0].Method != http.MethodGet || reqs[0].Path != "/api/v2/silences" || reqs[0].Query != "" || reqs[0].Auth != "Bearer tok" {
+		t.Fatalf("requests = %+v", reqs)
+	}
+}
+
+func TestAMatcherWithoutIsEqualIsAnEquality(t *testing.T) {
+	// Alertmanager before 0.22 sends no isEqual.
+	fake := alertmanagertest.New(t, "")
+	fake.SetSilencesBody(`[{"id":"s","matchers":[{"name":"a","value":"b","isRegex":false}],"startsAt":"2026-10-22T08:00:00Z","endsAt":"2026-10-22T09:00:00Z","createdBy":"x","comment":"y","status":{"state":"active"}}]`)
+	got, err := newClient(t, creds(fake.URL, "")).ListSilences(context.Background())
+	if err != nil || len(got) != 1 || len(got[0].Matchers) != 1 || !got[0].Matchers[0].IsEqual {
+		t.Fatalf("%+v, %v", got, err)
+	}
+}
+
+func TestListSilencesIsAllOrNothing(t *testing.T) {
+	fake := alertmanagertest.New(t, "")
+	cl := newClient(t, creds(fake.URL, ""))
+	for name, body := range map[string]string{
+		"object": `{"x":1}`, "null": `null`, "html": `<html>`, "empty": ``, "truncated": `[{"id":"s","matchers":[`, "strings": `["a"]`,
+	} {
+		fake.SetSilencesBody(body)
+		if got, err := cl.ListSilences(context.Background()); err == nil || got != nil || strings.Contains(err.Error(), "<html>") {
+			t.Errorf("%s: %+v, %v", name, got, err)
+		}
+	}
+	fake.SetSilencesBody(`{"x":1}`)
+	if _, err := cl.ListSilences(context.Background()); !errors.Is(err, alertmanager.ErrNotAlerts) {
+		t.Errorf("an object: %v", err)
+	}
+	fake.SetSilencesRaw(500, "internal secret detail")
+	_, err := cl.ListSilences(context.Background())
+	var api *alertmanager.APIError
+	if !errors.As(err, &api) || api.Status != 500 || strings.Contains(err.Error(), "secret detail") {
+		t.Errorf("500: %v", err)
+	}
+	if _, err := newClient(t, creds("", "")).ListSilences(context.Background()); !errors.Is(err, alertmanager.ErrNotConfigured) {
+		t.Errorf("no address: %v", err)
 	}
 }
