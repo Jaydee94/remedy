@@ -34,7 +34,8 @@ func defaultServerImage(t *testing.T) string {
 	return "ghcr.io/jaydee94/remedy-server:" + c.AppVersion
 }
 
-// baseValues are the values a chart needs to render at all, and nothing else.
+// baseValues are the values a chart needs to render at all, and nothing else. They name a database of your own
+// (database.existingSecret), so the bundled PostgreSQL is off; bundledValues in postgres_test.go are the other way.
 func baseValues() map[string]any {
 	sha := strings.Repeat("a", 64)
 	return map[string]any{

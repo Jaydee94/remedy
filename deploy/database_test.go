@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// The chart takes a connection to a PostgreSQL it does not install (docs/specs/2026-10-22-postgres-only-design.md,
-// decision 7): the URL holds a password, so it comes from a Secret that exists already (database.existingSecret, key
+// A database of your own instead of the bundled one (docs/specs/2026-10-22-postgres-only-design.md, decisions 7 and 11;
+// the bundled one is in postgres_test.go): the URL holds a password, so it comes from a Secret that exists already (database.existingSecret, key
 // database.secretKey), and the control plane's egress to the database is one typed value, networkPolicy.database, in one of
 // two forms: pods inside the cluster (namespace + podSelector, like the Alertmanager) or an external server (cidr).
 
@@ -48,8 +48,10 @@ func TestTheDatabaseSecretKeyIsConfigurable(t *testing.T) {
 	}
 }
 
-func TestTheRenderNeedsTheDatabaseSecret(t *testing.T) {
-	for name, v := range map[string]any{"empty": "", "missing": nil, "not a string": 5} {
+// Without database.existingSecret the chart installs its own PostgreSQL (postgres_test.go), which needs its password Secret;
+// a database of your own needs exactly the name of its Secret.
+func TestWithoutTheDatabaseSecretTheBundledDatabaseNeedsItsPasswordSecret(t *testing.T) {
+	for name, v := range map[string]any{"empty": "", "missing": nil} {
 		t.Run(name, func(t *testing.T) {
 			values := baseValues()
 			if v == nil {
@@ -57,14 +59,18 @@ func TestTheRenderNeedsTheDatabaseSecret(t *testing.T) {
 			} else {
 				set(values, "database.existingSecret", v)
 			}
-			mustFail(t, values, "database.existingSecret")
+			mustFail(t, values, "postgres.existingSecret is required for the bundled PostgreSQL")
 		})
 	}
-	// It is required whether or not the policies are on.
+	// Whether or not the policies are on.
 	values := baseValues()
 	set(values, "networkPolicy.enabled", false)
 	set(values, "database.existingSecret", "")
-	mustFail(t, values, "database.existingSecret")
+	mustFail(t, values, "postgres.existingSecret is required for the bundled PostgreSQL")
+	// A database Secret that is not a name is refused.
+	values = baseValues()
+	set(values, "database.existingSecret", 5)
+	mustFail(t, values, "database.existingSecret must be the name of a Secret")
 }
 
 func TestTheDatabaseSecretKeyMustBeAKeyName(t *testing.T) {

@@ -52,7 +52,16 @@ spec:
       ports:
         - {protocol: TCP, port: {{ .Values.networkPolicy.apiServer.port }}}
     {{- end }}
-    {{- /* networkPolicy.database: PostgreSQL, the pods of the cluster or an external range, one rule, validated in validate.yaml. */ -}}
+    {{- /* PostgreSQL: the bundled one (its pods in this namespace), or networkPolicy.database for a database of your own (the
+           pods of the cluster or an external range); one rule either way, validated in validate.yaml. */ -}}
+    {{- if include "remedy.bundledPostgres" . }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "remedy.postgresSelector" (dict "ctx" . "name" "remedy-postgres") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: 5432}
+    {{- end }}
     {{- with .Values.networkPolicy.database }}
     - to:
         {{- if .cidr }}
@@ -146,6 +155,33 @@ spec:
               {{- include "remedy.privateRanges" . | nindent 14 }}
       ports:
         - {protocol: TCP, port: 443}
+{{- end }}
+{{- if include "remedy.bundledPostgres" . }}
+---
+# The bundled PostgreSQL. Ingress on 5432 from two peers of this namespace only: the control plane and the backup job. No
+# egress rule: the policy does not restrict the database's egress (it opens no connection).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: remedy-postgres
+  labels:
+    {{- include "remedy.postgresLabels" (dict "ctx" . "name" "remedy-postgres") | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "remedy.postgresSelector" (dict "ctx" . "name" "remedy-postgres") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "remedy.selector" (dict "ctx" . "component" "server") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "remedy.postgresSelector" (dict "ctx" . "name" "remedy-postgres-backup") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: 5432}
 {{- end }}
 {{- if .Values.cluster.write.enabled }}
 ---

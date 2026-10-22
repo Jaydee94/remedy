@@ -2,7 +2,8 @@
 # It supports one release per namespace: the resource names are fixed (remedy-server, remedy-runner, ...).
 #
 # Nothing here is a secret. The admin password, the runner token and the master key come from a Secret that exists
-# already (existingSecret), for example one a SealedSecret creates. So does the database connection URL (database).
+# already (existingSecret), for example one a SealedSecret creates. So do the password of the bundled PostgreSQL
+# (postgres.existingSecret) and the connection URL of a database of your own (database.existingSecret).
 
 image:
   pullPolicy: IfNotPresent
@@ -20,10 +21,12 @@ existingSecret:
     runnerToken: runner-token       # 24 or more characters
     masterKey: master-key           # openssl rand -base64 32; losing it loses the sealed GitHub token
 
-# The control plane's database is a PostgreSQL (16 or newer) that the chart does not install: an operator, a StatefulSet of
-# your own, or a server on another host. The control plane keeps no state on a volume.
+# The control plane's database is a PostgreSQL. By default the chart installs a small single-node one of its own (postgres,
+# below). To use a database of your own instead (an operator, a server on another host), set database.existingSecret: then
+# nothing of the bundled one is rendered, and networkPolicy.database is required while the policies are on. The control plane
+# itself keeps no state on a volume.
 database:
-  # Required: the name of a Secret that exists already and holds the connection URL, a libpq-style URL with the password
+  # Empty: the bundled PostgreSQL. Set: the name of a Secret that exists already and holds the connection URL, a libpq-style URL with the password
   # in it, for example postgres://remedy:PASSWORD@db.databases.svc:5432/remedy?sslmode=require
   # (sslmode and the like travel in the URL). The chart cannot mount a CA file, so sslrootcert=/path has nothing to read: verify-full
   # works only with a CA the server image already trusts; for a private CA use require (encrypted, not verified). The chart never creates the Secret and refuses the URL as a
@@ -31,6 +34,40 @@ database:
   # REMEDY_DATABASE_URL (secretKeyRef); the pool size is REMEDY_DATABASE_MAX_CONNS (default 10, 2 to 100) in server.env.
   existingSecret: ""
   secretKey: url       # the key of that Secret that holds the URL
+
+# The bundled PostgreSQL: a StatefulSet remedy-postgres with one pod and one claim, user and database remedy, in the release
+# namespace. No high availability, no replication, no TLS (the control plane connects with sslmode=disable on the pod
+# network), no backups off the node. See the chart README, "The database".
+postgres:
+  # Unset (the default): on, unless database.existingSecret is set. true together with database.existingSecret is refused
+  # (a contradiction), and so is false without it (no database at all).
+  enabled: null
+  # Required while the bundled database is on: a Secret that exists already, with the password under passwordKey. The chart
+  # never creates it and never takes the password as a value. The password must be URL-safe (the control plane's URL is
+  # composed with it), for example openssl rand -hex 24. It is set when the data directory is created; changing it in the
+  # Secret later does not change it in the database.
+  existingSecret: ""
+  passwordKey: password
+  image:
+    repository: postgres
+    tag: "16.15"       # an exact minor version; a new minor of the same major is a plain upgrade, a new major needs a dump and restore
+  persistence:
+    size: 5Gi
+    storageClass: ""   # empty: the cluster's default
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 512Mi}
+  # A CronJob that runs pg_dump into a claim of its own and keeps the dumps of the last retentionDays days. The claim is in
+  # the same cluster (on a single-node cluster on the same disk): it protects against a damaged database, not a lost disk.
+  backup:
+    enabled: true
+    schedule: "17 3 * * *"
+    retentionDays: 7
+    size: 2Gi
+    storageClass: ""   # empty: postgres.persistence.storageClass
+    resources:
+      requests: {cpu: 10m, memory: 64Mi}
+      limits: {memory: 256Mi}
 
 server:
   resources:
@@ -105,7 +142,8 @@ networkPolicy:
     cidrs: []
     port: 6443
   # PostgreSQL, the control plane's egress to its database: one rule on the remedy-server policy (the runner and the token
-  # refresher never get it). REQUIRED while networkPolicy.enabled is true, in exactly one of two forms.
+  # refresher never get it). With the bundled PostgreSQL the chart writes that rule itself and this value must stay empty;
+  # with database.existingSecret it is REQUIRED while networkPolicy.enabled is true, in exactly one of two forms.
   # Pods inside the cluster (an operator such as CloudNativePG, or a StatefulSet): TCP to the pods that match podSelector
   # in namespace, like the Alertmanager. An empty podSelector is refused (it would admit every pod of the namespace).
   #   database: {namespace: databases, podSelector: {cnpg.io/cluster: remedy}, port: 5432}

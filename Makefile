@@ -74,8 +74,10 @@ dev-web: ## Run the Vite dev server
 chart-check: ## Lint and render the Helm chart (needs helm; kubeconform when installed), then run its render tests
 	@command -v helm > /dev/null || { echo "helm is needed" >&2; exit 1; }
 	helm lint deploy/chart -f deploy/chart/ci/lint-values.yaml
+	helm lint deploy/chart -f deploy/chart/ci/postgres-values.yaml
 	@if command -v kubeconform > /dev/null; then \
-		helm template remedy deploy/chart --namespace remedy-system -f deploy/chart/ci/lint-values.yaml | kubeconform -strict -summary; \
+		helm template remedy deploy/chart --namespace remedy-system -f deploy/chart/ci/lint-values.yaml | kubeconform -strict -summary && \
+		helm template remedy deploy/chart --namespace remedy-system -f deploy/chart/ci/postgres-values.yaml | kubeconform -strict -summary; \
 	else echo "kubeconform is not installed: skipping the schema check (CI runs it)"; fi
 	REMEDY_REQUIRE_HELM=1 go test ./deploy -count=1
 
