@@ -46,7 +46,7 @@ the prototype shows that the server cannot answer yet.
 | Icons | `lucide-react`, already a dependency. |
 | Theme | One dark theme in `:root`. The `.dark` block goes. |
 | Toast | A small provider in the shell, about 50 lines, no dependency. |
-| Text Remedy "says" | Written by the UI from data, in fixed tables and templates. The only agent-written text is shown as text and is never the source of a sentence's structure (see 9). |
+| Text Remedy "says" | Written by the UI from data, in fixed tables and templates. The only agent-written text is shown as text (its prose as restricted Markdown since 2026-10-22) and is never the source of a sentence's structure (see 9). |
 | Reversible actions | Ignoring an incident runs at once and offers Undo. Irreversible actions (cancel a run, disconnect GitHub, remove a repository) keep the two-step `ConfirmButton`. |
 | After asking about an incident | The user stays in the thread; the question and the answer appear there. |
 | Defaults of Ask Remedy | Both tool chips start off, as today. |
@@ -265,8 +265,11 @@ Replaces `SettingsPage`, `GitHubConnectionCard`, `ReposCard` and `LimitsCard`. O
 
 The redesign changes no boundary and must not weaken one.
 
-- **Agent-written text is data.** The diagnosis fields, an answer, a note and a step's raw line are rendered as React text, never as HTML or Markdown, in every
-  new component. This includes the preview of a conversation and the sidebar.
+- **Agent-written text is data.** The diagnosis fields, an answer, a note and a step's raw line are rendered as React text, never as HTML, in every new
+  component. Until 2026-10-22 this said "never as HTML or Markdown"; the maintainer then decided that descriptive agent prose (the diagnosis fields and an
+  answer) is rendered as Markdown by our own restricted renderer, which makes React elements only, never a link, an image, an attribute or a page heading
+  ([`2026-10-22-agent-text-markdown-design.md`](2026-10-22-agent-text-markdown-design.md)). A note, a step's raw line and everything an approval shows stay
+  exact text. The preview of a conversation and the sidebar show the prose as one line of plain text with the markers removed.
 - **No sentence's structure comes from untrusted text.** Remedy's sentences are templates and tables filled with values (a name, a number, a state). A value from
   GitHub or an alert is shown as such, shortened, and never decides what a sentence says.
 - **A decision shows what runs.** The ask shows the arguments of the call as stored; nothing is reworded in a way that hides them.

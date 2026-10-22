@@ -47,7 +47,8 @@ it wants to change waits for your approval. **See my work** opens the run: the s
 answered, and **Cancel run**.
 
 What Remedy says is a sentence filled with values from the data. Text an agent or GitHub wrote is shown as text
-and never decides what a sentence says. The UI works with the keyboard and a screen reader (a live region
+and never decides what a sentence says; the agent's prose (a diagnosis, an answer) is formatted by a restricted
+Markdown renderer of Remedy's own that makes no links, images or HTML. The UI works with the keyboard and a screen reader (a live region
 announces new messages in a thread), and on a phone. A session lasts 24 hours and is kept in memory, so a server
 restart ends it too; the next request then shows the login page again.
 
