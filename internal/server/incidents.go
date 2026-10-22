@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -157,6 +158,30 @@ func (s *srv) getIncident(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not load the history")
 		return
 	}
+	// A flapping alert fills the window with recurrences: the opening and the latest diagnosis entries are added when they fell out of it.
+	oldest, err := s.d.Store.ListActivity(r.Context(), store.ActivityQuery{IncidentID: id, Kinds: []string{store.KindIncidentOpened}, Ascending: true, Limit: 1})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not load the history")
+		return
+	}
+	diagnosed, err := s.d.Store.ListActivity(r.Context(), store.ActivityQuery{
+		IncidentID: id, Kinds: []string{store.KindDiagnosisStarted, store.KindDiagnosisFinished, store.KindDiagnosisFailed}, Limit: 6,
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not load the history")
+		return
+	}
+	have := make(map[int64]bool, len(log))
+	for _, a := range log {
+		have[a.ID] = true
+	}
+	for _, a := range append(oldest, diagnosed...) {
+		if !have[a.ID] {
+			have[a.ID] = true
+			log = append(log, a)
+		}
+	}
+	sort.Slice(log, func(i, j int) bool { return log[i].ID > log[j].ID }) // newest first, as the window is
 	history := make([]activityView, 0, len(log))
 	for _, a := range log {
 		history = append(history, activityView{ID: a.ID, At: a.At, Kind: a.Kind, Summary: a.Summary})

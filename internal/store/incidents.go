@@ -609,10 +609,13 @@ type Activity struct {
 }
 
 // ActivityQuery selects activity entries. IncidentID 0 means all of them. Before is a cursor: only entries
-// with a smaller id, 0 means no cursor. Limit defaults to 100.
+// with a smaller id, 0 means no cursor. Kinds, when set, keeps only entries of those kinds. Ascending returns the oldest entries
+// first instead of the newest. Limit defaults to 100.
 type ActivityQuery struct {
 	IncidentID int64
 	Before     int64
+	Kinds      []string
+	Ascending  bool
 	Limit      int
 }
 
@@ -675,11 +678,21 @@ func (s *Store) ListActivity(ctx context.Context, q ActivityQuery) ([]Activity, 
 		where = append(where, `a.id < ?`)
 		args = append(args, q.Before)
 	}
+	if len(q.Kinds) > 0 {
+		where = append(where, `a.kind IN (`+strings.TrimSuffix(strings.Repeat(`?,`, len(q.Kinds)), `,`)+`)`)
+		for _, k := range q.Kinds {
+			args = append(args, k)
+		}
+	}
 	query := activitySelect
 	if len(where) > 0 {
 		query += ` WHERE ` + strings.Join(where, ` AND `)
 	}
-	query += ` ORDER BY a.id DESC LIMIT ?`
+	if q.Ascending {
+		query += ` ORDER BY a.id ASC LIMIT ?`
+	} else {
+		query += ` ORDER BY a.id DESC LIMIT ?`
+	}
 	args = append(args, activityLimit(q.Limit))
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

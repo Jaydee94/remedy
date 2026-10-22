@@ -45,19 +45,44 @@ export function buildThread({ incident, activity, questionRuns, asks, lastRespon
 
   const sorted = [...activity].sort((x, y) => x.id - y.id)
 
-  // A re-fired alert reopens the incident: each time is a muted line, the latest few in full and the earlier ones as a count.
-  const reopened = sorted.filter((a) => a.kind === 'incident_reopened')
-  const hidden = Math.max(0, reopened.length - MAX_RECURRENCE_LINES)
-  reopened.forEach((a, n) => {
-    if (n < hidden) return
-    items.push({ type: 'event', key: `a${a.id}`, at: a.at, dot: kindDotClass(a.kind), text: `Fired again ${timeOfDay(a.at)}`, say: 'This alert fired again.', muted: true })
-  })
-  if (hidden > 0) {
-    items.push({ type: 'event', key: 'reopened-more', at: reopened[0].at, dot: kindDotClass('incident_reopened'), text: `and ${hidden} more`, muted: true })
+  // A re-fired alert reopens the incident (never a GitHub one): each time is a muted line, the latest few in full and the earlier ones as
+  // a count. A flapping alert writes a clearing and a reopening every time, so the clearing that comes before a reopening is part of its
+  // line, and the count comes from the incident's occurrences (the loaded history is a window and may not reach back to the first one).
+  const folded = new Set<number>()
+  if (incident.source !== 'github') {
+    const lines: { entry: ActivityEntry; clearedAt?: string }[] = []
+    let cleared: ActivityEntry | undefined
+    for (const a of sorted) {
+      if (a.kind === 'incident_resolved') cleared = a
+      else if (a.kind === 'incident_reopened') {
+        lines.push({ entry: a, clearedAt: cleared?.at })
+        if (cleared) folded.add(cleared.id)
+        cleared = undefined
+      }
+    }
+    const shown = lines.slice(-MAX_RECURRENCE_LINES)
+    const hidden = Math.max(0, incident.occurrences - 1 - shown.length)
+    if (hidden > 0 && shown.length > 0) {
+      items.push({ type: 'event', key: 'reopened-more', at: shown[0].entry.at, dot: kindDotClass('incident_reopened'), text: `and ${hidden} more`, muted: true })
+    }
+    for (const { entry, clearedAt } of shown) {
+      const text = `Fired again ${timeOfDay(entry.at)}${clearedAt ? `, it had cleared ${timeOfDay(clearedAt)}` : ''}`
+      items.push({ type: 'event', key: `a${entry.id}`, at: entry.at, dot: kindDotClass(entry.kind), text, say: 'This alert fired again.', muted: true })
+    }
+  } else {
+    const reopened = sorted.filter((a) => a.kind === 'incident_reopened')
+    const hidden = Math.max(0, reopened.length - MAX_RECURRENCE_LINES)
+    reopened.forEach((a, n) => {
+      if (n < hidden) return
+      items.push({ type: 'event', key: `a${a.id}`, at: a.at, dot: kindDotClass(a.kind), text: `Fired again ${timeOfDay(a.at)}`, say: 'This alert fired again.', muted: true })
+    })
+    if (hidden > 0) {
+      items.push({ type: 'event', key: 'reopened-more', at: reopened[0].at, dot: kindDotClass('incident_reopened'), text: `and ${hidden} more`, muted: true })
+    }
   }
 
   for (const a of sorted) {
-    if (REPLACED.has(a.kind) || a.kind === 'incident_reopened') continue
+    if (REPLACED.has(a.kind) || a.kind === 'incident_reopened' || folded.has(a.id)) continue
     // A failed diagnosis of an incident with no diagnosis is said by the undiagnosed message; with one, nothing else changes in the thread.
     const say = a.kind === 'diagnosis_failed' && incident.diagnosis ? 'My latest diagnosis did not finish: this is the earlier one.' : undefined
     items.push({ type: 'event', key: `a${a.id}`, at: a.at, dot: kindDotClass(a.kind), text: a.summary, say })
