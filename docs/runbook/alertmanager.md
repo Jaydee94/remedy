@@ -22,8 +22,10 @@ Open **Setup** and find the block "Alertmanager".
 - For an `https` Alertmanager with your own CA, set `REMEDY_ALERTMANAGER_CA_FILE` to a PEM file in the control plane's pod (a bootstrap value:
   it is read at start-up and a missing file stops the server).
 
-How often Remedy asks is the setting **How often I check GitHub** (`REMEDY_POLL_INTERVAL`, default 60 s, at least 10 s): the Alertmanager source
-has its own loop and does not need a GitHub connection, but it uses the same interval.
+How often Remedy asks is the setting **How often I ask Alertmanager** (`REMEDY_ALERTMANAGER_POLL_INTERVAL`, default 60 s, at least 10 s): the
+Alertmanager source has its own loop and does not need a GitHub connection. An alert that has cleared stays open for up to this long. Until the
+variable is set, it takes the value of `REMEDY_POLL_INTERVAL` (GitHub's interval), which paced both sources before; a stored `poll_interval` was
+copied to the new setting once (migration 017).
 
 ### Reaching Alertmanager from the chart
 

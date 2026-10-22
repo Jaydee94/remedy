@@ -277,3 +277,28 @@ func TestAnUnreadableCABundleLeavesTheSourceOff(t *testing.T) {
 		t.Errorf("incidents = %+v", got)
 	}
 }
+
+// The signals runner is paced by alertmanager_poll_interval, not by poll_interval (GitHub's).
+func TestTheSignalsRunnerFollowsTheAlertmanagerInterval(t *testing.T) {
+	a := appWithEnv(t, map[string]string{"REMEDY_POLL_INTERVAL": "1h"})
+	ts := httptest.NewServer(a.Handler)
+	t.Cleanup(ts.Close)
+	do := adminSession(t, ts)
+
+	// The environment's poll interval is the default of the Alertmanager one until it has its own.
+	if got := a.Signals.Interval(); got != time.Hour {
+		t.Fatalf("interval from the environment fallback = %s, want 1h", got)
+	}
+	if code, body := do(http.MethodPut, "/api/settings/alertmanager_poll_interval", `{"value":"20s"}`); code != http.StatusOK {
+		t.Fatalf("PUT alertmanager_poll_interval = %d %s", code, body)
+	}
+	if got := a.Signals.Interval(); got != 20*time.Second {
+		t.Errorf("interval = %s, want 20s", got)
+	}
+	if code, body := do(http.MethodPut, "/api/settings/poll_interval", `{"value":"3m"}`); code != http.StatusOK {
+		t.Fatalf("PUT poll_interval = %d %s", code, body)
+	}
+	if got := a.Signals.Interval(); got != 20*time.Second {
+		t.Errorf("interval after poll_interval changed = %s, want 20s", got)
+	}
+}

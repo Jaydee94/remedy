@@ -18,16 +18,17 @@ import (
 
 // The keys.
 const (
-	PollInterval           = "poll_interval"
-	DiagnoseCooldown       = "diagnose_cooldown"
-	DiagnoseMaxPerIncident = "diagnose_max_per_incident"
-	DiagnoseMaxPerDay      = "diagnose_max_per_day"
-	K8sWriteNamespaces     = "k8s_write_namespaces"
-	RunTimeout             = "run_timeout"
-	AlertmanagerURL        = "alertmanager_url"
-	AlertmanagerToken      = "alertmanager_token"
-	AlertmanagerAutoMaxAge = "alertmanager_auto_max_age"
-	AutoApprovalTimeout    = "auto_approval_timeout"
+	PollInterval             = "poll_interval"
+	AlertmanagerPollInterval = "alertmanager_poll_interval"
+	DiagnoseCooldown         = "diagnose_cooldown"
+	DiagnoseMaxPerIncident   = "diagnose_max_per_incident"
+	DiagnoseMaxPerDay        = "diagnose_max_per_day"
+	K8sWriteNamespaces       = "k8s_write_namespaces"
+	RunTimeout               = "run_timeout"
+	AlertmanagerURL          = "alertmanager_url"
+	AlertmanagerToken        = "alertmanager_token"
+	AlertmanagerAutoMaxAge   = "alertmanager_auto_max_age"
+	AutoApprovalTimeout      = "auto_approval_timeout"
 )
 
 // Spec says what one setting is. problem is the sentence that follows the variable's name when a value is refused; check is the
@@ -50,7 +51,14 @@ type Spec struct {
 var specs = []Spec{
 	{
 		Key: PollInterval, Group: "Polling", Label: "How often I check GitHub", Env: "REMEDY_POLL_INTERVAL",
-		Kind: KindDuration, Default: Value{Dur: time.Minute}, Rule: "At least 10s, for example 60s or 2m. It is also how often I ask Alertmanager.",
+		Kind: KindDuration, Default: Value{Dur: time.Minute}, Rule: "At least 10s, for example 60s or 2m.",
+		Effect:  "Takes effect at the next check.",
+		problem: "must be a duration of at least 10s, for example 60s or 2m",
+		check:   func(v Value) bool { return v.Dur >= 10*time.Second },
+	},
+	{
+		Key: AlertmanagerPollInterval, Group: "Polling", Label: "How often I ask Alertmanager", Env: "REMEDY_ALERTMANAGER_POLL_INTERVAL",
+		Kind: KindDuration, Default: Value{Dur: time.Minute}, Rule: "At least 10s, for example 60s or 2m. Alerts that clear stay open for up to this long.",
 		Effect:  "Takes effect at the next check.",
 		problem: "must be a duration of at least 10s, for example 60s or 2m",
 		check:   func(v Value) bool { return v.Dur >= 10*time.Second },
@@ -278,6 +286,12 @@ func EnvLayer(get func(string) string) (Layer, error) {
 			return nil, s.envError(err)
 		}
 		l[s.Key] = v
+	}
+	// Until REMEDY_ALERTMANAGER_POLL_INTERVAL is set, Alertmanager keeps the pace that REMEDY_POLL_INTERVAL gave both sources.
+	if v, ok := l[PollInterval]; ok {
+		if _, own := l[AlertmanagerPollInterval]; !own {
+			l[AlertmanagerPollInterval] = v
+		}
 	}
 	return l, nil
 }

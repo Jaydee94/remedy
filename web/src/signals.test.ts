@@ -24,6 +24,16 @@ describe('signalLine', () => {
       "I couldn't ask Alertmanager 12 seconds ago: alertmanager: HTTP 401. I changed nothing because of it.",
     )
   })
+  it('words an age of a minute or more in minutes and hours, and a recent one in seconds', () => {
+    const line = (secondsAgo: number) => signalLine(src({ checkedAt: new Date(at - secondsAgo * 1000).toISOString() }), at)
+    assert.equal(line(2883), 'I asked Alertmanager 48 min ago and it listed 7 active alerts.')
+    assert.equal(line(7200), 'I asked Alertmanager 2 h ago and it listed 7 active alerts.')
+    assert.equal(line(12), 'I asked Alertmanager 12 seconds ago and it listed 7 active alerts.')
+    assert.equal(line(0), 'I asked Alertmanager just now and it listed 7 active alerts.')
+    assert.equal(line(59), 'I asked Alertmanager 59 seconds ago and it listed 7 active alerts.')
+    assert.equal(line(60), 'I asked Alertmanager 1 min ago and it listed 7 active alerts.')
+    assert.equal(line(1), 'I asked Alertmanager 1 second ago and it listed 7 active alerts.')
+  })
   it('copes with a missing or future time', () => {
     assert.equal(signalLine(src({ checkedAt: undefined }), at), 'I asked Alertmanager and it listed 7 active alerts.')
     assert.equal(signalLine(src({ checkedAt: '2026-10-16T12:05:00Z' }), at), 'I asked Alertmanager just now and it listed 7 active alerts.')
