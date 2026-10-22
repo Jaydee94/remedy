@@ -30,8 +30,10 @@ type Tool struct {
 	Name        string
 	Description string
 	// Group says which runs are offered the tool: empty for every run with gatekeeper access, GroupCluster for runs
-	// that were started with cluster tools. A run that is not offered a tool cannot call it either, and its attempt is
-	// answered like a call of a tool that does not exist.
+	// that were started with cluster tools, GroupHost for runs that were started with hosts, GroupSignals for every run
+	// (its tools come and go with their source through Available). A learning run is offered only the tools of
+	// learnerTools, whatever their group. A run that is not offered a tool, or a tool that is not Available, cannot be
+	// called either, and the attempt is answered like a call of a tool that does not exist.
 	Group string
 	// Available, when set, says whether the tool can be offered at this moment (its source is configured). It is asked at every
 	// tools/list and every call, because a source is a setting that changes while the control plane runs. A tool that is not
