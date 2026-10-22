@@ -159,7 +159,7 @@ export default function IncidentThreadPage({ id }: { id: number }) {
     switch (item.type) {
       case 'event':
         return (
-          <EventPill key={item.key} dot={item.dot} title={new Date(item.at).toLocaleString()}>
+          <EventPill key={item.key} dot={item.dot} muted={item.muted} title={new Date(item.at).toLocaleString()}>
             {item.text}
           </EventPill>
         )

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -45,6 +46,10 @@ type incidentView struct {
 	Diagnosis       json.RawMessage `json:"diagnosis,omitempty"`
 	DiagnosedSHA    string          `json:"diagnosedSha,omitempty"`
 	RunID           string          `json:"runId,omitempty"`
+
+	// Firings24h is how often the alert opened or came back in the last 24 hours, LastFiredAt when it last did.
+	Firings24h  int        `json:"firings24h,omitempty"`
+	LastFiredAt *time.Time `json:"lastFiredAt,omitempty"`
 }
 
 func incidentViewOf(in store.Incident) incidentView {
@@ -56,7 +61,7 @@ func incidentViewOf(in store.Incident) incidentView {
 		Occurrences: in.Occurrences, FirstSeen: in.FirstSeen, LastSeen: in.LastSeen,
 		ResolvedAt: in.ResolvedAt, ResolvedReason: in.ResolvedReason,
 		Diagnoses: in.Diagnoses, LastDiagnosisAt: in.LastDiagnosisAt, DiagnosedAt: in.DiagnosedAt, Diagnosis: in.Diagnosis,
-		DiagnosedSHA: in.DiagnosedSHA, RunID: in.RunID,
+		DiagnosedSHA: in.DiagnosedSHA, RunID: in.RunID, Firings24h: in.Firings24h, LastFiredAt: in.LastFiredAt,
 	}
 }
 
@@ -153,6 +158,30 @@ func (s *srv) getIncident(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not load the history")
 		return
 	}
+	// A flapping alert fills the window with recurrences: the opening and the latest diagnosis entries are added when they fell out of it.
+	oldest, err := s.d.Store.ListActivity(r.Context(), store.ActivityQuery{IncidentID: id, Kinds: []string{store.KindIncidentOpened}, Ascending: true, Limit: 1})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not load the history")
+		return
+	}
+	diagnosed, err := s.d.Store.ListActivity(r.Context(), store.ActivityQuery{
+		IncidentID: id, Kinds: []string{store.KindDiagnosisStarted, store.KindDiagnosisFinished, store.KindDiagnosisFailed}, Limit: 6,
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not load the history")
+		return
+	}
+	have := make(map[int64]bool, len(log))
+	for _, a := range log {
+		have[a.ID] = true
+	}
+	for _, a := range append(oldest, diagnosed...) {
+		if !have[a.ID] {
+			have[a.ID] = true
+			log = append(log, a)
+		}
+	}
+	sort.Slice(log, func(i, j int) bool { return log[i].ID > log[j].ID }) // newest first, as the window is
 	history := make([]activityView, 0, len(log))
 	for _, a := range log {
 		history = append(history, activityView{ID: a.ID, At: a.At, Kind: a.Kind, Summary: a.Summary})

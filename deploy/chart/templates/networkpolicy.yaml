@@ -51,7 +51,7 @@ spec:
       ports:
         - {protocol: TCP, port: {{ .Values.networkPolicy.apiServer.port }}}
     {{- end }}
-    {{- /* networkPolicy.hosts: one rule per single address (SSH for the host tools); networkPolicy.alertmanager: one pod selection. Both validated in validate.yaml. */ -}}
+    {{- /* networkPolicy.hosts: one rule per single address (SSH for the host tools); networkPolicy.alertmanager and networkPolicy.metrics: one pod selection each. All validated in validate.yaml. */ -}}
     {{- range .Values.networkPolicy.hosts }}
     - to:
         - ipBlock:
@@ -69,6 +69,17 @@ spec:
               {{- toYaml .podSelector | nindent 14 }}
       ports:
         - {protocol: TCP, port: {{ if hasKey . "port" }}{{ int64 .port }}{{ else }}9093{{ end }}}
+    {{- end }}
+    {{- with .Values.networkPolicy.metrics }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .podSelector | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: {{ int64 .port }}}
     {{- end }}
     - to:
         - ipBlock:

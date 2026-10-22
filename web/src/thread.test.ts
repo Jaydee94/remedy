@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { ActivityEntry, Diagnosis, Incident, OutageDiagnosis, Run, ToolCall } from './api.ts'
 import { allAnnouncements, buildThread } from './thread.ts'
+import { timeOfDay } from './timeline.ts'
 import type { ThreadItem } from './thread.ts'
 
 const inc = (over: Partial<Incident> = {}): Incident => ({
@@ -46,6 +47,97 @@ describe('buildThread: the events', () => {
   it('colours a pill by the kind of the entry', () => {
     const [pill] = buildThread({ incident: inc({ state: 'ignored' }), activity: [act(1, 'incident_opened', '2026-10-05T07:00:00Z')], questionRuns: [], asks: [] })
     assert.equal(pill.type === 'event' && pill.dot, 'bg-destructive')
+  })
+})
+
+describe('buildThread: an alert that fired again', () => {
+  const am = (over: Partial<Incident> = {}) => inc({ source: 'alertmanager', ...over })
+  const texts = (items: ThreadItem[]) => items.flatMap((i) => (i.type === 'event' ? [i.text] : []))
+  const hourAt = (n: number) => `2026-10-05T${String(n).padStart(2, '0')}:00:00Z`
+  const reopened = (id: number, at: string) => act(id, 'incident_reopened', at, 'Incident reopened: alert X fired again')
+
+  it('turns each reopening into a muted line with its time, in time order after the opening', () => {
+    const activity = [
+      reopened(3, '2026-10-05T11:20:00Z'),
+      reopened(2, '2026-10-05T09:59:00Z'),
+      act(1, 'incident_opened', '2026-10-05T07:00:00Z', 'Alert X is firing'),
+    ]
+    const items = buildThread({ incident: am({ occurrences: 3 }), activity, questionRuns: [], asks: [] })
+    assert.deepEqual(texts(items), ['Alert X is firing', `Fired again ${timeOfDay('2026-10-05T09:59:00Z')}`, `Fired again ${timeOfDay('2026-10-05T11:20:00Z')}`])
+    const lines = items.filter((i) => i.type === 'event')
+    assert.equal(lines[0].type === 'event' && lines[0].muted, undefined)
+    assert.equal(lines[1].type === 'event' && lines[1].muted, true)
+    assert.equal(lines[1].type === 'event' && lines[1].dot, 'bg-destructive')
+  })
+
+  it('shows five lines as they are', () => {
+    const activity = [1, 2, 3, 4, 5].map((n) => reopened(n + 1, hourAt(n)))
+    const items = buildThread({ incident: am(), activity, questionRuns: [], asks: [] })
+    assert.equal(texts(items).length, 5)
+    assert.ok(texts(items).every((t) => t.startsWith('Fired again ')))
+  })
+
+  it('collapses more than five into the latest five and a line "and N more" counted from the occurrences', () => {
+    const activity = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => reopened(n + 1, hourAt(n)))
+    const items = buildThread({ incident: am({ occurrences: 9 }), activity, questionRuns: [], asks: [] })
+    assert.deepEqual(texts(items), [
+      'and 3 more',
+      ...[4, 5, 6, 7, 8].map((n) => `Fired again ${timeOfDay(hourAt(n))}`),
+    ])
+  })
+
+  it('counts "and N more" from the occurrences, not from the loaded window', () => {
+    // The window holds the latest five reopenings only; 55 more happened before it.
+    const activity = [1, 2, 3, 4, 5].map((n) => reopened(n + 1, hourAt(n)))
+    const items = buildThread({ incident: am({ occurrences: 61 }), activity, questionRuns: [], asks: [] })
+    assert.equal(texts(items)[0], 'and 55 more')
+    assert.equal(texts(items).length, 6)
+  })
+
+  it('keeps a long flapping history to the opening, five lines and a count, with no pill per flap', () => {
+    const opened = act(1, 'incident_opened', '2026-10-05T00:00:00Z', 'Alert X is firing')
+    const activity: ActivityEntry[] = [opened]
+    for (let n = 0; n < 60; n++) {
+      const minutes = String(n).padStart(2, '0')
+      activity.push(act(2 + n * 2, 'incident_resolved', `2026-10-05T01:${minutes}:00Z`, 'Alert X cleared'))
+      activity.push(reopened(3 + n * 2, `2026-10-05T01:${minutes}:30Z`))
+    }
+    const items = buildThread({ incident: am({ occurrences: 61 }), activity: activity.reverse(), questionRuns: [], asks: [] })
+    const t = texts(items)
+    assert.equal(t.length, 1 + 1 + 5)
+    assert.equal(t[0], 'Alert X is firing')
+    assert.equal(t[1], 'and 55 more')
+    assert.ok(t.slice(2).every((x) => x.startsWith('Fired again ')))
+    assert.ok(!t.includes('Alert X cleared'))
+  })
+
+  it('folds the clearing before a reopening into its line and keeps the final clearing as a pill', () => {
+    const activity = [
+      act(1, 'incident_opened', '2026-10-05T07:00:00Z', 'Alert X is firing'),
+      act(2, 'incident_resolved', '2026-10-05T09:41:00Z', 'Alert X cleared'),
+      reopened(3, '2026-10-05T09:59:00Z'),
+      act(4, 'incident_resolved', '2026-10-05T10:02:00Z', 'Alert X cleared (final)'),
+    ].reverse()
+    const items = buildThread({ incident: am({ occurrences: 2, state: 'resolved' }), activity, questionRuns: [], asks: [] })
+    assert.deepEqual(texts(items), [
+      'Alert X is firing',
+      `Fired again ${timeOfDay('2026-10-05T09:59:00Z')}, it had cleared ${timeOfDay('2026-10-05T09:41:00Z')}`,
+      'Alert X cleared (final)',
+    ])
+  })
+
+  it('keeps the present thread of a GitHub incident', () => {
+    const activity = [
+      act(1, 'incident_opened', '2026-10-05T07:00:00Z', 'go failed'),
+      act(2, 'incident_resolved', '2026-10-05T08:00:00Z', 'go green'),
+    ].reverse()
+    const items = buildThread({ incident: inc({ state: 'resolved' }), activity, questionRuns: [], asks: [] })
+    assert.deepEqual(texts(items), ['go failed', 'go green'])
+  })
+
+  it('says a reopening to a screen reader', () => {
+    const items = buildThread({ incident: am(), activity: [reopened(2, '2026-10-05T09:59:00Z')], questionRuns: [], asks: [] })
+    assert.deepEqual(allAnnouncements(items).map((a) => a.text), ['This alert fired again.'])
   })
 })
 

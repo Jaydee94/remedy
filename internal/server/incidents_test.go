@@ -369,3 +369,25 @@ func TestIncidentJSONCarriesDiagnosedAtOnlyWithADiagnosis(t *testing.T) {
 		}
 	}
 }
+
+func TestIncidentCarriesItsFiringsOfTheLastDay(t *testing.T) {
+	e, repoID := withRepo(t)
+	in := openIncident(t, e, repoID, "pr:7", "go")
+
+	code, body := e.call(t, http.MethodGet, "/api/incidents/"+strconv.FormatInt(in.ID, 10), "")
+	if code != http.StatusOK {
+		t.Fatalf("GET = %d %s", code, body)
+	}
+	var got struct {
+		Incident struct {
+			Firings24h  int    `json:"firings24h"`
+			LastFiredAt string `json:"lastFiredAt"`
+		} `json:"incident"`
+	}
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Incident.Firings24h != 1 || got.Incident.LastFiredAt == "" {
+		t.Errorf("firings24h %d, lastFiredAt %q, want 1 and a time", got.Incident.Firings24h, got.Incident.LastFiredAt)
+	}
+}

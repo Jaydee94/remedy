@@ -267,6 +267,40 @@ describe('incidentPreview', () => {
   })
 })
 
+describe('incidentPreview: a resolved alert', () => {
+  const resolved = (over: Partial<Incident> = {}) =>
+    inc({ source: 'alertmanager', state: 'resolved', resolvedReason: 'cleared', occurrences: 12, lastFiredAt: '2026-10-05T11:00:00Z', resolvedAt: '2026-10-05T11:03:00Z', ...over })
+
+  it('says how long it fired the last time and how often it fired', () => {
+    assert.equal(incidentPreview(resolved()), 'Resolved after 3 minutes. It fired 12×.')
+  })
+
+  it('uses the words of the Setup page for a duration', () => {
+    assert.equal(incidentPreview(resolved({ resolvedAt: '2026-10-05T11:00:45Z' })), 'Resolved after 45 seconds. It fired 12×.')
+    assert.equal(incidentPreview(resolved({ resolvedAt: '2026-10-05T13:00:00Z' })), 'Resolved after 2 hours. It fired 12×.')
+  })
+
+  it('rounds a gap that is not a round number to the nearest minute, or hour from one hour', () => {
+    const after = (resolvedAt: string) => incidentPreview(resolved({ resolvedAt }))
+    assert.equal(after('2026-10-05T11:03:07Z'), 'Resolved after 3 minutes. It fired 12×.') // 187 s
+    assert.equal(after('2026-10-05T11:01:30Z'), 'Resolved after 2 minutes. It fired 12×.') // 90 s
+    assert.equal(after('2026-10-05T11:00:59Z'), 'Resolved after 59 seconds. It fired 12×.')
+    assert.equal(after('2026-10-05T11:59:50Z'), 'Resolved after 1 hour. It fired 12×.') // 3590 s, not 60 minutes
+    assert.equal(after('2026-10-05T12:01:01Z'), 'Resolved after 1 hour. It fired 12×.') // 3661 s
+    assert.equal(after('2026-10-05T13:05:00Z'), 'Resolved after 2 hours. It fired 12×.') // 7500 s
+  })
+
+  it('keeps the reason when the server sent no last firing, when the clock runs backwards and for GitHub', () => {
+    assert.equal(incidentPreview(resolved({ lastFiredAt: undefined })), 'Resolved: the signal is no longer reported.')
+    assert.equal(incidentPreview(resolved({ lastFiredAt: '2026-10-05T12:00:00Z' })), 'Resolved: the signal is no longer reported.')
+    assert.equal(incidentPreview(resolved({ source: 'github', resolvedReason: 'green' })), 'Resolved: the check turned green.')
+  })
+
+  it('does not touch an ignored incident', () => {
+    assert.equal(incidentPreview(resolved({ state: 'ignored' })), 'You ignored this incident.')
+  })
+})
+
 describe('digestText', () => {
   const now = new Date('2026-10-05T12:00:00Z')
   const hoursAgo = (h: number) => new Date(now.getTime() - h * 3600_000).toISOString()
@@ -278,6 +312,43 @@ describe('digestText', () => {
       inc({ id: 3, firstSeen: hoursAgo(30) }),
     ]
     assert.equal(digestText(now, list, 0), 'In the last 24 hours I opened 2 incidents and diagnosed 1.')
+  })
+
+  it('counts distinct alerts and how often they fired when some of them fired again', () => {
+    const list = [
+      inc({ id: 1, firstSeen: hoursAgo(20), firings24h: 20 }),
+      inc({ id: 2, firstSeen: hoursAgo(10), firings24h: 12 }),
+      inc({ id: 3, firstSeen: hoursAgo(9), firings24h: 4 }),
+      inc({ id: 4, firstSeen: hoursAgo(8), firings24h: 3 }),
+      inc({ id: 5, firstSeen: hoursAgo(7), firings24h: 2 }),
+      inc({ id: 6, firstSeen: hoursAgo(6), firings24h: 1, state: 'diagnosed', diagnosis, diagnosedAt: hoursAgo(5) }),
+      inc({ id: 7, firstSeen: hoursAgo(5), firings24h: 0, state: 'diagnosed', diagnosis, diagnosedAt: hoursAgo(4) }),
+      inc({ id: 8, firstSeen: hoursAgo(50), state: 'diagnosed', diagnosis, diagnosedAt: hoursAgo(3) }),
+    ]
+    assert.equal(digestText(now, list, 0), 'In the last 24 hours I saw 6 different alerts fire 42 times and diagnosed 3.')
+  })
+
+  it('counts an incident that was reopened even when it was first seen long ago', () => {
+    const list = [inc({ firstSeen: hoursAgo(300), firings24h: 5 })]
+    assert.equal(digestText(now, list, 0), 'In the last 24 hours I saw 1 alert fire 5 times.')
+  })
+
+  it('reads as before when every incident fired once, a fresh incident having one firing', () => {
+    const list = [
+      inc({ id: 1, firstSeen: hoursAgo(3), firings24h: 1 }),
+      inc({ id: 2, firstSeen: hoursAgo(5), firings24h: 1, state: 'diagnosed', diagnosis, lastDiagnosisAt: hoursAgo(4), diagnosedAt: hoursAgo(4) }),
+    ]
+    assert.equal(digestText(now, list, 0), 'In the last 24 hours I opened 2 incidents and diagnosed 1.')
+  })
+
+  it('falls back to the first seen time for an incident without the field, next to one that has it', () => {
+    const list = [inc({ id: 1, firstSeen: hoursAgo(3) }), inc({ id: 2, firstSeen: hoursAgo(40), firings24h: 3 })]
+    assert.equal(digestText(now, list, 0), 'In the last 24 hours I saw 2 different alerts fire 4 times.')
+  })
+
+  it('names the diagnosed incidents when only diagnoses are counted next to firings', () => {
+    const list = [inc({ id: 1, firstSeen: hoursAgo(3), firings24h: 4 }), inc({ id: 2, firstSeen: hoursAgo(40), state: 'diagnosed', diagnosis, diagnosedAt: hoursAgo(2) })]
+    assert.equal(digestText(now, list, 1), 'In the last 24 hours I saw 1 alert fire 4 times and diagnosed 1. One question waits for you.')
   })
 
   it('uses the singular for one incident', () => {

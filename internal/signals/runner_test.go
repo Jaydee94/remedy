@@ -457,3 +457,63 @@ func TestTheHostListIsAskedOncePerCycleAndItsFailureFailsTheCycle(t *testing.T) 
 		t.Fatalf("after recovery: %+v", got)
 	}
 }
+
+func (g *rig) kindCount(t *testing.T, kind string) int {
+	t.Helper()
+	log, err := g.st.ListActivity(context.Background(), store.ActivityQuery{Limit: 10000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, a := range log {
+		if a.Kind == kind {
+			n++
+		}
+	}
+	return n
+}
+
+// A returning alert reopens its incident and counts against the per-cycle cap like a new one: an Alertmanager that restarts and
+// delivers every alert again cannot reopen more than MaxNewPerCycle incidents in one cycle.
+func TestAtMostFiftyResolvedIncidentsReopenPerCycle(t *testing.T) {
+	g := newRig(t)
+	var all []signals.Signal
+	for i := 0; i < signals.MaxNewPerCycle+1; i++ {
+		all = append(all, sig(fmt.Sprintf("A/%02d", i), "warning", false, nil))
+	}
+	g.cycle(all...)
+	g.cycle(all...) // the 51st opens in the second cycle
+	g.cycle()       // all clear: every incident resolves
+	if n := g.openCount(t); n != 0 {
+		t.Fatalf("%d open after the empty answer, want 0", n)
+	}
+	g.logs.Reset()
+
+	g.cycle(all...)
+	if n := g.openCount(t); n != signals.MaxNewPerCycle {
+		t.Fatalf("%d open after the alerts returned, want %d", n, signals.MaxNewPerCycle)
+	}
+	if n := g.kindCount(t, store.KindIncidentReopened); n != signals.MaxNewPerCycle {
+		t.Fatalf("%d reopen entries, want %d", n, signals.MaxNewPerCycle)
+	}
+	if !strings.Contains(g.logs.String(), "deferred=1") {
+		t.Errorf("the deferral was not logged: %s", g.logs)
+	}
+
+	g.cycle(all...)
+	list, err := g.st.ListIncidents(context.Background(), store.IncidentFilter{State: "all", Limit: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != len(all) || g.openCount(t) != len(all) {
+		t.Fatalf("%d incidents (%d open) after the next cycle, want %d reopened", len(list), g.openCount(t), len(all))
+	}
+	if o, r := g.kindCount(t, store.KindIncidentOpened), g.kindCount(t, store.KindIncidentReopened); o != len(all) || r != len(all) {
+		t.Fatalf("%d opened and %d reopened entries, want %d of each", o, r, len(all))
+	}
+	for _, in := range list {
+		if in.Occurrences != 2 {
+			t.Fatalf("%s: occurrences = %d, want 2", in.Key, in.Occurrences)
+		}
+	}
+}

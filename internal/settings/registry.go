@@ -18,16 +18,19 @@ import (
 
 // The keys.
 const (
-	PollInterval           = "poll_interval"
-	DiagnoseCooldown       = "diagnose_cooldown"
-	DiagnoseMaxPerIncident = "diagnose_max_per_incident"
-	DiagnoseMaxPerDay      = "diagnose_max_per_day"
-	K8sWriteNamespaces     = "k8s_write_namespaces"
-	RunTimeout             = "run_timeout"
-	AlertmanagerURL        = "alertmanager_url"
-	AlertmanagerToken      = "alertmanager_token"
-	AlertmanagerAutoMaxAge = "alertmanager_auto_max_age"
-	AutoApprovalTimeout    = "auto_approval_timeout"
+	PollInterval             = "poll_interval"
+	AlertmanagerPollInterval = "alertmanager_poll_interval"
+	DiagnoseCooldown         = "diagnose_cooldown"
+	DiagnoseMaxPerIncident   = "diagnose_max_per_incident"
+	DiagnoseMaxPerDay        = "diagnose_max_per_day"
+	K8sWriteNamespaces       = "k8s_write_namespaces"
+	RunTimeout               = "run_timeout"
+	AlertmanagerURL          = "alertmanager_url"
+	AlertmanagerToken        = "alertmanager_token"
+	AlertmanagerAutoMaxAge   = "alertmanager_auto_max_age"
+	AutoApprovalTimeout      = "auto_approval_timeout"
+	MetricsURL               = "metrics_url"
+	MetricsToken             = "metrics_token"
 )
 
 // Spec says what one setting is. problem is the sentence that follows the variable's name when a value is refused; check is the
@@ -50,7 +53,14 @@ type Spec struct {
 var specs = []Spec{
 	{
 		Key: PollInterval, Group: "Polling", Label: "How often I check GitHub", Env: "REMEDY_POLL_INTERVAL",
-		Kind: KindDuration, Default: Value{Dur: time.Minute}, Rule: "At least 10s, for example 60s or 2m. It is also how often I ask Alertmanager.",
+		Kind: KindDuration, Default: Value{Dur: time.Minute}, Rule: "At least 10s, for example 60s or 2m.",
+		Effect:  "Takes effect at the next check.",
+		problem: "must be a duration of at least 10s, for example 60s or 2m",
+		check:   func(v Value) bool { return v.Dur >= 10*time.Second },
+	},
+	{
+		Key: AlertmanagerPollInterval, Group: "Polling", Label: "How often I ask Alertmanager", Env: "REMEDY_ALERTMANAGER_POLL_INTERVAL",
+		Kind: KindDuration, Default: Value{Dur: time.Minute}, Rule: "At least 10s, for example 60s or 2m. Alerts that clear stay open for up to this long.",
 		Effect:  "Takes effect at the next check.",
 		problem: "must be a duration of at least 10s, for example 60s or 2m",
 		check:   func(v Value) bool { return v.Dur >= 10*time.Second },
@@ -109,6 +119,21 @@ var specs = []Spec{
 		Effect:  "Takes effect when an incident opens.",
 		problem: "must be a duration of at least 1m, for example 1h",
 		check:   func(v Value) bool { return v.Dur >= time.Minute },
+	},
+	{
+		Key: MetricsURL, Group: "Metrics", Label: "Metrics address", Env: "REMEDY_METRICS_URL",
+		Kind: KindText, Rule: "An http or https address without a user name, for example http://victoria:8428 or https://host/select/0/prometheus. Empty: I do not ask for metrics.",
+		Effect:    "Takes effect at the next request.",
+		problem:   "must be an http or https address without a user name, a query or a fragment, for example http://victoria:8428",
+		check:     func(v Value) bool { return validAlertmanagerURL(v.Str) }, // the same rules as Alertmanager's address
+		normalize: func(v Value) Value { v.Str = strings.TrimRight(v.Str, "/"); return v },
+	},
+	{
+		Key: MetricsToken, Group: "Metrics", Label: "Metrics token",
+		Kind: KindSecret, Rule: "Written once and never shown again. Empty: I send no token.",
+		Effect:  "Takes effect at the next request.",
+		problem: "must be 1 to 4096 characters without a line break or a control character",
+		check:   func(v Value) bool { return validSecretText(v.Str) },
 	},
 	{
 		Key: AutoApprovalTimeout, Group: "Runs", Label: "How long I wait for an approval in an automatic run", Env: "REMEDY_AUTO_APPROVAL_TIMEOUT",
@@ -278,6 +303,12 @@ func EnvLayer(get func(string) string) (Layer, error) {
 			return nil, s.envError(err)
 		}
 		l[s.Key] = v
+	}
+	// Until REMEDY_ALERTMANAGER_POLL_INTERVAL is set, Alertmanager keeps the pace that REMEDY_POLL_INTERVAL gave both sources.
+	if v, ok := l[PollInterval]; ok {
+		if _, own := l[AlertmanagerPollInterval]; !own {
+			l[AlertmanagerPollInterval] = v
+		}
 	}
 	return l, nil
 }

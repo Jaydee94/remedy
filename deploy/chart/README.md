@@ -19,7 +19,7 @@ Spec: [`docs/specs/2026-10-06-kubernetes-deployment-design.md`](../../docs/specs
 | PVC | `remedy-data` | kept on uninstall; `server.persistence.existingClaim` uses your own |
 | StatefulSet | `remedy-runner` | init container `install-cli`; no Kubernetes token |
 | Ingress | `remedy` | optional |
-| NetworkPolicies | `remedy-server`, `remedy-runner`, `remedy-token-refresher` (only with `cluster.write.enabled`: DNS and the API server, nothing else) | on by default; `networkPolicy.*` (`hosts` and `alertmanager` add egress to the control plane only) |
+| NetworkPolicies | `remedy-server`, `remedy-runner`, `remedy-token-refresher` (only with `cluster.write.enabled`: DNS and the API server, nothing else) | on by default; `networkPolicy.*` (`hosts`, `alertmanager` and `metrics` add egress to the control plane only) |
 
 With `cluster.enabled` the control plane runs as the read account (a projected token) and the chart creates a read-only ClusterRole.
 With `cluster.write.enabled` a CronJob (default schedule `*/30 * * * *`, `cluster.write.tokenRefresh.schedule`) and a Job that runs as a post-install and post-upgrade
@@ -56,9 +56,10 @@ never get them). `networkPolicy.hosts` is a list of `{cidr, port}`, one SSH rule
 must be a single address (`/32` for IPv4, `/128` for IPv6), the port an integer from 1 to 65535, and an entry may not be an
 address of `networkPolicy.apiServer.cidrs`. `networkPolicy.alertmanager` is `{namespace, podSelector, port}`, one rule to the
 pods that match `podSelector` in `namespace` (`port` defaults to 9093); `namespace` and a non-empty `podSelector` are
-required, because an empty selector would admit every pod of the namespace. There is no free list of extra rules on
-purpose: one typo (`0.0.0.0/0`, no port) would open all egress of the pod that holds the credentials. Both default to empty
-and then render nothing; the render fails for a value that breaks a rule, and ignores both when `networkPolicy.enabled` is false.
+required, because an empty selector would admit every pod of the namespace. `networkPolicy.metrics` has the same shape for a Prometheus-compatible
+query API (the metrics tools) and requires the `port` too (Prometheus serves 9090, VictoriaMetrics 8428). There is no free list of extra rules on
+purpose: one typo (`0.0.0.0/0`, no port) would open all egress of the pod that holds the credentials. All three default to empty
+and then render nothing; the render fails for a value that breaks a rule, and ignores them when `networkPolicy.enabled` is false.
 
 ```yaml
 networkPolicy:
@@ -67,6 +68,10 @@ networkPolicy:
   alertmanager:
     namespace: monitoring
     podSelector: {app.kubernetes.io/name: vmalertmanager}
+  metrics:
+    namespace: monitoring
+    podSelector: {app.kubernetes.io/name: vmsingle}
+    port: 8428
 ```
 
 ## Install from the OCI registry

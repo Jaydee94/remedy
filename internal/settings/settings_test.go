@@ -83,12 +83,12 @@ func TestTheGettersAnswerForEveryKind(t *testing.T) {
 	}
 }
 
-func TestThePollIntervalRuleSaysItAlsoPacesAlertmanager(t *testing.T) {
+func TestThePollIntervalPacesGitHubOnly(t *testing.T) {
 	for _, sp := range settings.Specs() {
 		if sp.Key != settings.PollInterval {
 			continue
 		}
-		if sp.Label != "How often I check GitHub" || !strings.HasPrefix(sp.Rule, "At least 10s") || !strings.Contains(sp.Rule, "It is also how often I ask Alertmanager.") {
+		if sp.Label != "How often I check GitHub" || sp.Rule != "At least 10s, for example 60s or 2m." {
 			t.Fatalf("label %q, rule %q", sp.Label, sp.Rule)
 		}
 		return

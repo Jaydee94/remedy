@@ -2,6 +2,7 @@ import type { Incident, IncidentSource, ToolCall } from './api.ts'
 import { plainText } from './agenttext.ts'
 import { askText } from './ask.ts'
 import { reasonText } from './incidents.ts'
+import { duration } from './setup.ts'
 
 /** The pills of the conversations list. */
 export type StateFilter = 'active' | 'resolved' | 'ignored'
@@ -60,6 +61,28 @@ export function askFor(asks: readonly ToolCall[], incidentId: number): ToolCall 
 }
 
 /**
+ * A gap in whole seconds, rounded for reading: seconds below a minute, the nearest minute below an hour, the nearest hour from an hour
+ * on. `duration` keeps a value in the largest unit that divides it evenly, which suits a configured interval and not a measured gap
+ * (187 seconds would read "187 seconds"). At least one second.
+ */
+function roundGap(seconds: number): number {
+  if (seconds < 60) return Math.max(seconds, 1)
+  if (seconds < 3600) return Math.round(seconds / 60) * 60
+  return Math.round(seconds / 3600) * 3600
+}
+
+/**
+ * "Resolved after 3 minutes. It fired 12×." for a resolved alert whose last firing is known: the time between its last firing and
+ * its resolution, and how often it fired. Only a source that can fire again has it; a GitHub check says why it ended instead.
+ */
+function resolvedAfter(incident: Incident): string | undefined {
+  if (incident.source === 'github' || !incident.resolvedAt || !incident.lastFiredAt) return undefined
+  const seconds = Math.round((Date.parse(incident.resolvedAt) - Date.parse(incident.lastFiredAt)) / 1000)
+  if (!Number.isFinite(seconds) || seconds < 0) return undefined
+  return `Resolved after ${duration(roundGap(seconds))}. It fired ${incident.occurrences}×.`
+}
+
+/**
  * The line under an incident in the list and in the sidebar. Ignored and resolved come first: the maintainer's decision and the
  * end of the incident outrank a call that still waits. The sentences are ours; the diagnosis summary is the agent's text and is
  * only shown, as one line of plain text without its Markdown markers.
@@ -67,6 +90,8 @@ export function askFor(asks: readonly ToolCall[], incidentId: number): ToolCall 
 export function incidentPreview(incident: Incident, ask?: ToolCall): string {
   if (incident.state === 'ignored') return 'You ignored this incident.'
   if (incident.state === 'resolved') {
+    const fired = resolvedAfter(incident)
+    if (fired) return fired
     const why = reasonText(incident.resolvedReason)
     return why ? `Resolved: ${why}.` : 'Resolved.'
   }
@@ -84,13 +109,22 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 /**
- * The digest of Today, from counts over the last 24 hours: incidents opened (by first seen), incidents diagnosed (a stored
- * diagnosis, by the time it was written) and the questions that wait. A clause with a count of 0 is left out, and the quiet
- * sentence appears only when nothing was counted.
+ * The digest of Today, from counts over the last 24 hours: incidents opened, incidents diagnosed (a stored diagnosis, by the time
+ * it was written) and the questions that wait. An incident counts once for each time it fired in the window (`firings24h`: its
+ * opening and its reopenings, so a fresh incident fired once and an old one that came back counts too); one without the field
+ * counts once when it was first seen in the window. When nothing fired twice the digest says "opened N incidents"; otherwise it
+ * says how many different alerts fired how many times. A clause with a count of 0 is left out, and the quiet sentence appears
+ * only when nothing was counted.
  */
 export function digestText(now: Date, incidents: readonly Incident[], pending: number): string {
   const since = now.getTime() - DAY_MS
-  const opened = incidents.filter((i) => Date.parse(i.firstSeen) >= since).length
+  let opened = 0
+  let firings = 0
+  for (const i of incidents) {
+    const n = i.firings24h ?? (Date.parse(i.firstSeen) >= since ? 1 : 0)
+    if (n > 0) opened++
+    firings += n
+  }
   // diagnosedAt moves only when a diagnosis is written: a re-diagnosis that is running or failed does not make the old one new.
   const diagnosed = incidents.filter(
     (i) => i.diagnosis !== undefined && i.diagnosedAt !== undefined && Date.parse(i.diagnosedAt) >= since,
@@ -101,7 +135,8 @@ export function digestText(now: Date, incidents: readonly Incident[], pending: n
     text = "All quiet. Nothing opened in the last 24 hours, and I'm still watching."
   } else {
     const parts: string[] = []
-    if (opened > 0) parts.push(`opened ${plural(opened, 'incident')}`)
+    if (firings > opened) parts.push(`saw ${opened === 1 ? '1 alert' : `${opened} different alerts`} fire ${firings} times`)
+    else if (opened > 0) parts.push(`opened ${plural(opened, 'incident')}`)
     if (diagnosed > 0) parts.push(`diagnosed ${opened > 0 ? diagnosed : plural(diagnosed, 'incident')}`)
     text = `In the last 24 hours I ${parts.join(' and ')}.`
   }

@@ -23,6 +23,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/kube"
 	"github.com/Jaydee94/remedy/internal/learner"
 	"github.com/Jaydee94/remedy/internal/loginrelay"
+	"github.com/Jaydee94/remedy/internal/metrics"
 	"github.com/Jaydee94/remedy/internal/poller"
 	"github.com/Jaydee94/remedy/internal/reaper"
 	"github.com/Jaydee94/remedy/internal/responder"
@@ -57,6 +58,8 @@ type App struct {
 
 	// Signals asks the signal sources (Alertmanager) and gives what they find to the incident engine.
 	Signals *signals.Runner
+	// Probe asks the metrics store whether it answers, for the Setup page. It runs without an Alertmanager.
+	Probe *metrics.Prober
 
 	// Login relays the runner's login from the Setup page; New always builds it (there is no switch). Its Run applies the
 	// time rules of a session and is started with the other loops.
@@ -117,7 +120,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		NewSource:  func(token secret.Value) responder.Source { return reader(token) },
 		LimitsFunc: set.DiagnosisLimits,
 		// An alert incident must have been seen within three polls (at least ten minutes) to be diagnosed on its own.
-		AlertFresh: func() time.Duration { return max(10*time.Minute, 3*set.Duration(settings.PollInterval)) },
+		AlertFresh: func() time.Duration { return max(10*time.Minute, 3*set.Duration(settings.AlertmanagerPollInterval)) },
 		Log:        log,
 	}
 	// One configuration, with the live allowlist, for the writer, the action tools and the capabilities: the tool, the
@@ -138,6 +141,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	}
 	hostSvc := &sshhost.Service{} // one lock per host, shared by the host routes and the host tools
 	tools = append(tools, gatekeeper.HostTools(&HostAccess{Store: st, Key: cfg.MasterKey, SSH: hostSvc, Log: log})...)
+	tools = append(tools, signalTools(cfg, set, log)...)
 	gate := gatekeeper.New(gatekeeper.Config{
 		Store: st,
 		Tools: tools,
@@ -159,6 +163,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	// The same responder as the poller's hook: an alert is diagnosed with no GitHub connection, in which case the poller's cycle
 	// stops before its hook. Both hooks may run at once; the responder keeps its limits inside one store transaction.
 	sigs.AfterCycle = diagnoser.AutoStart
+	probe := metricsProbe(cfg, set, log)
 
 	// The login relay has no switch (decision 2026-10-22): the manager is always built and its routes always registered.
 	// Only the runner's mode withholds it: in another mode the runner starts no driver. The server cannot tell the mode
@@ -167,7 +172,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 
 	deps := server.Deps{
 		Store:        st,
-		Signals:      sigs.States,
+		Signals:      func() []signals.State { return append(sigs.States(), probe.States()...) },
 		Auth:         auth.New(cfg.AdminPassword),
 		RunnerToken:  cfg.RunnerToken,
 		Web:          web,
@@ -202,6 +207,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		KubeWriter:      kubeWriter,
 		Settings:        set,
 		Signals:         sigs,
+		Probe:           probe,
 		Login:           login,
 		log:             log,
 		Poller: &poller.Poller{
@@ -254,7 +260,7 @@ func signalRunner(cfg config.Server, st *store.Store, engine *incident.Engine, s
 	return &signals.Runner{
 		Sources:  []signals.Source{am},
 		Engine:   engine,
-		Interval: func() time.Duration { return set.Duration(settings.PollInterval) },
+		Interval: func() time.Duration { return set.Duration(settings.AlertmanagerPollInterval) },
 		Log:      log,
 		Hosts: func(ctx context.Context) ([]signals.HostRules, error) {
 			entries, err := st.ListHosts(ctx)
@@ -268,6 +274,34 @@ func signalRunner(cfg config.Server, st *store.Store, engine *incident.Engine, s
 			return out, nil
 		},
 	}
+}
+
+// metricsProbe builds the probe of the metrics store. The address and the token are settings read at every request. When the
+// client cannot be set up (a CA bundle without a certificate) the probe gets no client at all, never a nil *metrics.Client inside
+// the interface, so it is off. It is paced by the Alertmanager's poll interval and never asks more than once a minute.
+func metricsProbe(cfg config.Server, set *settings.Settings, log *slog.Logger) *metrics.Prober {
+	p := &metrics.Prober{
+		Interval: func() time.Duration { return set.Duration(settings.AlertmanagerPollInterval) },
+		Log:      log,
+		On:       func() bool { return set.Text(settings.MetricsURL) != "" },
+	}
+	client, err := metrics.New(func() (string, secret.Value, error) {
+		base := set.Text(settings.MetricsURL)
+		tok, err := set.Secret(settings.MetricsToken)
+		switch {
+		case errors.Is(err, settings.ErrNotSet):
+			return base, secret.Value{}, nil
+		case err != nil:
+			return "", secret.Value{}, err
+		}
+		return base, tok, nil
+	}, cfg.MetricsCAFile, metrics.WithLog(log))
+	if err != nil {
+		log.Error("the metrics source is off: cannot set up its client", "err", err)
+	} else {
+		p.Client = client
+	}
+	return p
 }
 
 // clusterCapabilities is what the UI is told: the read side as far as it was set up, and the namespaces of the
@@ -323,6 +357,9 @@ func facts(cfg config.Server, reader *kube.Reader, writer *kube.Writer) []server
 	}
 	if cfg.AlertmanagerCAFile != "" {
 		out = append(out, server.Fact{Label: "Alertmanager CA file", Value: cfg.AlertmanagerCAFile})
+	}
+	if cfg.MetricsCAFile != "" {
+		out = append(out, server.Fact{Label: "Metrics CA file", Value: cfg.MetricsCAFile})
 	}
 	return out
 }

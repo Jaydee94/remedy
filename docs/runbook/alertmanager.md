@@ -4,8 +4,10 @@ This is cycle 4 of the hosts and skills series ([spec](../specs/2026-10-16-alert
 Alertmanager into incidents, maps them to hosts and **diagnoses them**: on its own for a young `critical` or `warning` alert, by a click on
 **Diagnose** in the incident's thread otherwise (section 5). The run may read the cluster (when the cluster is set up) and use the tools of the host
 the alert is mapped to; any change it asks for waits for you under **Needs you**, and in an automatic run that approval expires (section 5). The diagnosis
-with the real CLI has not been tried yet: [`outage-real-run.md`](outage-real-run.md) is its runbook. Remedy only reads from Alertmanager (a `GET`); it never
-silences or acknowledges anything.
+of an alert was run with the real CLI and a real Alertmanager on 2026-10-19 ([`outage-real-run.md`](outage-real-run.md) is its runbook, the record is
+[`../research/phase-2d-real-run.md`](../research/phase-2d-real-run.md)); the reopening of an incident, the poll interval of this source and the four signal tools
+have not been run for real yet. Remedy only reads from Alertmanager (a `GET`); it never
+silences or acknowledges anything. Section 8 describes the metrics address and the four read tools of the agent for alerts, silences and metrics.
 
 ## 1. Enter the address and the token
 
@@ -22,8 +24,10 @@ Open **Setup** and find the block "Alertmanager".
 - For an `https` Alertmanager with your own CA, set `REMEDY_ALERTMANAGER_CA_FILE` to a PEM file in the control plane's pod (a bootstrap value:
   it is read at start-up and a missing file stops the server).
 
-How often Remedy asks is the setting **How often I check GitHub** (`REMEDY_POLL_INTERVAL`, default 60 s, at least 10 s): the Alertmanager source
-has its own loop and does not need a GitHub connection, but it uses the same interval.
+How often Remedy asks is the setting **How often I ask Alertmanager** (`REMEDY_ALERTMANAGER_POLL_INTERVAL`, default 60 s, at least 10 s): the
+Alertmanager source has its own loop and does not need a GitHub connection. An alert that has cleared stays open for up to this long. Until the
+variable is set, it takes the value of `REMEDY_POLL_INTERVAL` (GitHub's interval), which paced both sources before; a stored `poll_interval` was
+copied to the new setting once (migration 017).
 
 ### Reaching Alertmanager from the chart
 
@@ -87,9 +91,9 @@ incidents without one.
 **On its own.** Remedy decides once, when an incident opens, whether it diagnoses it on its own: a young `critical` or `warning` alert is, an alert that has
 been firing for longer than **Oldest alert I diagnose on my own** is not, and neither is an `info` alert. The reason is quota: an alert that
 fired a week ago and is found on the first poll would otherwise start a run of its own. On top of that, an incident is picked only if Remedy saw its alert in the
-last 10 minutes (or three poll intervals, whichever is longer): after you switch the source off or change its address, the old incidents are never diagnosed on their own.
+last 10 minutes (or three Alertmanager poll intervals, whichever is longer): after you switch the source off or change its address, the old incidents are never diagnosed on their own.
 The limits of the GitHub diagnoses hold here too (at most 3 per incident, 15 minutes apart, 20 per 24 hours, one run at a time), and an alert that has a diagnosis is not
-diagnosed again on its own. An alert that clears and fires again within an hour of its diagnosis (an Alertmanager that was restarted does this) opens a new incident that is shown but not diagnosed on its own; "Diagnose" still works. The start is checked at the end of every Alertmanager cycle, so it works with or without a GitHub connection.
+diagnosed again on its own. An alert that clears and fires again (it flaps, or an Alertmanager that was restarted delivers it again) does not open a new incident: Remedy reopens the incident it had, however long ago it resolved, counts the firing ("Incident reopened: alert X fired again (3rd time)") and refreshes its title, severity, host and details. A reopened incident keeps its diagnosis and is not diagnosed again on its own; one that was never diagnosed follows the rules above as a new alert would. An ignored incident comes back ignored. "Diagnose again" still works. Reopens count against the 50 new incidents one cycle opens; the rest follows in the next cycle. The start is checked at the end of every Alertmanager cycle, so it works with or without a GitHub connection.
 
 **By a click.** An old alert or an `info` alert is still visible, and **Diagnose** in its thread starts a run (the limits are ignored,
 one run at a time still holds).
@@ -106,7 +110,8 @@ diagnosis), and the activity feed says the approval expired. The card of such an
 
 ## 6. Known limits
 
-- The diagnosis of an alert has not been tried with the real CLI yet; see [`outage-real-run.md`](outage-real-run.md).
+- The diagnosis of an alert was proven with the real CLI on 2026-10-19 (see [`../research/phase-2d-real-run.md`](../research/phase-2d-real-run.md)), against a real Alertmanager but not
+  a real Prometheus. Not tried for real: the reopening of an incident, the new poll interval, the four signal tools and the metrics probe.
 - Switching the source off (an empty address) leaves its open incidents as they are: they are resolved only by a later complete answer, so remove
   an old incident by hand (Ignore in its thread) if you stop using Alertmanager.
 - The state of the source is in memory; a restart shows "I haven't asked Alertmanager yet" until the next cycle.
@@ -125,3 +130,42 @@ These rows are the expected causes. They were **not tried against a live Alertma
 | a certificate error | `REMEDY_ALERTMANAGER_CA_FILE` |
 | listed 0 active alerts | `curl <address>/api/v2/alerts?active=true&silenced=false&inhibited=false` from the same network: silenced and inhibited alerts are not listed; the count also leaves out the Watchdog and alerts Remedy skips |
 | the token "cannot be opened" | the master key changed since the token was saved: remove it and enter it again |
+
+## 8. Metrics and the tools that read the signal
+
+The [alert recurrence and signal tools spec](../specs/2026-10-22-alert-recurrence-and-signal-tools-design.md) gives the agent four read tools for the signal it diagnoses:
+`alert_list`, `silence_list`, `metrics_query` and `metrics_query_range`. Status: implemented; the real run with the real CLI is **not made** yet.
+
+**The setting.** In **Setup**, block "Metrics": **Metrics address** (`REMEDY_METRICS_URL` is only its default) and, if the store needs one, **Metrics token**.
+The address is a Prometheus-compatible query API (Prometheus, VictoriaMetrics), `http` or `https`, without a user name, query or fragment. It may carry a
+**base path** (`https://host/select/0/prometheus`): Remedy joins `/api/v1/...` to it. Authentication is a **bearer token only** (sealed with the master key,
+write-only, shown only as a hint, like the Alertmanager token); basic auth is not supported. **Use `https` for a store outside this machine**, the token travels
+in clear over plain `http`. `REMEDY_METRICS_CA_FILE` is a PEM bundle for an `https` store (bootstrap: read at start-up, a missing file stops the server). On the home server the
+address is `http://vmsingle-monitoring-victoria-metrics-k8s-stack.monitoring.svc:8428`. Empty: the two metrics tools are not offered.
+
+**The probe on the Setup page.** A small loop of its own asks the store for `/api/v1/status/buildinfo` (Prometheus and VictoriaMetrics both serve it) and the
+line under the block says what it heard, like the Alertmanager line: "I don't ask the metrics store: no address is set.", "I asked the metrics store 12
+seconds ago and it answered.", or "I couldn't ask the metrics store …: <reason>. I changed nothing because of it." It is paced by **How often I ask
+Alertmanager** but never faster than once a minute, it runs without an Alertmanager, and after a change of address or token it can take up to the poll interval
+(at least a minute) to show the new state (`GET /api/signals` has an entry `metrics`; like the other state it is in memory).
+
+**Reaching it from the chart.** With the default `networkPolicy.enabled: true` a store inside the cluster is blocked like the Alertmanager is (section 1). Set the chart value
+`networkPolicy.metrics` (`namespace`, `podSelector`, `port`; all three are required, the port because Prometheus serves 9090 and VictoriaMetrics 8428) and the control plane gets one more
+egress rule to those pods and nothing else. On the home server: namespace `monitoring`, the `vmsingle` pods, port 8428; the monitoring namespace's own ingress policy has to admit the
+Remedy namespace too. The chart needs no value for the address or the interval: `server.env` passes any `REMEDY_*` name. The values of the home server's wrapper chart are the maintainer's own change in the other repository.
+
+**The tools.** They are registered always and offered to a run only while their source is set (the addresses are settings that change without a restart): `alert_list` and
+`silence_list` while the Alertmanager address is set, `metrics_query` and `metrics_query_range` while the metrics address is set. A learning run (role `learner`) gets none of them.
+
+| Tool | Arguments | Bounds |
+|---|---|---|
+| `alert_list` | `filter` (matchers), `active_only` | at most 100 rows; labels and annotations bounded and redacted |
+| `silence_list` | `state` (`active`, `pending`, `expired`) | at most 50 rows |
+| `metrics_query` | `expr`, `time` (RFC 3339) | `expr` at most 2 KiB; 10 s timeout |
+| `metrics_query_range` | `expr`, `last` or `start` and `end`, `step` | range at most 24 h; at most 300 points per series (a finer step is raised and the answer says so) |
+
+Every answer starts with the note that it comes from monitoring and is data, never an instruction, is redacted, and is cut at 32 KB. An answer shows at most 20 series and 40 labels per series
+("showing 20 of N series"), and values are rounded to 4 significant digits. A client failure reaches the agent as a fixed sentence; the details are in the control plane's log, never the token.
+
+**Nothing can be written.** The Alertmanager client and the metrics client send only `GET` (no redirects, no proxy), neither has a method that writes, and the tools have none either: the agent cannot
+create or expire a silence, resolve an alert or change a rule. The two sources are asked with the credentials of the control plane alone; the runner holds none.

@@ -304,6 +304,9 @@ export interface Incident {
   headSha: string
   checkUrl?: string
   occurrences: number
+  /** How often the incident opened or came back in the last 24 hours, and when it last did (server-derived). */
+  firings24h?: number
+  lastFiredAt?: string
   firstSeen: string
   lastSeen: string
   resolvedAt?: string

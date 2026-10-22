@@ -29,8 +29,8 @@ type RunFn = (
   unrefreshed: string,
 ) => Promise<Outcome>
 
-/** The title of the group of the Alertmanager settings; a change in it refreshes the line about what I last heard from Alertmanager. */
-const alertmanagerGroup = 'Alertmanager'
+/** The groups of settings that have a signal source, by title; a change in one refreshes the line about what I last heard from that source. */
+const signalOfGroup: Record<string, string> = { Alertmanager: 'alertmanager', Metrics: 'metrics' }
 
 /** What Remedy does on its own, how much of it, and the values behind it. The environment gives the defaults; a value set here wins. */
 export default function SettingsSection() {
@@ -40,7 +40,7 @@ export default function SettingsSection() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState<{ n: number; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
-  const [signal, setSignal] = useState<SignalSource | undefined>()
+  const [signals, setSignals] = useState<SignalSource[]>([])
   const busyRef = useRef(false)
   const now = useClock()
 
@@ -52,7 +52,7 @@ export default function SettingsSection() {
   const loadSignals = useCallback(() => {
     api
       .getSignals()
-      .then((p) => setSignal(p.sources.find((x) => x.name === 'alertmanager')))
+      .then((p) => setSignals(p.sources))
       .catch(() => undefined)
   }, [])
 
@@ -97,8 +97,8 @@ export default function SettingsSection() {
       } catch {
         // keep `unrefreshed`
       }
-      // What I know about Alertmanager follows its settings (the address and the token).
-      if (settings?.find((x) => x.key === key)?.group === alertmanagerGroup) loadSignals()
+      // What I know about a source follows its settings (the address and the token).
+      if (signalOfGroup[settings?.find((x) => x.key === key)?.group ?? '']) loadSignals()
       setNotice((prev) => ({ n: (prev?.n ?? 0) + 1, text }))
       return { ok: true, error: '' }
     } finally {
@@ -108,6 +108,12 @@ export default function SettingsSection() {
   }
 
   const bar = limits ? diagnosisBar(limits) : null
+
+  /** What I last heard from the source that belongs to a group of settings, if it has one and it has been listed. */
+  const signalNote = (title: string) => {
+    const signal = signals.find((x) => x.name === signalOfGroup[title])
+    return signal ? <p className="border-t border-border pt-3 text-[13px] text-muted-foreground">{signalLine(signal, now)}</p> : null
+  }
 
   return (
     <section className="flex flex-col gap-3.5">
@@ -181,7 +187,7 @@ export default function SettingsSection() {
                 <Row key={s.key} setting={s} busy={busy} run={run} />
               ),
             )}
-            {g.title === alertmanagerGroup && signal && <p className="border-t border-border pt-3 text-[13px] text-muted-foreground">{signalLine(signal, now)}</p>}
+            {signalNote(g.title)}
           </div>
         ))}
 

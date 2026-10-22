@@ -15,6 +15,7 @@ import (
 // Activity kinds.
 const (
 	KindIncidentOpened    = "incident_opened"
+	KindIncidentReopened  = "incident_reopened"
 	KindIncidentRecurred  = "incident_recurred"
 	KindIncidentResolved  = "incident_resolved"
 	KindIncidentIgnored   = "incident_ignored"
@@ -102,6 +103,11 @@ type Incident struct {
 	// HostID and HostName name the host an alert was mapped to, zero and empty when it was mapped to none (or the host is gone).
 	HostID   int64
 	HostName string
+
+	// Firings24h counts the activity entries incident_opened and incident_reopened of the incident in the 24 hours before the
+	// query, and LastFiredAt is the time of the latest one (nil when there is none). They are derived, not stored.
+	Firings24h  int
+	LastFiredAt *time.Time
 }
 
 // NewIncident describes an incident to open. An empty Source means GitHub: then RepoID is required, Key and Title
@@ -194,13 +200,21 @@ type IncidentFilter struct {
 	Limit  int    // default 200
 }
 
-const (
-	incidentCols = `i.id, i.source, i.key, i.title, i.severity, i.auto_diagnose, i.details,
-		i.repo_id, r.full_name, i.ref, i.ref_url, i.check_name, i.state, i.conclusion,
-		i.head_sha, i.check_url, i.occurrences, i.first_seen, i.last_seen, i.resolved_at, i.resolved_reason,
-		i.diagnoses, i.last_diagnosis_at, i.diagnosed_at, i.diagnosis, i.diagnosed_sha, i.run_id, i.host_id, h.name`
-	incidentFrom = ` FROM incidents i LEFT JOIN repos r ON r.id = i.repo_id LEFT JOIN hosts h ON h.id = i.host_id`
-)
+const incidentFrom = ` FROM incidents i LEFT JOIN repos r ON r.id = i.repo_id LEFT JOIN hosts h ON h.id = i.host_id`
+
+// incidentCols is the column list scanIncident reads. The two last columns count the firings of the incident (its
+// incident_opened and incident_reopened entries) in the 24 hours before now and name the latest one; the timestamp is part of
+// the text, built from a time and never from input.
+func incidentCols() string {
+	since := formatTS(time.Now().Add(-24 * time.Hour))
+	return `i.id, i.source, i.key, i.title, i.severity, i.auto_diagnose, i.details,
+			i.repo_id, r.full_name, i.ref, i.ref_url, i.check_name, i.state, i.conclusion,
+			i.head_sha, i.check_url, i.occurrences, i.first_seen, i.last_seen, i.resolved_at, i.resolved_reason,
+			i.diagnoses, i.last_diagnosis_at, i.diagnosed_at, i.diagnosis, i.diagnosed_sha, i.run_id, i.host_id, h.name,
+			(SELECT COUNT(*) FROM activity f WHERE f.incident_id = i.id AND f.kind IN ('` + KindIncidentOpened + `', '` + KindIncidentReopened + `')
+				AND f.at >= '` + since + `'),
+			(SELECT MAX(f.at) FROM activity f WHERE f.incident_id = i.id AND f.kind IN ('` + KindIncidentOpened + `', '` + KindIncidentReopened + `'))`
+}
 
 func scanIncident(sc scanner) (Incident, error) {
 	var (
@@ -217,11 +231,13 @@ func scanIncident(sc scanner) (Incident, error) {
 		repoName    sql.NullString
 		hostID      sql.NullInt64
 		hostName    sql.NullString
+		lastFired   sql.NullString
 	)
 	if err := sc.Scan(&in.ID, &in.Source, &in.Key, &in.Title, &in.Severity, &in.AutoDiagnose, &details,
 		&repoID, &repoName, &in.Ref, &in.RefURL, &in.CheckName, &state, &in.Conclusion,
 		&in.HeadSHA, &in.CheckURL, &in.Occurrences, &first, &last, &resolved, &in.ResolvedReason,
-		&in.Diagnoses, &lastDiag, &diagnosedAt, &diagnosis, &in.DiagnosedSHA, &runID, &hostID, &hostName); err != nil {
+		&in.Diagnoses, &lastDiag, &diagnosedAt, &diagnosis, &in.DiagnosedSHA, &runID, &hostID, &hostName,
+		&in.Firings24h, &lastFired); err != nil {
 		return Incident{}, err
 	}
 	in.State = IncidentState(state)
@@ -260,6 +276,13 @@ func scanIncident(sc scanner) (Incident, error) {
 	}
 	in.RunID = runID.String
 	in.HostID, in.HostName = hostID.Int64, hostName.String
+	if lastFired.Valid {
+		t, err := parseTS(lastFired.String)
+		if err != nil {
+			return Incident{}, err
+		}
+		in.LastFiredAt = &t
+	}
 	return in, nil
 }
 
@@ -372,7 +395,7 @@ func (s *Store) TouchIncidentSignal(ctx context.Context, id, hostID int64, detai
 
 // ListUnresolvedBySource returns the incidents of a source that are not resolved, ignored ones included, oldest first.
 func (s *Store) ListUnresolvedBySource(ctx context.Context, source string) ([]Incident, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+incidentCols+incidentFrom+
+	rows, err := s.db.QueryContext(ctx, `SELECT `+incidentCols()+incidentFrom+
 		` WHERE i.source = ? AND i.state <> 'resolved' ORDER BY i.first_seen, i.id`, source)
 	if err != nil {
 		return nil, err
@@ -380,22 +403,76 @@ func (s *Store) ListUnresolvedBySource(ctx context.Context, source string) ([]In
 	return collectIncidents(rows)
 }
 
-// RecentlyDiagnosed says whether a resolved incident with this source and key was diagnosed at or after since.
-func (s *Store) RecentlyDiagnosed(ctx context.Context, source, key string, since time.Time) (bool, error) {
-	var n int
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM incidents
-		WHERE source = ? AND key = ? AND state = 'resolved' AND diagnosed_at IS NOT NULL AND diagnosed_at >= ?`,
-		source, key, formatTS(since)).Scan(&n)
-	return n > 0, err
-}
-
-// ResolveIncident resolves an incident that is not resolved yet.
+// ResolveIncident resolves an incident that is not resolved yet. It remembers whether the incident was ignored, so that a
+// reopen can leave it ignored.
 func (s *Store) ResolveIncident(ctx context.Context, id int64, reason string, act NewActivity) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		if err := oneRow(tx.ExecContext(ctx, `
-			UPDATE incidents SET state = 'resolved', resolved_at = ?, resolved_reason = ?
+			UPDATE incidents SET state = 'resolved', resolved_at = ?, resolved_reason = ?, resolved_while_ignored = (state = 'ignored')
 			WHERE id = ? AND state <> 'resolved'`, formatTS(time.Now()), reason, id)); err != nil {
+			return err
+		}
+		act.IncidentID = id
+		return insertActivity(ctx, tx, act)
+	})
+}
+
+// FindLatestResolvedByKey returns the most recently resolved incident of a source and key (ErrNotFound if there is none).
+func (s *Store) FindLatestResolvedByKey(ctx context.Context, source, key string) (Incident, error) {
+	in, err := scanIncident(s.db.QueryRowContext(ctx, `SELECT `+incidentCols()+incidentFrom+
+		` WHERE i.source = ? AND i.key = ? AND i.state = 'resolved' ORDER BY i.resolved_at DESC, i.id DESC LIMIT 1`, source, key))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Incident{}, ErrNotFound
+	}
+	return in, err
+}
+
+// Reopen is the new observation of an alert that comes back: the fields a reopen refreshes. AutoDiagnose applies only to an
+// incident that was never diagnosed.
+type Reopen struct {
+	Title, Severity string
+	AutoDiagnose    bool
+	Details         json.RawMessage
+	HostID          int64
+}
+
+// ReopenIncident moves a resolved incident back to where it was and logs act in the same transaction. The state is ignored
+// when the incident was ignored when it resolved, else what UnignoreIncident derives (diagnosing while a responder run is
+// queued or running, diagnosed with a stored diagnosis, else open). It raises occurrences, sets last_seen, clears the
+// resolution and refreshes title, severity, details and host; diagnoses, the cooldown and the diagnosis stay. auto_diagnose
+// follows r only for an incident that was never diagnosed, else it is off. It returns ErrNotFound unless the incident is
+// resolved and ErrExists when another incident of the same source and key is not resolved.
+func (s *Store) ReopenIncident(ctx context.Context, id int64, r Reopen, act NewActivity) error {
+	if len(r.Details) == 0 {
+		r.Details = json.RawMessage(`{}`)
+	}
+	if !json.Valid(r.Details) || r.Details[0] != '{' {
+		return fmt.Errorf("%w: details must be a JSON object", ErrInvalidIncident)
+	}
+	if r.Title == "" || !slices.Contains(severities, r.Severity) {
+		return fmt.Errorf("%w: a reopen needs a title and a known severity", ErrInvalidIncident)
+	}
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `
+			UPDATE incidents SET
+				state = CASE
+					WHEN resolved_while_ignored = 1 THEN 'ignored'
+					WHEN EXISTS (SELECT 1 FROM runs r WHERE r.incident_id = incidents.id AND r.role = 'responder'
+						AND r.status IN ('queued', 'running')) THEN 'diagnosing'
+					WHEN diagnosis IS NOT NULL THEN 'diagnosed'
+					ELSE 'open' END,
+				occurrences = occurrences + 1, last_seen = ?, resolved_at = NULL, resolved_reason = '', resolved_while_ignored = 0,
+				title = ?, severity = ?, details = ?, host_id = ?,
+				auto_diagnose = CASE WHEN diagnosed_at IS NULL THEN ? ELSE 0 END
+			WHERE id = ? AND state = 'resolved'`,
+			formatTS(time.Now()), r.Title, r.Severity, string(r.Details), nullInt(r.HostID), r.AutoDiagnose, id)
+		if err != nil {
+			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+				return ErrExists
+			}
+			return err
+		}
+		if err := oneRow(res, nil); err != nil {
 			return err
 		}
 		act.IncidentID = id
@@ -436,7 +513,7 @@ func (s *Store) UnignoreIncident(ctx context.Context, id int64, act NewActivity)
 }
 
 func (s *Store) GetIncident(ctx context.Context, id int64) (Incident, error) {
-	in, err := scanIncident(s.db.QueryRowContext(ctx, `SELECT `+incidentCols+incidentFrom+` WHERE i.id = ?`, id))
+	in, err := scanIncident(s.db.QueryRowContext(ctx, `SELECT `+incidentCols()+incidentFrom+` WHERE i.id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Incident{}, ErrNotFound
 	}
@@ -450,7 +527,7 @@ func (s *Store) FindActiveIncident(ctx context.Context, repoID int64, ref, check
 
 // FindActiveIncidentByKey returns the incident of a source and key that is not resolved (ErrNotFound if there is none).
 func (s *Store) FindActiveIncidentByKey(ctx context.Context, source, key string) (Incident, error) {
-	in, err := scanIncident(s.db.QueryRowContext(ctx, `SELECT `+incidentCols+incidentFrom+
+	in, err := scanIncident(s.db.QueryRowContext(ctx, `SELECT `+incidentCols()+incidentFrom+
 		` WHERE i.source = ? AND i.key = ? AND i.state <> 'resolved'`, source, key))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Incident{}, ErrNotFound
@@ -460,7 +537,7 @@ func (s *Store) FindActiveIncidentByKey(ctx context.Context, source, key string)
 
 // ListActiveIncidents returns the incidents of a repo that are not resolved.
 func (s *Store) ListActiveIncidents(ctx context.Context, repoID int64) ([]Incident, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+incidentCols+incidentFrom+
+	rows, err := s.db.QueryContext(ctx, `SELECT `+incidentCols()+incidentFrom+
 		` WHERE i.repo_id = ? AND i.state <> 'resolved' ORDER BY i.id`, repoID)
 	if err != nil {
 		return nil, err
@@ -490,7 +567,7 @@ func (s *Store) ListIncidents(ctx context.Context, f IncidentFilter) ([]Incident
 		conds = append(conds, `i.source = ?`)
 		args = append(args, f.Source)
 	}
-	query := `SELECT ` + incidentCols + incidentFrom
+	query := `SELECT ` + incidentCols() + incidentFrom
 	if len(conds) > 0 {
 		query += ` WHERE ` + strings.Join(conds, ` AND `)
 	}
@@ -532,10 +609,13 @@ type Activity struct {
 }
 
 // ActivityQuery selects activity entries. IncidentID 0 means all of them. Before is a cursor: only entries
-// with a smaller id, 0 means no cursor. Limit defaults to 100.
+// with a smaller id, 0 means no cursor. Kinds, when set, keeps only entries of those kinds. Ascending returns the oldest entries
+// first instead of the newest. Limit defaults to 100.
 type ActivityQuery struct {
 	IncidentID int64
 	Before     int64
+	Kinds      []string
+	Ascending  bool
 	Limit      int
 }
 
@@ -598,11 +678,21 @@ func (s *Store) ListActivity(ctx context.Context, q ActivityQuery) ([]Activity, 
 		where = append(where, `a.id < ?`)
 		args = append(args, q.Before)
 	}
+	if len(q.Kinds) > 0 {
+		where = append(where, `a.kind IN (`+strings.TrimSuffix(strings.Repeat(`?,`, len(q.Kinds)), `,`)+`)`)
+		for _, k := range q.Kinds {
+			args = append(args, k)
+		}
+	}
 	query := activitySelect
 	if len(where) > 0 {
 		query += ` WHERE ` + strings.Join(where, ` AND `)
 	}
-	query += ` ORDER BY a.id DESC LIMIT ?`
+	if q.Ascending {
+		query += ` ORDER BY a.id ASC LIMIT ?`
+	} else {
+		query += ` ORDER BY a.id DESC LIMIT ?`
+	}
 	args = append(args, activityLimit(q.Limit))
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

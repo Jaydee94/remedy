@@ -19,6 +19,7 @@ describe('kindDotClass', () => {
   const expected: Record<string, string> = {
     incident_opened: 'bg-destructive',
     incident_recurred: 'bg-destructive',
+    incident_reopened: 'bg-destructive',
     incident_resolved: 'bg-success',
     incident_ignored: 'bg-neutral',
     incident_unignored: 'bg-primary',
@@ -55,8 +56,8 @@ describe('kindDotClass', () => {
     })
   }
 
-  it('covers all 30 kinds', () => {
-    assert.equal(Object.keys(expected).length, 30)
+  it('covers all 31 kinds', () => {
+    assert.equal(Object.keys(expected).length, 31)
   })
 
   it('falls back to neutral for a kind it does not know', () => {
