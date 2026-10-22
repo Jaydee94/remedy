@@ -176,3 +176,25 @@ func TestDatabaseTargetForms(t *testing.T) {
 		})
 	}
 }
+
+// The chart's own PostgreSQL gives the control plane a URL without a password and the password as PGPASSWORD
+// (deploy/chart/templates/server-deployment.yaml). pgx reads PGPASSWORD from the process environment when the URL has no
+// password; this pins that the configuration accepts such a URL and shows neither value.
+func TestADatabaseURLWithoutAPasswordTakesPGPASSWORD(t *testing.T) {
+	const pw = "pgpassword-from-the-environment"
+	t.Setenv("PGPASSWORD", pw)
+	raw := "postgres://remedy@remedy-postgres.remedy.svc:5432/remedy?sslmode=disable"
+	c, err := config.ServerFromEnv(serverEnv(map[string]string{"REMEDY_DATABASE_URL": raw}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.DatabaseTarget(); got != "remedy-postgres.remedy.svc:5432/remedy" {
+		t.Errorf("DatabaseTarget = %q, want host:port/dbname only", got)
+	}
+	if c.DatabaseURL.Reveal() != raw {
+		t.Error("DatabaseURL is not the value as given")
+	}
+	if strings.Contains(fmt.Sprintf("%+v", c), pw) {
+		t.Error("the configuration shows the password of PGPASSWORD")
+	}
+}
