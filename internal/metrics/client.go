@@ -22,6 +22,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Jaydee94/remedy/internal/redact"
 	"github.com/Jaydee94/remedy/internal/secret"
 )
 
@@ -240,7 +241,8 @@ func (c *Client) result(ctx context.Context, path string, q url.Values) (Result,
 	return res, nil
 }
 
-// clip makes the store's message one short line.
+// clip makes the store's message one short line. It redacts first and cuts after: a cut first could leave the first part of a
+// secret that straddles it, which no pattern would then recognize.
 func clip(s string) string {
 	s = strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f {
@@ -248,7 +250,7 @@ func clip(s string) string {
 		}
 		return r
 	}, s)
-	s = strings.TrimSpace(s)
+	s = strings.TrimSpace(redact.Redact(s))
 	if utf8.RuneCountInString(s) > maxMessage {
 		s = string([]rune(s)[:maxMessage])
 	}

@@ -260,6 +260,30 @@ func TestAnErrorAnswerBecomesAFixedErrorWithAClippedMessage(t *testing.T) {
 	}
 }
 
+// The message is redacted before it is cut, so that a secret over the cut does not show its first part.
+func TestAClippedMessageShowsNoPartOfASecretOverTheCut(t *testing.T) {
+	const value = "ghp_Zq8XvR3mTn5LpW7YdKc2HbJfG4sAeUo9N1ixV"
+	for name, text := range map[string]string{"github token": value, "key value": "api_key=" + value} {
+		fake := metricstest.New(t, "")
+		for pad := 180; pad <= 199; pad++ { // the secret starts a little before the cut, at every distance
+			fake.SetRaw(400, `{"status":"error","errorType":"bad_data","error":"`+strings.Repeat("x", pad)+" "+text+` tail"}`)
+			_, err := newClient(t, creds(fake.URL, "")).Query(ctx, "up{", time.Time{})
+			var qe *metrics.QueryError
+			if !errors.As(err, &qe) {
+				t.Fatalf("%s: error = %v", name, err)
+			}
+			if len([]rune(qe.Message)) > 200 {
+				t.Fatalf("%s: message of %d runes", name, len([]rune(qe.Message)))
+			}
+			for n := 4; n <= len(value); n++ {
+				if strings.Contains(qe.Message, value[:n]) {
+					t.Fatalf("%s, pad %d: the message shows %q of the secret: %q", name, pad, value[:n], qe.Message)
+				}
+			}
+		}
+	}
+}
+
 func TestAStatusOtherThan2xxWithoutAnErrorBodyIsAnAPIErrorWithoutTheBody(t *testing.T) {
 	fake := metricstest.New(t, "")
 	fake.SetRaw(502, `<html>internal secret detail</html>`)
