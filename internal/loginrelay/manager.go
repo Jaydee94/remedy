@@ -18,6 +18,12 @@ const (
 	runnerGrace     = 45 * time.Second // a poll this recent: the runner is online
 	runnerLostAfter = 60 * time.Second // no poll and no report: runner_lost
 	keepTerminal    = 10 * time.Minute // the last terminal session stays readable
+	// cancelGateCap bounds how long the claim gate stays shut after an end the
+	// runner did not report, while it may still be stopping its child: Go's
+	// WaitDelay of 3 s, the SIGKILL of the group and the poll that delivers
+	// the cancel, with margin. A runner that never answers must not block
+	// queued runs for the session's whole life.
+	cancelGateCap   = 10 * time.Second
 	maxAttempts     = 3
 	startLimit      = 5
 	startWindow     = 10 * time.Minute
@@ -80,6 +86,10 @@ type session struct {
 	codes   int    // code submissions that named this session
 	seq     int64  // the last command number of this session
 	queue   []Command
+	// unconfirmed is set when the control plane ended a session whose child
+	// the runner holds (boot is set), and cleared by the first poll that no
+	// longer names the session: the runner has stopped the child by then.
+	unconfirmed bool
 
 	startedAt time.Time
 	stateAt   time.Time // when the current state was entered
@@ -226,6 +236,7 @@ func (m *Manager) end(s *session, st State, reason Reason, at time.Time, cancel 
 	s.wipe()
 	if cancel {
 		s.enqueue(ActionCancel, Material{})
+		s.unconfirmed = s.boot != ""
 	}
 	switch st {
 	case StateSucceeded:
@@ -444,6 +455,10 @@ func (m *Manager) poll(req PollRequest, now time.Time) *Command {
 	if s != nil && !s.terminal() && s.boot != "" && req.Boot != s.boot {
 		m.end(s, StateFailed, ReasonRunnerRestarted, now, true)
 	}
+	if s != nil && s.terminal() && req.Session != s.id {
+		// The runner forgets a session only after its child is gone.
+		s.unconfirmed = false
+	}
 	if s == nil || (req.Session != "" && req.Session != s.id) {
 		if req.Session != "" {
 			return &Command{Session: req.Session, Action: ActionCancel}
@@ -537,12 +552,15 @@ func (m *Manager) Report(r Report) error {
 }
 
 // ClaimGate is taken by the claim handler around each ClaimNext. open is
-// false while a session is open; otherwise the read side of the gate is held
-// until release (idempotent) is called.
+// false while a session is open, and after an end the runner did not report
+// until the runner has stopped its child (or cancelGateCap has passed), so a
+// run never starts on a login config the dying child still writes; otherwise
+// the read side of the gate is held until release (idempotent) is called.
 func (m *Manager) ClaimGate() (release func(), open bool) {
 	m.gate.RLock()
-	m.lock()
-	open = m.sess == nil || m.sess.terminal()
+	now := m.lock()
+	s := m.sess
+	open = s == nil || (s.terminal() && !(s.unconfirmed && now.Before(s.endedAt.Add(cancelGateCap))))
 	m.unlock()
 	if !open {
 		m.gate.RUnlock()
