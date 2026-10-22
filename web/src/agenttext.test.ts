@@ -339,7 +339,7 @@ describe('parseAgentText: hostile input', () => {
   ]
   const best = (md: string) => {
     let min = Infinity
-    for (let r = 0; r < 4; r++) min = Math.min(min, timed(() => parseAgentText(md)))
+    for (let r = 0; r < 8; r++) min = Math.min(min, timed(() => parseAgentText(md)))
     return min
   }
 
@@ -352,9 +352,9 @@ describe('parseAgentText: hostile input', () => {
       const big = best(large)
       assert.ok(big < 1000, `${name}: ${big.toFixed(1)} ms at 60 KB`)
       // Quadratic means both: a large factor and a time that is not small. A linear parser on a busy machine (make check runs the test
-      // files in parallel) can show a factor near 8 at a few milliseconds; the quadratic one shows about 14 at 100 ms and more.
+      // files in parallel) was seen at a factor of 8.2 and 38 ms in CI; a linear one is near 4, the quadratic one shows about 14 at 100 ms and more.
       const ratio = big / Math.max(small, 1)
-      assert.ok(ratio < 8 || big < 30, `${name}: ${small.toFixed(2)} ms at 15 KB, ${big.toFixed(2)} ms at 60 KB`)
+      assert.ok(ratio < 12 || big < 60, `${name}: ${small.toFixed(2)} ms at 15 KB, ${big.toFixed(2)} ms at 60 KB`)
     })
   }
 
