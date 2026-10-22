@@ -161,7 +161,8 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	sigs.AfterCycle = diagnoser.AutoStart
 
 	// The login relay has no switch (decision 2026-10-22): the manager is always built and its routes always registered.
-	// Only the runner's mode withholds it (the server answers api_key_mode, the runner starts no driver).
+	// Only the runner's mode withholds it: in another mode the runner starts no driver. The server cannot tell the mode
+	// until the runner reports it (cycle 7b), so a start then ends as runner_offline; the api_key_mode answer comes with 7b.
 	login := loginRelay(st, log)
 
 	deps := server.Deps{

@@ -304,7 +304,9 @@ the default, the runner card offers "Log in from here" ("Log in again", with a c
 code, result. The runner starts the CLI's own `claude auth login`, the page shows a link to the sign-in page, you sign in at the vendor with your own
 account and paste the one-time code into the page, and the runner hands it to the CLI. The `kubectl exec` command stays below the opener as "or do it in a
 terminal" (and on the steps where it helps: before the start, for an address the page does not recognise, after a failure), and it is the only thing shown
-when the login from the page is not offered (a runner in another mode). An older values file that still sets `loginRelay.enabled` renders without an
+when the control plane is too old to have the login routes. A runner set to another mode than subscription (`REMEDY_AUTH_MODE`) starts no relay,
+but the control plane cannot tell until the runner reports its mode (cycle 7b): the card still offers "Log in from here", and a start ends with "the
+runner is not connected" (`runner_offline`) although the card shows it connected. Use the terminal in that case. An older values file that still sets `loginRelay.enabled` renders without an
 error; the value has no effect. The address and the code are kept in memory only, for one attempt of at most ten minutes (`docs/design.md` 2.7.1); the code is
 write-only. While a login session is open no queued run is started, and a login is refused while a run is running (the admin API answers 409
 `run_active`, and the page says that a run is running and that the sign-in can start when it has ended).

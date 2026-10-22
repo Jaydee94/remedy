@@ -63,8 +63,8 @@ export function useLoginRelay(pollMs: number): LoginRelay {
     }
   }, [])
 
-  // Once the route answered 404 the polling stops: turning the relay on needs a restart of the control plane, which ends the admin
-  // session (it is in memory) and so reloads the page.
+  // Once the route answered 404 the polling stops: an older control plane without the routes answers 404, so
+  // the page stops asking (an upgrade restarts the control plane, which ends the admin session and so reloads the page).
   useEffect(() => {
     if (absent) return
     void refresh()

@@ -82,8 +82,8 @@ func NewBoot() string {
 }
 
 // LoginRelay polls the control plane for login commands and drives the CLI's login. The poll loop is the one goroutine
-// that executes commands; each child has a watcher goroutine that posts its reports. Run it only when the relay is on
-// and the runner is in subscription mode.
+// that executes commands; each child has a watcher goroutine that posts its reports. Run it only when the runner
+// is in subscription mode (the relay has no switch).
 type LoginRelay struct {
 	Client  *Client
 	Claude  provider.Claude
