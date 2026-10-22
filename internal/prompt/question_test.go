@@ -55,3 +55,13 @@ func TestQuestionKeepsFormatVerbsLiteral(t *testing.T) {
 		t.Errorf("a format verb in the question was interpreted:\n%s", out)
 	}
 }
+
+func TestTheQuestionFrameNamesTheSignalToolsBeforeTheQuestion(t *testing.T) {
+	out := prompt.Question(5, "does it still fire?")
+	q := strings.Index(out, "does it still fire?")
+	for _, want := range []string{"alert_list", "silence_list", "metrics_query", "metrics_query_range"} {
+		if i := strings.Index(out, want); i < 0 || i > q {
+			t.Errorf("the frame lacks %q before the question:\n%s", want, out)
+		}
+	}
+}

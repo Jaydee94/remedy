@@ -249,3 +249,18 @@ func TestEmptyPartsAreLeftOut(t *testing.T) {
 		t.Errorf("title = %q", b["alert_title"])
 	}
 }
+
+// The responder checks with alert_list that the alert still fires before it explains it, and reads the metrics instead of saying they
+// cannot be read. Both are instructions, outside every data block.
+func TestTheInstructionsNameTheSignalToolsAndCheckFirstThatTheAlertStillFires(t *testing.T) {
+	out := prompt.Outage(input(), d)
+	facts := strings.Index(out, "\nFacts:\n")
+	for _, want := range []string{"alert_list", "still fires", "metrics_query"} {
+		if i := strings.Index(out, want); i < 0 || i > facts {
+			t.Errorf("the instructions lack %q before the facts:\n%s", want, out)
+		}
+	}
+	if strings.Index(out, "alert_list") > strings.Index(out, "Read what you need") {
+		t.Errorf("alert_list must be named before the agent is told to read what it needs:\n%s", out)
+	}
+}
