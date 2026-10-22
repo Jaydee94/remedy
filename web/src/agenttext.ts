@@ -34,22 +34,35 @@ const MAX_INLINE_DEPTH = 2
 
 // ---- Cleaning ----------------------------------------------------------------------------------------------------------------------
 
-/** Controls that could hide or reorder text: removed. Newline and tab stay; CR, U+2028 and U+2029 have become newlines before. */
-function dropped(c: number): boolean {
+const FORMAT = /^[\p{Cf}\p{Co}]$/u
+
+/**
+ * Characters that could hide, reorder or smuggle text: removed. The set is internal/skill's (hasInvisible): every format character
+ * (Cf: zero-width characters, bidirectional marks and isolates, the soft hyphen, the byte order mark, the tag characters), private
+ * use characters, variation selectors and the combining grapheme joiner; and besides the C0 controls except newline and tab, DEL,
+ * the C1 controls and the Hangul fillers, which show as blank space. CR, U+2028 and U+2029 have become newlines before.
+ */
+function dropped(cp: number, ch: string): boolean {
+  if (cp < 0x20) return cp !== 0x0a && cp !== 0x09
+  if (cp < 0x7f) return false
+  if (cp <= 0x9f) return true
   return (
-    (c < 0x20 && c !== 0x0a && c !== 0x09) ||
-    (c >= 0x7f && c <= 0x9f) ||
-    c === 0x061c ||
-    (c >= 0x200b && c <= 0x200f) ||
-    (c >= 0x202a && c <= 0x202e) ||
-    (c >= 0x2060 && c <= 0x2064) ||
-    (c >= 0x2066 && c <= 0x2069) ||
-    c === 0xfeff
+    cp === 0x034f ||
+    cp === 0x115f ||
+    cp === 0x1160 ||
+    cp === 0x3164 ||
+    cp === 0xffa0 ||
+    (cp >= 0xfe00 && cp <= 0xfe0f) ||
+    (cp >= 0xe0100 && cp <= 0xe01ef) ||
+    FORMAT.test(ch)
   )
 }
 
-/** Cuts the input to MAX_INPUT (never between the halves of a surrogate pair), normalises line ends and removes the controls. */
-function prepare(md: string): { text: string; truncated: boolean } {
+/**
+ * The text as the renderer reads it: cut to MAX_INPUT (never between the halves of a surrogate pair), line ends normalised and the
+ * invisible characters removed, in one pass over the code points. Every path that shows agent text, the fallbacks too, shows this.
+ */
+export function cleanText(md: string): { text: string; truncated: boolean } {
   let input = typeof md === 'string' ? md : ''
   let truncated = false
   if (input.length > MAX_INPUT) {
@@ -61,18 +74,22 @@ function prepare(md: string): { text: string; truncated: boolean } {
   }
   const parts: string[] = []
   let from = 0
-  for (let i = 0; i < input.length; i++) {
-    const c = input.charCodeAt(i)
-    if (c === 0x0d || c === 0x2028 || c === 0x2029 || dropped(c)) {
-      parts.push(input.slice(from, i))
-      if (c === 0x0d) {
-        parts.push('\n')
-        if (input.charCodeAt(i + 1) === 0x0a) i++
-      } else if (c === 0x2028 || c === 0x2029) {
-        parts.push('\n')
-      }
-      from = i + 1
+  for (let i = 0; i < input.length; ) {
+    const cp = input.codePointAt(i) ?? 0
+    const width = cp > 0xffff ? 2 : 1
+    if (cp === 0x0d || cp === 0x2028 || cp === 0x2029) {
+      parts.push(input.slice(from, i), '\n')
+      i += cp === 0x0d && input.charCodeAt(i + 1) === 0x0a ? 2 : 1
+      from = i
+      continue
     }
+    if (cp >= 0x7f || (cp < 0x20 && cp !== 0x0a && cp !== 0x09)) {
+      if (dropped(cp, input.slice(i, i + width))) {
+        parts.push(input.slice(from, i))
+        from = i + width
+      }
+    }
+    i += width
   }
   parts.push(input.slice(from))
   return { text: parts.join(''), truncated }
@@ -87,12 +104,14 @@ type Delim = {
   n: number
   canOpen: boolean
   canClose: boolean
-  /** What this run opens, outermost first. */
+  /** What this run opens, innermost first (built in reverse: an unshift per match would be quadratic on a long run). */
   opens: Kind[]
   /** What this run closes, innermost first. */
   closes: Kind[]
 }
-type Tok = { k: 'text'; s: string } | { k: 'code'; s: string } | { k: 'br' } | Delim
+/** A link's label (or an image's alt text), parsed on its own, and the text that follows it: " (target)" or nothing. Never a link. */
+type Label = { k: 'label'; toks: Tok[]; suffix: string }
+type Tok = { k: 'text'; s: string } | { k: 'code'; s: string } | { k: 'br' } | Delim | Label
 
 const isSpace = (c: string) => c === '' || c === ' ' || c === '\n' || c === '\t' || /\s/u.test(c)
 const isPunct = (c: string) => c !== '' && /[\p{P}\p{S}]/u.test(c)
@@ -113,8 +132,8 @@ interface LinkIndex {
   newline: Int32Array
 }
 
-/** `[label](target)` at p, or `![alt](target)` when p is the `[` after a `!`: the end and the text it becomes. */
-function readLink(s: string, p: number, idx: LinkIndex, image: boolean): { end: number; text: string } | null {
+/** `[label](target)` at p: where it ends, the label and the target. The label has no bracket and no newline. */
+function readLink(s: string, p: number, idx: LinkIndex): { end: number; label: string; target: string } | null {
   const j = idx.close[p + 1]
   if (j < 0) return null
   const open = idx.open[p + 1]
@@ -126,9 +145,7 @@ function readLink(s: string, p: number, idx: LinkIndex, image: boolean): { end: 
   if (k < 0) return null
   const space = idx.space[j + 2]
   if (space >= 0 && space < k) return null
-  const label = s.slice(p + 1, j)
-  const target = s.slice(j + 2, k)
-  return { end: k + 1, text: image || target === '' ? label : `${label} (${target})` }
+  return { end: k + 1, label: s.slice(p + 1, j), target: s.slice(j + 2, k) }
 }
 
 function tokenize(s: string): Tok[] {
@@ -173,6 +190,14 @@ function tokenize(s: string): Tok[] {
   let i = 0
   while (i < n) {
     const c = s[i]
+    if (c === '\\' && s[i + 1] === '\n') {
+      // A backslash at the end of a line: a hard line break.
+      flush(i)
+      toks.push({ k: 'br' })
+      i += 2
+      from = i
+      continue
+    }
     if (c === '\\' && i + 1 < n && ASCII_PUNCT.includes(s[i + 1])) {
       if (i > from) parts.push(s.slice(from, i))
       parts.push(s[i + 1])
@@ -210,10 +235,13 @@ function tokenize(s: string): Tok[] {
     }
     if (c === '[' || (c === '!' && s[i + 1] === '[')) {
       const image = c === '!'
-      const link = readLink(s, image ? i + 1 : i, linkIndex(), image)
+      const link = readLink(s, image ? i + 1 : i, linkIndex())
       if (link) {
-        if (i > from) parts.push(s.slice(from, i))
-        parts.push(link.text)
+        // The label keeps its inline formatting; the target is text after it. The label holds no bracket, so this goes one level deep.
+        flush(i)
+        const inner = tokenize(link.label)
+        matchEmphasis(inner)
+        toks.push({ k: 'label', toks: inner, suffix: image || link.target === '' ? '' : ` (${link.target})` })
         i = link.end
         from = i
       } else {
@@ -277,7 +305,7 @@ function matchEmphasis(toks: Tok[]): void {
         const kind: Kind = tok.ch === '~' ? 'del' : use === 2 ? 'strong' : 'em'
         opener.n -= use
         tok.n -= use
-        opener.opens.unshift(kind)
+        opener.opens.push(kind)
         tok.closes.push(kind)
         // The openers between the pair become text; an exhausted opener leaves the stack.
         stack.length = found + (opener.n > 0 ? 1 : 0)
@@ -299,14 +327,21 @@ function pushText(into: Inline[], text: string) {
   else into.push({ type: 'text', text })
 }
 
-/** The matched runs as a tree; a pair deeper than MAX_INLINE_DEPTH is shown as its markers. */
-function buildInline(toks: Tok[]): Inline[] {
+/** The matched runs as a tree, starting at `depth`; a pair deeper than MAX_INLINE_DEPTH is shown as its markers. */
+function buildInline(toks: Tok[], start = 0): Inline[] {
   const root: Inline[] = []
   const frames: Array<{ kind: Kind; ch: string; into: Inline[]; node: Inline[] | null }> = []
   let cur = root
-  let depth = 0
+  let depth = start
   for (const tok of toks) {
     if (tok.k === 'text') pushText(cur, tok.s)
+    else if (tok.k === 'label') {
+      for (const node of buildInline(tok.toks, depth)) {
+        if (node.type === 'text') pushText(cur, node.text)
+        else cur.push(node)
+      }
+      pushText(cur, tok.suffix)
+    }
     else if (tok.k === 'code') cur.push({ type: 'code', text: tok.s })
     else if (tok.k === 'br') cur.push({ type: 'break' })
     else {
@@ -318,7 +353,8 @@ function buildInline(toks: Tok[]): Inline[] {
         if (!f.node) pushText(cur, marker(kind, f.ch))
       }
       pushText(cur, tok.ch.repeat(tok.n))
-      for (const kind of tok.opens) {
+      for (let o = tok.opens.length - 1; o >= 0; o--) {
+        const kind = tok.opens[o]
         if (depth < MAX_INLINE_DEPTH) {
           const children: Inline[] = []
           cur.push({ type: kind, children })
@@ -598,7 +634,7 @@ function plainBlocks(text: string): Block[] {
 
 /** The agent's text as blocks. Never throws: on an internal error the text comes back as one plain paragraph. */
 export function parseAgentText(md: string): AgentDoc {
-  const { text, truncated } = prepare(md)
+  const { text, truncated } = cleanText(md)
   try {
     return { blocks: parseBlocks(text.split('\n').map(expandIndent), { listDepth: 0, inQuote: false }), truncated }
   } catch {
@@ -608,7 +644,7 @@ export function parseAgentText(md: string): AgentDoc {
 
 /** The inline subset only (bold, italic, strike, code, line breaks), for a one-line summary: block markers stay text. */
 export function parseAgentInline(md: string): { children: Inline[]; truncated: boolean } {
-  const { text, truncated } = prepare(md)
+  const { text, truncated } = cleanText(md)
   const lines = text.split('\n').map((l) => l.trim())
   try {
     return { children: parseInline(lines.join('\n').trim()), truncated }
@@ -644,7 +680,7 @@ export function plainText(md: string, max: number): string {
     blockText(parseAgentText(md).blocks, out)
     flat = out.join('')
   } catch {
-    flat = prepare(md).text
+    flat = cleanText(md).text
   }
   flat = flat.replace(/\s+/g, ' ').trim()
   const points = Array.from(flat)

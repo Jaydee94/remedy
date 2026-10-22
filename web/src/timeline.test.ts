@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { dayTimeLabel, kindDotClass, timeOfDay } from './timeline.ts'
+import { dayTimeLabel, entryText, kindDotClass, timeOfDay } from './timeline.ts'
+
+describe('entryText', () => {
+  it('strips the Markdown of the summary of a finished diagnosis', () => {
+    assert.equal(
+      entryText({ kind: 'diagnosis_finished', summary: 'Diagnosis of KubeAPIDown finished: The **API server** restarted; see `kube-apiserver`.' }),
+      'Diagnosis of KubeAPIDown finished: The API server restarted; see kube-apiserver.',
+    )
+  })
+
+  it('leaves every other entry as it was written', () => {
+    assert.equal(entryText({ kind: 'incident_opened', summary: 'Check **build** failed on main' }), 'Check **build** failed on main')
+  })
+})
 
 describe('kindDotClass', () => {
   const expected: Record<string, string> = {

@@ -23,16 +23,21 @@ trusted: agent text is still data, and every rule below is there so that renderi
 ## 3. Security rules
 
 - **React elements only.** No `dangerouslySetInnerHTML`, no HTML parsing. Raw HTML in the text (`<script>`, `<img onerror=...>`, `<a href>`) is literal text.
-- **No link and no image is ever made from agent text.** `[label](url)` becomes the text `label (url)`; `![alt](url)` becomes `alt`; a bare URL or an
-  autolink stays text. No element made from agent text carries an `href`, `src`, `style`, `class` or any other attribute derived from the text; the tree has
+- **No link and no image is ever made from agent text.** `[label](url)` becomes the text `label (url)` (the label keeps its inline formatting, the
+  target is plain text); `![alt](url)` becomes `alt`; a bare URL or an autolink stays text. No element made from agent text carries an `href`, `src`, `style`, `class` or any other attribute derived from the text; the tree has
   no node type that could carry one (a test checks this as a property).
-- **The text formats only inside its own block.** A heading becomes a small label inside the card or message (a `<p>` styled like the card's section titles),
-  never an `h1` to `h6`: the page's heading outline is Remedy's. Agent text never decides the structure of one of Remedy's sentences.
-- **Invisible and bidirectional controls are removed** before parsing (U+200B to U+200F, U+202A to U+202E, U+2060 to U+2064, U+2066 to U+2069, U+061C,
-  U+FEFF, the C0 controls except newline and tab, DEL and the C1 controls), so text cannot hide or reorder content. U+2028 and U+2029 become newlines.
+- **The text formats only inside its own block.** A heading becomes a small label inside the card or message (a `<p>`), never an `h1` to `h6`: the
+  page's heading outline is Remedy's. The label is visibly not one of the card's own section titles, so an agent's `## What I'd do` cannot draw a fake
+  section. Agent text never decides the structure of one of Remedy's sentences.
+- **Invisible and bidirectional characters are removed** before parsing, in one pass over the code points, with internal/skill's set (`hasInvisible`):
+  every format character (`\p{Cf}`: zero-width characters, bidirectional marks and isolates, the soft hyphen, U+180E, U+FFF9 to U+FFFB, the byte order mark,
+  the tag characters U+E0001 to U+E007F), private use characters, the variation selectors (U+FE00 to U+FE0F, U+E0100 to U+E01EF) and U+034F; besides, the
+  C0 controls except newline and tab, DEL, the C1 controls and the Hangul fillers (U+115F, U+1160, U+3164, U+FFA0). Text cannot hide or reorder content.
+  U+2028 and U+2029 become newlines. `cleanText` does this, and every path that shows the text, the fallbacks and `plainText` too, shows its result.
 - **Bounded and total.** Input over 64 KiB (65536 UTF-16 units) is cut, and a note under the text says so. Lists nest at most two levels and inline
   formatting at most two; deeper markers are shown as text. Parsing is one pass in linear time: no regular expression with a nested quantifier runs on
   untrusted text, delimiter matching keeps a lower bound per marker so a failed search is never repeated, and backtick runs are matched through an index.
+  The tests check this by scaling (the time at 60 KB against the time at 15 KB, cross-kind delimiter cases included), not by an absolute bound alone.
   The renderer never throws: on any internal error it falls back to the plain text.
 
 ## 4. Grammar
@@ -45,16 +50,19 @@ HTML blocks, footnotes, setext headings, indented code) stays paragraph text.
 
 Inline: `**bold**` and `__bold__`, `*italic*` and `_italic_` with the CommonMark flanking rules, so an underscore inside a word (`kube_state_metrics`,
 `up{job="api_server"}`) is never emphasis; `` `code` `` with any backtick run length (a newline inside becomes a space); `~~strike~~`; backslash escapes of
-ASCII punctuation. An unbalanced marker stays literal. CRLF and CR are normalised to LF.
+ASCII punctuation; a backslash at the end of a line is a line break. An unbalanced marker stays literal. CRLF and CR are normalised to LF.
 
 ## 5. Rendering
 
-`AgentText` (`variant: 'body' | 'compact'`) uses the app's tokens only: serif 15.5 px, `leading-relaxed`, `text-foreground/90`; bold `font-semibold`; inline
-code as the chip the file names use; unordered items with a small accent dot; **ordered lists as steps**, each with a round `bg-secondary` badge whose number
-is in the accent colour, the confidence chip's family; headings as `text-xs font-semibold text-muted-foreground` labels; code blocks in a rounded bordered
+`AgentText` (`variant: 'body' | 'compact'`) uses the app's tokens only: serif, 16 px for `body` (an answer, under Remedy's larger one-line sentences) and
+15.5 px for `compact` (a section of a diagnosis card), `leading-relaxed`, `text-foreground/90`; bold `font-semibold`; inline code as a chip, `bg-background`
+inside a card (the file names' chip) and `bg-secondary` on the page itself, where `bg-background` would not show; unordered items with a small accent dot;
+**ordered lists as steps**, each with a round `bg-secondary` badge whose number is in the accent colour, the confidence chip's family; headings as
+`text-[13px] font-semibold text-foreground/80` labels, unlike the card's `text-xs text-muted-foreground` section titles; code blocks in a rounded bordered
 block (`bg-background`, mono 12.5 px, no wrapping, horizontal scroll inside the block); blockquotes with a muted left border. Every container has `min-w-0`
 and breaks long words, so a page at 390 px never scrolls sideways. `compact` tightens the spacing for the diagnosis card's sections. `AgentInline` renders the
-inline subset only, for a one-line summary. `plainText(md, max)` strips the markers and returns one line, for previews.
+inline subset only, for a one-line summary. `plainText(md, max)` strips the markers and returns one line, for previews and for the summary that ends
+Today's "Diagnosis of X finished: ..." line (the server writes it unchanged; `timeline.entryText` strips it on the web side).
 
 ## 6. Where it applies, and where it does not
 

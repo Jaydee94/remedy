@@ -1,12 +1,18 @@
 import { Fragment, useMemo } from 'react'
 import type { ReactNode } from 'react'
-import { parseAgentInline, parseAgentText } from '@/agenttext.ts'
+import { cleanText, parseAgentInline, parseAgentText } from '@/agenttext.ts'
 import type { Block, Inline } from '@/agenttext.ts'
 import { cn } from '@/lib/utils'
 
 // Agent-written prose, formatted by our own restricted renderer (docs/specs/2026-10-22-agent-text-markdown-design.md). Every element
 // here is made from a node of agenttext.ts and carries only fixed classes: nothing from the text becomes an attribute, a link, an
 // image or a page heading, and the text itself reaches the page only as React text.
+
+/** A node type this renderer does not know: the type system says there is none, and at run time it shows nothing. */
+function unknown(node: never): null {
+  void node
+  return null
+}
 
 function inline(nodes: readonly Inline[], chip: string): ReactNode[] {
   return nodes.map((n, i) => {
@@ -35,8 +41,9 @@ function inline(nodes: readonly Inline[], chip: string): ReactNode[] {
             {inline(n.children, chip)}
           </del>
         )
+      default:
+        return unknown(n)
     }
-    return null
   })
 }
 
@@ -50,9 +57,10 @@ function blocks(list: readonly Block[], level: number, chip: string): ReactNode[
           </p>
         )
       case 'heading':
-        // A label inside the agent's block, styled like the card's section titles: never a heading of the page.
+        // A label inside the agent's block, never a heading of the page, and visibly not one of Remedy's own section titles
+        // (text-xs, muted): an agent's "## What I'd do" must not look like a section of the card.
         return (
-          <p key={i} className="mt-1 font-sans text-xs font-semibold text-muted-foreground">
+          <p key={i} className="mt-1 font-sans text-[13px] font-semibold text-foreground/80">
             {inline(b.children, chip)}
           </p>
         )
@@ -96,8 +104,9 @@ function blocks(list: readonly Block[], level: number, chip: string): ReactNode[
             ))}
           </ul>
         )
+      default:
+        return unknown(b)
     }
-    return null
   })
 }
 
@@ -106,7 +115,7 @@ const cardChip = 'bg-background'
 const pageChip = 'bg-secondary'
 const inlineChip = 'bg-secondary'
 
-const bodyClass = 'flex min-w-0 flex-col font-serif text-[15.5px] leading-relaxed break-words text-foreground/90'
+const bodyClass = 'flex min-w-0 flex-col font-serif leading-relaxed break-words text-foreground/90'
 
 function docNodes(text: string, chip: string): ReactNode {
   const doc = parseAgentText(text)
@@ -140,12 +149,24 @@ function attempt(build: () => ReactNode): ReactNode | null {
   }
 }
 
-/** The agent's prose as formatted text. `compact` tightens the spacing, for the sections of a diagnosis card. */
+/** The fallback: the text as the parser would have read it (cleaned and cut), never the raw string. */
+function plain(text: string): string {
+  try {
+    return cleanText(text).text
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * The agent's prose as formatted text. `body` (16 px) is an answer on the page, under Remedy's larger one-line sentences; `compact`
+ * (15.5 px, tighter) is a section of a diagnosis card.
+ */
 export default function AgentText({ text, variant = 'body' }: { text: string; variant?: 'body' | 'compact' }) {
   const content = useMemo(() => attempt(() => docNodes(text, variant === 'compact' ? cardChip : pageChip)), [text, variant])
   return (
-    <div className={cn(bodyClass, variant === 'compact' ? 'gap-2.5' : 'gap-3.5')}>
-      {content ?? <p className="whitespace-pre-wrap">{text}</p>}
+    <div className={cn(bodyClass, variant === 'compact' ? 'gap-2.5 text-[15.5px]' : 'gap-3.5 text-base')}>
+      {content ?? <p className="whitespace-pre-wrap">{plain(text)}</p>}
     </div>
   )
 }
@@ -153,5 +174,5 @@ export default function AgentText({ text, variant = 'body' }: { text: string; va
 /** The inline subset only (bold, italic, code), for a one-line summary inside the caller's own element. */
 export function AgentInline({ text }: { text: string }) {
   const content = useMemo(() => attempt(() => inlineNodes(text)), [text])
-  return <>{content ?? text}</>
+  return <>{content ?? plain(text)}</>
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { MAX_INPUT, parseAgentInline, parseAgentText, plainText } from './agenttext.ts'
+import { cleanText, MAX_INPUT, parseAgentInline, parseAgentText, plainText } from './agenttext.ts'
 import type { Block, Inline } from './agenttext.ts'
 
 // A compact form of the tree, so a case reads like its expected output. Test only: the app never makes markup from it.
@@ -93,38 +93,43 @@ const timed = (f: () => void) => {
   return performance.now() - start
 }
 
-// The answer of incident #39 to "was war hier los?", rebuilt from the screenshot: a bold lead, a bold label line, then items that start
-// with a bold label and carry inline code, one of them wrapped in the middle of a code span; then the steps.
-const screenshot = [
-  '**Kurz:** Der API-Server war etwa vier Minuten lang nicht erreichbar; der Alarm hat sich danach von selbst aufgelöst.',
-  '',
-  '**Was passiert ist:**',
-  '- **Alarm:** Der Alarm kam von Alertmanager (`alertgroup: kubernetes-system-apiserver`, `job: apiserver`, Schweregrad critical). Die Regel prüft `absent(up{job="apiserver"})`.',
-  '- **Ursache:** Der Scrape schlug fehl, weil `kube-apiserver` neu gestartet wurde (`kubernetes-',
-  'system-apiserver` meldete in der Zeit keine Targets).',
-  '- **Jetzt:** Alle Targets sind wieder `up`, und kube_state_metrics meldet keine Fehler.',
-  '',
-  '**Was ich empfehle:**',
-  '1. Prüfe mit `kubectl -n kube-system logs kube-apiserver` die Zeit um den Neustart.',
-  '2. Beobachte den Alarm noch einen Tag.',
+// The answer of incident #39 to "was war hier los?", word for word from the screenshot: a bold lead with a code chip, a bold label
+// line and right under it (no blank line) items that start with a bold label and carry code chips and German quotation marks.
+const kurz = '**Kurz:** Am 22.10.2026 gab es einen kritischen Alarm `KubeAPIDown`. Er hat sich nach etwa 15 Minuten von selbst erledigt.'
+const items = [
+  '**Was ich weiß:**',
+  '- **Alarm:** Der Alarm kam von Alertmanager (`alertgroup: kubernetes-system-apiserver`, `job: apiserver`, Schweregrad critical). Die Beschreibung lautet: „KubeAPI has disappeared from Prometheus target discovery.“ Die Abfrage dahinter ist `absent(up{job="apiserver"})`. Es kamen also keine Metriken des Kubernetes-API-Servers mehr an.',
+  '- **Beginn:** Der Alarm feuerte ab 05:41:30 UTC. Remedy hat den Incident um 05:42:12 geöffnet.',
 ].join('\n')
+const screenshot = `${kurz}\n\n${items}`
+
+const kurzHtml = '<b>Kurz:</b> Am 22.10.2026 gab es einen kritischen Alarm <code>KubeAPIDown</code>. Er hat sich nach etwa 15 Minuten von selbst erledigt.'
+const listHtml =
+  '<ul>' +
+  '<li><p><b>Alarm:</b> Der Alarm kam von Alertmanager (<code>alertgroup: kubernetes-system-apiserver</code>, <code>job: apiserver</code>, Schweregrad critical). Die Beschreibung lautet: „KubeAPI has disappeared from Prometheus target discovery.“ Die Abfrage dahinter ist <code>absent(up{job="apiserver"})</code>. Es kamen also keine Metriken des Kubernetes-API-Servers mehr an.</p></li>' +
+  '<li><p><b>Beginn:</b> Der Alarm feuerte ab 05:41:30 UTC. Remedy hat den Incident um 05:42:12 geöffnet.</p></li>' +
+  '</ul>'
 
 describe('parseAgentText: the answer of incident #39', () => {
-  it('makes a lead paragraph, label lines, a list right after a label line and numbered steps', () => {
+  it('makes a bold lead, a bold label line and the two-item list right under it', () => {
+    assert.equal(show(screenshot), `<p>${kurzHtml}</p><p><b>Was ich weiß:</b></p>${listHtml}`)
+  })
+
+  it('does the same without the blank line after the lead: the label line is a line break of the lead', () => {
+    assert.equal(show(`${kurz}\n${items}`), `<p>${kurzHtml}<br><b>Was ich weiß:</b></p>${listHtml}`)
+  })
+
+  it('keeps a code span that wraps onto an unindented line in its item', () => {
     assert.equal(
-      show(screenshot),
-      '<p><b>Kurz:</b> Der API-Server war etwa vier Minuten lang nicht erreichbar; der Alarm hat sich danach von selbst aufgelöst.</p>' +
-        '<p><b>Was passiert ist:</b></p>' +
-        '<ul>' +
-        '<li><p><b>Alarm:</b> Der Alarm kam von Alertmanager (<code>alertgroup: kubernetes-system-apiserver</code>, <code>job: apiserver</code>, Schweregrad critical). Die Regel prüft <code>absent(up{job="apiserver"})</code>.</p></li>' +
-        '<li><p><b>Ursache:</b> Der Scrape schlug fehl, weil <code>kube-apiserver</code> neu gestartet wurde (<code>kubernetes- system-apiserver</code> meldete in der Zeit keine Targets).</p></li>' +
-        '<li><p><b>Jetzt:</b> Alle Targets sind wieder <code>up</code>, und kube_state_metrics meldet keine Fehler.</p></li>' +
-        '</ul>' +
-        '<p><b>Was ich empfehle:</b></p>' +
-        '<ol 1>' +
-        '<li><p>Prüfe mit <code>kubectl -n kube-system logs kube-apiserver</code> die Zeit um den Neustart.</p></li>' +
-        '<li><p>Beobachte den Alarm noch einen Tag.</p></li>' +
-        '</ol>',
+      show('- **Ursache:** `kube-apiserver` wurde neu gestartet (`kubernetes-\nsystem-apiserver` meldete nichts).\n- **Jetzt:** gut'),
+      '<ul><li><p><b>Ursache:</b> <code>kube-apiserver</code> wurde neu gestartet (<code>kubernetes- system-apiserver</code> meldete nichts).</p></li><li><p><b>Jetzt:</b> gut</p></li></ul>',
+    )
+  })
+
+  it('makes numbered steps right after a label line', () => {
+    assert.equal(
+      show('**Was ich empfehle:**\n1. Prüfe `kubectl -n kube-system logs kube-apiserver`.\n2. Beobachte den Alarm.'),
+      '<p><b>Was ich empfehle:</b></p><ol 1><li><p>Prüfe <code>kubectl -n kube-system logs kube-apiserver</code>.</p></li><li><p>Beobachte den Alarm.</p></li></ol>',
     )
   })
 })
@@ -311,64 +316,163 @@ describe('parseAgentText: hostile input', () => {
     assert.ok(!/[\uD800-\uDBFF]$/.test(t))
   })
 
-  it('stays fast on thousands of unmatched or nested markers', () => {
-    const cases = [
-      '*'.repeat(10000) + 'a' + '*'.repeat(10000),
-      '_'.repeat(10000) + 'a' + '_'.repeat(10000),
-      '*a '.repeat(10000),
-      '**_~~'.repeat(5000),
-      Array.from({ length: 300 }, (_, i) => '`'.repeat(i + 1) + 'x').join(''),
-      '['.repeat(10000) + ']('.repeat(10000),
-      '> '.repeat(10000) + 'x',
-      '- '.repeat(10000) + 'x',
-      '#'.repeat(10000),
-      ('*a _b ' + '\n').repeat(5000),
-    ]
-    for (const md of cases) {
-      const ms = timed(() => parseAgentText(md))
-      assert.ok(ms < 1000, `took ${ms} ms for ${md.slice(0, 20)}`)
-    }
-  })
+  // Near MAX_INPUT, where a quadratic search shows. Each case also runs at a quarter of the size: a linear parser takes about four times
+  // as long for four times the text, a quadratic one about sixteen times. The quarter's time has a floor of 1 ms so that timer noise
+  // on a tiny number cannot fail a linear parser, and a factor only counts above 30 ms; the cross-kind cases (many openers of one marker, then many closers of another that
+  // find none) are the ones a missing lower bound in the emphasis search makes quadratic.
+  const halves = (a: string, b: string) => (size: number) => a.repeat(Math.floor(size / 2 / a.length)) + b.repeat(Math.floor(size / 2 / b.length))
+  const scaled: Array<[string, (size: number) => string]> = [
+    ['_ openers, * closers', halves('_a ', 'b* ')],
+    ['* openers, _ closers', halves('*a ', 'b_ ')],
+    ['~~ openers, * closers', halves('~~a ', 'b* ')],
+    ['* openers, ~~ closers', halves('*a ', 'b~~ ')],
+    ['_ openers, ~~ closers', halves('_a ', 'b~~ ')],
+    ['* openers, * closers', halves('*a ', 'b** ')],
+    ['unmatched runs', (size) => '*'.repeat(size / 2) + 'a' + '*'.repeat(size / 2)],
+    ['nested runs', (size) => '**_~~'.repeat(size / 5)],
+    ['backtick runs', (size) => { let out = ''; for (let i = 1; out.length < size; i++) out += '`'.repeat(i % 400 || 1) + 'x'; return out }],
+    ['brackets', (size) => '['.repeat(size / 3) + ']('.repeat(size / 3)],
+    ['quote markers', (size) => '> '.repeat(size / 2) + 'x'],
+    ['list markers', (size) => '- '.repeat(size / 2) + 'x'],
+    ['lazy items', (size) => '- a\nb *c _d\n'.repeat(size / 12)],
+    ['link labels', (size) => '[*a](b) '.repeat(size / 8)],
+  ]
+  const best = (md: string) => {
+    let min = Infinity
+    for (let r = 0; r < 4; r++) min = Math.min(min, timed(() => parseAgentText(md)))
+    return min
+  }
+
+  for (const [name, make] of scaled) {
+    it(`stays linear on ${name}`, () => {
+      const large = make(60_000)
+      assert.ok(large.length > 50_000 && large.length <= MAX_INPUT, `size ${large.length}`)
+      best(make(15_000)) // warm up
+      const small = best(make(15_000))
+      const big = best(large)
+      assert.ok(big < 1000, `${name}: ${big.toFixed(1)} ms at 60 KB`)
+      // Quadratic means both: a large factor and a time that is not small. A linear parser on a busy machine (make check runs the test
+      // files in parallel) can show a factor near 8 at a few milliseconds; the quadratic one shows about 14 at 100 ms and more.
+      const ratio = big / Math.max(small, 1)
+      assert.ok(ratio < 8 || big < 30, `${name}: ${small.toFixed(2)} ms at 15 KB, ${big.toFixed(2)} ms at 60 KB`)
+    })
+  }
 
   it('never throws', () => {
-    for (const md of ['\u0000', '\uD800', '``', '-', '1.', '>', '#', '```', '\\', '[', '](', '![', '***', '~~~~', '- - -']) {
+    for (const md of ['\u0000', '\uD800', '``', '-', '1.', '>', '#', '```', '\\', '[', '](', '![', '***', '~~~~', '- - -', '\\\n', '[`](x)', '[**](x)']) {
       assert.doesNotThrow(() => parseAgentText(md))
       assert.doesNotThrow(() => plainText(md, 10))
+      assert.doesNotThrow(() => parseAgentInline(md))
     }
   })
 
+  const allowed: Record<string, readonly string[]> = {
+    paragraph: ['type', 'children'],
+    heading: ['type', 'children'],
+    quote: ['type', 'children'],
+    list: ['type', 'ordered', 'start', 'items'],
+    codeblock: ['type', 'text'],
+    rule: ['type'],
+    text: ['type', 'text'],
+    code: ['type', 'text'],
+    break: ['type'],
+    strong: ['type', 'children'],
+    em: ['type', 'children'],
+    del: ['type', 'children'],
+  }
+  const checkNodes = (md: string) => {
+    for (const node of allNodes(parseAgentText(md).blocks)) {
+      const keys = allowed[node.type]
+      assert.ok(keys, `unexpected node type ${node.type} for ${JSON.stringify(md)}`)
+      for (const k of Object.keys(node)) assert.ok(keys.includes(k), `node ${node.type} has ${k} for ${JSON.stringify(md)}`)
+    }
+  }
+
   it('has no node that could carry a link, a source or an attribute from the text', () => {
-    const inputs = [
+    for (const md of [
       screenshot,
       '[x](javascript:alert(1)) ![a](http://evil.test/p.png) <a href=x>y</a> <img src=x onerror=alert(1)>',
       '# h\n> q\n```js\ncode\n```\n---\n1. a\n   - b\n~~s~~ `c` *e* **s**',
       '<style>body{}</style> {style} class="x"',
-    ]
-    const allowed: Record<string, readonly string[]> = {
-      paragraph: ['type', 'children'],
-      heading: ['type', 'children'],
-      quote: ['type', 'children'],
-      list: ['type', 'ordered', 'start', 'items'],
-      codeblock: ['type', 'text'],
-      rule: ['type'],
-      text: ['type', 'text'],
-      code: ['type', 'text'],
-      break: ['type'],
-      strong: ['type', 'children'],
-      em: ['type', 'children'],
-      del: ['type', 'children'],
+      '[**x** `y`](javascript:alert(1)) ![*a*](data:image/png;base64,AAAA)',
+    ])
+      checkNodes(md)
+  })
+
+  it('has no such node for fuzzed input either (a seeded, deterministic generator)', () => {
+    const pieces = ['*', '**', '_', '__', '~~', '`', '``', '[', ']', '(', ')', '![', '](', '\\', '\n', '\n\n', '> ', '- ', '1. ', '# ', '```', '---',
+      '  ', 'a', 'b', ' ', '<a href="x">', '<img src=x>', 'javascript:', 'http://e.test/', '‮', '​', '\u{E0041}', 'ä', '„', '\t']
+    let seed = 20261022
+    const next = (n: number) => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff
+      return seed % n
     }
-    for (const md of inputs) {
-      for (const node of allNodes(parseAgentText(md).blocks)) {
-        const keys = allowed[node.type]
-        assert.ok(keys, `unexpected node type ${node.type}`)
-        for (const k of Object.keys(node)) assert.ok(keys.includes(k), `node ${node.type} has ${k}`)
-      }
+    for (let k = 0; k < 3000; k++) {
+      let md = ''
+      const len = 1 + next(40)
+      for (let i = 0; i < len; i++) md += pieces[next(pieces.length)]
+      assert.doesNotThrow(() => checkNodes(md), JSON.stringify(md))
+      assert.doesNotThrow(() => parseAgentInline(md), JSON.stringify(md))
     }
   })
 })
 
+describe('parseAgentText: after the review', () => {
+  const asText = (md: string, text: string) =>
+    assert.deepEqual(parseAgentText(md).blocks, [{ type: 'paragraph', children: [{ type: 'text', text }] }])
+
+  it('removes every format character, variation selectors, the grapheme joiner and the Hangul filler', () => {
+    asText('a\u{E0041}\u{E0042}b', 'ab') // tag characters
+    asText('soft­hyphen', 'softhyphen')
+    asText('a͏bㅤc᠎d￹e️f\u{E0100}gh', 'abcdefgh')
+    assert.equal(cleanText('a\u{E007F}\u{1F600}‍b').text, 'a\u{1F600}b') // an emoji stays, the joiner goes
+  })
+
+  it('makes a lone U+2028 and U+2029 a line break', () => {
+    assert.equal(show('a b'), '<p>a<br>b</p>')
+    assert.equal(show('a b'), '<p>a<br>b</p>')
+  })
+
+  it('makes a backslash at the end of a line a line break', () => {
+    assert.equal(show('a\\\nb'), '<p>a<br>b</p>')
+    assert.equal(show('- a\\\n  b'), '<ul><li><p>a<br>b</p></li></ul>')
+    assert.equal(show('a\\'), '<p>a\\</p>') // at the very end it is a backslash
+  })
+
+  it('formats a link label and keeps the target as text after it', () => {
+    assert.equal(show('[`x`](y)'), '<p><code>x</code> (y)</p>')
+    assert.equal(show('see [**the docs**](https://e.test) now'), '<p>see <b>the docs</b> (https://e.test) now</p>')
+    assert.equal(show('![*alt*](http://evil.test/p.png)'), '<p><i>alt</i></p>')
+    assert.equal(show('**a *[~~x~~](u)* b**'), '<p><b>a <i>~~x~~ (u)</i> b</b></p>') // the label counts towards the depth
+  })
+
+  it('takes a heading and a quote inside a list item', () => {
+    assert.equal(show('- # Label\n  text'), '<ul><li><h>Label</h><p>text</p></li></ul>')
+    assert.equal(show('- > quoted\n- plain'), '<ul><li><q><p>quoted</p></q></li><li><p>plain</p></li></ul>')
+  })
+
+  it('takes 20000 bare quote markers quickly', () => {
+    let doc = parseAgentText('')
+    const ms = timed(() => {
+      doc = parseAgentText('>'.repeat(20000))
+    })
+    assert.ok(ms < 1000, `took ${ms} ms`)
+    assert.equal(show('>'.repeat(5)), '<q><p>>>>></p></q>')
+    assert.equal(doc.blocks.length, 1)
+  })
+
+  it('strips controls in plainText too', () => {
+    assert.equal(plainText('a‮b⁦c​d\u{E0041}e', 10), 'abcde')
+  })
+})
+
 describe('parseAgentInline', () => {
+  it('says when it cut the input', () => {
+    const doc = parseAgentInline('x'.repeat(MAX_INPUT + 10))
+    assert.equal(doc.truncated, true)
+    assert.equal(parseAgentInline('x').truncated, false)
+  })
+
   it('takes the inline subset only: block markers stay text', () => {
     assert.deepEqual(parseAgentInline('**a** and `b`\n- c\n# d').children, [
       { type: 'strong', children: [{ type: 'text', text: 'a' }] },
@@ -394,7 +498,7 @@ describe('plainText', () => {
 
   it('cuts by code points with an ellipsis', () => {
     const line = plainText(screenshot, 40)
-    assert.ok(line.startsWith('Kurz: Der API-Server'))
+    assert.ok(line.startsWith('Kurz: Am 22.10.2026'))
     assert.ok(!line.includes('**'))
     assert.ok(line.endsWith('…'))
     assert.ok(Array.from(line).length <= 41)
