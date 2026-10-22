@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.14.1](https://github.com/Jaydee94/remedy/compare/v0.14.0...v0.14.1) (2026-10-22)
+
+### Bug Fixes
+
+* **deps:** update dependency cn to ^0.5.0 ([#169](https://github.com/Jaydee94/remedy/issues/169)) ([447374e](https://github.com/Jaydee94/remedy/commit/447374e43f2167c33ee070abd47036d44db7ab9e))
+* keep injected wording out of the host profile and cut descriptions at a word boundary ([#170](https://github.com/Jaydee94/remedy/issues/170)) ([4924a97](https://github.com/Jaydee94/remedy/commit/4924a973225808d3031d1892fec6ab694cf15eaf))
+* keep the claim gate shut until the login child is gone (K-7) ([#171](https://github.com/Jaydee94/remedy/issues/171)) ([3ea0c17](https://github.com/Jaydee94/remedy/commit/3ea0c171c8150de3b0228d3c70f25f3a192c9f12))
+* loosen the timing bounds of the agent text linearity test ([#172](https://github.com/Jaydee94/remedy/issues/172)) ([3753aa1](https://github.com/Jaydee94/remedy/commit/3753aa106684045068349ca683fc910788dfa57a))
+
 ## [0.14.0](https://github.com/Jaydee94/remedy/compare/v0.13.0...v0.14.0) (2026-10-22)
 
 ### Features
