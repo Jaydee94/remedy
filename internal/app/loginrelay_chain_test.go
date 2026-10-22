@@ -243,7 +243,7 @@ func newLoginChain(t *testing.T, fake testutil.RelayOptions) *loginChain {
 	}
 	c.cfg = config.Server{
 		AdminPassword: password, RunnerToken: runnerToken, MasterKey: key, PollInterval: time.Minute,
-		DiagnoseCooldown: 15 * time.Minute, DiagnoseMaxPerIncident: 3, DiagnoseMaxPerDay: 20, LoginRelay: true,
+		DiagnoseCooldown: 15 * time.Minute, DiagnoseMaxPerIncident: 3, DiagnoseMaxPerDay: 20,
 	}
 	c.startApp()
 	c.ts = httptest.NewServer(c.rec.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

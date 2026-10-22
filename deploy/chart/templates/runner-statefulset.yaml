@@ -86,9 +86,6 @@ spec:
             {{- with .Values.runner.runTimeout }}
             - {name: REMEDY_RUN_TIMEOUT, value: {{ . | quote }}}
             {{- end }}
-            {{- if .Values.loginRelay.enabled }}
-            - {name: REMEDY_LOGIN_RELAY, value: "on"}
-            {{- end }}
           # The status port serves only the probes. No Service points at it. The login never decides readiness.
           ports:
             - {name: status, containerPort: 8082}

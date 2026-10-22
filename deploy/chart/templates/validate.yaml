@@ -5,9 +5,6 @@
 {{- fail (printf "server.env.%s: the chart sets this variable itself (a second entry would silently win); use the chart's own values (server.service, persistence, cluster.*) instead" $name) }}
 {{- end }}
 {{- end }}
-{{- if hasKey .Values.server.env "REMEDY_LOGIN_RELAY" }}
-{{- fail "server.env.REMEDY_LOGIN_RELAY: set loginRelay.enabled instead; it sets this variable on the control plane and the runner together, while an entry here would turn on only the control plane" }}
-{{- end }}
 {{- if .Values.cluster.write.enabled }}
 {{- if not .Values.cluster.enabled }}
 {{- fail "cluster.write.enabled needs cluster.enabled: the actions check their target with the read side" }}
