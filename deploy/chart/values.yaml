@@ -54,7 +54,7 @@ postgres:
     # Exactly MAJOR.MINOR of the Debian-based image (the official postgres image's plain tags). The render refuses 16 or
     # latest (a moving tag), -alpine (it runs postgres as uid 70, the chart as 999), any other suffix, and a digest: this
     # value is a tag only. A new minor of the same major is a plain upgrade; a new major needs a dump and a restore.
-    tag: "16.15"
+    tag: "18.6"
   persistence:
     size: 5Gi
     storageClass: ""   # empty: the cluster's default
