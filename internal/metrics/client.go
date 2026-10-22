@@ -182,7 +182,9 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
-// get sends one GET. The caller closes the body.
+// get sends one GET. The caller closes the body. The error of a failed request is a *url.Error whose text holds the full address
+// and query (the PromQL the agent wrote, the base address) with the token scrubbed: a caller that passes a failure on to an agent
+// must replace it with a fixed sentence and log the details.
 func (c *Client) get(ctx context.Context, path string, q url.Values) (*http.Response, secret.Value, error) {
 	base, token, err := c.creds()
 	if err != nil {
@@ -224,6 +226,9 @@ func (c *Client) result(ctx context.Context, path string, q url.Values) (Result,
 	res, qerr, err := parseAnswer(cr, cr.atLimit)
 	if qerr != nil {
 		qerr.Message = clip(scrub(qerr.Message, token))
+		if qerr.Message == "" {
+			qerr.Message = "the store gave no reason"
+		}
 		return Result{}, qerr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
@@ -297,7 +302,8 @@ func parseAnswer(r io.Reader, atLimit func() bool) (res Result, qerr *QueryError
 			}
 		case "data":
 			if status != "success" {
-				// the store says the status first; an answer that does not is not one this client knows
+				// Prometheus and VictoriaMetrics both write "status" before "data", so the status is known when the data starts and
+				// the stream never has to be held back; an answer in another order is not one this client knows.
 				return bad()
 			}
 			d, ok := parseData(dec, atLimit)
@@ -404,6 +410,11 @@ func readSeries(dec *json.Decoder, res Result, atLimit func() bool) (Result, boo
 			s.Samples = append(s.Samples, smp)
 		}
 		res.Series = append(res.Series, s)
+	}
+	// The closing bracket must be there. How More behaves at the end of the input differs between Go versions, so a cut that falls
+	// right after a series is told from a complete answer here: at the byte limit it is a truncation, anywhere else it is no answer.
+	if tok, err := dec.Token(); err != nil || tok != json.Delim(']') {
+		return cut()
 	}
 	return res, true
 }

@@ -305,8 +305,12 @@ func TestAnAnswerOverTheByteLimitIsCutAndSaysSo(t *testing.T) {
 	fake.SetRaw(200, b.String())
 	start := time.Unix(1700000000, 0)
 	got, err := newClient(t, creds(fake.URL, "")).QueryRange(ctx, "up", start, start.Add(time.Hour), time.Minute)
-	if err != nil || !got.Truncated || len(got.Series) < 1000 || len(got.Series) > 60000 {
-		t.Fatalf("%d series, truncated = %v, %v", len(got.Series), got.Truncated, err)
+	// every series has the same length, so the cut falls in a known one: the series that ended before the 4 MiB are kept, no more
+	head := len(`{"status":"success","data":{"resultType":"matrix","result":[`)
+	entry := len(fmt.Sprintf(`{"metric":{"instance":"host-%06d"},"values":[[1700000000,"1"],[1700000060,"2"]]}`, 0))
+	want := (4<<20 - head + 1) / (entry + 1)
+	if err != nil || !got.Truncated || len(got.Series) != want {
+		t.Fatalf("%d series (want %d), truncated = %v, %v", len(got.Series), want, got.Truncated, err)
 	}
 	last := got.Series[len(got.Series)-1]
 	if len(last.Samples) != 2 || last.Labels["instance"] == "" {
@@ -359,5 +363,73 @@ func TestACAFileThatIsNotACertificateIsRefused(t *testing.T) {
 	}
 	if _, err := metrics.New(creds("http://x", ""), t.TempDir()+"/missing.pem"); err == nil {
 		t.Fatal("a missing CA file was accepted")
+	}
+}
+
+// limitBody builds a matrix answer whose first 4 MiB end exactly after the closing brace of a series, followed by more series.
+func limitBody(t *testing.T) (body string, wholeSeries int) {
+	t.Helper()
+	const limit = 4 << 20
+	head := `{"status":"success","data":{"resultType":"matrix","result":[`
+	entry := func(i, pad int) string {
+		return fmt.Sprintf(`{"metric":{"instance":"host-%06d","pad":"%s"},"values":[[1700000000,"1"]]}`, i, strings.Repeat("p", pad))
+	}
+	var parts []string
+	size := len(head)
+	for i := 0; ; i++ {
+		e := entry(i, 0)
+		sep := 0
+		if i > 0 {
+			sep = 1
+		}
+		if size+sep+len(e) > limit {
+			break
+		}
+		parts = append(parts, e)
+		size += sep + len(e)
+	}
+	slack := limit - size
+	parts[0] = entry(0, slack) // the slack goes into the first series, so the last one ends on the limit
+	cut := head + strings.Join(parts, ",")
+	if len(cut) != limit {
+		t.Fatalf("the cut is %d bytes, want %d", len(cut), limit)
+	}
+	return cut + "," + entry(len(parts), 0) + `]}}`, len(parts)
+}
+
+func TestAnAnswerCutExactlyAfterASeriesAtTheByteLimitIsTruncated(t *testing.T) {
+	body, whole := limitBody(t)
+	fake := metricstest.New(t, "")
+	fake.SetRaw(200, body)
+	start := time.Unix(1700000000, 0)
+	got, err := newClient(t, creds(fake.URL, "")).QueryRange(ctx, "up", start, start.Add(time.Hour), time.Minute)
+	if err != nil || !got.Truncated || len(got.Series) != whole {
+		t.Fatalf("%d series (want %d), truncated = %v, %v", len(got.Series), whole, got.Truncated, err)
+	}
+}
+
+func TestAnAnswerThatStopsAfterASeriesWithoutHittingTheLimitIsNotAResult(t *testing.T) {
+	fake := metricstest.New(t, "")
+	for name, body := range map[string]string{
+		"after a series":    `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"2"]}`,
+		"after a comma":     `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"2"]},`,
+		"after the opening": `{"status":"success","data":{"resultType":"vector","result":[`,
+	} {
+		fake.SetRaw(200, body)
+		got, err := newClient(t, creds(fake.URL, "")).Query(ctx, "up", time.Time{})
+		if !errors.Is(err, metrics.ErrNotMetrics) || got.Series != nil || got.Truncated {
+			t.Errorf("%s: %+v, %v", name, got, err)
+		}
+	}
+}
+
+func TestAnErrorAnswerWithoutAMessageHasAFixedText(t *testing.T) {
+	fake := metricstest.New(t, "")
+	for _, body := range []string{`{"status":"error"}`, `{"status":"error","errorType":"x","error":""}`, `{"status":"error","error":"  \n "}`} {
+		fake.SetRaw(400, body)
+		_, err := newClient(t, creds(fake.URL, "")).Query(ctx, "up", time.Time{})
+		if err == nil || err.Error() != "metrics: the query was refused: the store gave no reason" {
+			t.Errorf("%s: %v", body, err)
+		}
 	}
 }
