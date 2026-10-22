@@ -190,6 +190,29 @@ func TestStartRefusesAHostThatIsNotReadyWithTheReason(t *testing.T) {
 	}
 }
 
+// A long operating system and role make a long description. It ends at a word, says that it was cut, and still fits the rule.
+func TestTheProfileDescriptionIsCutAtAWordAndFits(t *testing.T) {
+	p := diagnosis.LearnProfile{
+		OS:   "Debian GNU/Linux 12 (bookworm) with the Proxmox kernel 6.8.12-4-pve on an x86_64 board",
+		Role: "Network attached storage that runs Paperless, Immich, Nextcloud and the nightly backup jobs of the whole house",
+	}
+	got := learner.ProfileDescription(p)
+	if r := []rune(got); len(r) > skill.MaxDescriptionRunes || !strings.HasSuffix(got, "…") {
+		t.Fatalf("%d runes: %q", len(r), got)
+	}
+	if !strings.HasPrefix(got, "What this host is: Debian GNU/Linux 12") || strings.Contains(strings.TrimSuffix(got, "…"), "  ") {
+		t.Errorf("description = %q", got)
+	}
+	whole := "What this host is: " + p.OS + "; " + p.Role
+	cut := strings.TrimSuffix(got, "…")
+	if !strings.HasPrefix(whole, cut) || (len(whole) > len(cut) && whole[len(cut)] != ' ') {
+		t.Errorf("the description %q ends inside a word of %q", got, whole)
+	}
+	if _, err := (skill.Fields{Name: skill.ProfileName, Description: got, Body: "b"}).Validate(); err != nil {
+		t.Errorf("the description is refused as a skill: %v", err)
+	}
+}
+
 func TestCompleteStoresTheProfileAndTheSkillsAsProposalsWithCheckedEvidence(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()

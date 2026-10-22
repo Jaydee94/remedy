@@ -37,6 +37,26 @@ var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 // ValidName says whether s is a skill name.
 func ValidName(s string) bool { return nameRE.MatchString(s) }
 
+// CutDescription shortens a description that is longer than MaxDescriptionRunes. It ends at a word (a text without a space in its second
+// half is cut at a character), drops a separator left at the cut and ends with "…", so the maintainer sees that the line is not the whole
+// sentence. The result has at most MaxDescriptionRunes characters; a description that fits is returned as it is.
+func CutDescription(s string) string {
+	runes := []rune(s)
+	if len(runes) <= MaxDescriptionRunes {
+		return s
+	}
+	cut := runes[:MaxDescriptionRunes-1]
+	if !unicode.IsSpace(runes[MaxDescriptionRunes-1]) {
+		for i := len(cut) - 1; i >= len(cut)/2; i-- {
+			if unicode.IsSpace(cut[i]) {
+				cut = cut[:i]
+				break
+			}
+		}
+	}
+	return strings.TrimRightFunc(string(cut), func(r rune) bool { return unicode.IsSpace(r) || strings.ContainsRune(",;:-(", r) }) + "…"
+}
+
 // FieldError is a problem with one field, worded so that it can be shown to the maintainer as it is.
 type FieldError struct{ Field, Msg string }
 

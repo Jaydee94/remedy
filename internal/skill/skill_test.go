@@ -248,3 +248,34 @@ func TestHasControlAllowsTheLayoutOnlyWhenAsked(t *testing.T) {
 		t.Error("plain text was reported")
 	}
 }
+
+func TestCutDescriptionLeavesAFittingDescriptionAlone(t *testing.T) {
+	for _, s := range []string{"", "Short.", strings.Repeat("a", skill.MaxDescriptionRunes)} {
+		if got := skill.CutDescription(s); got != s {
+			t.Errorf("CutDescription(%q) = %q", s, got)
+		}
+	}
+}
+
+func TestCutDescriptionEndsAtAWordAndSaysSo(t *testing.T) {
+	got := skill.CutDescription(strings.Repeat("alpha beta gamma ", 20))
+	if r := []rune(got); len(r) > skill.MaxDescriptionRunes || !strings.HasSuffix(got, "…") {
+		t.Fatalf("got %d runes, %q", len(r), got)
+	}
+	for _, w := range strings.Fields(strings.TrimSuffix(got, "…")) {
+		if w != "alpha" && w != "beta" && w != "gamma" {
+			t.Fatalf("a word was cut in the middle: %q in %q", w, got)
+		}
+	}
+	// A cut right after a separator does not leave it dangling before the ellipsis.
+	if got := skill.CutDescription(strings.Repeat("x", 150) + "; " + strings.Repeat("y", 100)); strings.Contains(got, ";") {
+		t.Errorf("a separator is left at the end: %q", got)
+	}
+}
+
+func TestCutDescriptionCutsAtACharacterWhenThereIsNoWordToEndAt(t *testing.T) {
+	got := skill.CutDescription(strings.Repeat("é", 300))
+	if r := []rune(got); len(r) != skill.MaxDescriptionRunes || !strings.HasSuffix(got, "…") {
+		t.Fatalf("got %d runes", len(r))
+	}
+}
