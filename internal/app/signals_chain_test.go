@@ -77,7 +77,19 @@ type signalState struct {
 	Active             int
 }
 
+// signalStates lists the Alertmanager entry of GET /api/signals (the metrics probe's has allSignalStates).
 func signalStates(t *testing.T, do func(string, string, string) (int, string)) []signalState {
+	t.Helper()
+	var out []signalState
+	for _, s := range allSignalStates(t, do) {
+		if s.Name == "alertmanager" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func allSignalStates(t *testing.T, do func(string, string, string) (int, string)) []signalState {
 	t.Helper()
 	code, body := do(http.MethodGet, "/api/signals", "")
 	if code != http.StatusOK {

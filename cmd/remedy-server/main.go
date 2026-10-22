@@ -64,6 +64,7 @@ func main() {
 	background(a.CheckCluster)
 	background(a.Poller.Run)
 	background(a.Signals.Run)
+	background(a.Probe.Run)
 	background(a.Reaper.Run)
 	background(a.Login.Run) // the login relay has no switch: app.New always builds it
 
