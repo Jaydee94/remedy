@@ -61,6 +61,17 @@ export function askFor(asks: readonly ToolCall[], incidentId: number): ToolCall 
 }
 
 /**
+ * A gap in whole seconds, rounded for reading: seconds below a minute, the nearest minute below an hour, the nearest hour from an hour
+ * on. `duration` keeps a value in the largest unit that divides it evenly, which suits a configured interval and not a measured gap
+ * (187 seconds would read "187 seconds"). At least one second.
+ */
+function roundGap(seconds: number): number {
+  if (seconds < 60) return Math.max(seconds, 1)
+  if (seconds < 3600) return Math.round(seconds / 60) * 60
+  return Math.round(seconds / 3600) * 3600
+}
+
+/**
  * "Resolved after 3 minutes. It fired 12×." for a resolved alert whose last firing is known: the time between its last firing and
  * its resolution, and how often it fired. Only a source that can fire again has it; a GitHub check says why it ended instead.
  */
@@ -68,7 +79,7 @@ function resolvedAfter(incident: Incident): string | undefined {
   if (incident.source === 'github' || !incident.resolvedAt || !incident.lastFiredAt) return undefined
   const seconds = Math.round((Date.parse(incident.resolvedAt) - Date.parse(incident.lastFiredAt)) / 1000)
   if (!Number.isFinite(seconds) || seconds < 0) return undefined
-  return `Resolved after ${duration(Math.max(seconds, 1))}. It fired ${incident.occurrences}×.`
+  return `Resolved after ${duration(roundGap(seconds))}. It fired ${incident.occurrences}×.`
 }
 
 /**

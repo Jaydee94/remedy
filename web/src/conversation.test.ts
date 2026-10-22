@@ -280,6 +280,16 @@ describe('incidentPreview: a resolved alert', () => {
     assert.equal(incidentPreview(resolved({ resolvedAt: '2026-10-05T13:00:00Z' })), 'Resolved after 2 hours. It fired 12×.')
   })
 
+  it('rounds a gap that is not a round number to the nearest minute, or hour from one hour', () => {
+    const after = (resolvedAt: string) => incidentPreview(resolved({ resolvedAt }))
+    assert.equal(after('2026-10-05T11:03:07Z'), 'Resolved after 3 minutes. It fired 12×.') // 187 s
+    assert.equal(after('2026-10-05T11:01:30Z'), 'Resolved after 2 minutes. It fired 12×.') // 90 s
+    assert.equal(after('2026-10-05T11:00:59Z'), 'Resolved after 59 seconds. It fired 12×.')
+    assert.equal(after('2026-10-05T11:59:50Z'), 'Resolved after 1 hour. It fired 12×.') // 3590 s, not 60 minutes
+    assert.equal(after('2026-10-05T12:01:01Z'), 'Resolved after 1 hour. It fired 12×.') // 3661 s
+    assert.equal(after('2026-10-05T13:05:00Z'), 'Resolved after 2 hours. It fired 12×.') // 7500 s
+  })
+
   it('keeps the reason when the server sent no last firing, when the clock runs backwards and for GitHub', () => {
     assert.equal(incidentPreview(resolved({ lastFiredAt: undefined })), 'Resolved: the signal is no longer reported.')
     assert.equal(incidentPreview(resolved({ lastFiredAt: '2026-10-05T12:00:00Z' })), 'Resolved: the signal is no longer reported.')

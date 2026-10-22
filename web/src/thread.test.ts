@@ -53,6 +53,7 @@ describe('buildThread: the events', () => {
 describe('buildThread: an alert that fired again', () => {
   const am = (over: Partial<Incident> = {}) => inc({ source: 'alertmanager', ...over })
   const texts = (items: ThreadItem[]) => items.flatMap((i) => (i.type === 'event' ? [i.text] : []))
+  const hourAt = (n: number) => `2026-10-05T${String(n).padStart(2, '0')}:00:00Z`
   const reopened = (id: number, at: string) => act(id, 'incident_reopened', at, 'Incident reopened: alert X fired again')
 
   it('turns each reopening into a muted line with its time, in time order after the opening', () => {
@@ -70,18 +71,18 @@ describe('buildThread: an alert that fired again', () => {
   })
 
   it('shows five lines as they are', () => {
-    const activity = [1, 2, 3, 4, 5].map((n) => reopened(n + 1, `2026-10-05T0${n}:00:00Z`))
+    const activity = [1, 2, 3, 4, 5].map((n) => reopened(n + 1, hourAt(n)))
     const items = buildThread({ incident: am(), activity, questionRuns: [], asks: [] })
     assert.equal(texts(items).length, 5)
     assert.ok(texts(items).every((t) => t.startsWith('Fired again ')))
   })
 
   it('collapses more than five into the latest five and a line "and N more"', () => {
-    const activity = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => reopened(n + 1, `2026-10-05T0${n}:00:00Z`))
+    const activity = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => reopened(n + 1, hourAt(n)))
     const items = buildThread({ incident: am(), activity, questionRuns: [], asks: [] })
     assert.deepEqual(texts(items), [
       'and 3 more',
-      ...[4, 5, 6, 7, 8].map((n) => `Fired again ${timeOfDay(`2026-10-05T0${n}:00:00Z`)}`),
+      ...[4, 5, 6, 7, 8].map((n) => `Fired again ${timeOfDay(hourAt(n))}`),
     ])
   })
 
