@@ -1,10 +1,11 @@
 # Runbook: operating Remedy's PostgreSQL
 
-Status: **not run on a cluster.** The commands below were checked against the chart (`deploy/chart/templates/postgres.yaml`,
-`postgres-backup.yaml`, `networkpolicy.yaml`) and the code at the time of writing, and every shell block passes `sh -n`;
-none of them was run against the bundled PostgreSQL on a cluster. A `pg_dump`/`pg_restore` round trip and the server's
-behaviour against a database that is down, wrong or without TLS were tried by hand against the test PostgreSQL of `dev/pg/`
-(section 9). Read every step as expected, not as tried.
+Status: **this runbook was not run on a cluster.** The commands below were checked against the chart
+(`deploy/chart/templates/postgres.yaml`, `postgres-backup.yaml`, `networkpolicy.yaml`) and the code at the time of writing,
+and every shell block passes `sh -n`; none of the blocks of this runbook was run against the bundled PostgreSQL on a
+cluster. What was run during development is listed in section 9: a `pg_dump`/`pg_restore` round trip and the server's
+behaviour against a database that is down, wrong or without TLS, on a scratch database of the test PostgreSQL of `dev/pg/`,
+and the chart's bundled PostgreSQL in a throwaway kind cluster. Read every step as expected, not as tried.
 
 Background: `docs/specs/2026-10-22-postgres-only-design.md` (decisions 7 and 11), `docs/design.md` 2.6,
 `deploy/chart/README.md` ("The database"). The control plane keeps all its state in PostgreSQL. The chart installs a
@@ -21,8 +22,10 @@ versions.
 `postgres.existingSecret`. The chart renders a StatefulSet `remedy-postgres` (one pod, image `postgres.image`, default
 `postgres:16.15`, user and database `remedy`) with the claim `data-remedy-postgres-0` (`postgres.persistence.size`, default
 `5Gi`), a headless Service `remedy-postgres`, a NetworkPolicy `remedy-postgres` (while `networkPolicy.enabled`) that admits
-only the control plane and the backup job, and a nightly backup (section 3). The control plane's URL is composed in its
-Deployment as `postgres://remedy:$(REMEDY_POSTGRES_PASSWORD)@remedy-postgres.<namespace>.svc:5432/remedy?sslmode=disable`.
+only the control plane and the backup job, and a nightly backup (section 3). The control plane gets the password as
+`PGPASSWORD` from the Secret (`secretKeyRef`) and `REMEDY_DATABASE_URL` as
+`postgres://remedy@remedy-postgres.<namespace>.svc:5432/remedy?sslmode=disable`, a URL without a password: with a URL that
+has no password, pgx takes the password from `PGPASSWORD` (pinned by tests in `internal/config` and `internal/store`).
 The details, and what the bundled database does not provide (high availability, replication, off-node backups, TLS,
 major-version upgrades), are in `deploy/chart/README.md`, "The bundled PostgreSQL".
 
@@ -51,10 +54,10 @@ the host logins and the Alertmanager and metrics tokens; keep it apart from the 
 ## 2. The Secret
 
 **The bundled PostgreSQL** reads its password from the Secret named by `postgres.existingSecret`, under the key
-`postgres.passwordKey` (default `password`). The chart never creates it. **The password must be URL-safe** (letters and
-digits): the control plane's URL is composed with it as it is, without percent-encoding. Made as a SealedSecret, the same
-way as `remedy-secrets` in `homelab-deploy.md` section 4, so that the password reaches no file and no process's argument
-list (`printf` is a shell builtin; the plain Secret goes from `kubectl` to `kubeseal` through pipes):
+`postgres.passwordKey` (default `password`). The chart never creates it. Any password works: it reaches the control plane
+as `PGPASSWORD`, not inside a URL, so it needs no URL encoding; a hex string is just convenient. Made as a SealedSecret, the
+same way as `remedy-secrets` in `homelab-deploy.md` section 4, so that the password reaches no file and no process's
+argument list (`printf` is a shell builtin; the plain Secret goes from `kubectl` to `kubeseal` through pipes):
 
 ```sh
 printf 'password=%s\n' "$(openssl rand -hex 24)" \
@@ -68,9 +71,24 @@ to know the password: the control plane and the backup job read it from the Secr
 `kubectl -n remedy get secret remedy-postgres -o jsonpath='{.data.password}' | base64 -d`.
 
 The password takes effect when the data directory is first created. Changing it in the Secret later does not change it in
-the database: change it with `ALTER ROLE remedy PASSWORD '...'` (for example from the tools pod of section 3, with
-`psql`) and in the Secret, then restart the control plane. A new install that finds an old claim `data-remedy-postgres-0`
-(the StatefulSet keeps it, section 3) keeps the old data and the old password.
+the database. To change it, in both places:
+
+1. In the database: `kubectl -n remedy exec -it remedy-postgres-0 -- psql -U remedy -d remedy` (over the pod's socket,
+   which the image trusts), then `\password remedy`, which asks for the new password twice without echoing it, so it
+   reaches no argument list and no shell history; then `\q`. A `psql` warning that it cannot save its history (the root
+   file system is read-only) is harmless.
+2. In the Secret: make it again with the pipeline above, with your new password in place of `openssl rand` (read it with
+   `read -rs NEWPW`, use `"$NEWPW"`, then `unset NEWPW`), and commit the sealed file.
+3. Restart the control plane: `kubectl -n remedy rollout restart deployment/remedy-server`. It reads `PGPASSWORD` from the
+   Secret only when its pod starts.
+
+Between step 1 and step 3 the running control plane keeps its open connections, but every new connection fails with
+`password authentication failed`, and so does a pod that starts with the old Secret. Every user of `PGPASSWORD` from the
+Secret reads it when its pod starts: the backup job takes the new password from its next run once the Secret has changed
+(a run between steps 1 and 2 fails and is retried twice), and a tools pod of section 3 that is still running keeps the old
+one (delete it and start it again). A new install that finds an old claim `data-remedy-postgres-0` keeps the old data and
+the old password: the StatefulSet keeps its claim when it is deleted or scaled down (`deploy/chart/README.md`,
+"Ownership").
 
 **A database of your own** takes the whole URL from the Secret named by `database.existingSecret`, under the key
 `database.secretKey` (default `url`): `homelab-deploy.md` section 4 has the commands (`read -rs`, then the same pipe). A
@@ -102,17 +120,34 @@ A claim of a storage class that binds on first use (such as `local-path`) stays 
 NS=remedy
 JOB="backup-$(date -u +%Y%m%d%H%M%S)"
 kubectl -n "$NS" create job --from=cronjob/remedy-postgres-backup "$JOB"
-kubectl -n "$NS" wait --for=condition=complete "job/$JOB" --timeout=10m
+# Wait until the job has completed or failed, at most 10 minutes (kubectl wait --for=condition=complete alone would wait
+# the full time on a job that failed).
+i=0
+while [ "$i" -lt 120 ]; do
+  state=$(kubectl -n "$NS" get job "$JOB" -o jsonpath='{.status.conditions[?(@.status=="True")].type}')
+  case "$state" in *Complete*|*Failed*) break ;; esac
+  i=$((i + 1))
+  sleep 5
+done
+kubectl -n "$NS" get job "$JOB"       # COMPLETIONS 1/1: done; otherwise read the log
 kubectl -n "$NS" logs "job/$JOB"      # ends with "wrote remedy-....dump" and the list of /backup
 ```
 
-A job that fails is retried twice (`backoffLimit: 2`); its log says `pg_dump failed: no new dump, no old dump deleted`.
+A job that fails is retried twice (`backoffLimit: 2`) before its condition is `Failed`; its log says `pg_dump failed: no
+new dump, no old dump deleted`.
 
 **The tools pod.** No pod of the chart mounts the backup claim while no backup runs, and the policy `remedy-postgres` admits
 only the control plane and pods with the backup job's labels. A short-lived pod with those labels, the same image and the
 same security as the backup job reaches both the dumps and the database. It runs as 999, so it can read the dumps, and it
 passes the restricted Pod Security Standard. The values are the chart's defaults: take yours from your values (`RELEASE` is
 the Helm release, under Argo CD the Application's name).
+
+The claim `remedy-postgres-backup` exists only while `postgres.backup.enabled` is true (or was, since the claim is kept).
+`pg_tools` looks for it: when it exists the pod mounts it read-only at `/backup`; when it does not, the pod has `/tmp` only.
+That is enough to restore a dump from your workstation (`kubectl cp` into `/tmp`, below); copying dumps off the node and a
+restore from `/backup` need the claim.
+
+Define the variables and the function once, and run the blocks below **in the same shell**: they use `NS` and `pg_tools`.
 
 ```sh
 NS=remedy
@@ -122,6 +157,15 @@ PGSECRET=remedy-postgres       # postgres.existingSecret
 PGKEY=password                 # postgres.passwordKey
 
 pg_tools() {
+  if kubectl -n "$NS" get pvc remedy-postgres-backup > /dev/null 2>&1; then
+    BACKUP_MOUNT='{name: backup, mountPath: /backup, readOnly: true}, '
+    BACKUP_VOLUME='    - name: backup
+      persistentVolumeClaim: {claimName: remedy-postgres-backup, readOnly: true}'
+  else
+    echo "no claim remedy-postgres-backup: the tools pod has /tmp only, no /backup" >&2
+    BACKUP_MOUNT=''
+    BACKUP_VOLUME=''
+  fi
   kubectl -n "$NS" apply -f - <<EOF
 apiVersion: v1
 kind: Pod
@@ -152,10 +196,9 @@ spec:
         - name: PGPASSWORD
           valueFrom: {secretKeyRef: {name: $PGSECRET, key: $PGKEY}}
       securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
-      volumeMounts: [{name: backup, mountPath: /backup}, {name: tmp, mountPath: /tmp}]
+      volumeMounts: [${BACKUP_MOUNT}{name: tmp, mountPath: /tmp}]
   volumes:
-    - name: backup
-      persistentVolumeClaim: {claimName: remedy-postgres-backup}
+${BACKUP_VOLUME}
     - name: tmp
       emptyDir: {}
 EOF
@@ -170,7 +213,7 @@ EOF
 The claim is `ReadWriteOnce`: the tools pod and a running backup job must be on the same node (on a single-node cluster they
 are). Delete the pod when you are done: `kubectl -n "$NS" delete pod remedy-pg-tools`.
 
-**Copy dumps off the node:**
+**Copy dumps off the node** (needs the backup claim; in the same shell as the tools pod block):
 
 ```sh
 pg_tools
@@ -182,7 +225,8 @@ kubectl -n "$NS" delete pod remedy-pg-tools
 
 **Restore** a dump into a fresh database. This replaces everything in the database, so take a dump first (above) and keep
 it. With the control plane stopped (`homelab-deploy.md` section 11, "Stopping the control plane": under Argo CD disable
-auto-sync first, then `kubectl -n "$NS" scale deployment/remedy-server --replicas=0` and wait until its pod is gone):
+auto-sync first, then `kubectl -n "$NS" scale deployment/remedy-server --replicas=0` and wait until its pod is gone), in
+the same shell as the tools pod block (without the backup claim, use the workstation line and skip the `ls`):
 
 ```sh
 pg_tools
@@ -202,9 +246,29 @@ Then enable auto-sync again. The id sequences are part of the dump, so the next 
 start the control plane on the empty database before the restore: it would make the tables, and `pg_restore` would stop
 at the first `relation ... already exists`.
 
-**A new major version** of PostgreSQL cannot open the old data directory: take a dump and copy it off the node, install
-the new major on an empty claim (delete `data-remedy-postgres-0` after the dump is safe), and restore the dump as above. A
-new minor version of the same major is a change of `postgres.image.tag` and a restart.
+**A new minor version** of the same major (for example `16.15` to `16.16`) is a change of `postgres.image.tag` and a
+restart of `remedy-postgres-0`, nothing else.
+
+**A new major version** of PostgreSQL cannot open the old data directory, so it needs both a change of `postgres.image.tag`
+and a dump and a restore. The render accepts any exact `MAJOR.MINOR` tag of the Debian-based image (it checks the form,
+`^[0-9]+\.[0-9]+$`, not the major), so `17.6` is as valid a value as `16.15`; a tag such as `17` or `17.6-alpine` is
+refused. The steps (none of them tried):
+
+1. Take a dump (above) and copy it off the node (above). The backup claim is not touched by the next steps, but a copy off
+   the node is the safe choice. Check that the copy is complete (`ls -l`).
+2. Under Argo CD disable auto-sync. Scale the control plane to zero, then the database:
+   `kubectl -n "$NS" scale deployment/remedy-server --replicas=0`, then
+   `kubectl -n "$NS" scale statefulset/remedy-postgres --replicas=0`, and wait until both pods are gone
+   (`kubectl -n "$NS" get pods`).
+3. Only then delete the data claim: `kubectl -n "$NS" delete pvc data-remedy-postgres-0`. A claim that a pod still uses
+   stays `Terminating` until the pod is gone (PVC protection); with `local-path` deleting the claim deletes the data.
+4. Set `postgres.image.tag` to the new version and sync (or `helm upgrade`). The StatefulSet goes back to one replica, makes
+   a new empty claim, and the new server initialises it with the password of the Secret. The sync also scales the control
+   plane back to one: scale it to zero again at once (`kubectl -n "$NS" scale deployment/remedy-server --replicas=0`) and
+   wait until its pod is gone. Tables it made meanwhile are dropped by the restore's `dropdb`.
+5. Restore as above, with `PGIMAGE` set to the new image (for example `PGIMAGE=postgres:17.6`) before you call `pg_tools`:
+   `pg_restore` must be at least the version of the `pg_dump` that wrote the dump.
+6. Scale the control plane back to one and enable auto-sync again.
 
 ### A database of your own
 
@@ -233,7 +297,7 @@ it) and start the control plane. The same rule as above: no start of the control
 
 ## 4. TLS to the database
 
-**The bundled PostgreSQL** has no TLS: the chart composes the URL with `sslmode=disable`. The connection stays on the pod
+**The bundled PostgreSQL** has no TLS: the chart sets the URL with `sslmode=disable`. The connection stays on the pod
 network of the namespace, where the policy `remedy-postgres` admits only the control plane and the backup job's pods.
 
 **A database of your own:** the URL carries the settings, `sslmode` and `sslrootcert` (and `sslcert`/`sslkey` for client
@@ -343,8 +407,8 @@ The reasoning and the other limits are in `docs/research/postgres-concurrency-au
 
 ## 9. What was tried
 
-By hand, with the server built from the tree, on the test PostgreSQL of `dev/pg/` (a scratch database, not the shared test
-schemas):
+During development (plan task 10 of `docs/plans/postgres-only.md`), with the server built from the tree, on the test
+PostgreSQL of `dev/pg/` (a scratch database, not the shared test schemas):
 
 - the server against a closed port waited 30 s and exited with status 1 and the message of section 6, with no port open
   meanwhile; against a wrong password, a missing database and a `require` URL on a server without TLS it behaved as
@@ -357,10 +421,24 @@ The token scan of the real-run runbooks: with a plain-text token stored in a `by
 `scripts/check-no-token-leak.sh` on a text `pg_dump` with the plain token reports nothing (a dump writes the column as hex),
 with the hex form of the token (`od -An -tx1 | tr -d ' \n'`) it reports the leak, and on a clean dump it reports none.
 
-Not tried: anything of the bundled PostgreSQL on a cluster (the StatefulSet, the backup CronJob, the tools pod, the restore
-of section 3), TLS against a real server, and a restart of the server under a running control plane.
+During the development of the chart's bundled PostgreSQL, in two throwaway kind clusters (the first with an earlier version
+of the chart; a namespace with the restricted Pod Security Standard enforced, deleted afterwards), with the rendered
+`postgres.yaml`, `postgres-backup.yaml` and the network policies applied: the StatefulSet became Ready and survived a pod delete; a pod with the control plane's labels
+and the control plane's database environment copied from the rendered Deployment (`PGPASSWORD` from the Secret and the URL
+without a password), with a password that is not URL-safe (`@`, `/`, `:`, `?`, `#`, `%`, `+`, `=`), connected and read a
+row; a Job made from the CronJob wrote a dump; a pod with other labels was blocked by the policy; and the restore pod and
+`pg_restore --clean` command of `deploy/chart/README.md` brought a changed row back. That was not the control plane
+itself, not installed with `helm install` or Argo CD, and not on k3s.
+
+Not tried: the blocks of this runbook on a cluster (the job wait loop, the tools pod with or without the backup claim, the
+copy off the node, the restore of section 3 with `dropdb`/`createdb`, the password change of section 2, the new major
+version), the control plane itself against the bundled PostgreSQL, TLS against a real server, and a restart of the server
+under a running control plane.
 
 ## 10. Upgrading from the SQLite versions
+
+**Before you sync** (better: before you bump the chart version): copy `remedy.db` out (step 1). Under Argo CD, `prune`
+can delete the old claim `remedy-data`, and a `local-path` volume loses its data with it.
 
 **Not supported: existing data is not migrated.** The releases before PostgreSQL kept everything in one SQLite file,
 `/data/remedy.db`, on the claim `remedy-data` (or the claim named by `server.persistence.existingClaim`). The project is
