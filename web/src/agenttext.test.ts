@@ -401,19 +401,36 @@ describe('parseAgentText: hostile input', () => {
 
   it('has no such node for fuzzed input either (a seeded, deterministic generator)', () => {
     const pieces = ['*', '**', '_', '__', '~~', '`', '``', '[', ']', '(', ')', '![', '](', '\\', '\n', '\n\n', '> ', '- ', '1. ', '# ', '```', '---',
-      '  ', 'a', 'b', ' ', '<a href="x">', '<img src=x>', 'javascript:', 'http://e.test/', '‮', '​', '\u{E0041}', 'ä', '„', '\t']
-    let seed = 20261022
+      '  ', 'a', 'b', ' ', '<a href="x">', '<img src=x>', 'javascript:', 'http://e.test/', '\u202E', '\u200B', '\u{E0041}', 'ä', '„', '\t']
+    // xorshift32 with a fixed seed: every bit of the state is mixed, so `% n` uses all the pieces. (An LCG's low bits are degenerate:
+    // with n divisible by 4 it drew almost only every fourth piece.) The state stays a 32-bit unsigned integer, exact in a double.
+    let state = 20261022
     const next = (n: number) => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff
-      return seed % n
+      state ^= state << 13
+      state >>>= 0
+      state ^= state >>> 17
+      state ^= state << 5
+      state >>>= 0
+      return state % n
     }
-    for (let k = 0; k < 3000; k++) {
+    const runs = 3000
+    const used = new Set<number>()
+    const documents = new Set<string>()
+    for (let k = 0; k < runs; k++) {
       let md = ''
       const len = 1 + next(40)
-      for (let i = 0; i < len; i++) md += pieces[next(pieces.length)]
+      for (let i = 0; i < len; i++) {
+        const p = next(pieces.length)
+        used.add(p)
+        md += pieces[p]
+      }
+      documents.add(md)
       assert.doesNotThrow(() => checkNodes(md), JSON.stringify(md))
       assert.doesNotThrow(() => parseAgentInline(md), JSON.stringify(md))
     }
+    // The generator is worth something only when it draws every piece and rarely repeats a document.
+    assert.equal(used.size, pieces.length, `drew ${used.size} of ${pieces.length} pieces`)
+    assert.ok(documents.size >= runs * 0.95, `${documents.size} distinct documents of ${runs}`)
   })
 })
 
@@ -423,14 +440,14 @@ describe('parseAgentText: after the review', () => {
 
   it('removes every format character, variation selectors, the grapheme joiner and the Hangul filler', () => {
     asText('a\u{E0041}\u{E0042}b', 'ab') // tag characters
-    asText('soft­hyphen', 'softhyphen')
-    asText('a͏bㅤc᠎d￹e️f\u{E0100}gh', 'abcdefgh')
-    assert.equal(cleanText('a\u{E007F}\u{1F600}‍b').text, 'a\u{1F600}b') // an emoji stays, the joiner goes
+    asText('soft\u00ADhyphen', 'softhyphen')
+    asText('a\u034Fb\u3164c\u180Ed\uFFF9e\uFE0Ff\u{E0100}g\uE000h', 'abcdefgh')
+    assert.equal(cleanText('a\u{E007F}\u{1F600}\u200Db').text, 'a\u{1F600}b') // an emoji stays, the joiner goes
   })
 
   it('makes a lone U+2028 and U+2029 a line break', () => {
-    assert.equal(show('a b'), '<p>a<br>b</p>')
-    assert.equal(show('a b'), '<p>a<br>b</p>')
+    assert.equal(show('a\u2028b'), '<p>a<br>b</p>')
+    assert.equal(show('a\u2029b'), '<p>a<br>b</p>')
   })
 
   it('makes a backslash at the end of a line a line break', () => {
@@ -462,7 +479,7 @@ describe('parseAgentText: after the review', () => {
   })
 
   it('strips controls in plainText too', () => {
-    assert.equal(plainText('a‮b⁦c​d\u{E0041}e', 10), 'abcde')
+    assert.equal(plainText('a\u202Eb\u2066c\u200Bd\u{E0041}e', 10), 'abcde')
   })
 })
 
