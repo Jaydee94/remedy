@@ -61,12 +61,16 @@ postgres:
 for example made with
 
 ```sh
-kubectl -n remedy create secret generic remedy-postgres --from-literal=password="$(openssl rand -hex 24)"
+printf 'password=%s\n' "$(openssl rand -hex 24)" \
+  | kubectl -n remedy create secret generic remedy-postgres --from-env-file=/dev/stdin
 ```
 
-(or the same as a SealedSecret). The chart never generates or stores the password: a generated one would change on every
-render, and Helm's `lookup` does not work under Argo CD. Any characters are fine: the control plane gets the password as
-`PGPASSWORD`, not inside a URL.
+`printf` is a shell builtin, so the password is in no process's argument list (`--from-literal=password=...` would put it
+there). Under GitOps make it a SealedSecret instead: add `--dry-run=client -o yaml | kubeseal --format yaml >
+remedy-postgres.sealed.yaml` to the `kubectl` line, so the plain Secret only travels through pipes
+(`docs/runbook/homelab-deploy.md`, section 4). The chart never generates or stores the password: a generated one would
+change on every render, and Helm's `lookup` does not work under Argo CD. Any password works: the control plane gets it as
+`PGPASSWORD`, not inside a URL, so it needs no URL encoding. A hex string is just convenient.
 
 What it renders:
 
@@ -201,8 +205,8 @@ deleted or scaled down (`persistentVolumeClaimRetentionPolicy: Retain`): `helm u
 the same namespace finds the old data. The backup claim carries `helm.sh/resource-policy: keep`, so `helm uninstall` leaves
 it too. Delete either by hand to start empty. The claim template cannot be changed after the install (a new size or class
 fails the upgrade): resize the claim itself if its storage class allows it. The password is set when the data directory is
-first created; changing it in the Secret later does not change it in the database (change it with `ALTER ROLE remedy
-PASSWORD ...` and in the Secret, then restart the control plane).
+first created; changing it in the Secret later does not change it in the database. To change it, see
+`docs/runbook/postgres.md`, section 2 (`\password` in `psql`, then the Secret, then a restart of the control plane).
 
 ### A database of your own
 
@@ -220,7 +224,9 @@ There is no `database.url` value and no other key under `database`: the render f
 `values.yaml` ends up in the repository), and `server.env` may not set `REMEDY_DATABASE_URL` or `REMEDY_DB` either. The
 pool size is `REMEDY_DATABASE_MAX_CONNS` (default 10, 2 to 100), which `server.env` may set. The old SQLite claim `remedy-data`
 (and the values `server.persistence.*`) is no longer rendered. Existing SQLite data is not migrated: an installation of an
-earlier version is reinstalled with an empty database (see `docs/runbook/postgres.md`).
+earlier version is reinstalled with an empty database. Copy `remedy.db` out **before** you bump the chart version: under
+Argo CD, `prune` can delete the old claim `remedy-data`, and a `local-path` volume loses its data with it
+(`docs/runbook/postgres.md`, section 10).
 
 The control plane may reach a database of your own only through `networkPolicy.database`, required while
 `networkPolicy.enabled` is true, in exactly one of two forms (the render fails for neither, both or any other key):

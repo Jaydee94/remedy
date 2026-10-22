@@ -42,10 +42,10 @@ postgres:
   # Unset (the default): on, unless database.existingSecret is set. true together with database.existingSecret is refused
   # (a contradiction), and so is false without it (no database at all).
   enabled: null
-  # Required while the bundled database is on: a Secret that exists already, with the password under passwordKey, for
-  # example openssl rand -hex 24. The chart never creates it and never takes the password as a value; the control plane gets
-  # it as PGPASSWORD, never inside a URL. It is set when the data directory is created; changing it in the Secret later does
-  # not change it in the database.
+  # Required while the bundled database is on: a Secret that exists already, with the password under passwordKey. Any
+  # characters work (openssl rand -hex 24 is just convenient). The chart never creates it and never takes the password as a
+  # value; the control plane gets it as PGPASSWORD next to a URL without a password, never inside a URL. It is set when the
+  # data directory is created; changing it in the Secret later does not change it in the database (see the chart README).
   # With database.existingSecret set, every value below must stay at its default (the render refuses one that would do nothing).
   existingSecret: ""
   passwordKey: password

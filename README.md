@@ -119,12 +119,15 @@ Open <http://localhost:8080> and sign in with the admin password.
 `REMEDY_DATABASE_URL` is required: a libpq-style URL (`sslmode`, `sslrootcert` and the like travel in it) or a `key=value` string. For a database on another host put
 `sslmode=require` (encrypted) or better `sslmode=verify-full` with `sslrootcert=...` (encrypted, and the server's certificate checked)
 in it: the default, `prefer`, falls back to plain text without a word (what the chart can do is in section 4 of
-[`docs/runbook/postgres.md`](docs/runbook/postgres.md)). The URL holds
+[`docs/runbook/postgres.md`](docs/runbook/postgres.md)). The URL can hold
 the database password, so Remedy never prints it (the start-up log names only `host:port/dbname`); in a cluster it comes from a Secret,
-never from a values file. `REMEDY_DATABASE_MAX_CONNS` (default `10`, 2 to 100) sizes the connection pool. At start-up the server
+never from a values file. With a URL that has no password, the driver (pgx) takes the password from `PGPASSWORD`: the chart's
+own PostgreSQL works that way. `REMEDY_DATABASE_MAX_CONNS` (default `10`, 2 to 100) sizes the connection pool. At start-up the server
 retries for up to 30 seconds while the database is still coming up, then exits with an error. `REMEDY_DB` (the SQLite file of earlier
 versions) is refused with an error: existing SQLite data is not migrated; an installation of an earlier version is reinstalled
-with an empty database ([`docs/runbook/postgres.md`](docs/runbook/postgres.md), section 10).
+with an empty database. Copy `remedy.db` out **before** you bump the chart version: under Argo CD, `prune` can delete the
+old claim `remedy-data`, and a `local-path` volume loses its data with it
+([`docs/runbook/postgres.md`](docs/runbook/postgres.md), section 10).
 
 `REMEDY_MASTER_KEY` is required: Remedy refuses to start without it. Keep it outside the database and its
 backups; whoever has both can read the stored GitHub token. If you lose or change the key, enter the token
@@ -219,8 +222,10 @@ The image runs as a non-root user and keeps no state: there is no volume, the da
 network). The runner has its own image (`Dockerfile.runner`;
 `make images` builds both; a release publishes them to GHCR). It does not contain the
 `claude` CLI: the Helm chart's init container installs the pinned CLI, and the login is done
-once with `kubectl exec`. The chart is in [`deploy/chart`](deploy/chart/README.md); it takes a connection to a PostgreSQL that you provide
-(a Secret with the URL, `database.existingSecret`, and the egress rule `networkPolicy.database`) and installs no database. How to
+once with `kubectl exec`. The chart is in [`deploy/chart`](deploy/chart/README.md); by default it installs a small single-node PostgreSQL of its own
+(a Secret with its password, `postgres.existingSecret`, and a nightly `pg_dump` to a second claim), or it takes a connection
+to a PostgreSQL that you provide (a Secret with the URL, `database.existingSecret`, and the egress rule
+`networkPolicy.database`). How to
 install it on k3s under Argo CD is in [`docs/runbook/homelab-deploy.md`](docs/runbook/homelab-deploy.md).
 
 Releases are automated: a merge to `main` with a `feat` or a `fix` publishes the images
