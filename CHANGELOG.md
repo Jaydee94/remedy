@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.13.0](https://github.com/Jaydee94/remedy/compare/v0.12.0...v0.13.0) (2026-10-22)
+
+### Features
+
+* the login from the Setup page is always on, no switch (K-7) ([#167](https://github.com/Jaydee94/remedy/issues/167)) ([341ea19](https://github.com/Jaydee94/remedy/commit/341ea1972f876bd06e6f7c7374c195fd5cf71bdd))
+
 ## [0.12.0](https://github.com/Jaydee94/remedy/compare/v0.11.0...v0.12.0) (2026-10-21)
 
 ### Features
