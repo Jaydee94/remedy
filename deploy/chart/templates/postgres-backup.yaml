@@ -31,6 +31,8 @@ metadata:
 spec:
   schedule: {{ .Values.postgres.backup.schedule | quote }}
   concurrencyPolicy: Forbid
+  # A run missed for less than a day (the controller was down) still runs; an older one is skipped.
+  startingDeadlineSeconds: 86400
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:

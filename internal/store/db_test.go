@@ -601,3 +601,65 @@ func TestScrubbedErrorKeepsTheChain(t *testing.T) {
 		t.Fatalf("a scrubbed error prints the secret: %s", got)
 	}
 }
+
+// withoutPassword returns the test server's URL with its user and no password, and that password.
+func withoutPassword(t *testing.T, dsn string) (string, string) {
+	t.Helper()
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal("the test URL does not parse")
+	}
+	pw, ok := u.User.Password()
+	if !ok || pw == "" {
+		t.Fatal("the test URL has no password to move into PGPASSWORD")
+	}
+	u.User = url.User(u.User.Username())
+	return u.String(), pw
+}
+
+// The chart's own PostgreSQL gives the control plane a URL without a password and the password as PGPASSWORD
+// (deploy/chart/templates/server-deployment.yaml): pgx must take it from the environment. A pgx that stopped doing so
+// fails this test, not the cluster.
+func TestOpenTakesThePasswordFromPGPASSWORDWhenTheURLHasNone(t *testing.T) {
+	bare, pw := withoutPassword(t, pgtest.New(t))
+	t.Setenv("PGPASSWORD", pw)
+	t.Setenv("PGPASSFILE", filepath.Join(t.TempDir(), "none")) // no ~/.pgpass may stand in for it
+	s, err := Open(context.Background(), secret.NewValue(bare), WithMaxConns(1))
+	if err != nil {
+		t.Fatalf("Open with the password in PGPASSWORD: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	var one int
+	if err := s.db.QueryRowContext(context.Background(), `SELECT 1`).Scan(&one); err != nil || one != 1 {
+		t.Fatalf("SELECT 1 = %d, %v", one, err)
+	}
+	// Without PGPASSWORD the same URL is refused: the password really came from the environment.
+	t.Setenv("PGPASSWORD", "")
+	if s2, err := Open(context.Background(), secret.NewValue(bare), WithMaxConns(1)); err == nil {
+		_ = s2.Close()
+		t.Fatal("the URL without a password connected without PGPASSWORD too: the test proves nothing")
+	}
+}
+
+func TestOpenWithAWrongPGPASSWORDFailsFastWithoutShowingIt(t *testing.T) {
+	bare, _ := withoutPassword(t, pgtest.New(t))
+	const wrong = "Wr0ng-PGPASSWORD-never-shown"
+	t.Setenv("PGPASSWORD", wrong)
+	t.Setenv("PGPASSFILE", filepath.Join(t.TempDir(), "none"))
+	start := time.Now()
+	s, err := Open(context.Background(), secret.NewValue(bare), WithMaxConns(1))
+	if err == nil {
+		_ = s.Close()
+		t.Fatal("Open accepted a wrong PGPASSWORD")
+	}
+	if strings.Contains(err.Error(), wrong) || strings.Contains(fmt.Sprintf("%+v", err), wrong) {
+		t.Fatalf("the error shows the password: %v", err)
+	}
+	var pe *pgconn.PgError
+	if !errors.As(err, &pe) || pe.Code != "28P01" {
+		t.Errorf("want the server's refusal of the password (28P01), got %v", err)
+	}
+	if time.Since(start) > 10*time.Second {
+		t.Fatalf("a refused login was retried for %v", time.Since(start))
+	}
+}

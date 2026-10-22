@@ -44,6 +44,8 @@ spec:
         app.kubernetes.io/component: database
     spec:
       automountServiceAccountToken: false
+      # Time for a clean shutdown (a checkpoint) before the kubelet kills the server.
+      terminationGracePeriodSeconds: 60
       securityContext:
         {{- include "remedy.postgresPodSecurity" . | nindent 8 }}
       containers:
@@ -63,6 +65,12 @@ spec:
             # A subdirectory: the claim's mount point can hold a lost+found that initdb refuses.
             - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
           # Over TCP: the image's first server (initdb) listens on its socket only, so a check over the socket would answer too early.
+          # The startup probe gives initdb and a crash recovery up to five minutes before the liveness probe counts.
+          startupProbe:
+            exec:
+              command: [pg_isready, -h, 127.0.0.1, -U, remedy, -d, remedy]
+            periodSeconds: 5
+            failureThreshold: 60
           readinessProbe:
             exec:
               command: [pg_isready, -h, 127.0.0.1, -U, remedy, -d, remedy]
