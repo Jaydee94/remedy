@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.14.0](https://github.com/Jaydee94/remedy/compare/v0.13.0...v0.14.0) (2026-10-22)
+
+### Features
+
+* show agent text as formatted Markdown through a restricted renderer ([#168](https://github.com/Jaydee94/remedy/issues/168)) ([d63f870](https://github.com/Jaydee94/remedy/commit/d63f8707fba81da73db457c78f6d564f4c070d3b))
+
+### Bug Fixes
+
+* **deps:** update module modernc.org/sqlite to v1.61.0 ([#159](https://github.com/Jaydee94/remedy/issues/159)) ([5086006](https://github.com/Jaydee94/remedy/commit/508600658429848330391373641d47950efb9820))
+
 ## [0.13.0](https://github.com/Jaydee94/remedy/compare/v0.12.0...v0.13.0) (2026-10-22)
 
 ### Features
