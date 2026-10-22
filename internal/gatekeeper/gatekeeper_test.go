@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -18,6 +17,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/gatekeeper"
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 // echoTool is a read tool that returns its text and counts how often it ran.
@@ -59,20 +59,20 @@ func failingTool() gatekeeper.Tool {
 			return json.RawMessage(`{}`), gatekeeper.DecodeArgs(raw, &struct{}{})
 		},
 		Run: func(context.Context, gatekeeper.Call) (string, error) {
-			return "", errors.New("database is locked at /var/lib/remedy/remedy.db")
+			return "", errors.New("failed to connect to postgres at 10.43.0.7:5432: password authentication failed")
 		},
 	}
 }
 
 type env struct {
-	dbPath string
-	st     *store.Store
-	g      *gatekeeper.Gatekeeper
-	ts     *httptest.Server
-	run    run.Run
-	token  string
-	runs   *atomic.Int32
-	next   int
+	dsn   string // the database, for a test that changes a row the store has no method for
+	st    *store.Store
+	g     *gatekeeper.Gatekeeper
+	ts    *httptest.Server
+	run   run.Run
+	token string
+	runs  *atomic.Int32
+	next  int
 }
 
 func newEnv(t *testing.T, extra ...gatekeeper.Tool) *env {
@@ -83,14 +83,9 @@ func newEnv(t *testing.T, extra ...gatekeeper.Tool) *env {
 // newEnvWith builds the tools after the store exists, and lets a test change the configuration.
 func newEnvWith(t *testing.T, build func(st *store.Store) []gatekeeper.Tool, opts ...func(*gatekeeper.Config)) *env {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	st, err := store.Open(dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st, dsn := testutil.StoreDSN(t)
 
-	e := &env{st: st, dbPath: dbPath, runs: &atomic.Int32{}}
+	e := &env{st: st, dsn: dsn, runs: &atomic.Int32{}}
 	cfg := gatekeeper.Config{Store: st, Tools: append([]gatekeeper.Tool{echoTool(e.runs), failingTool()}, build(st)...)}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -302,7 +297,7 @@ func TestACallThatCannotRunIsAnErrorResultAndAudited(t *testing.T) {
 		if !isErr || !strings.Contains(text, tc.message) {
 			t.Errorf("%s: result %q (error %v), want an error mentioning %q", name, text, isErr, tc.message)
 		}
-		if strings.Contains(text, "/var/lib") {
+		if strings.Contains(text, "10.43.0.7") {
 			t.Errorf("%s: the answer leaks an internal error: %q", name, text)
 		}
 	}
@@ -393,11 +388,7 @@ func TestARunMayMakeOnlyAHundredCalls(t *testing.T) {
 }
 
 func TestNewRefusesAnUnusableRegistry(t *testing.T) {
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	runs := &atomic.Int32{}
 	for name, tools := range map[string][]gatekeeper.Tool{
 		"duplicate": {echoTool(runs), echoTool(runs)},

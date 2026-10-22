@@ -120,7 +120,11 @@ func (s *Store) CreateProposals(ctx context.Context, p ProposalSet) ([]Skill, er
 	}
 
 	var ids []int64
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *txn) error {
+		ids = nil
+		if err := s.lockSkills(ctx, tx); err != nil { // the count of the waiting proposals holds until the inserts
+			return err
+		}
 		host, err := hostName(ctx, tx, p.HostID)
 		if err != nil {
 			return err
@@ -134,18 +138,16 @@ func (s *Store) CreateProposals(ctx context.Context, p ProposalSet) ([]Skill, er
 				return err
 			}
 			var replaces sql.NullInt64
-			err := tx.QueryRowContext(ctx, `SELECT id FROM skills WHERE host_id = ? AND name = ? AND state <> 'proposed'`, p.HostID, it.Name).Scan(&replaces)
+			// FOR KEY SHARE: the skill the proposal points at is not deleted before the proposal is stored.
+			err := tx.QueryRowContext(ctx, `SELECT id FROM skills WHERE host_id = ? AND name = ? AND state <> 'proposed' FOR KEY SHARE`, p.HostID, it.Name).Scan(&replaces)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
-			res, err := tx.ExecContext(ctx, `
+			var id int64
+			err = tx.QueryRowContext(ctx, `
 				INSERT INTO skills (host_id, name, description, body, origin, state, run_id, evidence, replaces_id, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'proposed', 'proposed', ?, ?, ?, ?, ?)`,
-				p.HostID, it.Name, it.Description, it.Body, nullString(p.RunID), skill.EncodeEvidence(it.Evidence), replaces, now, now)
-			if err != nil {
-				return err
-			}
-			id, err := res.LastInsertId()
+				VALUES (?, ?, ?, ?, 'proposed', 'proposed', ?, ?, ?, ?, ?) RETURNING id`,
+				p.HostID, it.Name, it.Description, it.Body, nullString(p.RunID), skill.EncodeEvidence(it.Evidence), replaces, now, now).Scan(&id)
 			if err != nil {
 				return err
 			}
@@ -172,13 +174,17 @@ func (s *Store) CreateProposals(ctx context.Context, p ProposalSet) ([]Skill, er
 
 // replacedSkill is the skill that confirming proposal cur would overwrite, nil if there is none. replaces_id is fixed when the proposal
 // is made, so the skill it points at must still be what it was: in the same scope, not a proposal, and still called what the proposal
-// is called. A skill that was renamed meanwhile is another skill now and is never overwritten.
-func replacedSkill(ctx context.Context, tx *sql.Tx, cur Skill) (*Skill, error) {
+// is called. A skill that was renamed meanwhile is another skill now and is never overwritten. With lock, the row is locked for the
+// update that overwrites it, so it cannot be renamed or deleted in between.
+func replacedSkill(ctx context.Context, tx *txn, cur Skill, lock bool) (*Skill, error) {
 	if cur.ReplacesID == 0 {
 		return nil, nil
 	}
-	k, err := scanSkill(tx.QueryRowContext(ctx, skillSelect+` WHERE s.id = ? AND COALESCE(s.host_id, 0) = ? AND s.state <> 'proposed' AND s.name = ?`,
-		cur.ReplacesID, cur.HostID, cur.Name))
+	q := skillSelect + ` WHERE s.id = ? AND COALESCE(s.host_id, 0) = ? AND s.state <> 'proposed' AND s.name = ?`
+	if lock {
+		q += ` FOR NO KEY UPDATE OF s`
+	}
+	k, err := scanSkill(tx.QueryRowContext(ctx, q, cur.ReplacesID, cur.HostID, cur.Name))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -195,7 +201,7 @@ func (s *Store) ProposalWithReplaced(ctx context.Context, id int64) (Skill, *Ski
 		proposal Skill
 		replaced *Skill
 	)
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *txn) error {
 		cur, err := scanSkill(tx.QueryRowContext(ctx, skillSelect+` WHERE s.id = ?`, id))
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
@@ -207,7 +213,7 @@ func (s *Store) ProposalWithReplaced(ctx context.Context, id int64) (Skill, *Ski
 			return ErrSkillState
 		}
 		proposal = cur
-		replaced, err = replacedSkill(ctx, tx, cur)
+		replaced, err = replacedSkill(ctx, tx, cur, false)
 		return err
 	})
 	if err != nil {
@@ -227,8 +233,12 @@ func (s *Store) ProposalWithReplaced(ctx context.Context, id int64) (Skill, *Ski
 // by that text, and one that was renamed is left alone (the proposal becomes a skill of its own, if its name is free).
 func (s *Store) ConfirmSkill(ctx context.Context, id int64, edit *skill.Fields) (Skill, error) {
 	var result int64
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
-		cur, err := scanSkill(tx.QueryRowContext(ctx, skillSelect+` WHERE s.id = ?`, id))
+	err := s.inTx(ctx, func(tx *txn) error {
+		if err := s.lockSkills(ctx, tx); err != nil { // the scope's count holds until the proposal is active
+			return err
+		}
+		// Locked: a second confirm or a reject of the proposal waits and then finds it gone or active.
+		cur, err := scanSkill(tx.QueryRowContext(ctx, skillSelect+` WHERE s.id = ? FOR UPDATE OF s`, id))
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -247,7 +257,7 @@ func (s *Store) ConfirmSkill(ctx context.Context, id int64, edit *skill.Fields) 
 			desc, body = f.Description, f.Body
 		}
 		now := formatTS(time.Now())
-		replaced, err := replacedSkill(ctx, tx, cur)
+		replaced, err := replacedSkill(ctx, tx, cur, true)
 		if err != nil {
 			return err
 		}
@@ -296,8 +306,9 @@ func (s *Store) ConfirmSkill(ctx context.Context, id int64, edit *skill.Fields) 
 
 // RejectSkill deletes a proposal and logs that it was rejected; the activity log keeps that it existed.
 func (s *Store) RejectSkill(ctx context.Context, id int64) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
-		cur, err := scanSkill(tx.QueryRowContext(ctx, skillSelect+` WHERE s.id = ?`, id))
+	return s.inTx(ctx, func(tx *txn) error {
+		// Locked for the delete: a confirm or a second reject waits and then finds nothing.
+		cur, err := scanSkill(tx.QueryRowContext(ctx, skillSelect+` WHERE s.id = ? FOR UPDATE OF s`, id))
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}

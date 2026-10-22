@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -141,8 +140,6 @@ func hostEnabledInt(f HostFields) int {
 	return 0
 }
 
-func isUnique(err error) bool { return strings.Contains(err.Error(), "UNIQUE constraint failed") }
-
 func (s *Store) GetHost(ctx context.Context, id int64) (HostEntry, error) {
 	e, err := scanHostEntry(s.db.QueryRowContext(ctx, hostSelect+` WHERE h.id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -153,7 +150,8 @@ func (s *Store) GetHost(ctx context.Context, id int64) (HostEntry, error) {
 
 // ListHosts returns every host with its login, ordered by name.
 func (s *Store) ListHosts(ctx context.Context) ([]HostEntry, error) {
-	rows, err := s.db.QueryContext(ctx, hostSelect+` ORDER BY h.name`)
+	// SQLite ordered the NOCASE column by its ASCII-folded bytes; COLLATE "C" keeps that order whatever the database's collation.
+	rows, err := s.db.QueryContext(ctx, hostSelect+` ORDER BY lower(h.name) COLLATE "C", h.name COLLATE "C"`)
 	if err != nil {
 		return nil, err
 	}
@@ -176,19 +174,16 @@ func (s *Store) CreateHost(ctx context.Context, f HostFields) (Host, error) {
 		return Host{}, err
 	}
 	var id int64
-	err = s.inTx(ctx, func(tx *sql.Tx) error {
+	err = s.inTx(ctx, func(tx *txn) error {
 		now := formatTS(time.Now())
-		res, err := tx.ExecContext(ctx, `
+		err := tx.QueryRowContext(ctx, `
 			INSERT INTO hosts (name, address, port, account, notes, docker_pattern, systemd_units, enabled, matchers, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			f.Name, f.Address, f.Port, f.Account, f.Notes, f.DockerPattern, units, hostEnabledInt(f), f.Matchers, now, now)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			f.Name, f.Address, f.Port, f.Account, f.Notes, f.DockerPattern, units, hostEnabledInt(f), f.Matchers, now, now).Scan(&id)
 		if err != nil {
 			if isUnique(err) {
 				return ErrExists
 			}
-			return err
-		}
-		if id, err = res.LastInsertId(); err != nil {
 			return err
 		}
 		return insertActivity(ctx, tx, NewActivity{Kind: KindHostChanged, Summary: "Host " + f.Name + " created"})
@@ -208,10 +203,11 @@ func (s *Store) UpdateHost(ctx context.Context, id int64, f HostFields) (Host, b
 		return Host{}, false, err
 	}
 	cleared := false
-	err = s.inTx(ctx, func(tx *sql.Tx) error {
+	err = s.inTx(ctx, func(tx *txn) error {
 		var oldAddress, pinned string
 		var oldPort int
-		err := tx.QueryRowContext(ctx, `SELECT address, port, pinned_key FROM hosts WHERE id = ?`, id).Scan(&oldAddress, &oldPort, &pinned)
+		// Locked: a pin that arrives meanwhile is either seen here (and cleared by a new endpoint) or made after this update.
+		err := tx.QueryRowContext(ctx, `SELECT address, port, pinned_key FROM hosts WHERE id = ? FOR NO KEY UPDATE`, id).Scan(&oldAddress, &oldPort, &pinned)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -243,10 +239,12 @@ func (s *Store) UpdateHost(ctx context.Context, id int64, f HostFields) (Host, b
 	return e.Host, cleared, err
 }
 
-// hostName reads a host's name inside a transaction; ErrNotFound if it does not exist.
-func hostName(ctx context.Context, tx *sql.Tx, id int64) (string, error) {
+// hostName reads a host's name inside a transaction; ErrNotFound if it does not exist. It takes FOR KEY SHARE on the row: the
+// host cannot be deleted before the transaction ends, so what it writes about the host (a login, a pin, a skill, an activity
+// entry) is never about a host that went meanwhile. The lock does not keep others from changing the row.
+func hostName(ctx context.Context, tx *txn, id int64) (string, error) {
 	var name string
-	err := tx.QueryRowContext(ctx, `SELECT name FROM hosts WHERE id = ?`, id).Scan(&name)
+	err := tx.QueryRowContext(ctx, `SELECT name FROM hosts WHERE id = ? FOR KEY SHARE`, id).Scan(&name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
@@ -254,10 +252,17 @@ func hostName(ctx context.Context, tx *sql.Tx, id int64) (string, error) {
 }
 
 // DeleteHost removes a host and, through the foreign keys, its login and its skills (proposals included). The activity entry says how
-// many skills went with it.
+// many skills went with it. The cascade (skills, bindings, the login, the host of incidents) locks the host before those rows, so
+// the delete's lock waits are bounded (inDeleteTx).
 func (s *Store) DeleteHost(ctx context.Context, id int64) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
-		name, err := hostName(ctx, tx, id)
+	return s.inDeleteTx(ctx, func(tx *txn) error {
+		// FOR UPDATE, not hostName: the row is about to go, and from here no skill of the host can be added (an insert's key check
+		// waits), so the count below is what the delete removes.
+		var name string
+		err := tx.QueryRowContext(ctx, `SELECT name FROM hosts WHERE id = ? FOR UPDATE`, id).Scan(&name)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
 		if err != nil {
 			return err
 		}
@@ -277,7 +282,7 @@ func (s *Store) DeleteHost(ctx context.Context, id int64) error {
 }
 
 // touchHost moves updated_at of a host. An approval that was asked for before is stale after it.
-func touchHost(ctx context.Context, tx *sql.Tx, id int64) error {
+func touchHost(ctx context.Context, tx *txn, id int64) error {
 	_, err := tx.ExecContext(ctx, `UPDATE hosts SET updated_at = ? WHERE id = ?`, formatTS(time.Now()), id)
 	return err
 }
@@ -285,7 +290,7 @@ func touchHost(ctx context.Context, tx *sql.Tx, id int64) error {
 // SaveHostCredential sets or replaces a host's login. A host whose last test was ok, failed or could not decrypt the old login
 // is untested again: that result does not describe the new login.
 func (s *Store) SaveHostCredential(ctx context.Context, c HostCredential) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
 		name, err := hostName(ctx, tx, c.HostID)
 		if err != nil {
 			return err
@@ -309,7 +314,7 @@ func (s *Store) SaveHostCredential(ctx context.Context, c HostCredential) error 
 
 // DeleteHostCredential removes a host's login. The last test no longer describes the host, as with a replaced login.
 func (s *Store) DeleteHostCredential(ctx context.Context, hostID int64) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
 		name, err := hostName(ctx, tx, hostID)
 		if err != nil {
 			return err
@@ -330,7 +335,7 @@ func (s *Store) DeleteHostCredential(ctx context.Context, hostID int64) error {
 
 // PinHostKey stores the host key (an authorized_keys-style line). The host is untested again.
 func (s *Store) PinHostKey(ctx context.Context, id int64, line string, at time.Time) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
 		name, err := hostName(ctx, tx, id)
 		if err != nil {
 			return err
@@ -348,7 +353,7 @@ func (s *Store) PinHostKey(ctx context.Context, id int64, line string, at time.T
 }
 
 func (s *Store) UnpinHostKey(ctx context.Context, id int64) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
 		name, err := hostName(ctx, tx, id)
 		if err != nil {
 			return err
@@ -377,7 +382,7 @@ const resetStaleStatus = `UPDATE hosts SET status = 'new', status_detail = '', r
 // ran against (empty for the probe of an unpinned host): if the host's pin is another one now, nothing is written and ErrStale
 // is returned; ErrNotFound if the host is gone.
 func (s *Store) SaveHostTest(ctx context.Context, id int64, pinnedKey string, status HostStatus, detail, report string, at time.Time) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
 		res, err := tx.ExecContext(ctx,
 			`UPDATE hosts SET status = ?, status_detail = ?, report = ?, checked_at = ? WHERE id = ? AND pinned_key = ?`,
 			string(status), detail, report, formatTS(at), id, pinnedKey)

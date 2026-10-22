@@ -279,6 +279,9 @@ func (s *srv) deleteSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.d.Store.DeleteSkill(r.Context(), id); err != nil {
+		if writeBusy(w, err) {
+			return
+		}
 		s.skillError(w, err, "skill not found", "could not delete the skill")
 		return
 	}

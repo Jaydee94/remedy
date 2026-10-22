@@ -2,7 +2,8 @@
 # It supports one release per namespace: the resource names are fixed (remedy-server, remedy-runner, ...).
 #
 # Nothing here is a secret. The admin password, the runner token and the master key come from a Secret that exists
-# already (existingSecret), for example one a SealedSecret creates.
+# already (existingSecret), for example one a SealedSecret creates. So do the password of the bundled PostgreSQL
+# (postgres.existingSecret) and the connection URL of a database of your own (database.existingSecret).
 
 image:
   pullPolicy: IfNotPresent
@@ -20,20 +21,71 @@ existingSecret:
     runnerToken: runner-token       # 24 or more characters
     masterKey: master-key           # openssl rand -base64 32; losing it loses the sealed GitHub token
 
+# The control plane's database is a PostgreSQL. By default the chart installs a small single-node one of its own (postgres,
+# below). To use a database of your own instead (an operator, a server on another host), set database.existingSecret: then
+# nothing of the bundled one is rendered, and networkPolicy.database is required while the policies are on. The control plane
+# itself keeps no state on a volume.
+database:
+  # Empty: the bundled PostgreSQL. Set: the name of a Secret that exists already and holds the connection URL, a libpq-style URL with the password
+  # in it, for example postgres://remedy:PASSWORD@db.databases.svc:5432/remedy?sslmode=require
+  # (sslmode and the like travel in the URL). The chart cannot mount a CA file, so sslrootcert=/path has nothing to read: verify-full
+  # works only with a CA the server image already trusts; for a private CA use require (encrypted, not verified). The chart never creates the Secret and refuses the URL as a
+  # value: a key named url, password or anything else under database is an error. The URL reaches the pod as
+  # REMEDY_DATABASE_URL (secretKeyRef); the pool size is REMEDY_DATABASE_MAX_CONNS (default 10, 2 to 100) in server.env.
+  existingSecret: ""
+  secretKey: url       # the key of that Secret that holds the URL
+
+# The bundled PostgreSQL: a StatefulSet remedy-postgres with one pod and one claim, user and database remedy, in the release
+# namespace. No high availability, no replication, no TLS (the control plane connects with sslmode=disable on the pod
+# network), no backups off the node. See the chart README, "The database".
+postgres:
+  # Unset (the default): on, unless database.existingSecret is set. true together with database.existingSecret is refused
+  # (a contradiction), and so is false without it (no database at all).
+  enabled: null
+  # Required while the bundled database is on: a Secret that exists already, with the password under passwordKey. Any
+  # characters work (openssl rand -hex 24 is just convenient). The chart never creates it and never takes the password as a
+  # value; the control plane gets it as PGPASSWORD next to a URL without a password, never inside a URL. It is set when the
+  # data directory is created; changing it in the Secret later does not change it in the database (see the chart README).
+  # With database.existingSecret set, every value below must stay at its default (the render refuses one that would do nothing).
+  existingSecret: ""
+  passwordKey: password
+  image:
+    repository: postgres
+    # Exactly MAJOR.MINOR of the Debian-based image (the official postgres image's plain tags). The render refuses 16 or
+    # latest (a moving tag), -alpine (it runs postgres as uid 70, the chart as 999), any other suffix, and a digest: this
+    # value is a tag only. A new minor of the same major is a plain upgrade; a new major needs a dump and a restore.
+    tag: "16.15"
+  persistence:
+    size: 5Gi
+    storageClass: ""   # empty: the cluster's default
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 512Mi}
+  # A CronJob that runs pg_dump into a claim of its own and keeps the dumps of about the last retentionDays days (older than
+  # retentionDays * 1440 minutes when a new dump was written). The claim is in the same cluster (on a single-node cluster on
+  # the same disk): it protects against a damaged database, not a lost disk.
+  backup:
+    enabled: true
+    schedule: "17 3 * * *"
+    retentionDays: 7
+    size: 2Gi
+    storageClass: ""   # empty: postgres.persistence.storageClass
+    resources:
+      requests: {cpu: 10m, memory: 64Mi}
+      limits: {memory: 256Mi}
+
 server:
   resources:
     requests: {cpu: 50m, memory: 128Mi}
     limits: {memory: 512Mi}
-  persistence:
-    size: 1Gi
-    storageClass: ""   # empty: the cluster's default
-    existingClaim: ""  # set: use this claim, create none
   service:
     type: ClusterIP
     nodePort: null     # only for type NodePort
   # Extra environment variables for the control plane, for example REMEDY_POLL_INTERVAL or REMEDY_LOG_LEVEL. A name that
-  # contains PASSWORD, TOKEN or KEY is refused: secrets do not belong in values. REMEDY_POLL_INTERVAL, REMEDY_DIAGNOSE_* and
-  # REMEDY_RUN_TIMEOUT are only defaults: the Setup page can override them.
+  # contains PASSWORD, TOKEN or KEY is refused: secrets do not belong in values. REMEDY_DATABASE_URL and REMEDY_DB are
+  # refused too (the chart sets the first from the Secret of database; the second is gone). REMEDY_DATABASE_MAX_CONNS is
+  # allowed here. REMEDY_POLL_INTERVAL, REMEDY_DIAGNOSE_* and REMEDY_RUN_TIMEOUT are only defaults: the Setup page can
+  # override them.
   env: {}
 
 ingress:
@@ -94,6 +146,18 @@ networkPolicy:
   apiServer:
     cidrs: []
     port: 6443
+  # PostgreSQL, the control plane's egress to its database: one rule on the remedy-server policy (the runner and the token
+  # refresher never get it). With the bundled PostgreSQL the chart writes that rule itself and this value must stay empty;
+  # with database.existingSecret it is REQUIRED while networkPolicy.enabled is true, in exactly one of two forms.
+  # Pods inside the cluster (an operator such as CloudNativePG, or a StatefulSet): TCP to the pods that match podSelector
+  # in namespace, like the Alertmanager. An empty podSelector is refused (it would admit every pod of the namespace).
+  #   database: {namespace: databases, podSelector: {cnpg.io/cluster: remedy}, port: 5432}
+  # An external server: one address range and TCP to it. An IPv4 range must be /16 to /32 and start at its network
+  # address (no host bits), an IPv6 range must be /16 to /128 and lie outside ::/16; 0.0.0.0/0, ::/0 and the like are
+  # refused, because they would open everything. Name the server by a single address when you can (/32, /128).
+  #   database: {cidr: 192.168.178.20/32, port: 5432}
+  # port defaults to 5432 in both forms (an integer from 1 to 65535).
+  database: {}
   # Where the control plane may open SSH connections (the host tools): single addresses, never a range. Each entry is
   # one egress rule on the remedy-server policy; the runner has no such rule. The render refuses an IPv4 address that
   # is not /32, an IPv6 address that is not /128, a port outside 1 to 65535, and the API server's own address.

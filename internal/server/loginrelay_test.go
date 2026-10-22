@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,6 +16,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/loginrelay"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 // relayURL is a sign-in address ValidateURL accepts; its values are fake.
@@ -48,11 +48,7 @@ func writeLoginActivity(st *store.Store, ev loginrelay.Event) {
 
 func newLoginEnv(t *testing.T) *loginEnv {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	status := server.NewRunnerStatus()
 	mgr := loginrelay.New(loginrelay.Config{
 		PollWait: 200 * time.Millisecond,
@@ -190,11 +186,7 @@ var loginPaths = []struct{ method, path string }{
 }
 
 func TestLoginRelayRoutesAbsentWithoutAManager(t *testing.T) {
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	ts := httptest.NewServer(server.New(server.Deps{Store: st, Auth: auth.New(password), RunnerToken: runnerToken, RunnerStatus: server.NewRunnerStatus()}))
 	t.Cleanup(ts.Close)
 	e := &env{ts: ts, store: st}

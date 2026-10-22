@@ -22,11 +22,15 @@ Do not paste the token into a terminal, a chat or a file. You enter it once, in 
 
 ```sh
 make web-install && make build
+# a PostgreSQL for the run, a throwaway container on the loopback (data is lost with it; docker rm -f remedy-realrun-db removes it)
+docker run -d --name remedy-realrun-db -p 127.0.0.1:55432:5432 -e POSTGRES_USER=remedy -e POSTGRES_PASSWORD=remedy -e POSTGRES_DB=remedy postgres:16
 mkdir -p ~/remedy-real-run && cd ~/remedy-real-run
 export REMEDY_ADMIN_PASSWORD='choose-a-long-password'
 export REMEDY_RUNNER_TOKEN="$(openssl rand -hex 24)"
 export REMEDY_MASTER_KEY="$(openssl rand -base64 32)"
-export REMEDY_DB="$PWD/remedy.db" REMEDY_LOG_LEVEL=debug REMEDY_POLL_INTERVAL=30s
+export REMEDY_DATABASE_URL='postgres://remedy:remedy@127.0.0.1:55432/remedy?sslmode=disable' REMEDY_LOG_LEVEL=debug REMEDY_POLL_INTERVAL=30s
+rdump() { docker exec remedy-realrun-db pg_dump -U remedy -d remedy; }   # a text dump of the database, for the leak check
+hexof() { od -An -v -tx1 | tr -d ' \n'; }                                   # lower-case hex of stdin: how a dump shows a bytea column
 
 <path-to-remedy>/bin/remedy-server > server.log 2>&1 &
 <path-to-remedy>/bin/remedy-runner > runner.log 2>&1 &
@@ -89,9 +93,14 @@ git switch main && git branch -D real-run/red-check
 - Writes: `grep 'github request' server.log | grep -vc 'method=GET'` must print `0`, and
   `grep -c 'refused' server.log` must print `0`.
 - Requests: `grep -c 'github request' server.log` and, per status, `grep -o 'status=[0-9]*' server.log | sort | uniq -c`.
-- The token: `scripts/check-no-token-leak.sh http://localhost:8080 server.log runner.log "$REMEDY_DB"` (from the
+- The token: `rdump > db.sql; scripts/check-no-token-leak.sh http://localhost:8080 server.log runner.log db.sql` (from the
   Remedy checkout, with `REMEDY_ADMIN_PASSWORD` set). It asks for the token with the input hidden, and searches the
-  logs, the database file and every admin API response. It must end with "the token appears nowhere that was searched".
+  logs, the database dump and every admin API response. It must end with "the token appears nowhere that was searched".
+  A dump writes a `bytea` column (the sealed token, a run token's hash) as hex, so a plain-text token stored in one would not match
+  that search. Run the script a second time with the hex form of the token, which it then reads from the pipe instead of asking:
+  `read -rs T; printf '%s' "$T" | hexof | scripts/check-no-token-leak.sh http://localhost:8080 server.log runner.log db.sql; unset T`.
+  Both runs must end with the same line. What this cannot see is what a dump does not show (dead tuples, the write-ahead log); the
+  guarantee rests on the sealing, which the tests check on every column, not on this scan.
 
 ## 7. Clean up
 

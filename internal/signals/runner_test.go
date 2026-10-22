@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +15,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/signals"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 type fakeSource struct {
@@ -58,11 +58,7 @@ type rig struct {
 
 func newRig(t *testing.T) *rig {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	g := &rig{st: st, src: &fakeSource{on: true}, logs: &bytes.Buffer{}}
 	g.r = &signals.Runner{
 		Sources: []signals.Source{g.src}, Engine: &incident.Engine{Store: st},
@@ -425,7 +421,7 @@ func TestTheHostListIsAskedOncePerCycleAndItsFailureFailsTheCycle(t *testing.T) 
 	working := g.r.Hosts
 	g.r.Hosts = func(context.Context) ([]signals.HostRules, error) {
 		asked++
-		return nil, errors.New("database is locked")
+		return nil, errors.New("connection reset by peer")
 	}
 	// Old/1 is absent from this answer and A/1 is new: neither may be resolved or opened.
 	g.cycle(sig("A/1", "warning", false, map[string]string{"job": "x"}), sig("B/2", "warning", false, nil))
@@ -440,7 +436,7 @@ func TestTheHostListIsAskedOncePerCycleAndItsFailureFailsTheCycle(t *testing.T) 
 		t.Errorf("activity %d -> %d: a failed cycle changed something", before, n)
 	}
 	st := g.r.States()[0]
-	if st.State != signals.StateError || !strings.Contains(st.Error, "the hosts could not be read") || !strings.Contains(st.Error, "database is locked") {
+	if st.State != signals.StateError || !strings.Contains(st.Error, "the hosts could not be read") || !strings.Contains(st.Error, "connection reset by peer") {
 		t.Fatalf("state = %+v, want an error that names the hosts", st)
 	}
 	if n := strings.Count(g.logs.String(), "the hosts could not be read"); n != 1 {

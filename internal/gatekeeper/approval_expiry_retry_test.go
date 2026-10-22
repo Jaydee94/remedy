@@ -1,25 +1,23 @@
 package gatekeeper_test
 
 import (
-	"database/sql"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
-// When the store cannot expire a call at its deadline (here: a trigger on a second connection refuses the update), the waiter must try
+// When the store cannot expire a call at its deadline (here: a trigger refuses the update), the waiter must try
 // again instead of giving up: the call would stay pending for good, the run's clock paused and the runner held.
 func TestAnExpiryThatFailsIsRetriedUntilItWorks(t *testing.T) {
 	e, in := automaticEnv(t, ms(100))
-	db, err := sql.Open("sqlite", "file:"+e.dbPath+"?_pragma=busy_timeout(5000)")
-	if err != nil {
+	db := testutil.RawDB(t, e.dsn)
+	if _, err := db.Exec(`CREATE FUNCTION refuse_expiry_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'refused for the test'; END $$`); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.Exec(`CREATE TRIGGER refuse_expiry BEFORE UPDATE ON tool_calls WHEN NEW.status = 'abandoned'
-		BEGIN SELECT RAISE(ABORT, 'refused for the test'); END`); err != nil {
+	if _, err := db.Exec(`CREATE TRIGGER refuse_expiry BEFORE UPDATE ON tool_calls FOR EACH ROW WHEN (NEW.status = 'abandoned') EXECUTE FUNCTION refuse_expiry_fn()`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -29,7 +27,7 @@ func TestAnExpiryThatFailsIsRetriedUntilItWorks(t *testing.T) {
 	if c := e.pending(t); c.Status != store.CallWaiting {
 		t.Fatalf("call = %+v, want it waiting while the store refuses", c)
 	}
-	if _, err := db.Exec(`DROP TRIGGER refuse_expiry`); err != nil {
+	if _, err := db.Exec(`DROP TRIGGER refuse_expiry ON tool_calls`); err != nil {
 		t.Fatal(err)
 	}
 

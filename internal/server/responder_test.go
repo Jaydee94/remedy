@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -29,6 +28,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 const (
@@ -71,7 +71,7 @@ func (f *fakeRead) GetTarball(context.Context, string, string) (io.ReadCloser, e
 }
 
 type respEnv struct {
-	dbPath string
+	dsn    string // the database, for a test that rewrites a row
 	ts     *httptest.Server
 	st     *store.Store
 	src    *fakeRead
@@ -100,12 +100,7 @@ func newRespEnv(t *testing.T, openKey secret.Key) *respEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	st, err := store.Open(dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st, dsn := testutil.StoreDSN(t)
 	ctx := context.Background()
 	sealed, _ := sealKey.Seal([]byte(respToken), store.ConnectionAAD())
 	if err := st.SaveConnection(ctx, store.Connection{TokenCiphertext: sealed, TokenHint: "ijkl", Login: "octo", Status: store.ConnOK, CheckedAt: time.Now()}); err != nil {
@@ -129,7 +124,7 @@ func newRespEnv(t *testing.T, openKey secret.Key) *respEnv {
 	t.Cleanup(ts.Close)
 
 	jar, _ := cookiejar.New(nil)
-	e := &respEnv{dbPath: dbPath, ts: ts, st: st, src: src, repo: repo, client: &http.Client{Jar: jar}}
+	e := &respEnv{dsn: dsn, ts: ts, st: st, src: src, repo: repo, client: &http.Client{Jar: jar}}
 	if code, _ := e.admin(t, http.MethodPost, "/api/login", `{"password":"`+password+`"}`); code != http.StatusNoContent {
 		t.Fatalf("login status = %d", code)
 	}

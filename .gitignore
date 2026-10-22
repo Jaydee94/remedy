@@ -4,6 +4,7 @@
 *.db-wal
 .env
 .env.*
+dev/pg/env.sh
 .DS_Store
 .playwright-mcp/
 release/node_modules/

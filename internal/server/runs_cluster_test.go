@@ -4,23 +4,18 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/gatekeeper"
 	"github.com/Jaydee94/remedy/internal/server"
-	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 // clusterRunEnv is a server with the gatekeeper and the given cluster, and a signed-in admin client.
 func clusterRunEnv(t *testing.T, cluster server.Cluster) (*env, *http.Client) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	g := gatekeeper.New(gatekeeper.Config{Store: st, Tools: gatekeeper.IncidentTools(st)})
 	ts := httptest.NewServer(server.New(server.Deps{
 		Store: st, Auth: auth.New(password), RunnerToken: runnerToken, Gatekeeper: g, Cluster: cluster,

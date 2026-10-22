@@ -5,12 +5,11 @@ import (
 	"encoding/base64"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"testing"
 
 	"github.com/Jaydee94/remedy/internal/app"
 	"github.com/Jaydee94/remedy/internal/config"
-	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 func appFor(t *testing.T, extra map[string]string) *app.App {
@@ -19,6 +18,7 @@ func appFor(t *testing.T, extra map[string]string) *app.App {
 		"REMEDY_ADMIN_PASSWORD": password,
 		"REMEDY_RUNNER_TOKEN":   runnerToken,
 		"REMEDY_MASTER_KEY":     secret32(),
+		"REMEDY_DATABASE_URL":   "postgres://remedy:unused@localhost/remedy", // only parsed here; the store is opened below
 	}
 	for k, v := range extra {
 		env[k] = v
@@ -27,11 +27,7 @@ func appFor(t *testing.T, extra map[string]string) *app.App {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	return app.New(cfg, st, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 }
 

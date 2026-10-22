@@ -118,10 +118,14 @@ install_argocd() {
   k apply -f "$KIND_DIR/guestbook.yaml"
 }
 
-# dummy.env holds what the dummy setup generated: the URL and the three application secrets. It is made once and kept until
-# down.sh removes it together with the cluster, so the master key always matches the database it sealed.
+# dummy.env holds what the dummy setup generated: the URL, the three application secrets and the database password. It is
+# made once and kept until down.sh removes it together with the cluster, so the master key always matches the database it
+# sealed and the password always matches the database that holds it.
 write_dummy_env() {
-  [ -f "$DUMMY_ENV" ] && return 0
+  if [ -f "$DUMMY_ENV" ]; then
+    ensure_postgres_password
+    return
+  fi
   # The values first: a failing openssl stops the script here (set -e), before a file with an empty value exists.
   admin_password=$(openssl rand -hex 12)
   runner_token=$(openssl rand -hex 24)
@@ -134,6 +138,17 @@ write_dummy_env() {
      echo "REMEDY_RUNNER_TOKEN=$runner_token"
      echo "REMEDY_MASTER_KEY=$master_key"
    } > "$DUMMY_ENV")
+  ensure_postgres_password
+}
+
+# ensure_postgres_password adds REMEDY_POSTGRES_PASSWORD to dummy.env unless a non-empty one is there (a file from before the
+# database existed has none). Hex, so that it can sit in a URL unescaped. It changes no other line.
+ensure_postgres_password() {
+  [ -f "$DUMMY_ENV" ] || { echo "there is no $DUMMY_ENV" >&2; return 1; }
+  grep -q '^REMEDY_POSTGRES_PASSWORD=.' "$DUMMY_ENV" && return 0
+  pg_password=$(openssl rand -hex 16)
+  [ -n "$pg_password" ] || { echo "openssl made an empty secret" >&2; return 1; }
+  (umask 077; echo "REMEDY_POSTGRES_PASSWORD=$pg_password" >> "$DUMMY_ENV")
 }
 
 # load_dummy_env puts the values of dummy.env into the environment of the script.
@@ -172,6 +187,35 @@ apply_secret() {
   k -n "$NS" create secret generic remedy-secrets --from-env-file="$tmp" --dry-run=client -o yaml | k apply -f -
   rm -f "$tmp"
   trap - EXIT
+}
+
+# postgres_url prints the connection URL of the dummy's PostgreSQL from REMEDY_POSTGRES_PASSWORD in the environment
+# (load_dummy_env). The service name is the one of postgres.yaml. The testbed's server has no TLS.
+postgres_url() {
+  [ -n "${REMEDY_POSTGRES_PASSWORD:-}" ] || { echo "REMEDY_POSTGRES_PASSWORD is not set" >&2; return 1; }
+  printf 'postgres://remedy:%s@remedy-postgres.%s.svc:5432/remedy?sslmode=disable\n' "$REMEDY_POSTGRES_PASSWORD" "$NS"
+}
+
+# apply_postgres makes the Secret remedy-postgres (the password for the database pod, the URL for the chart's
+# database.existingSecret) and the database itself, and waits until it is up. The values go to kubectl through a 0600 file,
+# never as arguments. The chart installs no database; this one is the testbed's own.
+apply_postgres() {
+  load_dummy_env
+  url=$(postgres_url) || exit 1
+  tmp=$(umask 077; mktemp)
+  trap 'rm -f "$tmp"' EXIT
+  {
+    echo "password=$REMEDY_POSTGRES_PASSWORD"
+    echo "url=$url"
+  } > "$tmp"
+  k -n "$NS" create secret generic remedy-postgres --from-env-file="$tmp" --dry-run=client -o yaml | k apply -f -
+  rm -f "$tmp"
+  trap - EXIT
+  k apply -f "$KIND_DIR/postgres.yaml"
+  k -n "$NS" rollout status statefulset/remedy-postgres --timeout=300s || {
+    echo "the database did not become ready within 300 s: kubectl -n $NS describe pod remedy-postgres-0; kubectl -n $NS logs remedy-postgres-0" >&2
+    exit 1
+  }
 }
 
 # deploy_release installs or upgrades the chart with the pinned CLI, the dummy's values, the image tags and the address of

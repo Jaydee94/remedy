@@ -31,7 +31,8 @@ fi
 # `write token:` is about the Secret. Whether the server pod already sees the file cannot be asked (the image has no shell); the
 # runbook explains it.
 echo "token refresher: last scheduled success $(k -n "$NS" get cronjob remedy-token-refresh -o jsonpath='{.status.lastSuccessfulTime}' 2> /dev/null | grep . || echo never)"
-echo "database volume: $(k -n "$NS" get pvc remedy-data -o jsonpath='{.status.phase}' 2>/dev/null || echo none)"
+db_ready=$(k -n "$NS" get statefulset remedy-postgres -o jsonpath='{.status.readyReplicas}' 2> /dev/null || true)
+echo "database: ${db_ready:-0}/1 ready (postgres)"
 if [ -d "$CLAUDE_DIR" ]; then login_dir=present; else login_dir=missing; fi
 echo "login directory: $CLAUDE_DIR ($login_dir)"
 if [ -f "$DUMMY_ENV" ]; then

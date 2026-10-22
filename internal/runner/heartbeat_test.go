@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -31,11 +30,7 @@ func (f tripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(
 // startToolLoop runs a loop with a heartbeat every 30 ms. wrap, when given, wraps the transport the runner uses.
 func startToolLoop(t *testing.T, p provider.Provider, timeout time.Duration, wrap func(http.RoundTripper) http.RoundTripper) (*store.Store, *httptest.Server) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	ts := httptest.NewServer(server.New(server.Deps{Store: st, Auth: auth.New("correct horse battery"), RunnerToken: token}))
 	t.Cleanup(ts.Close)
 

@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -31,11 +30,7 @@ func startLoop(t *testing.T, providers map[string]provider.Provider) (*store.Sto
 // startLoopWithTimeout is startLoop with a run timeout; zero means the default.
 func startLoopWithTimeout(t *testing.T, providers map[string]provider.Provider, timeout time.Duration) (*store.Store, *httptest.Server) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 
 	ts := httptest.NewServer(server.New(server.Deps{Store: st, Auth: auth.New("correct horse battery"), RunnerToken: token}))
 	t.Cleanup(ts.Close)
@@ -128,11 +123,7 @@ func TestLoopFailsRunWithUnknownProvider(t *testing.T) {
 }
 
 func TestLoopBusyIsTrueFromClaimToFinish(t *testing.T) {
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 
 	var loop *runner.Loop
 	busyAtFinish := make(chan bool, 1)

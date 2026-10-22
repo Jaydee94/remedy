@@ -5,19 +5,14 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"testing"
 
-	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 func newCancelTestSettings(t *testing.T) *Settings {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	return New(context.Background(), st, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 

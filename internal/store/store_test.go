@@ -2,23 +2,84 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
-	"path/filepath"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/Jaydee94/remedy/internal/run"
+	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil/pgtest"
 )
 
+// testMaxConns is the pool of a test's Store: small, because many tests share one server.
+const testMaxConns = 4
+
+// openStore opens a Store on a fresh schema of its own.
 func openStore(t *testing.T) *store.Store {
 	t.Helper()
-	s, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	s, _ := openStoreAt(t)
+	return s
+}
+
+// openStoreAt is openStore with the schema's DSN, for a test that must change a row the store has no method for or open
+// the same database a second time.
+func openStoreAt(t *testing.T) (*store.Store, string) {
+	t.Helper()
+	dsn := pgtest.New(t)
+	return openStoreOn(t, dsn), dsn
+}
+
+// openStoreOn opens a Store on dsn. Its cleanup is registered after pgtest.New, so it runs before the schema is dropped.
+func openStoreOn(t *testing.T, dsn string) *store.Store {
+	t.Helper()
+	s, err := store.Open(context.Background(), secret.NewValue(dsn), store.WithMaxConns(testMaxConns))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	return s
+}
+
+// rawDB is a second connection to the schema of dsn, past the store, closed when the test ends.
+func rawDB(t *testing.T, dsn string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+// dollars rewrites the ? placeholders of a test's statement to $1, $2, ... (the statements of the tests have no ? in a
+// literal).
+func dollars(stmt string) string {
+	var b strings.Builder
+	n := 0
+	for _, c := range stmt {
+		if c == '?' {
+			n++
+			fmt.Fprintf(&b, "$%d", n)
+			continue
+		}
+		b.WriteRune(c)
+	}
+	return b.String()
+}
+
+// sqlOn runs one statement on the schema of dsn through a second connection.
+func sqlOn(t *testing.T, dsn, stmt string, args ...any) {
+	t.Helper()
+	db := rawDB(t, dsn)
+	defer db.Close()
+	if _, err := db.Exec(dollars(stmt), args...); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestCreateAndGetRun(t *testing.T) {

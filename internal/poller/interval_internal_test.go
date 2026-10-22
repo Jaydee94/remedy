@@ -4,12 +4,11 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 func TestPauseIsTheIntervalWhileItIsShortAndAShortTickWhileItIsLong(t *testing.T) {
@@ -23,11 +22,7 @@ func TestPauseIsTheIntervalWhileItIsShortAndAShortTickWhileItIsLong(t *testing.T
 }
 
 func TestRunAsksForTheIntervalAgainAndStopsPollingWhenItGrows(t *testing.T) {
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 
 	var interval atomic.Int64
 	interval.Store(int64(20 * time.Millisecond))

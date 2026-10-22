@@ -9,6 +9,8 @@ in `docs/plans/k8s-followups.md`. Implements the decision of `docs/design.md` §
 Argo; control plane as a Deployment, runner as a StatefulSet with a PVC") and refines it. Where this document and §2.7
 differ, the first plan (K-1) changes §2.7 before it changes any code, as the design document requires.
 
+**Update 2026-10-22:** the control plane no longer keeps its state on a volume. Where this document speaks of the server's PVC `remedy-data`, SQLite, `server.persistence`, `REMEDY_DB` or the store's single connection, read the history of the first chart: the control plane now uses a PostgreSQL that the operator provides (`database.existingSecret`, `networkPolicy.database`; `docs/specs/2026-10-22-postgres-only-design.md`, `deploy/chart/README.md`). The runner's state volume is unchanged.
+
 ## 1. Purpose, scope, non-goals
 
 Remedy runs completely in Kubernetes: the control plane, the runner and the jobs they need. A maintainer, or an agent working

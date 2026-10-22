@@ -1,0 +1,113 @@
+{{- if include "remedy.bundledPostgres" . }}
+# The bundled PostgreSQL: one pod, one claim, no replication and no TLS (the control plane reaches it on the pod network of
+# the namespace with sslmode=disable). The password comes from postgres.existingSecret and takes effect when the data
+# directory is created: changing it in the Secret later does not change it in the database (see the chart README).
+# A headless Service: the name resolves to the pod's address, and no service-link variables reach the other pods.
+apiVersion: v1
+kind: Service
+metadata:
+  name: remedy-postgres
+  labels:
+    {{- include "remedy.postgresLabels" (dict "ctx" . "name" "remedy-postgres") | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  clusterIP: None
+  selector:
+    {{- include "remedy.postgresSelector" (dict "ctx" . "name" "remedy-postgres") | nindent 4 }}
+  ports:
+    - {name: postgres, port: 5432, targetPort: postgres}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: remedy-postgres
+  labels:
+    {{- include "remedy.postgresLabels" (dict "ctx" . "name" "remedy-postgres") | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  serviceName: remedy-postgres
+  replicas: 1
+  # The data claim (data-remedy-postgres-0) is made by the StatefulSet, not by Helm: helm uninstall and a deleted
+  # StatefulSet leave it in place.
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      {{- include "remedy.postgresSelector" (dict "ctx" . "name" "remedy-postgres") | nindent 6 }}
+  template:
+    metadata:
+      # No chart version here: a chart upgrade that changes nothing of the database does not restart it.
+      labels:
+        {{- include "remedy.postgresSelector" (dict "ctx" . "name" "remedy-postgres") | nindent 8 }}
+        app.kubernetes.io/part-of: remedy
+        app.kubernetes.io/component: database
+    spec:
+      automountServiceAccountToken: false
+      # Time for a clean shutdown (a checkpoint) before the kubelet kills the server.
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        {{- include "remedy.postgresPodSecurity" . | nindent 8 }}
+      containers:
+        - name: postgres
+          image: {{ include "remedy.postgresImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - {name: postgres, containerPort: 5432}
+          env:
+            - {name: POSTGRES_USER, value: remedy}
+            - {name: POSTGRES_DB, value: remedy}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "remedy.postgresSecret" . }}
+                  key: {{ include "remedy.postgresSecretKey" . }}
+            # A subdirectory: the claim's mount point can hold a lost+found that initdb refuses.
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          # Over TCP: the image's first server (initdb) listens on its socket only, so a check over the socket would answer too early.
+          # The startup probe gives initdb and a crash recovery up to five minutes before the liveness probe counts.
+          startupProbe:
+            exec:
+              command: [pg_isready, -h, 127.0.0.1, -U, remedy, -d, remedy]
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: [pg_isready, -h, 127.0.0.1, -U, remedy, -d, remedy]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: [pg_isready, -h, 127.0.0.1, -U, remedy, -d, remedy]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+          securityContext:
+            {{- include "remedy.postgresContainerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+            # The root file system is read-only: the server's socket and lock file, and temporary files.
+            - {name: run, mountPath: /var/run/postgresql}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+  # A StatefulSet's claim template cannot be changed after the install: a new size or class fails the upgrade. Resize the
+  # claim data-remedy-postgres-0 itself (if its class allows expansion).
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "remedy.postgresSelector" (dict "ctx" . "name" "remedy-postgres") | nindent 10 }}
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.postgres.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.persistence.size | quote }}
+{{- end }}

@@ -21,7 +21,7 @@ type Beat struct {
 // failed it): the runner then stops the agent.
 func (s *Store) Heartbeat(ctx context.Context, runID string, now time.Time) (Beat, error) {
 	var beat Beat
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *txn) error {
 		var cancel int
 		err := tx.QueryRowContext(ctx, `SELECT cancel_requested FROM runs WHERE id = ? AND status = 'running'`, runID).Scan(&cancel)
 		if errors.Is(err, sql.ErrNoRows) {

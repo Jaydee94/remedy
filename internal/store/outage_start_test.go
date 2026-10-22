@@ -2,10 +2,8 @@ package store_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -23,31 +21,6 @@ func alertIncident(t *testing.T, s *store.Store, key string, auto bool) store.In
 		t.Fatal(err)
 	}
 	return in
-}
-
-// openStoreAt is openStore with the file's path, for a test that must change a row the store has no method for.
-func openStoreAt(t *testing.T) (*store.Store, string) {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "test.db")
-	s, err := store.Open(path)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
-	return s, path
-}
-
-// sqlOn runs one statement on the file through a second connection that is closed again.
-func sqlOn(t *testing.T, path, stmt string, args ...any) {
-	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.Exec(stmt, args...); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func startAlert(s *store.Store, in store.Incident, auto bool, now time.Time, mod func(*store.StartParams)) (run.Run, error) {
@@ -136,7 +109,7 @@ func TestACandidateOfAnotherSourceNeedsAutoDiagnoseOpenStateAndFreshness(t *test
 	want := alertIncident(t, s, "fresh-auto", true)
 	alertIncident(t, s, "fresh-manual", false)
 	old := alertIncident(t, s, "old-auto", true)
-	sqlOn(t, path, `UPDATE incidents SET last_seen = strftime('%Y-%m-%dT%H:%M:%S','now','-1 hour') || '.000000000Z' WHERE id = ?`, old.ID)
+	sqlOn(t, path, `UPDATE incidents SET last_seen = ? WHERE id = ?`, time.Now().UTC().Add(-time.Hour).Format("2006-01-02T15:04:05.000000000Z"), old.ID)
 
 	diagnosing := alertIncident(t, s, "diagnosing", true)
 	sqlOn(t, path, `UPDATE incidents SET state = 'diagnosing' WHERE id = ?`, diagnosing.ID)

@@ -44,9 +44,18 @@ type LearnStart struct {
 // run has gatekeeper access (mcp), no cluster tools, one host and is never automatic. It returns ErrNotFound for an unknown host,
 // ErrLearning when a learning run for the host is queued or running, ErrBusy when any run is, and ErrProposalsWaiting when more than
 // learnRoom proposals of the host wait for a review. It creates nothing then.
+//
+// It takes the lock of the starts of a run (lockDiagnosis: "one run at a time" is the same rule as for a diagnosis) and the lock of
+// the skills' limits (the count of the proposals that wait), so the counts hold until the run is stored.
 func (s *Store) StartLearning(ctx context.Context, p LearnStart) (run.Run, error) {
 	id := run.NewID()
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *txn) error {
+		if err := s.lockDiagnosis(ctx, tx); err != nil {
+			return err
+		}
+		if err := s.lockSkills(ctx, tx); err != nil {
+			return err
+		}
 		name, err := hostName(ctx, tx, p.HostID)
 		if err != nil {
 			return err
@@ -146,7 +155,7 @@ func (s *Store) CountProposals(ctx context.Context, hostID int64) (int, error) {
 
 // checkPending refuses a set of proposals that would leave the host with more than skill.MaxPendingPerHost proposals waiting. A
 // pending proposal with a name in the set is replaced by it and does not count.
-func checkPending(ctx context.Context, tx *sql.Tx, hostID int64, items []Proposal) error {
+func checkPending(ctx context.Context, tx *txn, hostID int64, items []Proposal) error {
 	var pending int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM skills WHERE host_id = ? AND state = 'proposed'`, hostID).Scan(&pending); err != nil {
 		return err

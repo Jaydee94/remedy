@@ -1,8 +1,72 @@
 {{- /* Fails the render for a value the chart cannot work without or must never accept. It renders nothing. */ -}}
 {{- $_ := include "remedy.secretName" . -}}
+{{- $bundled := include "remedy.bundledPostgres" . -}}
+{{- /* The keys under postgres, in both modes. A value is never echoed: a password pasted into a wrong key would show. */ -}}
+{{- $pgKeys := dict "" (list "enabled" "existingSecret" "passwordKey" "image" "persistence" "resources" "backup") "image" (list "repository" "tag") "persistence" (list "size" "storageClass") "backup" (list "enabled" "schedule" "retentionDays" "size" "storageClass" "resources") }}
+{{- range $name, $value := .Values.postgres }}
+{{- if not (has $name (get $pgKeys "")) }}
+{{- fail (printf "postgres.%s is not a value of this chart: the password belongs in a Secret (postgres.existingSecret, key postgres.passwordKey), never in values" $name) }}
+{{- end }}
+{{- if hasKey $pgKeys $name }}
+{{- if not (kindIs "map" $value) }}
+{{- fail (printf "postgres.%s must be an object (the value is not shown)" $name) }}
+{{- end }}
+{{- range $sub, $_ := $value }}
+{{- if not (has $sub (get $pgKeys $name)) }}
+{{- fail (printf "postgres.%s.%s is not a value of this chart: postgres.%s takes %s (the value is not shown)" $name $sub $name (join ", " (get $pgKeys $name))) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if not $bundled }}
+{{- /* A database of your own: every postgres value but enabled must be the chart's default, or it would silently do nothing. */ -}}
+{{- $defaults := include "remedy.postgresDefaults" . | fromYaml }}
+{{- range $name, $value := .Values.postgres }}
+{{- if and (ne $name "enabled") (not (deepEqual $value (get $defaults $name))) }}
+{{- fail (printf "postgres.%s has no effect with a database of your own (database.existingSecret is set): remove it, or leave database.existingSecret empty for the bundled PostgreSQL" $name) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $bundled }}
+{{- $_ := include "remedy.postgresSecret" . -}}
+{{- $_ := include "remedy.postgresSecretKey" . -}}
+{{- $tag := .Values.postgres.image.tag }}
+{{- if not (and (kindIs "string" $tag) (regexMatch "^[0-9]+\\.[0-9]+$" $tag)) }}
+{{- fail (printf "postgres.image.tag must be an exact MAJOR.MINOR version of the Debian-based postgres image, such as 16.15, got %q: a moving tag (16, latest) can change the server on a restart, a new major version cannot read the old data directory, and the Alpine image (-alpine) runs postgres as another user than the chart's 999; a digest is not supported by this value" (toString $tag)) }}
+{{- end }}
+{{- if not .Values.postgres.image.repository }}
+{{- fail "postgres.image.repository is required" }}
+{{- end }}
+{{- if not .Values.postgres.persistence.size }}
+{{- fail "postgres.persistence.size is required, for example 5Gi" }}
+{{- end }}
+{{- if .Values.postgres.backup.enabled }}
+{{- if not (and (kindIs "string" .Values.postgres.backup.schedule) .Values.postgres.backup.schedule) }}
+{{- fail "postgres.backup.schedule is required while postgres.backup.enabled is true: a cron schedule, for example \"17 3 * * *\"" }}
+{{- end }}
+{{- $days := .Values.postgres.backup.retentionDays }}
+{{- if not (or (kindIs "float64" $days) (kindIs "int" $days) (kindIs "int64" $days)) }}
+{{- fail (printf "postgres.backup.retentionDays must be a whole number of days from 1 to 3650, got %v" (default "nothing" $days)) }}
+{{- end }}
+{{- if or (ne (float64 $days) (float64 (int64 $days))) (lt (int64 $days) 1) (gt (int64 $days) 3650) }}
+{{- fail (printf "postgres.backup.retentionDays must be a whole number of days from 1 to 3650, got %v" $days) }}
+{{- end }}
+{{- if not .Values.postgres.backup.size }}
+{{- fail "postgres.backup.size is required while postgres.backup.enabled is true, for example 2Gi" }}
+{{- end }}
+{{- end }}
+{{- else }}
+{{- $_ := include "remedy.databaseSecret" . -}}
+{{- $_ := include "remedy.databaseSecretKey" . -}}
+{{- end }}
+{{- range $name, $_ := .Values.database }}
+{{- if not (has $name (list "existingSecret" "secretKey")) }}
+{{- fail (printf "database.%s is not a value of this chart: the connection URL holds a password and belongs in a Secret (database.existingSecret, key database.secretKey), never in values; the pool size is REMEDY_DATABASE_MAX_CONNS in server.env" $name) }}
+{{- end }}
+{{- end }}
 {{- range $name, $_ := .Values.server.env }}
-{{- if or (has $name (list "REMEDY_ADDR" "REMEDY_INTERNAL_ADDR" "REMEDY_DB")) (hasPrefix "REMEDY_K8S_" $name) }}
-{{- fail (printf "server.env.%s: the chart sets this variable itself (a second entry would silently win); use the chart's own values (server.service, persistence, cluster.*) instead" $name) }}
+{{- if or (has $name (list "REMEDY_ADDR" "REMEDY_INTERNAL_ADDR" "REMEDY_DB" "REMEDY_DATABASE_URL")) (hasPrefix "REMEDY_K8S_" $name) }}
+{{- fail (printf "server.env.%s: the chart sets this variable itself (a second entry would silently win); use the chart's own values (server.service, database.*, cluster.*) instead" $name) }}
 {{- end }}
 {{- end }}
 {{- if .Values.cluster.write.enabled }}
@@ -55,6 +119,58 @@
 {{- end }}
 {{- if hasKey $am "port" }}
 {{- $_ := include "remedy.checkPort" (dict "what" "networkPolicy.alertmanager" "port" $am.port) }}
+{{- end }}
+{{- end }}
+{{- /* networkPolicy.database: where the control plane may reach PostgreSQL. Exactly one of two forms. */ -}}
+{{- $db := .Values.networkPolicy.database | default dict }}
+{{- if $bundled }}
+{{- if $db }}
+{{- fail "networkPolicy.database and postgres.enabled: with the bundled PostgreSQL the chart writes the control plane's rule to it itself; networkPolicy.database is for a database of your own (database.existingSecret): remove it" }}
+{{- end }}
+{{- else }}
+{{- if not $db }}
+{{- fail "networkPolicy.database is required while networkPolicy.enabled is true and database.existingSecret names a database of your own: the control plane's egress to PostgreSQL. Either the pods in the cluster (namespace, podSelector, port) or an external server (cidr, port); see the chart README" }}
+{{- end }}
+{{- range $name, $_ := $db }}
+{{- if not (has $name (list "namespace" "podSelector" "cidr" "port")) }}
+{{- fail (printf "networkPolicy.database.%s is not a value of this chart: use namespace and podSelector (pods in the cluster) or cidr (an external server), and port" $name) }}
+{{- end }}
+{{- end }}
+{{- $podForm := or (hasKey $db "namespace") (hasKey $db "podSelector") }}
+{{- if eq $podForm (hasKey $db "cidr") }}
+{{- fail "networkPolicy.database needs exactly one form: namespace with podSelector (pods in the cluster) or cidr (an external server), not both and not neither" }}
+{{- end }}
+{{- if $podForm }}
+{{- if not (and (kindIs "string" $db.namespace) (regexMatch "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" $db.namespace)) }}
+{{- fail (printf "networkPolicy.database.namespace is required and must be a namespace name (lower case letters, digits and dashes, at most 63 characters), got %v" (default "nothing" $db.namespace)) }}
+{{- end }}
+{{- if not (and (kindIs "map" $db.podSelector) $db.podSelector) }}
+{{- fail "networkPolicy.database.podSelector is required and must not be empty: an empty selector would admit every pod of the namespace; name the database pods by their labels" }}
+{{- end }}
+{{- else }}
+{{- /* The range of an external server. A rule for everything is not a rule: an IPv4 range must be /16 to /32 (a typo of the prefix such as 192.168.178.20/8 would open a whole network) and start at its network address (no host bits: 192.168.178.20/24 is a typo too), and an IPv6 range must be /16 to /128 and lie outside ::/16, which holds ::/0, ::1 and the IPv4-mapped range ::ffff:0:0/96 (that one would reach IPv4 addresses past the IPv4 rules). */ -}}
+{{- $v4 := printf "^(%s\\.){3}%s/(3[0-2]|2[0-9]|1[6-9])$" $octet $octet }}
+{{- $v6 := "^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}/(1[6-9]|[2-9][0-9]|1[01][0-9]|12[0-8])$" }}
+{{- $cidrOK := false }}
+{{- if kindIs "string" $db.cidr }}
+{{- if regexMatch $v4 $db.cidr }}
+{{- $p := regexSplit "[./]" $db.cidr -1 }}
+{{- $addr := add (mul (atoi (index $p 0)) 16777216) (mul (atoi (index $p 1)) 65536) (mul (atoi (index $p 2)) 256) (atoi (index $p 3)) }}
+{{- $size := 1 }}
+{{- range until (sub 32 (atoi (index $p 4)) | int) }}
+{{- $size = mul $size 2 }}
+{{- end }}
+{{- $cidrOK = eq (mod $addr $size) 0 }}
+{{- else if and (regexMatch $v6 $db.cidr) (not (regexMatch "^(::|0{1,4}:)" $db.cidr)) }}
+{{- $cidrOK = true }}
+{{- end }}
+{{- end }}
+{{- if not $cidrOK }}
+{{- fail (printf "networkPolicy.database.cidr %v is not an address range of an external server: an IPv4 range of /16 to /32 that starts at its network address (no host bits) or an IPv6 range of /16 to /128 outside ::/16 (0.0.0.0/0, ::/0, the IPv4-mapped range and anything wider would open the pod that holds the credentials to everything)" (default "nothing" $db.cidr)) }}
+{{- end }}
+{{- end }}
+{{- if hasKey $db "port" }}
+{{- $_ := include "remedy.checkPort" (dict "what" "networkPolicy.database" "port" $db.port) }}
 {{- end }}
 {{- end }}
 {{- $mt := .Values.networkPolicy.metrics | default dict }}

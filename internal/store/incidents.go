@@ -203,17 +203,27 @@ type IncidentFilter struct {
 const incidentFrom = ` FROM incidents i LEFT JOIN repos r ON r.id = i.repo_id LEFT JOIN hosts h ON h.id = i.host_id`
 
 // incidentCols is the column list scanIncident reads. The two last columns count the firings of the incident (its
-// incident_opened and incident_reopened entries) in the 24 hours before now and name the latest one; the timestamp is part of
-// the text, built from a time and never from input.
-func incidentCols() string {
-	since := formatTS(time.Now().Add(-24 * time.Hour))
-	return `i.id, i.source, i.key, i.title, i.severity, i.auto_diagnose, i.details,
+// incident_opened and incident_reopened entries) since a cutoff and name the latest one. The cutoff is the column list's
+// placeholder, the first of every incident query: build those with incidentSelect, which puts it first in the arguments.
+const incidentCols = `i.id, i.source, i.key, i.title, i.severity, i.auto_diagnose, i.details,
 			i.repo_id, r.full_name, i.ref, i.ref_url, i.check_name, i.state, i.conclusion,
 			i.head_sha, i.check_url, i.occurrences, i.first_seen, i.last_seen, i.resolved_at, i.resolved_reason,
 			i.diagnoses, i.last_diagnosis_at, i.diagnosed_at, i.diagnosis, i.diagnosed_sha, i.run_id, i.host_id, h.name,
-			(SELECT COUNT(*) FROM activity f WHERE f.incident_id = i.id AND f.kind IN ('` + KindIncidentOpened + `', '` + KindIncidentReopened + `')
-				AND f.at >= '` + since + `'),
-			(SELECT MAX(f.at) FROM activity f WHERE f.incident_id = i.id AND f.kind IN ('` + KindIncidentOpened + `', '` + KindIncidentReopened + `'))`
+			(SELECT COUNT(*) FROM activity f WHERE f.incident_id = i.id AND f.kind IN (` + firingKinds + `)
+				AND f.at >= ?),
+			(SELECT MAX(f.at) FROM activity f WHERE f.incident_id = i.id AND f.kind IN (` + firingKinds + `))`
+
+// firingKinds lists the activity kinds that count as a firing, as SQL literals. It is a constant of its own so that no
+// string literal of incidentCols holds both a quote and the placeholder (the source scan in db_test.go reads literals
+// one at a time).
+const firingKinds = `'` + KindIncidentOpened + `', '` + KindIncidentReopened + `'`
+
+// incidentSelect returns the statement SELECT incidentCols FROM ... rest, and its arguments: the firings cutoff (24 hours
+// before now) first, then args for the placeholders of rest. The text does not depend on the time.
+func incidentSelect(rest string, args ...any) (string, []any) {
+	all := make([]any, 0, len(args)+1)
+	all = append(all, formatTS(time.Now().Add(-24*time.Hour)))
+	return `SELECT ` + incidentCols + incidentFrom + rest, append(all, args...)
 }
 
 func scanIncident(sc scanner) (Incident, error) {
@@ -299,19 +309,6 @@ func collectIncidents(rows *sql.Rows) ([]Incident, error) {
 	return list, rows.Err()
 }
 
-// inTx runs fn in a transaction. The store has a single connection, so fn must only use tx.
-func (s *Store) inTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	if err := fn(tx); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	return tx.Commit()
-}
-
 // oneRow turns "no row changed" into ErrNotFound.
 func oneRow(res sql.Result, err error) error {
 	if err != nil {
@@ -331,21 +328,18 @@ func (s *Store) OpenIncident(ctx context.Context, n NewIncident, act NewActivity
 		return Incident{}, err
 	}
 	var id int64
-	err = s.inTx(ctx, func(tx *sql.Tx) error {
+	err = s.inTx(ctx, func(tx *txn) error {
 		now := formatTS(time.Now())
-		res, err := tx.ExecContext(ctx, `
+		err := tx.QueryRowContext(ctx, `
 			INSERT INTO incidents (source, key, title, severity, auto_diagnose, details, repo_id, ref, ref_url, check_name,
 				state, conclusion, head_sha, check_url, occurrences, first_seen, last_seen, host_id)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, 1, ?, ?, ?)`,
-			n.Source, n.Key, n.Title, n.Severity, n.AutoDiagnose, string(n.Details), nullInt(n.RepoID), n.Ref, n.RefURL,
-			n.CheckName, n.Conclusion, n.HeadSHA, n.CheckURL, now, now, nullInt(n.HostID))
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, 1, ?, ?, ?) RETURNING id`,
+			n.Source, n.Key, n.Title, n.Severity, flagInt(n.AutoDiagnose), string(n.Details), nullInt(n.RepoID), n.Ref, n.RefURL,
+			n.CheckName, n.Conclusion, n.HeadSHA, n.CheckURL, now, now, nullInt(n.HostID)).Scan(&id)
 		if err != nil {
-			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			if uniqueConstraint(err) == "incidents_active_key" {
 				return ErrExists
 			}
-			return err
-		}
-		if id, err = res.LastInsertId(); err != nil {
 			return err
 		}
 		act.RepoID, act.IncidentID = n.RepoID, id
@@ -359,12 +353,12 @@ func (s *Store) OpenIncident(ctx context.Context, n NewIncident, act NewActivity
 
 // RecordRecurrence records a new failing commit of an incident that is not resolved.
 func (s *Store) RecordRecurrence(ctx context.Context, id int64, conclusion, headSHA, checkURL string, act NewActivity) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
 		if err := oneRow(tx.ExecContext(ctx, `
 			UPDATE incidents SET occurrences = occurrences + 1, conclusion = ?, head_sha = ?, check_url = ?, last_seen = ?,
 				auto_diagnose = CASE WHEN source = 'github' THEN ? ELSE auto_diagnose END
 			WHERE id = ? AND state <> 'resolved'`,
-			conclusion, headSHA, checkURL, formatTS(time.Now()), githubAutoDiagnoses(conclusion), id)); err != nil {
+			conclusion, headSHA, checkURL, formatTS(time.Now()), flagInt(githubAutoDiagnoses(conclusion)), id)); err != nil {
 			return err
 		}
 		act.IncidentID = id
@@ -395,8 +389,8 @@ func (s *Store) TouchIncidentSignal(ctx context.Context, id, hostID int64, detai
 
 // ListUnresolvedBySource returns the incidents of a source that are not resolved, ignored ones included, oldest first.
 func (s *Store) ListUnresolvedBySource(ctx context.Context, source string) ([]Incident, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+incidentCols()+incidentFrom+
-		` WHERE i.source = ? AND i.state <> 'resolved' ORDER BY i.first_seen, i.id`, source)
+	q, args := incidentSelect(` WHERE i.source = ? AND i.state <> 'resolved' ORDER BY i.first_seen, i.id`, source)
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -406,9 +400,9 @@ func (s *Store) ListUnresolvedBySource(ctx context.Context, source string) ([]In
 // ResolveIncident resolves an incident that is not resolved yet. It remembers whether the incident was ignored, so that a
 // reopen can leave it ignored.
 func (s *Store) ResolveIncident(ctx context.Context, id int64, reason string, act NewActivity) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
 		if err := oneRow(tx.ExecContext(ctx, `
-			UPDATE incidents SET state = 'resolved', resolved_at = ?, resolved_reason = ?, resolved_while_ignored = (state = 'ignored')
+			UPDATE incidents SET state = 'resolved', resolved_at = ?, resolved_reason = ?, resolved_while_ignored = CASE WHEN state = 'ignored' THEN 1 ELSE 0 END
 			WHERE id = ? AND state <> 'resolved'`, formatTS(time.Now()), reason, id)); err != nil {
 			return err
 		}
@@ -419,8 +413,9 @@ func (s *Store) ResolveIncident(ctx context.Context, id int64, reason string, ac
 
 // FindLatestResolvedByKey returns the most recently resolved incident of a source and key (ErrNotFound if there is none).
 func (s *Store) FindLatestResolvedByKey(ctx context.Context, source, key string) (Incident, error) {
-	in, err := scanIncident(s.db.QueryRowContext(ctx, `SELECT `+incidentCols()+incidentFrom+
-		` WHERE i.source = ? AND i.key = ? AND i.state = 'resolved' ORDER BY i.resolved_at DESC, i.id DESC LIMIT 1`, source, key))
+	q, args := incidentSelect(
+		` WHERE i.source = ? AND i.key = ? AND i.state = 'resolved' ORDER BY i.resolved_at DESC, i.id DESC LIMIT 1`, source, key)
+	in, err := scanIncident(s.db.QueryRowContext(ctx, q, args...))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Incident{}, ErrNotFound
 	}
@@ -452,7 +447,10 @@ func (s *Store) ReopenIncident(ctx context.Context, id int64, r Reopen, act NewA
 	if r.Title == "" || !slices.Contains(severities, r.Severity) {
 		return fmt.Errorf("%w: a reopen needs a title and a known severity", ErrInvalidIncident)
 	}
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
+		if err := lockIncidentForState(ctx, tx, id); err != nil {
+			return err
+		}
 		res, err := tx.ExecContext(ctx, `
 			UPDATE incidents SET
 				state = CASE
@@ -465,9 +463,9 @@ func (s *Store) ReopenIncident(ctx context.Context, id int64, r Reopen, act NewA
 				title = ?, severity = ?, details = ?, host_id = ?,
 				auto_diagnose = CASE WHEN diagnosed_at IS NULL THEN ? ELSE 0 END
 			WHERE id = ? AND state = 'resolved'`,
-			formatTS(time.Now()), r.Title, r.Severity, string(r.Details), nullInt(r.HostID), r.AutoDiagnose, id)
+			formatTS(time.Now()), r.Title, r.Severity, string(r.Details), nullInt(r.HostID), flagInt(r.AutoDiagnose), id)
 		if err != nil {
-			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			if uniqueConstraint(err) == "incidents_active_key" {
 				return ErrExists
 			}
 			return err
@@ -480,9 +478,20 @@ func (s *Store) ReopenIncident(ctx context.Context, id int64, r Reopen, act NewA
 	})
 }
 
+// lockIncidentForState takes the incident's row lock as a statement of its own, before an UPDATE that derives the state
+// from the incident's runs. At READ COMMITTED an UPDATE that has to wait for the row is re-checked on the new row, but its
+// subqueries keep the snapshot of when the statement started: a run that ended while it waited (and a CompleteDiagnosis
+// that held the row) would still look queued or running, and the incident would stay diagnosing for good. After this
+// statement the row is held, so the UPDATE that follows starts with a fresh snapshot and nothing can change the row under
+// it. A missing incident locks nothing; the UPDATE's guard then reports ErrNotFound.
+func lockIncidentForState(ctx context.Context, tx *txn, id int64) error {
+	_, err := tx.ExecContext(ctx, `SELECT 1 FROM incidents WHERE id = ? FOR NO KEY UPDATE`, id)
+	return err
+}
+
 // IgnoreIncident moves an open, diagnosing or diagnosed incident to ignored.
 func (s *Store) IgnoreIncident(ctx context.Context, id int64, act NewActivity) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
 		if err := oneRow(tx.ExecContext(ctx, `
 			UPDATE incidents SET state = 'ignored'
 			WHERE id = ? AND state IN ('open', 'diagnosing', 'diagnosed')`, id)); err != nil {
@@ -497,7 +506,10 @@ func (s *Store) IgnoreIncident(ctx context.Context, id int64, act NewActivity) e
 // derived: diagnosing while a responder run of the incident is queued or running, else diagnosed if a diagnosis is stored,
 // else open. It returns ErrNotFound unless the incident is ignored.
 func (s *Store) UnignoreIncident(ctx context.Context, id int64, act NewActivity) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
+		if err := lockIncidentForState(ctx, tx, id); err != nil {
+			return err
+		}
 		if err := oneRow(tx.ExecContext(ctx, `
 			UPDATE incidents SET state = CASE
 				WHEN EXISTS (SELECT 1 FROM runs r WHERE r.incident_id = incidents.id AND r.role = 'responder'
@@ -513,7 +525,8 @@ func (s *Store) UnignoreIncident(ctx context.Context, id int64, act NewActivity)
 }
 
 func (s *Store) GetIncident(ctx context.Context, id int64) (Incident, error) {
-	in, err := scanIncident(s.db.QueryRowContext(ctx, `SELECT `+incidentCols()+incidentFrom+` WHERE i.id = ?`, id))
+	q, args := incidentSelect(` WHERE i.id = ?`, id)
+	in, err := scanIncident(s.db.QueryRowContext(ctx, q, args...))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Incident{}, ErrNotFound
 	}
@@ -527,8 +540,8 @@ func (s *Store) FindActiveIncident(ctx context.Context, repoID int64, ref, check
 
 // FindActiveIncidentByKey returns the incident of a source and key that is not resolved (ErrNotFound if there is none).
 func (s *Store) FindActiveIncidentByKey(ctx context.Context, source, key string) (Incident, error) {
-	in, err := scanIncident(s.db.QueryRowContext(ctx, `SELECT `+incidentCols()+incidentFrom+
-		` WHERE i.source = ? AND i.key = ? AND i.state <> 'resolved'`, source, key))
+	q, args := incidentSelect(` WHERE i.source = ? AND i.key = ? AND i.state <> 'resolved'`, source, key)
+	in, err := scanIncident(s.db.QueryRowContext(ctx, q, args...))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Incident{}, ErrNotFound
 	}
@@ -537,8 +550,8 @@ func (s *Store) FindActiveIncidentByKey(ctx context.Context, source, key string)
 
 // ListActiveIncidents returns the incidents of a repo that are not resolved.
 func (s *Store) ListActiveIncidents(ctx context.Context, repoID int64) ([]Incident, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+incidentCols()+incidentFrom+
-		` WHERE i.repo_id = ? AND i.state <> 'resolved' ORDER BY i.id`, repoID)
+	q, args := incidentSelect(` WHERE i.repo_id = ? AND i.state <> 'resolved' ORDER BY i.id`, repoID)
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -567,18 +580,19 @@ func (s *Store) ListIncidents(ctx context.Context, f IncidentFilter) ([]Incident
 		conds = append(conds, `i.source = ?`)
 		args = append(args, f.Source)
 	}
-	query := `SELECT ` + incidentCols() + incidentFrom
+	rest := ``
 	if len(conds) > 0 {
-		query += ` WHERE ` + strings.Join(conds, ` AND `)
+		rest += ` WHERE ` + strings.Join(conds, ` AND `)
 	}
 	limit := f.Limit
 	if limit <= 0 {
 		limit = 200
 	}
-	query += ` ORDER BY i.last_seen DESC, i.id DESC LIMIT ?`
+	rest += ` ORDER BY i.last_seen DESC, i.id DESC LIMIT ?`
 	args = append(args, limit)
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	query, all := incidentSelect(rest, args...)
+	rows, err := s.db.QueryContext(ctx, query, all...)
 	if err != nil {
 		return nil, err
 	}
@@ -619,22 +633,75 @@ type ActivityQuery struct {
 	Limit      int
 }
 
-type execer interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-}
-
-func insertActivity(ctx context.Context, q execer, a NewActivity) error {
-	data := a.Data
-	if len(data) == 0 {
-		data = json.RawMessage(`{}`)
+// insertActivity logs a in the transaction tx. The entry is checked now and queued; runTx writes the queued entries of the
+// transaction, in the order they were queued, right before the commit (flushActivity). The ctx parameter is kept so that every
+// call site reads as the statement it stands for.
+func insertActivity(_ context.Context, tx *txn, a NewActivity) error {
+	if len(a.Data) == 0 {
+		a.Data = json.RawMessage(`{}`)
 	}
-	if !json.Valid(data) {
+	if !json.Valid(a.Data) {
 		return errors.New("activity data is not valid JSON")
 	}
-	_, err := q.ExecContext(ctx, `
-		INSERT INTO activity (at, kind, repo_id, incident_id, run_id, summary, data) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		formatTS(time.Now()), a.Kind, nullInt(a.RepoID), nullInt(a.IncidentID), nullString(a.RunID), a.Summary, string(data))
-	return err
+	tx.acts = append(tx.acts, a)
+	return nil
+}
+
+// flushActivity writes the queued activity entries of tx. It is the last thing a transaction does before its commit:
+//
+//  1. it takes FOR KEY SHARE on the repositories, incidents and runs the entries point at, which is the lock each insert's
+//     foreign key check needs; a delete of one of those rows (DeleteRepo, DeleteConnection and their cascades) is waited for here;
+//  2. it takes activityLockKey;
+//  3. it inserts the entries, each with the time of its insert (so the times grow with the ids).
+//
+// The lock is held until after the commit, so the next transaction draws its ids only once these are visible: ids are handed out
+// in commit order, and the stream that follows the log by id (ListActivitySince) never passes over an entry that commits later.
+// After step 2 nothing can make the transaction wait (its foreign key locks are held, no statement follows), so the activity lock
+// is never part of a deadlock.
+func (t *txn) flushActivity(ctx context.Context) error {
+	if len(t.acts) == 0 {
+		return nil
+	}
+	var repos, incidents []int64
+	var runs []string
+	for _, a := range t.acts {
+		if a.RepoID != 0 && !slices.Contains(repos, a.RepoID) {
+			repos = append(repos, a.RepoID)
+		}
+		if a.IncidentID != 0 && !slices.Contains(incidents, a.IncidentID) {
+			incidents = append(incidents, a.IncidentID)
+		}
+		if a.RunID != "" && !slices.Contains(runs, a.RunID) {
+			runs = append(runs, a.RunID)
+		}
+	}
+	if len(repos) > 0 {
+		if _, err := t.ExecContext(ctx, `SELECT 1 FROM repos WHERE id = ANY(?) ORDER BY id FOR KEY SHARE`, repos); err != nil {
+			return err
+		}
+	}
+	if len(incidents) > 0 {
+		if _, err := t.ExecContext(ctx, `SELECT 1 FROM incidents WHERE id = ANY(?) ORDER BY id FOR KEY SHARE`, incidents); err != nil {
+			return err
+		}
+	}
+	if len(runs) > 0 {
+		if _, err := t.ExecContext(ctx, `SELECT 1 FROM runs WHERE id = ANY(?) ORDER BY id FOR KEY SHARE`, runs); err != nil {
+			return err
+		}
+	}
+	if err := xactLock(ctx, t, activityLockKey); err != nil {
+		return err
+	}
+	for _, a := range t.acts {
+		if _, err := t.ExecContext(ctx, `
+			INSERT INTO activity (at, kind, repo_id, incident_id, run_id, summary, data) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			formatTS(time.Now()), a.Kind, nullInt(a.RepoID), nullInt(a.IncidentID), nullString(a.RunID), a.Summary, string(a.Data)); err != nil {
+			return err
+		}
+	}
+	t.acts = nil
+	return nil
 }
 
 func nullInt(v int64) any {
@@ -651,9 +718,10 @@ func nullString(v string) any {
 	return v
 }
 
-// AddActivity appends an entry to the activity log.
+// AddActivity appends an entry to the activity log. It runs in a transaction of its own, so that its id is drawn in commit order
+// like every other entry's.
 func (s *Store) AddActivity(ctx context.Context, a NewActivity) error {
-	return insertActivity(ctx, s.db, a)
+	return s.inTx(ctx, func(tx *txn) error { return insertActivity(ctx, tx, a) })
 }
 
 const activitySelect = `SELECT a.id, a.at, a.kind, a.repo_id, a.incident_id, a.run_id, a.summary, a.data, r.full_name

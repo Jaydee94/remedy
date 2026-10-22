@@ -3,8 +3,9 @@
 {{- fail "networkPolicy.public.from must list at least one peer: an empty list in a NetworkPolicy allows every source, which would open the public port to everyone. Name the Ingress controller's namespace or pod, or an ipBlock." }}
 {{- end }}
 # The control plane. Ingress: the public port from the configured peers (the Ingress controller, the node), the
-# internal port from runner pods only. Egress: DNS, the Kubernetes API when the cluster is on, and HTTPS to the
-# internet (GitHub), never to a private range.
+# internal port from runner pods only. Egress: DNS, the Kubernetes API when the cluster is on, PostgreSQL
+# (networkPolicy.database), the typed extras (hosts, Alertmanager, metrics) and HTTPS to the internet (GitHub), never to a
+# private range.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -50,6 +51,32 @@ spec:
         {{- end }}
       ports:
         - {protocol: TCP, port: {{ .Values.networkPolicy.apiServer.port }}}
+    {{- end }}
+    {{- /* PostgreSQL: the bundled one (its pods in this namespace), or networkPolicy.database for a database of your own (the
+           pods of the cluster or an external range); one rule either way, validated in validate.yaml. */ -}}
+    {{- if include "remedy.bundledPostgres" . }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "remedy.postgresSelector" (dict "ctx" . "name" "remedy-postgres") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: 5432}
+    {{- end }}
+    {{- with .Values.networkPolicy.database }}
+    - to:
+        {{- if .cidr }}
+        - ipBlock:
+            cidr: {{ .cidr }}
+        {{- else }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .podSelector | nindent 14 }}
+        {{- end }}
+      ports:
+        - {protocol: TCP, port: {{ if hasKey . "port" }}{{ int64 .port }}{{ else }}5432{{ end }}}
     {{- end }}
     {{- /* networkPolicy.hosts: one rule per single address (SSH for the host tools); networkPolicy.alertmanager and networkPolicy.metrics: one pod selection each. All validated in validate.yaml. */ -}}
     {{- range .Values.networkPolicy.hosts }}
@@ -128,6 +155,67 @@ spec:
               {{- include "remedy.privateRanges" . | nindent 14 }}
       ports:
         - {protocol: TCP, port: 443}
+{{- end }}
+{{- if include "remedy.bundledPostgres" . }}
+---
+# The bundled PostgreSQL. Ingress on 5432 from two peers of this namespace only: the control plane and the backup job.
+# Egress: none at all; the database opens no connection (its probes run inside the container).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: remedy-postgres
+  labels:
+    {{- include "remedy.postgresLabels" (dict "ctx" . "name" "remedy-postgres") | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "remedy.postgresSelector" (dict "ctx" . "name" "remedy-postgres") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "remedy.selector" (dict "ctx" . "component" "server") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "remedy.postgresSelector" (dict "ctx" . "name" "remedy-postgres-backup") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: 5432}
+{{- if .Values.postgres.backup.enabled }}
+---
+# The backup job of the bundled PostgreSQL. It takes no connection; it resolves the database's name and reaches its pods on
+# 5432, nothing else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: remedy-postgres-backup
+  labels:
+    {{- include "remedy.postgresLabels" (dict "ctx" . "name" "remedy-postgres-backup") | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "remedy.postgresSelector" (dict "ctx" . "name" "remedy-postgres-backup") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dnsNamespace }}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "remedy.postgresSelector" (dict "ctx" . "name" "remedy-postgres") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: 5432}
+{{- end }}
 {{- end }}
 {{- if .Values.cluster.write.enabled }}
 ---

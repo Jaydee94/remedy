@@ -13,6 +13,8 @@ package of the chart, as an OCI install would pull it), while Argo CD renders wi
 The first install is cycle 6 of the hosts and skills series ([spec](../specs/2026-10-21-operation-6-design.md)); its drill is [`home-server-drill.md`](home-server-drill.md), and
 the record of what it showed will say here what is proven.
 
+**The database.** Since the release that moved the control plane to PostgreSQL (`docs/specs/2026-10-22-postgres-only-design.md`) the chart has no volume for the control plane. By default it installs a small single-node PostgreSQL of its own (`postgres.*`, decision 11 of the spec); a PostgreSQL that you provide is the alternative (`database.existingSecret`). Sections 2, 4, 5 and 11 describe both, the bundled one first. An installation that still runs on SQLite is reinstalled with an empty database: its data is not migrated. Copy `remedy.db` out **before** you bump the chart version: under Argo CD, `prune` can delete the old claim `remedy-data`, and a `local-path` volume loses its data with it ([`postgres.md`](postgres.md), section 10). This runbook has not been run with PostgreSQL either.
+
 This installs Remedy from a release of this repository, the way the maintainer runs it. The pieces are the chart
 [`deploy/chart`](../../deploy/chart/README.md), the pinned CLI [`deploy/cli-pin.yaml`](../../deploy/cli-pin.yaml) and the
 [spec](../specs/2026-10-06-kubernetes-deployment-design.md) behind both. Plan on about an hour, most of it waiting for images
@@ -35,6 +37,7 @@ chart whose only dependency is the OCI chart of the release. **The three-source 
 - The `default` AppProject, or one that allows what the chart creates: a ClusterRole and a ClusterRoleBinding, and (with the write side on) Roles in
   the Remedy namespace, in each of the write namespaces and in the Argo CD namespace.
 - `kubectl`, `kubeseal`, `openssl` and (for the wrapper chart, to render it before the pull request) `helm` on your machine, or on the server where `kubeseal` runs.
+- Storage for the database: by default the chart installs its own PostgreSQL, with a claim `data-remedy-postgres-0` (5 GiB by default) and a claim for its nightly dumps (2 GiB), from the cluster's default storage class (local-path on k3s). Only for a database of your own instead: a PostgreSQL 16 or newer with an empty database and a role that owns it (an operator such as CloudNativePG, a StatefulSet of your own, or a server on another host); [`postgres.md`](postgres.md), section 1.
 - A GitOps repository that Argo CD watches.
 - DNS for the UI's host name. A TLS certificate for it is optional (cert-manager, or a Secret you provide); the home server serves plain HTTP on the LAN and over Tailscale.
 - A Claude subscription, for the one-time login.
@@ -83,6 +86,30 @@ makes the Secret `remedy-secrets` in `remedy`.
 The pipeline does not show the admin password. Read it from the Secret once the controller has made it:
 `kubectl -n remedy get secret remedy-secrets -o jsonpath='{.data.admin-password}' | base64 -d`.
 
+**The database** needs a second Secret, made the same way and never written to a file or to `values.yaml`. Which one depends on the database.
+
+**The bundled PostgreSQL (the default):** a Secret named by `postgres.existingSecret`, here `remedy-postgres`, with the database password under the key `password` (`postgres.passwordKey`). Any password works (the control plane gets it as `PGPASSWORD`, not inside a URL); a hex string is just convenient. Nobody needs to know it: the control plane and the backup job read it from the Secret.
+
+```sh
+printf 'password=%s\n' "$(openssl rand -hex 24)" \
+  | kubectl -n remedy create secret generic remedy-postgres --from-env-file=/dev/stdin --dry-run=client -o yaml \
+  | kubeseal --format yaml > remedy-postgres.sealed.yaml
+```
+
+Commit it as `argocd/apps/remedy/templates/sealedsecret-postgres.yaml`. The password takes effect when the database is first created; changing it later is a step of its own ([`postgres.md`](postgres.md), section 2).
+
+**Only for a database of your own:** a Secret `remedy-database` with the connection URL under the key `url` (`database.existingSecret`, `database.secretKey`). The URL holds the database password:
+
+```sh
+read -rs DBURL    # paste postgres://remedy:PASSWORD@db.databases.svc:5432/remedy?sslmode=require and press Enter; special characters in the password are percent-encoded
+printf 'url=%s\n' "$DBURL" \
+  | kubectl -n remedy create secret generic remedy-database --from-env-file=/dev/stdin --dry-run=client -o yaml \
+  | kubeseal --format yaml > remedy-database.sealed.yaml
+unset DBURL
+```
+
+`sslmode=require` encrypts without verifying the server; `verify-full` needs a CA that the server image already trusts (an operator's private CA cannot be given to the chart yet). Commit it as `argocd/apps/remedy/templates/sealedsecret-database.yaml`. `sslmode`, `sslrootcert` and what the chart can and cannot give the pod for TLS are in [`postgres.md`](postgres.md), section 4 (a private CA cannot be mounted by the chart yet).
+
 ## 5. The values
 
 For the wrapper chart, two files in the GitOps repository, in `argocd/apps/remedy/`. The chart:
@@ -109,9 +136,13 @@ remedy:
   existingSecret:
     name: remedy-secrets
 
-  server:
-    persistence:
-      size: 1Gi          # local-path: the claim is bound to one node; a node loss loses the database (see the backup chapter)
+  postgres:
+    existingSecret: remedy-postgres   # the bundled PostgreSQL: the password Secret of section 4; the chart never creates it
+  # A database of your own instead: remove the postgres block above and set
+  # database:
+  #   existingSecret: remedy-database # the URL Secret of section 4; the chart refuses the URL as a value
+  #   secretKey: url                  # the key that holds the URL (default url)
+  # and networkPolicy.database below.
 
   runner:
     model: sonnet
@@ -150,6 +181,10 @@ remedy:
       port: 6443
     hosts:                        # where the control plane may open SSH connections: single addresses (/32 or /128), never a range
       - {cidr: 192.168.1.20/32, port: 22}
+    # database:                   # only for a database of your own, and then required while the policies are on (with the bundled one the chart adds the rules itself and refuses this value):
+    #   namespace: databases      # pods in the cluster as here, or an external server {cidr: 192.168.1.30/32, port: 5432}
+    #   podSelector: {cnpg.io/cluster: remedy}   # read the labels from the cluster; must not be empty
+    #   port: 5432
     alertmanager:                 # an Alertmanager inside the cluster; read the namespace, labels and port from the cluster, do not guess
       namespace: monitoring
       podSelector: {app.kubernetes.io/name: vmalertmanager}
@@ -158,7 +193,7 @@ remedy:
 
 The pinned CLI must be in the values: no image contains it. Copy it from `deploy/cli-pin.yaml` **at the release tag** you depend on (the file's `runner:` block goes under `remedy:`), with both platforms. Find the API server's address
 with `kubectl get endpoints kubernetes -o jsonpath='{.subsets[0].addresses[0].ip}'`; on a k3s cluster with several servers list
-each one. The chart refuses to render when `cluster.write.namespaces` contains the Remedy namespace or the Argo CD namespace, when `cluster.argoNamespace` is the Remedy namespace, when `server.env` sets a variable the chart sets itself (`REMEDY_ADDR`, `REMEDY_INTERNAL_ADDR`, `REMEDY_DB`, `REMEDY_K8S_*`), when
+each one. The chart refuses to render when `cluster.write.namespaces` contains the Remedy namespace or the Argo CD namespace, when `cluster.argoNamespace` is the Remedy namespace, when `server.env` sets a variable the chart sets itself (`REMEDY_ADDR`, `REMEDY_INTERNAL_ADDR`, `REMEDY_DATABASE_URL`, `REMEDY_DB`, `REMEDY_K8S_*`), when neither `postgres.existingSecret` (the bundled database) nor `database.existingSecret` (a database of your own) is set, when both kinds of database are configured (`postgres.enabled: true` together with `database.existingSecret`), when a database of your own has no `networkPolicy.database` (while the policies are on) or the bundled one has one, when
 the network policies and `cluster.enabled` are on but `networkPolicy.apiServer.cidrs` is empty, and for a `networkPolicy.hosts` entry that is not a single address or whose port is not 1 to 65535, or an `alertmanager` without a namespace or with an empty `podSelector`
 (`deploy/chart/README.md`). The two values open one egress rule each, on the control plane's policy only: the runner never opens an SSH connection.
 The monitoring namespace's own isolation policy must admit the Remedy namespace as well, or the rule alone is not enough (on the home server that is a pull request to its monitoring app).
@@ -371,22 +406,17 @@ The full runbook is [`release.md`](release.md). In short:
 
 ## 11. Backup
 
-The database is the only state of the control plane (incidents, runs, the sealed GitHub token and host credentials); the runner's volume holds the
-CLI login, which you can make again with section 7. A `local-path` volume lives on one node: copy it or snapshot it. The master key of section 4 is not in the database: keep it apart.
+The PostgreSQL database is the only state of the control plane (incidents, runs, the sealed GitHub token and host credentials); the runner's volume holds the
+CLI login, which you can make again with section 7. The master key of section 4 is not in the database: keep it apart, and keep it with the backups, because a backup without it restores everything except the sealed values.
 
-1. Find the node that runs the control plane before you stop it, because the volume is on that node:
-   `kubectl -n remedy get pod -l app.kubernetes.io/component=server -o wide` (the PV's node affinity says the same).
-2. Stop the control plane. With `selfHeal` Argo CD scales it back at once, so disable auto-sync on the Application first (Argo
-   CD UI, App Details, Disable Auto-Sync, or `argocd app set remedy --sync-policy none`). If a parent application with `selfHeal`
-   manages the Application, it must stop syncing it too. Then
-   `kubectl -n remedy scale deployment/remedy-server --replicas=0`.
-3. Find the volume's directory:
-   `kubectl get pv "$(kubectl -n remedy get pvc remedy-data -o jsonpath='{.spec.volumeName}')" -o jsonpath='{.spec.local.path}{.spec.hostPath.path}'`
-   (one of the two fields is set, depending on the provisioner).
-4. As root on that node, copy `remedy.db` and `remedy.db-wal` (if it exists) out of that directory.
-5. Scale back to one (`kubectl -n remedy scale deployment/remedy-server --replicas=1`) and enable auto-sync again.
+**The bundled PostgreSQL** is backed up by the chart: a CronJob `remedy-postgres-backup` runs `pg_dump` every night (`postgres.backup.*`) into a second claim. That claim is in the same cluster, on a single-node cluster on the same disk (and with local-path on the same node): it protects against a damaged or wrongly changed database, not against losing the disk, so copy dumps off the node now and then. Run the first backup by hand right after the install, and take one before every upgrade. The commands (a backup now, copying dumps off the node, the restore, a new major version) are in [`postgres.md`](postgres.md), section 3.
 
-Longhorn or Velero snapshots work the same way; Litestream is a separate plan.
+**A database of your own:** take a `pg_dump` (or use the operator's backup feature) on a schedule and before every upgrade; the control plane may run meanwhile. The commands, the restore into an empty database, and what a dump contains are in
+[`postgres.md`](postgres.md), section 3. A volume snapshot of the database's own storage (Longhorn, Velero, the operator's) works the same way it does for any database: it is crash-consistent, so test one restore.
+Where an external database lives and who backs it up is the operator's concern; the chart backs up only its bundled PostgreSQL.
+
+**Stopping the control plane** (for a restore, or to take Remedy away): with `selfHeal` Argo CD scales it back at once, so disable auto-sync on the Application first (Argo CD UI, App Details, Disable Auto-Sync, or `argocd app set remedy --sync-policy none`). If a parent application with `selfHeal` manages the Application, it must stop syncing it too. Then
+`kubectl -n remedy scale deployment/remedy-server --replicas=0`, and when you are done scale back to one (`--replicas=1`) and enable auto-sync again.
 
 ## 12. Troubleshooting
 
@@ -397,6 +427,7 @@ Longhorn or Velero snapshots work the same way; Litestream is a separate plan.
   package `charts/remedy` is still private, or the version is not a released one. Make it public (`release.md`) and check
   the version with `helm show chart oci://ghcr.io/jaydee94/charts/remedy --version X.Y.Z`. With the wrapper chart the error appears as a failed `helm dependency build` in the Application's conditions.
 - Every run ends "Not logged in": do section 7.
+- The control plane pod restarts in a loop and its log says `cannot open database ... cannot reach the database`: the database is not reachable within 30 s of the start. With the bundled PostgreSQL: is `remedy-postgres-0` Ready (`kubectl -n remedy get pods`; on a first install the control plane may start before it and restart a few times), and does its claim bind? With a database of your own: check the URL's host and port, `networkPolicy.database` (and the database's own policy), and the `sslmode` (a TLS mode against a server without TLS looks like `context deadline exceeded`). A wrong password or database fails at once with the server's message. `/healthz` does not depend on the database. More in [`postgres.md`](postgres.md), section 6.
 - The UI loads but nothing live updates: a proxy buffers the streams. Traefik streams by default; with nginx set
   `nginx.ingress.kubernetes.io/proxy-buffering: "off"` in `ingress.annotations`.
 - "the cluster cannot be reached with the read token" in the control plane log: the network policy. Check

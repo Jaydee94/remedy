@@ -29,6 +29,7 @@ write_dummy_env
 new_tag
 build_and_load_images
 apply_secret
+apply_postgres
 fresh=no
 is_fresh && fresh=yes
 deploy_release

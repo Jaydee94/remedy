@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,15 +15,12 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/settings"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 func newReader(t *testing.T, env settings.Layer) (*settings.Settings, *store.Store) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	return settings.New(context.Background(), st, env, slog.New(slog.NewTextHandler(io.Discard, nil))), st
 }
 
@@ -165,11 +161,7 @@ func TestEveryChangeIsAnActivityEntryWithTheOldAndTheNewValue(t *testing.T) {
 
 func TestAStoredValueThatIsNoLongerValidIsIgnoredAndReported(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	act := store.NewActivity{Kind: store.KindSettingChanged, Summary: "x"}
 	_ = st.SetSetting(ctx, settings.PollInterval, `"5s"`, act)        // below the bound
 	_ = st.SetSetting(ctx, "a_key_from_the_future", `1`, act)         // not in the registry
@@ -207,10 +199,7 @@ func TestAFailedWriteLeavesTheSnapshotAsItWas(t *testing.T) {
 }
 
 func TestAnUnreadableTableMeansTheEnvironmentAndTheDefaults(t *testing.T) {
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := testutil.Store(t)
 	_ = st.Close()
 	s := settings.New(context.Background(), st, settings.Layer{settings.RunTimeout: {Dur: 20 * time.Minute}}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if s.Duration(settings.RunTimeout) != 20*time.Minute || s.Duration(settings.PollInterval) != time.Minute {

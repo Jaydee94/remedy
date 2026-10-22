@@ -1,0 +1,23 @@
+# The values helm lint and kubeconform use for the bundled PostgreSQL (the default database). Not used for an install.
+existingSecret:
+  name: remedy-secrets
+postgres:
+  existingSecret: remedy-postgres
+  persistence:
+    storageClass: local-path
+runner:
+  cli:
+    version: 2.1.288
+    urlTemplate: https://downloads.example.invalid/{version}/{platform}/claude
+    archive: none
+    platforms:
+      amd64: {name: linux-x64, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+      arm64: {name: linux-arm64, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+cluster:
+  enabled: true
+  write:
+    enabled: true
+    namespaces: [demo]
+networkPolicy:
+  apiServer:
+    cidrs: [172.18.0.2/32]

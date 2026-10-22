@@ -7,7 +7,8 @@ metadata:
     app.kubernetes.io/component: server
 spec:
   replicas: 1
-  # SQLite has one connection and one file: the old pod must be gone before the new one opens it.
+  # One control plane at a time. The database would allow two, but admin sessions and the signal state are in memory and
+  # two pollers would do the same work twice: the old pod is gone before the new one starts.
   strategy:
     type: Recreate
   selector:
@@ -25,6 +26,7 @@ spec:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
+        # Still needed without a data volume: it makes the token files of cluster-read and cluster-write readable for 65532.
         fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
@@ -38,7 +40,25 @@ spec:
           env:
             - {name: REMEDY_ADDR, value: ":8080"}
             - {name: REMEDY_INTERNAL_ADDR, value: ":8081"}
-            - {name: REMEDY_DB, value: /data/remedy.db}
+            {{- if include "remedy.bundledPostgres" . }}
+            # The bundled PostgreSQL: the URL names no password, and the driver (pgx) takes it from PGPASSWORD, which comes
+            # from the Secret. So the password needs no URL encoding, and no rendered value holds it.
+            # sslmode=disable: the bundled server has no TLS, and the traffic stays on the pod network inside the namespace.
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "remedy.postgresSecret" . }}
+                  key: {{ include "remedy.postgresSecretKey" . }}
+            - name: REMEDY_DATABASE_URL
+              value: "postgres://remedy@{{ include "remedy.postgresHost" . }}:5432/remedy?sslmode=disable"
+            {{- else }}
+            # The connection URL holds the database password: it comes from a Secret, never from values.
+            - name: REMEDY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "remedy.databaseSecret" . }}
+                  key: {{ include "remedy.databaseSecretKey" . }}
+            {{- end }}
             - name: REMEDY_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -89,7 +109,6 @@ spec:
             capabilities:
               drop: [ALL]
           volumeMounts:
-            - {name: data, mountPath: /data}
             - {name: tmp, mountPath: /tmp}
             {{- if .Values.cluster.enabled }}
             - {name: cluster-read, mountPath: /var/run/remedy/read, readOnly: true}
@@ -99,9 +118,6 @@ spec:
             - {name: cluster-write, mountPath: /var/run/remedy/write, readOnly: true}
             {{- end }}
       volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: {{ .Values.server.persistence.existingClaim | default "remedy-data" }}
         - name: tmp
           emptyDir: {}
         {{- if .Values.cluster.enabled }}

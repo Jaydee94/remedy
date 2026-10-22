@@ -1,0 +1,101 @@
+{{- if and (include "remedy.bundledPostgres" .) .Values.postgres.backup.enabled }}
+# The backup of the bundled PostgreSQL: a nightly pg_dump to a claim of its own. It protects against a damaged or wrongly
+# changed database, not against losing the node or its disk: the claim is in the same cluster, on a single-node cluster on
+# the same disk. Copy the dumps elsewhere for that (see the chart README).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: remedy-postgres-backup
+  labels:
+    {{- include "remedy.postgresLabels" (dict "ctx" . "name" "remedy-postgres-backup") | nindent 4 }}
+    app.kubernetes.io/component: backup
+  annotations:
+    # helm uninstall keeps the dumps.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with (.Values.postgres.backup.storageClass | default .Values.postgres.persistence.storageClass) }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.backup.size | quote }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: remedy-postgres-backup
+  labels:
+    {{- include "remedy.postgresLabels" (dict "ctx" . "name" "remedy-postgres-backup") | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.postgres.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  # A run missed for less than a day (the controller was down) still runs; an older one is skipped.
+  startingDeadlineSeconds: 86400
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "remedy.postgresLabels" (dict "ctx" . "name" "remedy-postgres-backup") | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            {{- include "remedy.postgresPodSecurity" . | nindent 12 }}
+          containers:
+            - name: backup
+              image: {{ include "remedy.postgresImage" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              env:
+                - {name: PGHOST, value: {{ include "remedy.postgresHost" . | quote }}}
+                - {name: PGPORT, value: "5432"}
+                - {name: PGUSER, value: remedy}
+                - {name: PGDATABASE, value: remedy}
+                - {name: PGSSLMODE, value: disable}
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "remedy.postgresSecret" . }}
+                      key: {{ include "remedy.postgresSecretKey" . }}
+                - {name: RETENTION_MINUTES, value: {{ mul (int64 .Values.postgres.backup.retentionDays) 1440 | quote }}}
+              # The dump is written as .part and renamed only when pg_dump succeeded, so a remedy-*.dump is always complete.
+              # Old dumps are deleted only after a new one was written. The script has no "$(": Kubernetes would read it as
+              # a variable reference, so the date comes from backticks.
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  umask 077
+                  stamp=`date -u +%Y%m%dT%H%M%SZ`
+                  part="/backup/remedy-${stamp}.dump.part"
+                  if ! pg_dump --format=custom --no-owner --file="${part}"; then
+                    rm -f "${part}"
+                    echo "pg_dump failed: no new dump, no old dump deleted" >&2
+                    exit 1
+                  fi
+                  mv "${part}" "/backup/remedy-${stamp}.dump"
+                  echo "wrote remedy-${stamp}.dump"
+                  find /backup -maxdepth 1 -type f -name 'remedy-*.dump' -mmin "+${RETENTION_MINUTES}" -print -delete
+                  find /backup -maxdepth 1 -type f -name 'remedy-*.dump.part' -mmin +1440 -print -delete
+                  ls -l /backup
+              resources:
+                {{- toYaml .Values.postgres.backup.resources | nindent 16 }}
+              securityContext:
+                {{- include "remedy.postgresContainerSecurity" . | nindent 16 }}
+              volumeMounts:
+                - {name: backup, mountPath: /backup}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: remedy-postgres-backup
+            - name: tmp
+              emptyDir: {}
+{{- end }}

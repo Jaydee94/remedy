@@ -8,14 +8,13 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/settings"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 const plainToken = "tok-0123456789abcdef-SECRET"
@@ -31,18 +30,13 @@ func key(t *testing.T, fill byte) secret.Key {
 
 func newKeyed(t *testing.T, k secret.Key, logTo io.Writer) (*settings.Settings, *store.Store, string) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "test.db")
-	st, err := store.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	return settings.New(context.Background(), st, nil, slog.New(slog.NewTextHandler(logTo, nil)), settings.WithKey(k)), st, path
+	st, dsn := testutil.StoreDSN(t)
+	return settings.New(context.Background(), st, nil, slog.New(slog.NewTextHandler(logTo, nil)), settings.WithKey(k)), st, dsn
 }
 
 func TestASecretIsSealedAndOpenedOnDemand(t *testing.T) {
 	var logs bytes.Buffer
-	s, st, path := newKeyed(t, key(t, 5), &logs)
+	s, st, dsn := newKeyed(t, key(t, 5), &logs)
 	ctx := context.Background()
 
 	if _, err := s.Secret(settings.AlertmanagerToken); !errors.Is(err, settings.ErrNotSet) {
@@ -60,7 +54,7 @@ func TestASecretIsSealedAndOpenedOnDemand(t *testing.T) {
 		t.Error("the secret value prints its content")
 	}
 
-	// A token never reaches the activity, the logs, the entries or the database file.
+	// A token never reaches the activity, the logs, the entries or the database.
 	log, _ := st.ListActivity(ctx, store.ActivityQuery{})
 	var everything strings.Builder
 	for _, a := range log {
@@ -74,10 +68,8 @@ func TestASecretIsSealedAndOpenedOnDemand(t *testing.T) {
 	if strings.Contains(everything.String(), plainToken) || strings.Contains(everything.String(), "0123456789abcdef") {
 		t.Fatalf("the token is in the activity, the entries or the logs:\n%s", everything.String())
 	}
-	for _, f := range []string{path, path + "-wal"} {
-		if raw, err := os.ReadFile(f); err == nil && bytes.Contains(raw, []byte(plainToken)) {
-			t.Fatalf("the token is in %s in plaintext", f)
-		}
+	if dump := testutil.DumpSchema(t, dsn); testutil.DumpContains(dump, plainToken) {
+		t.Fatal("the token is in the database in plaintext")
 	}
 	if len(log) != 1 || log[0].Summary != "Setting alertmanager_token changed" || string(log[0].Data) != `{"key":"alertmanager_token"}` {
 		t.Fatalf("activity = %+v", log)
@@ -111,12 +103,7 @@ func TestASecretIsRemovedWithoutAValueInTheActivity(t *testing.T) {
 
 func TestASecretThatTheMasterKeyDoesNotOpenIsAProblem(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "test.db")
-	st, err := store.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
 	first := settings.New(ctx, st, nil, quiet, settings.WithKey(key(t, 5)))
 	if _, err := first.Set(ctx, settings.AlertmanagerToken, json.RawMessage(`"`+plainToken+`"`)); err != nil {
@@ -157,11 +144,7 @@ func TestASecretValueIsCheckedAndNeverEchoed(t *testing.T) {
 
 func TestAStoredSecretThatIsNotTheExpectedShapeIsAProblem(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	_ = st.SetSetting(ctx, settings.AlertmanagerToken, `"just a string"`, store.NewActivity{Kind: store.KindSettingChanged, Summary: "x"})
 	s := settings.New(ctx, st, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), settings.WithKey(key(t, 5)))
 	e, _ := s.Entry(settings.AlertmanagerToken)

@@ -28,7 +28,8 @@ func alertmanagerValues(ns string, labels map[string]any) map[string]any {
 	return am
 }
 
-// extraRules are the egress rules of the server policy that are neither DNS, the API server nor the internet rule.
+// extraRules are the egress rules of the server policy that are neither DNS, the API server, the database (TCP 5432, the
+// rule baseValues asks for) nor the internet rule.
 func extraRules(t *testing.T, p map[string]any) []map[string]any {
 	t.Helper()
 	var out []map[string]any
@@ -37,7 +38,7 @@ func extraRules(t *testing.T, p map[string]any) []map[string]any {
 		if strings.Contains(text, "k8s-app: kube-dns") || strings.Contains(text, "cidr: 0.0.0.0/0") {
 			continue
 		}
-		if ports := rulePorts(r); len(ports) == 1 && ports[0] == "TCP/6443" {
+		if ports := rulePorts(r); len(ports) == 1 && (ports[0] == "TCP/6443" || ports[0] == "TCP/5432") {
 			continue
 		}
 		out = append(out, r)
@@ -47,15 +48,15 @@ func extraRules(t *testing.T, p map[string]any) []map[string]any {
 
 func TestHostAndAlertmanagerEgressAreAbsentByDefault(t *testing.T) {
 	d := mustRender(t, baseValues())
-	if n := len(egressRules(t, policy(t, d, "remedy-server"))); n != 2 {
-		t.Errorf("cluster off: %d egress rules on the server policy, want 2 (DNS, internet)", n)
+	if n := len(egressRules(t, policy(t, d, "remedy-server"))); n != 3 {
+		t.Errorf("cluster off: %d egress rules on the server policy, want 3 (DNS, database, internet)", n)
 	}
 	values := baseValues()
 	set(values, "cluster.enabled", true)
 	set(values, "networkPolicy.apiServer.cidrs", []any{"172.18.0.2/32"})
 	d = mustRender(t, values)
-	if n := len(egressRules(t, policy(t, d, "remedy-server"))); n != 3 {
-		t.Errorf("cluster on: %d egress rules on the server policy, want 3 (DNS, API server, internet)", n)
+	if n := len(egressRules(t, policy(t, d, "remedy-server"))); n != 4 {
+		t.Errorf("cluster on: %d egress rules on the server policy, want 4 (DNS, API server, database, internet)", n)
 	}
 }
 
@@ -70,8 +71,8 @@ func TestAHostEntryOpensOneSSHRuleOnTheServerPolicyOnly(t *testing.T) {
 
 	server := policy(t, d, "remedy-server")
 	rules := egressRules(t, server)
-	if len(rules) != 4 {
-		t.Fatalf("%d egress rules on the server policy, want 4 (DNS, API server, host, internet): %v", len(rules), rules)
+	if len(rules) != 5 {
+		t.Fatalf("%d egress rules on the server policy, want 5 (DNS, API server, database, host, internet): %v", len(rules), rules)
 	}
 	extra := extraRules(t, server)
 	if len(extra) != 1 {

@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -86,12 +85,7 @@ func TestOnlyAToolRunGetsAToken(t *testing.T) {
 }
 
 func TestTheTokenIsStoredOnlyAsAHash(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "test.db")
-	s, err := store.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
+	s, dsn := openStoreAt(t)
 	claimed := claimedToolRun(t, s)
 	token, err := s.MintRunToken(context.Background(), claimed.ID)
 	if err != nil {
@@ -99,13 +93,9 @@ func TestTheTokenIsStoredOnlyAsAHash(t *testing.T) {
 	}
 
 	// A second connection reads the table as it is on disk.
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := rawDB(t, dsn)
 	var stored []byte
-	if err := db.QueryRow(`SELECT token_hash FROM run_tokens WHERE run_id = ?`, claimed.ID).Scan(&stored); err != nil {
+	if err := db.QueryRow(`SELECT token_hash FROM run_tokens WHERE run_id = $1`, claimed.ID).Scan(&stored); err != nil {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256([]byte(token))
@@ -130,17 +120,8 @@ func TestTheTokenIsRevokedWhenTheRunEnds(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "test.db")
-			s, err := store.Open(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = s.Close() })
-			db, err := sql.Open("sqlite", path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = db.Close() })
+			s, dsn := openStoreAt(t)
+			db := rawDB(t, dsn)
 
 			claimed := claimedToolRun(t, s)
 			token, err := s.MintRunToken(ctx, claimed.ID)
@@ -151,14 +132,14 @@ func TestTheTokenIsRevokedWhenTheRunEnds(t *testing.T) {
 				t.Fatalf("the token does not work while the run runs: %v", err)
 			}
 			var revoked sql.NullString
-			if err := db.QueryRow(`SELECT revoked_at FROM run_tokens WHERE run_id = ?`, claimed.ID).Scan(&revoked); err != nil || revoked.Valid {
+			if err := db.QueryRow(`SELECT revoked_at FROM run_tokens WHERE run_id = $1`, claimed.ID).Scan(&revoked); err != nil || revoked.Valid {
 				t.Fatalf("revoked_at = %v, %v while the run runs, want NULL", revoked, err)
 			}
 
 			if err := end(s, claimed); err != nil {
 				t.Fatal(err)
 			}
-			if err := db.QueryRow(`SELECT revoked_at FROM run_tokens WHERE run_id = ?`, claimed.ID).Scan(&revoked); err != nil || !revoked.Valid {
+			if err := db.QueryRow(`SELECT revoked_at FROM run_tokens WHERE run_id = $1`, claimed.ID).Scan(&revoked); err != nil || !revoked.Valid {
 				t.Fatalf("revoked_at = %v, %v after the run ended, want a time", revoked, err)
 			}
 			if _, err := s.RunForToken(ctx, token); !errors.Is(err, store.ErrNotFound) {

@@ -24,16 +24,20 @@ checkout, up to the `cd`; after it, `<path-to-remedy>` is that root.
 ```sh
 dev/ssh/up.sh                  # the SSH testbed: a container named remedy-ssh-testbed with sshd, sudo and a fake docker; writes ~/remedy-ssh/env.sh
 make web-install && make build
+# a PostgreSQL for the run, a throwaway container on the loopback (data is lost with it; docker rm -f remedy-realrun-db removes it)
+docker run -d --name remedy-realrun-db -p 127.0.0.1:55432:5432 -e POSTGRES_USER=remedy -e POSTGRES_PASSWORD=remedy -e POSTGRES_DB=remedy postgres:16
 mkdir -p ~/remedy-skills-run && go build -o ~/remedy-skills-run/fakealertmanager ./dev/fakealertmanager   # all of this from the root of the checkout
 cd ~/remedy-skills-run
 cat > env.sh <<EOF
 export REMEDY_ADMIN_PASSWORD='$(openssl rand -hex 12)'
 export REMEDY_RUNNER_TOKEN='$(openssl rand -hex 24)'
 export REMEDY_MASTER_KEY='$(openssl rand -base64 32)'
-export REMEDY_DB='$PWD/remedy.db' REMEDY_LOG_LEVEL=debug REMEDY_ADDR=127.0.0.1:8080
+export REMEDY_DATABASE_URL='postgres://remedy:remedy@127.0.0.1:55432/remedy?sslmode=disable' REMEDY_LOG_LEVEL=debug REMEDY_ADDR=127.0.0.1:8080
 export REMEDY_POLL_INTERVAL=15s
 EOF
 chmod 600 env.sh && . ./env.sh && . ~/remedy-ssh/env.sh
+rpsql() { docker exec -i remedy-realrun-db psql -U remedy -d remedy "$@"; }   # psql inside the container
+rdump() { docker exec remedy-realrun-db pg_dump -U remedy -d remedy; }        # a text dump of the database, for the leak check
 <path-to-remedy>/bin/remedy-server > server.log 2>&1 &
 REMEDY_SERVER_URL=http://127.0.0.1:8080 <path-to-remedy>/bin/remedy-runner > runner.log 2>&1 &
 printf '{"password":"%s"}' "$REMEDY_ADMIN_PASSWORD" | curl -sf -c cookies -H 'X-Remedy-CSRF: 1' --data-binary @- http://127.0.0.1:8080/api/login
