@@ -249,7 +249,7 @@ func Proposals(a diagnosis.Learn, reads [][]string) []store.Proposal {
 		profileEvidence = append(profileEvidence, skill.Evidence{Argv: r, Ran: true})
 	}
 	out := []store.Proposal{{
-		Fields:   skill.Fields{Name: skill.ProfileName, Description: profileDescription(a.Profile), Body: ProfileBody(a.Profile)},
+		Fields:   skill.Fields{Name: skill.ProfileName, Description: ProfileDescription(a.Profile), Body: ProfileBody(a.Profile)},
 		Evidence: profileEvidence,
 	}}
 	for _, k := range a.Skills {
@@ -265,13 +265,10 @@ func Proposals(a diagnosis.Learn, reads [][]string) []store.Proposal {
 // flat makes text one line: whitespace of every kind becomes one space.
 func flat(s string) string { return strings.Join(strings.Fields(s), " ") }
 
-// profileDescription is the one line that the list of skills shows for the profile, at most 200 characters.
-func profileDescription(p diagnosis.LearnProfile) string {
-	text := "What this host is: " + flat(p.OS) + "; " + flat(p.Role)
-	if r := []rune(text); len(r) > skill.MaxDescriptionRunes {
-		text = strings.TrimSpace(string(r[:skill.MaxDescriptionRunes]))
-	}
-	return text
+// ProfileDescription is the one line that the list of skills shows for the profile, at most 200 characters; a longer line ends at a word
+// and with "…" (skill.CutDescription).
+func ProfileDescription(p diagnosis.LearnProfile) string {
+	return skill.CutDescription("What this host is: " + flat(p.OS) + "; " + flat(p.Role))
 }
 
 // escapeBlock puts a backslash before a one-line value that starts with a Markdown block marker (a heading, a quote, a list item, a

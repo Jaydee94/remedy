@@ -45,9 +45,10 @@ func cutRunes(s string, n int) string {
 }
 
 // cutToLimits cuts a redacted text that redaction made longer than a skill may be: the description to 200 characters and the body to
-// 8 KB, each at a character boundary, and the cut texts lose their trailing space.
+// 8 KB. The description ends at a word with "…" (skill.CutDescription), the body at a character boundary, and the cut body loses its
+// trailing space.
 func cutToLimits(f skill.Fields) skill.Fields {
-	f.Description = strings.TrimSpace(cutRunes(f.Description, skill.MaxDescriptionRunes))
+	f.Description = strings.TrimSpace(skill.CutDescription(f.Description))
 	if len(f.Body) > skill.MaxBodyBytes {
 		end := skill.MaxBodyBytes
 		for end > 0 && !utf8.RuneStart(f.Body[end]) {
