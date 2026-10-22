@@ -4,7 +4,7 @@ import { api, ApiError, streamActivity } from './api.ts'
 import type { StreamState, TimelineEntry } from './api.ts'
 import { digestText, lastDiagnosed } from './conversation.ts'
 import { useShellState } from './shellContext.ts'
-import { dayLabel, groupByDay, kindDotClass, mergeEntries, timeOfDay } from './timeline.ts'
+import { dayLabel, entryText, groupByDay, kindDotClass, mergeEntries, timeOfDay } from './timeline.ts'
 import { useIncidents } from './useIncidents.ts'
 import { useClock } from './useClock.ts'
 import EmptyState from '@/components/EmptyState'
@@ -141,7 +141,7 @@ export default function TodayPage() {
                 <div key={entry.id} className={cn('relative flex gap-3.5 py-2 pl-12.5', fresh.has(entry.id) && 'animate-rm-in')}>
                   <span aria-hidden className={cn('absolute top-3.5 left-3.5 size-2 rounded-full', kindDotClass(entry.kind))} />
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="break-words whitespace-pre-wrap text-foreground/90">{entry.summary}</span>
+                    <span className="break-words whitespace-pre-wrap text-foreground/90">{entryText(entry)}</span>
                     <span className="flex flex-wrap gap-x-3 text-xs text-subtle">
                       <time dateTime={entry.at} title={new Date(entry.at).toLocaleString()}>
                         {timeOfDay(entry.at)}

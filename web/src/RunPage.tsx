@@ -9,6 +9,7 @@ import { useClock } from './useClock.ts'
 import { useFocusRestore } from './useFocusRestore.ts'
 import { useRun } from './useRun.ts'
 import ToolCallsCard from './ToolCallsCard.tsx'
+import AgentText from '@/components/AgentText'
 import ApprovalAsk from '@/components/conversation/ApprovalAsk'
 import FailCard from '@/components/conversation/FailCard'
 import RemedyMessage from '@/components/conversation/RemedyMessage'
@@ -162,6 +163,9 @@ export default function RunPage({ id }: { id: string }) {
                 </>
               )}
             </p>
+          ) : !learner && run.result.trim() !== '' ? (
+            // The agent's own answer: formatted prose. Everything else on this line is Remedy's sentence.
+            <AgentText text={run.result} />
           ) : (
             <p className="font-serif text-[clamp(16.5px,1.9vw,19px)] leading-relaxed text-pretty break-words whitespace-pre-wrap">
               {doneSentence(run)}

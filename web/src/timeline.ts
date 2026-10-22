@@ -1,3 +1,4 @@
+import { plainText } from './agenttext.ts'
 import type { TimelineEntry } from './api.ts'
 
 export interface DayGroup {
@@ -86,6 +87,14 @@ const kindDots: Record<string, string> = {
 
 export function kindDotClass(kind: string): string {
   return kindDots[kind] ?? 'bg-neutral'
+}
+
+/**
+ * The line of a feed entry. A finished diagnosis ends with the agent's summary ("Diagnosis of X finished: <summary>", written by the
+ * responder), which may carry Markdown: its markers are stripped. Every other entry is shown as it was written.
+ */
+export function entryText(entry: Pick<TimelineEntry, 'kind' | 'summary'>): string {
+  return entry.kind === 'diagnosis_finished' ? plainText(entry.summary, 2000) : entry.summary
 }
 
 export function timeOfDay(iso: string): string {

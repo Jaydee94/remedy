@@ -30,6 +30,7 @@ import { useToast } from './toast.ts'
 import RefLink from './RefLink.tsx'
 import ApprovalAsk from '@/components/conversation/ApprovalAsk'
 import Composer from '@/components/conversation/Composer'
+import AgentText from '@/components/AgentText'
 import DiagnosisMessage from '@/components/conversation/DiagnosisMessage'
 import OutageMessage from '@/components/conversation/OutageMessage'
 import EventPill from '@/components/conversation/EventPill'
@@ -389,11 +390,12 @@ function AnswerMessage({ run }: { run: Run }) {
     <RemedyMessage kind={phase === 'queued' || phase === 'running' ? 'working' : 'idle'} meta={`Remedy · ${dayTimeLabel(run.finishedAt ?? run.startedAt ?? run.createdAt, now)}`}>
       {phase === 'queued' && <span className="text-[13px] text-muted-foreground">Waiting for the runner…</span>}
       {phase === 'running' && <span className="text-[13px] text-muted-foreground">Working…</span>}
-      {phase === 'succeeded' && (
-        <p className="font-serif text-[clamp(16.5px,1.9vw,19px)] leading-relaxed text-pretty break-words whitespace-pre-wrap">
-          {run.result.trim() === '' ? 'Done. There is nothing more to say.' : run.result}
-        </p>
-      )}
+      {phase === 'succeeded' &&
+        (run.result.trim() === '' ? (
+          <p className="font-serif text-[clamp(16.5px,1.9vw,19px)] leading-relaxed">Done. There is nothing more to say.</p>
+        ) : (
+          <AgentText text={run.result} />
+        ))}
       {failure && <FailCard title={failure.title}>{failure.text}</FailCard>}
       <div>
         <Link to={`/runs/${encodeURIComponent(run.id)}`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>

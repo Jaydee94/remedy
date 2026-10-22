@@ -183,7 +183,9 @@ anyone but the maintainer.
 - **Conversation UI (2026-10-05).** The UI speaks as Remedy, in the first person: Today, Conversations (one thread per
   incident), Needs you (the approvals), Ask Remedy (runs) and Setup. Routes, API and trust boundaries do not change. A sentence
   Remedy "says" is a template filled with values from the data; agent-written text is shown as text and never decides a
-  sentence's structure. Spec: [`specs/2026-10-05-ui-conversation-redesign-design.md`](specs/2026-10-05-ui-conversation-redesign-design.md).
+  sentence's structure. Since 2026-10-22 the agent's prose (a diagnosis, an answer) is rendered as Markdown by our own restricted renderer: React elements
+  only, no HTML, no links or images, no page headings; arguments, commands and notes stay exact text
+  ([`specs/2026-10-22-agent-text-markdown-design.md`](specs/2026-10-22-agent-text-markdown-design.md)). Spec: [`specs/2026-10-05-ui-conversation-redesign-design.md`](specs/2026-10-05-ui-conversation-redesign-design.md).
 - **Three additions to the admin API carry it.** (1) `POST /api/incidents/{id}/unignore` moves an ignored incident back: to
   `diagnosing` while a responder run of it is queued or running, else `diagnosed` if it has a diagnosis, else `open`. (2) `POST
   /api/runs` takes `incidentId` with `tools: true`: an ad-hoc run about an incident. The question is the maintainer's own text;

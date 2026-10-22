@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { Diagnosis } from '@/api.ts'
 import { categoryText, shortSha } from '@/incidents.ts'
+import AgentText, { AgentInline } from '@/components/AgentText'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -38,7 +39,9 @@ export default function DiagnosisMessage({ diagnosis: d, outdatedSha, headSha, r
   const c = confidence[d.confidence] ?? confidence.low
   return (
     <>
-      <p className="font-serif text-[clamp(18px,2vw,21px)] leading-normal text-pretty break-words">{d.summary}</p>
+      <p className="font-serif text-[clamp(18px,2vw,21px)] leading-normal text-pretty break-words">
+        <AgentInline text={d.summary} />
+      </p>
       <div className="flex flex-wrap items-center gap-2">
         <span className={cn('flex items-center gap-2 rounded-2xl py-1.5 pr-3 pl-1.5 text-[13px] font-semibold', c.chip)}>
           <span aria-hidden className="flex gap-0.5">
@@ -55,7 +58,7 @@ export default function DiagnosisMessage({ diagnosis: d, outdatedSha, headSha, r
       </div>
       <div className="flex flex-col gap-4 rounded-[20px] border border-border bg-card p-5">
         <Section title="What went wrong">
-          <p className="font-serif text-[15.5px] leading-relaxed text-pretty break-words whitespace-pre-wrap text-foreground/90">{d.cause}</p>
+          <AgentText text={d.cause} variant="compact" />
         </Section>
         {d.affected_files.length > 0 && (
           <Section title="Where">
@@ -69,7 +72,7 @@ export default function DiagnosisMessage({ diagnosis: d, outdatedSha, headSha, r
           </Section>
         )}
         <Section title="What I'd do">
-          <p className="font-serif text-[15.5px] leading-relaxed text-pretty break-words whitespace-pre-wrap text-foreground/90">{d.proposed_fix}</p>
+          <AgentText text={d.proposed_fix} variant="compact" />
         </Section>
       </div>
       {outdatedSha && (

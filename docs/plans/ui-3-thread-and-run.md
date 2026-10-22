@@ -16,6 +16,7 @@
 - `web/tsconfig.app.json` sets `erasableSyntaxOnly` and `verbatimModuleSyntax`: no enums or constructor parameter properties, `import type` for types.
 - Pure logic modules (`thread.ts`, `runview.ts`, `status.ts`, `approvals.ts`, `ask.ts`, `incidents.ts`, `timeline.ts`) import only with relative paths and `.ts` extensions and contain only erasable TypeScript. Components may use the `@/` alias.
 - **Untrusted text** (incident titles, diagnosis fields, agent answers, step arguments and results, tool arguments, notes, run prompts of responder runs) is rendered as React text only: never as HTML or Markdown. A sentence's structure never comes from such text: Remedy's sentences are templates filled with values. A responder run's prompt contains data from GitHub and stays collapsed.
+  Superseded 2026-10-22 for agent prose (diagnosis fields, answers): see `docs/specs/2026-10-22-agent-text-markdown-design.md`.
 - **A decision shows what runs:** the approval ask shows the arguments of the call exactly as stored.
 - **The question to an incident** is sent as `{prompt, tools: true, incidentId}`; the user stays in the thread.
 - Palette and tokens of part 1; no new hard-coded palette colours in new code (`bg-rose-500` and the like).
