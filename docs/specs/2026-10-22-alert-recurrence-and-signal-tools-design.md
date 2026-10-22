@@ -114,7 +114,7 @@ Common rules:
 
 - Go tests first for: the engine's reopen (reopened state per prior state, ignored stays ignored, `ErrExists` race, `occurrences`, no `incident_opened`), no automatic diagnosis for a diagnosed reopen and one for a never-diagnosed, the migrations (both, on databases built from the earlier files), the settings (bounds, env layer, the inherit copy), each tool (decode, bounds, sanitising, framing, a result that tries to instruct the agent, not offered when unconfigured, not offered to a learner), the metrics client (no redirect, GET only, token never in an error).
 - `internal/app` chain tests: a flapping alert over several cycles gives one incident with the right count; the signals runner uses its own interval.
-- UI: the pure modules (`conversation.ts`, `setup.ts` and the Today text) get `node --test` tests; a browser check against a fake Alertmanager (`dev/fakealertmanager`, extended to flap and to serve silences) and a fake metrics server, walked in Chrome.
+- UI: the pure modules (`conversation.ts`, `setup.ts` and the Today text) get `node --test` tests; a browser check against the fake Alertmanager (`dev/fakealertmanager`; the in-test `alertmanagertest` serves the silences) and a fake metrics server, walked in Chrome.
 - A real run with the real CLI against the home server's Alertmanager and VictoriaMetrics after the release (`docs/research/`), as the previous cycles did; until then the spec's status says implemented, not proven.
 
 ## One pull request

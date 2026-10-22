@@ -4,7 +4,9 @@ This is cycle 4 of the hosts and skills series ([spec](../specs/2026-10-16-alert
 Alertmanager into incidents, maps them to hosts and **diagnoses them**: on its own for a young `critical` or `warning` alert, by a click on
 **Diagnose** in the incident's thread otherwise (section 5). The run may read the cluster (when the cluster is set up) and use the tools of the host
 the alert is mapped to; any change it asks for waits for you under **Needs you**, and in an automatic run that approval expires (section 5). The diagnosis
-with the real CLI has not been tried yet: [`outage-real-run.md`](outage-real-run.md) is its runbook. Remedy only reads from Alertmanager (a `GET`); it never
+of an alert was run with the real CLI and a real Alertmanager on 2026-10-19 ([`outage-real-run.md`](outage-real-run.md) is its runbook, the record is
+[`../research/phase-2d-real-run.md`](../research/phase-2d-real-run.md)); the reopening of an incident, the poll interval of this source and the four signal tools
+have not been run for real yet. Remedy only reads from Alertmanager (a `GET`); it never
 silences or acknowledges anything. Section 8 describes the metrics address and the four read tools of the agent for alerts, silences and metrics.
 
 ## 1. Enter the address and the token
@@ -89,7 +91,7 @@ incidents without one.
 **On its own.** Remedy decides once, when an incident opens, whether it diagnoses it on its own: a young `critical` or `warning` alert is, an alert that has
 been firing for longer than **Oldest alert I diagnose on my own** is not, and neither is an `info` alert. The reason is quota: an alert that
 fired a week ago and is found on the first poll would otherwise start a run of its own. On top of that, an incident is picked only if Remedy saw its alert in the
-last 10 minutes (or three poll intervals, whichever is longer): after you switch the source off or change its address, the old incidents are never diagnosed on their own.
+last 10 minutes (or three Alertmanager poll intervals, whichever is longer): after you switch the source off or change its address, the old incidents are never diagnosed on their own.
 The limits of the GitHub diagnoses hold here too (at most 3 per incident, 15 minutes apart, 20 per 24 hours, one run at a time), and an alert that has a diagnosis is not
 diagnosed again on its own. An alert that clears and fires again (it flaps, or an Alertmanager that was restarted delivers it again) does not open a new incident: Remedy reopens the incident it had, however long ago it resolved, counts the firing ("Incident reopened: alert X fired again (3rd time)") and refreshes its title, severity, host and details. A reopened incident keeps its diagnosis and is not diagnosed again on its own; one that was never diagnosed follows the rules above as a new alert would. An ignored incident comes back ignored. "Diagnose again" still works. Reopens count against the 50 new incidents one cycle opens; the rest follows in the next cycle. The start is checked at the end of every Alertmanager cycle, so it works with or without a GitHub connection.
 
@@ -108,7 +110,8 @@ diagnosis), and the activity feed says the approval expired. The card of such an
 
 ## 6. Known limits
 
-- The diagnosis of an alert has not been tried with the real CLI yet; see [`outage-real-run.md`](outage-real-run.md).
+- The diagnosis of an alert was proven with the real CLI on 2026-10-19 (see [`../research/phase-2d-real-run.md`](../research/phase-2d-real-run.md)), against a real Alertmanager but not
+  a real Prometheus. Not tried for real: the reopening of an incident, the new poll interval, the four signal tools and the metrics probe.
 - Switching the source off (an empty address) leaves its open incidents as they are: they are resolved only by a later complete answer, so remove
   an old incident by hand (Ignore in its thread) if you stop using Alertmanager.
 - The state of the source is in memory; a restart shows "I haven't asked Alertmanager yet" until the next cycle.
@@ -143,8 +146,8 @@ address is `http://vmsingle-monitoring-victoria-metrics-k8s-stack.monitoring.svc
 **The probe on the Setup page.** A small loop of its own asks the store for `/api/v1/status/buildinfo` (Prometheus and VictoriaMetrics both serve it) and the
 line under the block says what it heard, like the Alertmanager line: "I don't ask the metrics store: no address is set.", "I asked the metrics store 12
 seconds ago and it answered.", or "I couldn't ask the metrics store …: <reason>. I changed nothing because of it." It is paced by **How often I ask
-Alertmanager** but never faster than once a minute, it runs without an Alertmanager, and after a change of address it can take up to a minute to show the new
-state (`GET /api/signals` has an entry `metrics`; like the other state it is in memory).
+Alertmanager** but never faster than once a minute, it runs without an Alertmanager, and after a change of address or token it can take up to the poll interval
+(at least a minute) to show the new state (`GET /api/signals` has an entry `metrics`; like the other state it is in memory).
 
 **Reaching it from the chart.** With the default `networkPolicy.enabled: true` a store inside the cluster is blocked like the Alertmanager is (section 1). Set the chart value
 `networkPolicy.metrics` (`namespace`, `podSelector`, `port`; all three are required, the port because Prometheus serves 9090 and VictoriaMetrics 8428) and the control plane gets one more

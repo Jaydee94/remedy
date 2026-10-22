@@ -150,6 +150,20 @@ running as a service for other people's homelabs.
   (`REMEDY_ALERTMANAGER_CA_FILE`), bootstrap like the cluster token files.
   **Cycle 4b (2026-10-19)** adds one: how long an approval of an automatic run waits before it expires
   (`auto_approval_timeout`, `REMEDY_AUTO_APPROVAL_TIMEOUT` is its default, 15 minutes, `0` means without a limit).
+  **Alert recurrence and signal tools (2026-10-22,
+  [spec](specs/2026-10-22-alert-recurrence-and-signal-tools-design.md))** add three: how often Remedy asks
+  Alertmanager (`alertmanager_poll_interval`, `REMEDY_ALERTMANAGER_POLL_INTERVAL` is its default, at least 10 s,
+  1 minute by default; an existing `poll_interval` is copied once, so a deployment keeps its pace), the metrics
+  address (`metrics_url`, `REMEDY_METRICS_URL`, Prometheus or VictoriaMetrics, a base path allowed) and its bearer
+  token (`metrics_token`, the second sealed, write-only secret setting); the CA bundle of an https store is the
+  bootstrap file `REMEDY_METRICS_CA_FILE`. They switch on the tool group `signals`: four read-only tools for an
+  agent, `alert_list`, `silence_list`, `metrics_query` and `metrics_query_range`, offered only to runs with
+  gatekeeper access (never to a learner run) and only while the address of their source is set. Their bounds are
+  in the spec: a PromQL text of at most 2 KiB, 10 s, at most 24 h and 300 points per series, 20 series and 40 labels
+  per series, values to 4 significant digits, 100 alerts and 50 silences, and a result that is framed as data and
+  redacted. The chart value `networkPolicy.metrics` (`namespace`, `podSelector`, `port`) opens the egress to a store
+  inside the cluster, as `networkPolicy.alertmanager` does for Alertmanager. A returning alert of a source other
+  than GitHub reopens the incident it had instead of opening a new one.
 
 #### 2.7.1 Exception: the runner's login from the Setup page
 
