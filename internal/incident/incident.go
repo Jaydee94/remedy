@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Jaydee94/remedy/internal/store"
 )
@@ -21,10 +20,6 @@ const (
 	// ReasonCleared is the reason for an incident of another source: the signal is no longer reported.
 	ReasonCleared = "cleared"
 )
-
-// ReopenQuiet is how long after a diagnosis a re-fired alert of the same source and key is not diagnosed again on its own: an
-// Alertmanager that restarts delivers its alerts again, and each would otherwise cost a run.
-const ReopenQuiet = time.Hour
 
 // ErrNotActive is returned when an incident cannot be changed because it is resolved or ignored.
 var ErrNotActive = errors.New("incident is already resolved or ignored")
@@ -111,26 +106,20 @@ func (e *Engine) ObserveSignal(ctx context.Context, o Observation) (bool, error)
 		if o.Class == Green {
 			return false, nil
 		}
-		summary := openedText(source, o)
-		auto := o.AutoDiagnose
-		if source != store.SourceGitHub && auto {
-			recent, err := e.Store.RecentlyDiagnosed(ctx, source, key, time.Now().Add(-ReopenQuiet))
-			if err != nil {
-				return false, err
-			}
-			if recent {
-				auto = false
-				summary += " (it was diagnosed recently; I do not diagnose it again on my own)"
+		if source != store.SourceGitHub {
+			reopened, done, err := e.reopen(ctx, source, key, o)
+			if done || err != nil {
+				return reopened, err
 			}
 		}
 		_, err := e.Store.OpenIncident(ctx, store.NewIncident{
-			Source: source, Key: o.Key, Title: o.Title, Severity: o.Severity, AutoDiagnose: auto, Details: o.Details,
+			Source: source, Key: o.Key, Title: o.Title, Severity: o.Severity, AutoDiagnose: o.AutoDiagnose, Details: o.Details,
 			HostID: o.HostID,
 			RepoID: o.RepoID, Ref: o.Ref, RefURL: o.RefURL, CheckName: o.CheckName,
 			Conclusion: o.Conclusion, HeadSHA: o.HeadSHA, CheckURL: o.URL,
 		}, store.NewActivity{
 			Kind:    store.KindIncidentOpened,
-			Summary: summary,
+			Summary: openedText(source, o),
 			Data:    payload(o),
 		})
 		if errors.Is(err, store.ErrExists) {
@@ -174,6 +163,38 @@ func (e *Engine) ObserveSignal(ctx context.Context, o Observation) (bool, error)
 		return false, nil // resolved by someone else in the meantime
 	}
 	return false, change
+}
+
+// reopen brings back the most recently resolved incident of a source other than GitHub when its signal fires again. done says
+// that the observation is handled (reopened, or another writer was faster); when it is false there is nothing to reopen and the
+// caller opens a new incident. A reopen counts as new, so that the runner's per-cycle cap counts it. Whether the incident is
+// diagnosed on its own is the store's decision: only when it was never diagnosed (a diagnosis of any age is shown instead).
+func (e *Engine) reopen(ctx context.Context, source, key string, o Observation) (reopened, done bool, err error) {
+	prev, err := e.Store.FindLatestResolvedByKey(ctx, source, key)
+	if errors.Is(err, store.ErrNotFound) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	severity := o.Severity
+	if severity == "" {
+		severity = "none" // as OpenIncident stores it
+	}
+	err = e.Store.ReopenIncident(ctx, prev.ID, store.Reopen{
+		Title: o.Title, Severity: severity, AutoDiagnose: o.AutoDiagnose, Details: o.Details, HostID: o.HostID,
+	}, store.NewActivity{
+		Kind:    store.KindIncidentReopened,
+		Summary: reopenedText(o, prev.Occurrences+1),
+		Data:    payload(o),
+	})
+	switch {
+	case errors.Is(err, store.ErrExists), errors.Is(err, store.ErrNotFound):
+		return false, true, nil // another writer was faster; the next cycle sees its incident
+	case err != nil:
+		return false, true, err
+	}
+	return true, true, nil
 }
 
 // ResolveAbsent resolves the unresolved incidents of a source (ignored ones too) whose key is not in present. The caller calls it only
@@ -301,6 +322,29 @@ func openedText(source string, o Observation) string {
 		return fmt.Sprintf("%s %s on %s in %s", o.CheckName, verb(o.Conclusion), refLabel(o.Ref), o.RepoName)
 	}
 	return "Incident opened: " + what(source, o.Title)
+}
+
+// reopenedText words the n-th firing of a signal of another source: "Incident reopened: alert X fired again (2nd time)".
+func reopenedText(o Observation, n int) string {
+	return fmt.Sprintf("Incident reopened: %s fired again (%s time)", what(o.Source, o.Title), ordinal(n))
+}
+
+// ordinal is n with its English suffix: 1st, 2nd, 3rd, 4th, 11th, 12th, 13th, 21st.
+func ordinal(n int) string {
+	suffix := "th"
+	switch n % 100 {
+	case 11, 12, 13:
+	default:
+		switch n % 10 {
+		case 1:
+			suffix = "st"
+		case 2:
+			suffix = "nd"
+		case 3:
+			suffix = "rd"
+		}
+	}
+	return strconv.Itoa(n) + suffix
 }
 
 func resolvedText(cur store.Incident) string {

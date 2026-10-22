@@ -13,8 +13,9 @@ import (
 	"github.com/Jaydee94/remedy/internal/store"
 )
 
-// MaxNewPerCycle bounds how many incidents one source may open in one cycle; the rest is picked up in the next, which protects the
-// list and the daily limit against an alert storm.
+// MaxNewPerCycle bounds how many incidents one source may open or reopen in one cycle; the rest is picked up in the next, which
+// protects the list and the daily limit against an alert storm (an Alertmanager that restarts delivers every alert again). A key
+// whose incident is resolved has no active incident, so it is counted like a new one.
 const MaxNewPerCycle = 50
 
 // The states of a source.
