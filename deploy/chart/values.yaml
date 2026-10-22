@@ -42,23 +42,28 @@ postgres:
   # Unset (the default): on, unless database.existingSecret is set. true together with database.existingSecret is refused
   # (a contradiction), and so is false without it (no database at all).
   enabled: null
-  # Required while the bundled database is on: a Secret that exists already, with the password under passwordKey. The chart
-  # never creates it and never takes the password as a value. The password must be URL-safe (the control plane's URL is
-  # composed with it), for example openssl rand -hex 24. It is set when the data directory is created; changing it in the
-  # Secret later does not change it in the database.
+  # Required while the bundled database is on: a Secret that exists already, with the password under passwordKey, for
+  # example openssl rand -hex 24. The chart never creates it and never takes the password as a value; the control plane gets
+  # it as PGPASSWORD, never inside a URL. It is set when the data directory is created; changing it in the Secret later does
+  # not change it in the database.
+  # With database.existingSecret set, every value below must stay at its default (the render refuses one that would do nothing).
   existingSecret: ""
   passwordKey: password
   image:
     repository: postgres
-    tag: "16.15"       # an exact minor version; a new minor of the same major is a plain upgrade, a new major needs a dump and restore
+    # Exactly MAJOR.MINOR of the Debian-based image (the official postgres image's plain tags). The render refuses 16 or
+    # latest (a moving tag), -alpine (it runs postgres as uid 70, the chart as 999), any other suffix, and a digest: this
+    # value is a tag only. A new minor of the same major is a plain upgrade; a new major needs a dump and a restore.
+    tag: "16.15"
   persistence:
     size: 5Gi
     storageClass: ""   # empty: the cluster's default
   resources:
     requests: {cpu: 50m, memory: 128Mi}
     limits: {memory: 512Mi}
-  # A CronJob that runs pg_dump into a claim of its own and keeps the dumps of the last retentionDays days. The claim is in
-  # the same cluster (on a single-node cluster on the same disk): it protects against a damaged database, not a lost disk.
+  # A CronJob that runs pg_dump into a claim of its own and keeps the dumps of about the last retentionDays days (older than
+  # retentionDays * 1440 minutes when a new dump was written). The claim is in the same cluster (on a single-node cluster on
+  # the same disk): it protects against a damaged database, not a lost disk.
   backup:
     enabled: true
     schedule: "17 3 * * *"

@@ -230,12 +230,13 @@ func TestTheBundledDatabaseValuesAreUsed(t *testing.T) {
 }
 
 func TestTheBundledDatabaseImageTagMustBeExact(t *testing.T) {
-	for _, tag := range []string{"", "16", "latest", "17"} {
+	// Only MAJOR.MINOR of the Debian-based image: the Alpine image runs postgres as uid 70, and a digest is no tag.
+	for _, tag := range []string{"", "16", "latest", "17", "16.15-alpine", "16.15-bookworm", "16.15.1", "16.15@sha256:" + strings.Repeat("a", 64)} {
 		values := bundledValues()
 		set(values, "postgres.image.tag", tag)
 		mustFail(t, values, "postgres.image.tag")
 	}
-	for _, tag := range []string{"16.15", "17.6", "16.15-bookworm"} {
+	for _, tag := range []string{"16.15", "17.6"} {
 		values := bundledValues()
 		set(values, "postgres.image.tag", tag)
 		mustRender(t, values)
@@ -276,46 +277,129 @@ func TestTheBundledDatabasePodsCarryTheirOwnNameAndNoChartPolicySelectsThem(t *t
 			t.Errorf("the policy %s selects a pod of the bundled database (%v)", name, sel)
 		}
 	}
-	// And the postgres policy selects the postgres pods only, not the backup job.
+	// And the postgres policy selects the postgres pods only, the backup policy the backup pods only.
 	sel, _ := dig(t, policy(t, d, "remedy-postgres"), "spec", "podSelector", "matchLabels").(map[string]any)
 	if !selects(sel, pgLabels) || selects(sel, backupLabels) {
 		t.Errorf("the postgres policy selects %v: want the postgres pods and not the backup pods", sel)
 	}
+	sel, _ = dig(t, policy(t, d, "remedy-postgres-backup"), "spec", "podSelector", "matchLabels").(map[string]any)
+	if !selects(sel, backupLabels) || selects(sel, pgLabels) {
+		t.Errorf("the backup policy selects %v: want the backup pods and not the postgres pods", sel)
+	}
+	// The policies are exactly these.
+	var names []string
+	for _, p := range d.all("NetworkPolicy") {
+		names = append(names, dig(t, p, "metadata", "name").(string))
+	}
+	want := []string{"remedy-server", "remedy-runner", "remedy-postgres", "remedy-postgres-backup", "remedy-token-refresher"}
+	if !equalStrings(names, want) {
+		t.Errorf("policies = %v, want %v", names, want)
+	}
 }
 
-func TestTheServerComposesItsURLFromThePasswordSecret(t *testing.T) {
-	d := mustRender(t, bundledValues())
-	c := container(t, podSpec(t, d.find("Deployment", "remedy-server")), "server")
-	list := listOf(c["env"])
-	pw, url := -1, -1
-	for i, e := range list {
-		switch dig(t, e, "name") {
-		case "REMEDY_POSTGRES_PASSWORD":
-			pw = i
-		case "REMEDY_DATABASE_URL":
-			url = i
+func TestTheBackupPolicyAllowsDNSAndTheDatabaseOnly(t *testing.T) {
+	for _, ns := range []string{"kube-system", "dns-system"} {
+		values := bundledValues()
+		set(values, "networkPolicy.dnsNamespace", ns)
+		p := policy(t, mustRender(t, values), "remedy-postgres-backup")
+		if got := dig(t, p, "spec", "policyTypes"); !reflect.DeepEqual(got, []any{"Ingress", "Egress"}) {
+			t.Errorf("policyTypes = %v, want Ingress and Egress (the job takes no connection)", got)
+		}
+		if dig(t, p, "spec", "ingress") != nil {
+			t.Errorf("ingress = %v, want no rule", dig(t, p, "spec", "ingress"))
+		}
+		checkDNSRule(t, "backup", p, ns)
+		rules := egressRules(t, p)
+		if len(rules) != 2 {
+			t.Fatalf("%d egress rules, want 2 (DNS, database): %v", len(rules), rules)
+		}
+		db := databaseRules(t, p, "TCP/5432")
+		if len(db) != 1 {
+			t.Fatalf("%d rules to 5432, want 1", len(db))
+		}
+		want := []any{map[string]any{"podSelector": map[string]any{"matchLabels": map[string]any{
+			"app.kubernetes.io/name": "remedy-postgres", "app.kubernetes.io/instance": "remedy",
+		}}}}
+		if got := db[0]["to"]; !reflect.DeepEqual(got, want) {
+			t.Errorf("the database rule goes to %v, want only the postgres pods %v", got, want)
 		}
 	}
-	if pw < 0 || url < 0 {
-		t.Fatalf("the server has no REMEDY_POSTGRES_PASSWORD (%d) or no REMEDY_DATABASE_URL (%d): %v", pw, url, list)
+	// No backup, no backup policy.
+	values := bundledValues()
+	set(values, "postgres.backup.enabled", false)
+	if mustRender(t, values).find("NetworkPolicy", "remedy-postgres-backup") != nil {
+		t.Error("the backup policy renders without the backup")
 	}
-	if pw > url {
-		t.Errorf("REMEDY_POSTGRES_PASSWORD comes after REMEDY_DATABASE_URL: Kubernetes expands $(VAR) only from an earlier entry")
-	}
-	ref := dig(t, list[pw], "valueFrom", "secretKeyRef")
+}
+
+// The URL names no password; the driver takes it from PGPASSWORD (pinned by internal/store and internal/config tests).
+func TestTheServerTakesThePasswordAsPGPASSWORDAndAURLWithoutOne(t *testing.T) {
+	d := mustRender(t, bundledValues())
+	e := env(container(t, podSpec(t, d.find("Deployment", "remedy-server")), "server"))
+	ref := dig(t, e["PGPASSWORD"], "valueFrom", "secretKeyRef")
 	if dig(t, ref, "name") != "pgsecret" || dig(t, ref, "key") != "password" {
-		t.Errorf("the password comes from %v, want the Secret pgsecret key password", ref)
+		t.Errorf("PGPASSWORD comes from %v, want the Secret pgsecret key password", ref)
 	}
-	if _, literal := list[pw].(map[string]any)["value"]; literal {
-		t.Error("the password has a literal value")
+	if _, literal := e["PGPASSWORD"]["value"]; literal {
+		t.Error("PGPASSWORD has a literal value")
 	}
-	want := "postgres://remedy:$(REMEDY_POSTGRES_PASSWORD)@remedy-postgres.remedy-system.svc:5432/remedy?sslmode=disable"
-	if got := dig(t, list[url], "value"); got != want {
-		t.Errorf("REMEDY_DATABASE_URL = %v, want %s", got, want)
+	want := "postgres://remedy@remedy-postgres.remedy-system.svc:5432/remedy?sslmode=disable"
+	if got := e["REMEDY_DATABASE_URL"]["value"]; got != want {
+		t.Errorf("REMEDY_DATABASE_URL = %v, want exactly %s (no password in it)", got, want)
 	}
-	if dig(t, list[url], "valueFrom") != nil {
+	if e["REMEDY_DATABASE_URL"]["valueFrom"] != nil {
 		t.Error("REMEDY_DATABASE_URL has a valueFrom as well")
 	}
+	if _, found := e["REMEDY_POSTGRES_PASSWORD"]; found {
+		t.Error("REMEDY_POSTGRES_PASSWORD is gone: the password is PGPASSWORD")
+	}
+	// Only PGPASSWORD, POSTGRES_PASSWORD (the database) and the backup's PGPASSWORD reference the password Secret, and no
+	// rendered object composes a URL with it.
+	if text := toString(d); strings.Contains(text, "$(") {
+		t.Errorf("a rendered object uses a $(VAR) reference:\n%s", text)
+	}
+	// server.env cannot set it: the name contains PASSWORD.
+	values := bundledValues()
+	set(values, "server.env", map[string]any{"PGPASSWORD": "x"})
+	mustFail(t, values, "server.env.PGPASSWORD")
+}
+
+func TestTheDatabaseStartsWithAStartupProbeAndStopsCleanly(t *testing.T) {
+	pod := podSpec(t, postgresStatefulSet(t, mustRender(t, bundledValues())))
+	if got := pod["terminationGracePeriodSeconds"]; got != 60 {
+		t.Errorf("terminationGracePeriodSeconds = %v, want 60", got)
+	}
+	c := container(t, pod, "postgres")
+	if cmd := toString(dig(t, c, "startupProbe", "exec", "command")); !strings.Contains(cmd, "pg_isready") || !strings.Contains(cmd, "127.0.0.1") {
+		t.Errorf("startupProbe = %s, want pg_isready over TCP", cmd)
+	}
+	if p, f := dig(t, c, "startupProbe", "periodSeconds"), dig(t, c, "startupProbe", "failureThreshold"); p != 5 || f != 60 {
+		t.Errorf("startupProbe period %v, threshold %v, want 5 and 60 (five minutes)", p, f)
+	}
+}
+
+// A chart upgrade that changes nothing of the database must not restart it: no chart version and no checksum in its pod.
+func TestTheDatabasePodTemplateDoesNotChangeWithTheChartVersion(t *testing.T) {
+	tmpl := dig(t, postgresStatefulSet(t, mustRender(t, bundledValues())), "spec", "template", "metadata")
+	labels, _ := dig(t, tmpl, "labels").(map[string]any)
+	if _, found := labels["helm.sh/chart"]; found {
+		t.Errorf("the postgres pod template carries helm.sh/chart: %v", labels)
+	}
+	for k := range labels {
+		if strings.Contains(k, "version") {
+			t.Errorf("the postgres pod template carries %s", k)
+		}
+	}
+	for k := range asMap(dig(t, tmpl, "annotations")) {
+		if strings.Contains(k, "checksum") {
+			t.Errorf("the postgres pod template carries the annotation %s", k)
+		}
+	}
+}
+
+func asMap(v any) map[string]any {
+	m, _ := v.(map[string]any)
+	return m
 }
 
 func TestTheBundledDatabaseNeedsAPasswordSecret(t *testing.T) {
@@ -398,11 +482,11 @@ func TestTheServerPolicyReachesTheBundledDatabaseOnly(t *testing.T) {
 func TestThePostgresPolicyAdmitsTheServerAndTheBackupOnly(t *testing.T) {
 	d := mustRender(t, bundledValues())
 	p := policy(t, d, "remedy-postgres")
-	if got := dig(t, p, "spec", "policyTypes"); !reflect.DeepEqual(got, []any{"Ingress"}) {
-		t.Errorf("policyTypes = %v, want only Ingress (the database connects to nothing)", got)
+	if got := dig(t, p, "spec", "policyTypes"); !reflect.DeepEqual(got, []any{"Ingress", "Egress"}) {
+		t.Errorf("policyTypes = %v, want Ingress and Egress", got)
 	}
 	if dig(t, p, "spec", "egress") != nil {
-		t.Errorf("egress = %v, want none", dig(t, p, "spec", "egress"))
+		t.Errorf("egress = %v, want no rule at all (the database connects to nothing)", dig(t, p, "spec", "egress"))
 	}
 	ingress := listOf(dig(t, p, "spec", "ingress"))
 	if len(ingress) != 1 {
@@ -460,6 +544,9 @@ func TestTheBackupDumpsToItsOwnClaimEveryNight(t *testing.T) {
 	c := backupCronJob(t, d)
 	if got := dig(t, c, "spec", "schedule"); got != "17 3 * * *" {
 		t.Errorf("schedule = %v, want 17 3 * * *", got)
+	}
+	if got := dig(t, c, "spec", "startingDeadlineSeconds"); got != 86400 {
+		t.Errorf("startingDeadlineSeconds = %v, want 86400 (a day)", got)
 	}
 	if got := dig(t, c, "spec", "concurrencyPolicy"); got != "Forbid" {
 		t.Errorf("concurrencyPolicy = %v, want Forbid", got)
@@ -571,4 +658,51 @@ func TestNoPasswordValueIsEverRendered(t *testing.T) {
 	if _, stderr, _ := render(t, values); strings.Contains(stderr, "hunter2") {
 		t.Errorf("the error repeats the value:\n%s", stderr)
 	}
+}
+
+func TestUnknownKeysBelowPostgresAreRefusedWithoutTheirValue(t *testing.T) {
+	for _, path := range []string{"postgres.image.digest", "postgres.backup.password", "postgres.persistence.existingClaim"} {
+		for name, values := range map[string]map[string]any{"bundled": bundledValues(), "external": baseValues()} {
+			set(values, path, "hunter2")
+			_, stderr, err := render(t, values)
+			if err == nil {
+				t.Errorf("%s (%s): the render succeeded", path, name)
+				continue
+			}
+			if !strings.Contains(stderr, path+" is not a value of this chart") {
+				t.Errorf("%s (%s): the message does not name the key:\n%s", path, name, stderr)
+			}
+			if strings.Contains(stderr, "hunter2") {
+				t.Errorf("%s (%s): the message repeats the value:\n%s", path, name, stderr)
+			}
+		}
+	}
+	values := bundledValues()
+	set(values, "postgres.image", "postgres:16.15")
+	mustFail(t, values, "postgres.image must be an object")
+}
+
+// With a database of your own a postgres value would do nothing; the render says so instead of ignoring it.
+func TestPostgresValuesAreRefusedWithADatabaseOfYourOwn(t *testing.T) {
+	for path, v := range map[string]any{
+		"postgres.existingSecret":          "pgsecret",
+		"postgres.image.tag":               "16.14",
+		"postgres.persistence.size":        "9Gi",
+		"postgres.backup.enabled":          false,
+		"postgres.backup.retentionDays":    30,
+		"postgres.resources.limits.memory": "1Gi",
+	} {
+		values := baseValues()
+		set(values, path, v)
+		top := strings.Join(strings.Split(path, ".")[:2], ".")
+		mustFail(t, values, top+" has no effect with a database of your own")
+	}
+	// enabled: false says the same as leaving it unset, and the defaults themselves are accepted (they equal the helper's
+	// copy of values.yaml: every render of baseValues proves it).
+	values := baseValues()
+	set(values, "postgres.enabled", false)
+	mustRender(t, values)
+	values = baseValues()
+	set(values, "postgres.image.tag", "16.15")
+	mustRender(t, values)
 }

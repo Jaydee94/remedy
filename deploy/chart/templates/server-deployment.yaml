@@ -41,16 +41,16 @@ spec:
             - {name: REMEDY_ADDR, value: ":8080"}
             - {name: REMEDY_INTERNAL_ADDR, value: ":8081"}
             {{- if include "remedy.bundledPostgres" . }}
-            # The bundled PostgreSQL: the password comes from its Secret, and the URL is composed from it. Kubernetes expands
-            # $(REMEDY_POSTGRES_PASSWORD) only from an entry above this one, so the order matters. The password must be URL-safe.
+            # The bundled PostgreSQL: the URL names no password, and the driver (pgx) takes it from PGPASSWORD, which comes
+            # from the Secret. So the password needs no URL encoding, and no rendered value holds it.
             # sslmode=disable: the bundled server has no TLS, and the traffic stays on the pod network inside the namespace.
-            - name: REMEDY_POSTGRES_PASSWORD
+            - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "remedy.postgresSecret" . }}
                   key: {{ include "remedy.postgresSecretKey" . }}
             - name: REMEDY_DATABASE_URL
-              value: "postgres://remedy:$(REMEDY_POSTGRES_PASSWORD)@{{ include "remedy.postgresHost" . }}:5432/remedy?sslmode=disable"
+              value: "postgres://remedy@{{ include "remedy.postgresHost" . }}:5432/remedy?sslmode=disable"
             {{- else }}
             # The connection URL holds the database password: it comes from a Secret, never from values.
             - name: REMEDY_DATABASE_URL

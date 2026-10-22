@@ -80,6 +80,32 @@ true
 {{- $key -}}
 {{- end }}
 
+{{/* The defaults of postgres in values.yaml, without enabled. With a database of your own every postgres value must equal
+     these (validate.yaml): a value that differs would have no effect. They must stay equal to values.yaml, which the render
+     tests prove (every render with database.existingSecret and the default values compares them). */}}
+{{- define "remedy.postgresDefaults" -}}
+existingSecret: ""
+passwordKey: password
+image:
+  repository: postgres
+  tag: "16.15"
+persistence:
+  size: 5Gi
+  storageClass: ""
+resources:
+  requests: {cpu: 50m, memory: 128Mi}
+  limits: {memory: 512Mi}
+backup:
+  enabled: true
+  schedule: "17 3 * * *"
+  retentionDays: 7
+  size: 2Gi
+  storageClass: ""
+  resources:
+    requests: {cpu: 10m, memory: 64Mi}
+    limits: {memory: 256Mi}
+{{- end }}
+
 {{/* The address of the bundled PostgreSQL: its headless Service in the release namespace. */}}
 {{- define "remedy.postgresHost" -}}
 remedy-postgres.{{ .Release.Namespace }}.svc

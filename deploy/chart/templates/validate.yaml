@@ -1,17 +1,38 @@
 {{- /* Fails the render for a value the chart cannot work without or must never accept. It renders nothing. */ -}}
 {{- $_ := include "remedy.secretName" . -}}
 {{- $bundled := include "remedy.bundledPostgres" . -}}
+{{- /* The keys under postgres, in both modes. A value is never echoed: a password pasted into a wrong key would show. */ -}}
+{{- $pgKeys := dict "" (list "enabled" "existingSecret" "passwordKey" "image" "persistence" "resources" "backup") "image" (list "repository" "tag") "persistence" (list "size" "storageClass") "backup" (list "enabled" "schedule" "retentionDays" "size" "storageClass" "resources") }}
+{{- range $name, $value := .Values.postgres }}
+{{- if not (has $name (get $pgKeys "")) }}
+{{- fail (printf "postgres.%s is not a value of this chart: the password belongs in a Secret (postgres.existingSecret, key postgres.passwordKey), never in values" $name) }}
+{{- end }}
+{{- if hasKey $pgKeys $name }}
+{{- if not (kindIs "map" $value) }}
+{{- fail (printf "postgres.%s must be an object (the value is not shown)" $name) }}
+{{- end }}
+{{- range $sub, $_ := $value }}
+{{- if not (has $sub (get $pgKeys $name)) }}
+{{- fail (printf "postgres.%s.%s is not a value of this chart: postgres.%s takes %s (the value is not shown)" $name $sub $name (join ", " (get $pgKeys $name))) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if not $bundled }}
+{{- /* A database of your own: every postgres value but enabled must be the chart's default, or it would silently do nothing. */ -}}
+{{- $defaults := include "remedy.postgresDefaults" . | fromYaml }}
+{{- range $name, $value := .Values.postgres }}
+{{- if and (ne $name "enabled") (not (deepEqual $value (get $defaults $name))) }}
+{{- fail (printf "postgres.%s has no effect with a database of your own (database.existingSecret is set): remove it, or leave database.existingSecret empty for the bundled PostgreSQL" $name) }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if $bundled }}
 {{- $_ := include "remedy.postgresSecret" . -}}
 {{- $_ := include "remedy.postgresSecretKey" . -}}
-{{- range $name, $_ := .Values.postgres }}
-{{- if not (has $name (list "enabled" "existingSecret" "passwordKey" "image" "persistence" "resources" "backup")) }}
-{{- fail (printf "postgres.%s is not a value of this chart: the password belongs in a Secret (postgres.existingSecret, key postgres.passwordKey), never in values" $name) }}
-{{- end }}
-{{- end }}
 {{- $tag := .Values.postgres.image.tag }}
-{{- if not (and (kindIs "string" $tag) (regexMatch "^[0-9]+\\.[0-9]+([-.][A-Za-z0-9._-]+)?$" $tag)) }}
-{{- fail (printf "postgres.image.tag must name an exact minor version, such as 16.15, got %q: a moving tag (16, latest) can change the server on a restart, and a new major version cannot read the old data directory" (toString $tag)) }}
+{{- if not (and (kindIs "string" $tag) (regexMatch "^[0-9]+\\.[0-9]+$" $tag)) }}
+{{- fail (printf "postgres.image.tag must be an exact MAJOR.MINOR version of the Debian-based postgres image, such as 16.15, got %q: a moving tag (16, latest) can change the server on a restart, a new major version cannot read the old data directory, and the Alpine image (-alpine) runs postgres as another user than the chart's 999; a digest is not supported by this value" (toString $tag)) }}
 {{- end }}
 {{- if not .Values.postgres.image.repository }}
 {{- fail "postgres.image.repository is required" }}
