@@ -8,9 +8,9 @@ import (
 
 // The chart installs a small single-node PostgreSQL of its own by default (docs/specs/2026-10-22-postgres-only-design.md,
 // decision 11), with the password from a Secret that exists already (postgres.existingSecret). database.existingSecret
-// names a database of your own instead, and then nothing of the bundled one renders. The control plane's URL is composed in
-// its Deployment from the password Secret, the network policies admit only the server and the backup job,
-// and a CronJob dumps the database to a second claim.
+// names a database of your own instead, and then nothing of the bundled one renders. The control plane gets the password as
+// PGPASSWORD from that Secret next to a URL without a password, the network policies admit only the server and the backup
+// job, and a CronJob dumps the database to a second claim.
 
 // bundledValues are baseValues with the bundled database (the default: postgres.enabled unset) instead of an external one.
 func bundledValues() map[string]any {

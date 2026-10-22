@@ -67,6 +67,8 @@ func TestWithoutTheDatabaseSecretTheBundledDatabaseNeedsItsPasswordSecret(t *tes
 	set(values, "networkPolicy.enabled", false)
 	set(values, "database.existingSecret", "")
 	mustFail(t, values, "postgres.existingSecret is required for the bundled PostgreSQL")
+	// The message names any password as fine: the control plane gets it as PGPASSWORD, not inside a URL.
+	mustFail(t, values, "holds the database password under postgres.passwordKey (any characters")
 	// A database Secret that is not a name is refused.
 	values = baseValues()
 	set(values, "database.existingSecret", 5)

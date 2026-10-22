@@ -131,7 +131,8 @@ func TestThePublicServiceCanBeANodePort(t *testing.T) {
 }
 
 func TestTheServerHasNoDataVolumeAndNoClaim(t *testing.T) {
-	// The database is a Postgres the chart does not install: the control plane keeps no state on a volume.
+	// baseValues name a database of your own, so nothing of the bundled PostgreSQL renders: the control plane keeps no
+	// state on a volume.
 	d := mustRender(t, baseValues())
 	if got := d.all("PersistentVolumeClaim"); len(got) != 0 {
 		t.Fatalf("%d PersistentVolumeClaim objects, want none (the runner's claim comes from its StatefulSet template)", len(got))

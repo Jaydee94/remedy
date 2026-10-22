@@ -63,7 +63,7 @@ true
 {{- define "remedy.postgresSecret" -}}
 {{- $name := (.Values.postgres | default dict).existingSecret -}}
 {{- if not (and (kindIs "string" $name) $name) -}}
-{{- fail "postgres.existingSecret is required for the bundled PostgreSQL (the default when database.existingSecret is not set): the name of a Secret that exists already and holds the database password (URL-safe, for example openssl rand -hex 24); the chart never creates it" -}}
+{{- fail "postgres.existingSecret is required for the bundled PostgreSQL (the default when database.existingSecret is not set): the name of a Secret that exists already and holds the database password under postgres.passwordKey (any characters, for example openssl rand -hex 24); the chart never creates it" -}}
 {{- end -}}
 {{- if not (regexMatch "^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?$" $name) -}}
 {{- fail (printf "postgres.existingSecret %q is not a Secret name (lower case letters, digits, dashes and dots)" $name) -}}
