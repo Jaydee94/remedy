@@ -1,6 +1,6 @@
 # Alert recurrence, a source of its own interval, and read tools for alerts and metrics
 
-Status: draft for the maintainer's approval (2026-10-22). Comes from a click-through of the deployed 0.14.0 (home server), findings 1 to 3 and 8.
+Status: implemented; the real run with the real CLI is not made (2026-10-22). Comes from a click-through of the deployed 0.14.0 (home server), findings 1 to 3 and 8.
 
 ## Why
 

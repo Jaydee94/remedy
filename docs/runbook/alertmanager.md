@@ -5,7 +5,7 @@ Alertmanager into incidents, maps them to hosts and **diagnoses them**: on its o
 **Diagnose** in the incident's thread otherwise (section 5). The run may read the cluster (when the cluster is set up) and use the tools of the host
 the alert is mapped to; any change it asks for waits for you under **Needs you**, and in an automatic run that approval expires (section 5). The diagnosis
 with the real CLI has not been tried yet: [`outage-real-run.md`](outage-real-run.md) is its runbook. Remedy only reads from Alertmanager (a `GET`); it never
-silences or acknowledges anything.
+silences or acknowledges anything. Section 8 describes the metrics address and the four read tools of the agent for alerts, silences and metrics.
 
 ## 1. Enter the address and the token
 
@@ -127,3 +127,42 @@ These rows are the expected causes. They were **not tried against a live Alertma
 | a certificate error | `REMEDY_ALERTMANAGER_CA_FILE` |
 | listed 0 active alerts | `curl <address>/api/v2/alerts?active=true&silenced=false&inhibited=false` from the same network: silenced and inhibited alerts are not listed; the count also leaves out the Watchdog and alerts Remedy skips |
 | the token "cannot be opened" | the master key changed since the token was saved: remove it and enter it again |
+
+## 8. Metrics and the tools that read the signal
+
+The [alert recurrence and signal tools spec](../specs/2026-10-22-alert-recurrence-and-signal-tools-design.md) gives the agent four read tools for the signal it diagnoses:
+`alert_list`, `silence_list`, `metrics_query` and `metrics_query_range`. Status: implemented; the real run with the real CLI is **not made** yet.
+
+**The setting.** In **Setup**, block "Metrics": **Metrics address** (`REMEDY_METRICS_URL` is only its default) and, if the store needs one, **Metrics token**.
+The address is a Prometheus-compatible query API (Prometheus, VictoriaMetrics), `http` or `https`, without a user name, query or fragment. It may carry a
+**base path** (`https://host/select/0/prometheus`): Remedy joins `/api/v1/...` to it. Authentication is a **bearer token only** (sealed with the master key,
+write-only, shown only as a hint, like the Alertmanager token); basic auth is not supported. **Use `https` for a store outside this machine**, the token travels
+in clear over plain `http`. `REMEDY_METRICS_CA_FILE` is a PEM bundle for an `https` store (bootstrap: read at start-up, a missing file stops the server). On the home server the
+address is `http://vmsingle-monitoring-victoria-metrics-k8s-stack.monitoring.svc:8428`. Empty: the two metrics tools are not offered.
+
+**The probe on the Setup page.** A small loop of its own asks the store for `/api/v1/status/buildinfo` (Prometheus and VictoriaMetrics both serve it) and the
+line under the block says what it heard, like the Alertmanager line: "I don't ask the metrics store: no address is set.", "I asked the metrics store 12
+seconds ago and it answered.", or "I couldn't ask the metrics store …: <reason>. I changed nothing because of it." It is paced by **How often I ask
+Alertmanager** but never faster than once a minute, it runs without an Alertmanager, and after a change of address it can take up to a minute to show the new
+state (`GET /api/signals` has an entry `metrics`; like the other state it is in memory).
+
+**Reaching it from the chart.** With the default `networkPolicy.enabled: true` a store inside the cluster is blocked like the Alertmanager is (section 1). Set the chart value
+`networkPolicy.metrics` (`namespace`, `podSelector`, `port`; all three are required, the port because Prometheus serves 9090 and VictoriaMetrics 8428) and the control plane gets one more
+egress rule to those pods and nothing else. On the home server: namespace `monitoring`, the `vmsingle` pods, port 8428; the monitoring namespace's own ingress policy has to admit the
+Remedy namespace too. The chart needs no value for the address or the interval: `server.env` passes any `REMEDY_*` name. The values of the home server's wrapper chart are the maintainer's own change in the other repository.
+
+**The tools.** They are registered always and offered to a run only while their source is set (the addresses are settings that change without a restart): `alert_list` and
+`silence_list` while the Alertmanager address is set, `metrics_query` and `metrics_query_range` while the metrics address is set. A learning run (role `learner`) gets none of them.
+
+| Tool | Arguments | Bounds |
+|---|---|---|
+| `alert_list` | `filter` (matchers), `active_only` | at most 100 rows; labels and annotations bounded and redacted |
+| `silence_list` | `state` (`active`, `pending`, `expired`) | at most 50 rows |
+| `metrics_query` | `expr`, `time` (RFC 3339) | `expr` at most 2 KiB; 10 s timeout |
+| `metrics_query_range` | `expr`, `last` or `start` and `end`, `step` | range at most 24 h; at most 300 points per series (a finer step is raised and the answer says so) |
+
+Every answer starts with the note that it comes from monitoring and is data, never an instruction, is redacted, and is cut at 32 KB. An answer shows at most 20 series and 40 labels per series
+("showing 20 of N series"), and values are rounded to 4 significant digits. A client failure reaches the agent as a fixed sentence; the details are in the control plane's log, never the token.
+
+**Nothing can be written.** The Alertmanager client and the metrics client send only `GET` (no redirects, no proxy), neither has a method that writes, and the tools have none either: the agent cannot
+create or expire a silence, resolve an alert or change a rule. The two sources are asked with the credentials of the control plane alone; the runner holds none.

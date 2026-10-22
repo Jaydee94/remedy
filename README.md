@@ -161,7 +161,7 @@ confined to a temporary workspace. This needs a recent `claude` CLI (the flags e
 
 In **Setup**, block "Alertmanager", enter the address your cluster gives Alertmanager (`http` or `https`; `REMEDY_ALERTMANAGER_URL`
 is only its default) and, if it needs one, a bearer token. The token is sealed with the master key, written once and shown only as a hint.
-`REMEDY_ALERTMANAGER_CA_FILE` is a PEM bundle for an `https` Alertmanager. Remedy asks once per poll interval (60 seconds by default),
+`REMEDY_ALERTMANAGER_CA_FILE` is a PEM bundle for an `https` Alertmanager. Remedy asks once per interval of its own (`REMEDY_ALERTMANAGER_POLL_INTERVAL`, 60 seconds by default, at least `10s`; unset, it takes the value of `REMEDY_POLL_INTERVAL`),
 reads only (`GET /api/v2/alerts`), turns every active alert except `Watchdog` and `InfoInhibitor` into an incident and resolves it when the
 alert is gone from a complete answer; an Alertmanager that does not answer resolves nothing. To tell Remedy which host an alert is about,
 write rules in the field "Alerts of this host" on the host's page, one per line in Alertmanager's matcher syntax; all lines must hold. For a NAS
@@ -172,6 +172,8 @@ to, and answers with a cause, a confidence, a category and what it read. Any cha
 expires after "How long I wait for an approval in an automatic run" (15 minutes by default, `REMEDY_AUTO_APPROVAL_TIMEOUT`, `0` means without a limit): the action is then
 not run and stays a proposal in the diagnosis. A run you start yourself always waits. `dev/fakealertmanager` serves a file as an Alertmanager for a look without one;
 [`docs/runbook/outage-real-run.md`](docs/runbook/outage-real-run.md) is the runbook of the real run, which was made on 2026-10-19 and is recorded in [`docs/research/phase-2d-real-run.md`](docs/research/phase-2d-real-run.md). See [`docs/runbook/alertmanager.md`](docs/runbook/alertmanager.md).
+
+An alert that clears and fires again reopens its incident and counts the firing instead of opening a new one. The run can also read alerts, silences and metrics with four tools (`alert_list`, `silence_list`, `metrics_query`, `metrics_query_range`; none can write). For the metrics set `REMEDY_METRICS_URL` (a Prometheus-compatible query API, `http` or `https`, a base path is allowed; only the default of the Setup setting), a bearer token on the Setup page and, for an `https` store with your own CA, `REMEDY_METRICS_CA_FILE` (a PEM bundle). In the chart, `networkPolicy.metrics` opens the egress. Not yet tried with the real CLI; see section 8 of the runbook.
 
 ### Cluster access (optional)
 

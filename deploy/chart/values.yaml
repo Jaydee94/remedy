@@ -106,3 +106,12 @@ networkPolicy:
   #  namespace: monitoring
   #  podSelector: {app.kubernetes.io/name: vmalertmanager}
   #  port: 9093
+  # A Prometheus-compatible query API inside the cluster (the metrics tools), the same shape and one more rule on the
+  # remedy-server policy. Empty: no rule. Unlike the Alertmanager the port is required: Prometheus serves 9090,
+  # VictoriaMetrics 8428, and a wrong default would only show as a timeout. The address itself (setting metrics_url,
+  # or REMEDY_METRICS_URL) and the Alertmanager interval (REMEDY_ALERTMANAGER_POLL_INTERVAL) need no chart value:
+  # server.env passes any REMEDY_* name above, so set them there or on the Setup page.
+  metrics: {}
+  #  namespace: monitoring
+  #  podSelector: {app.kubernetes.io/name: vmsingle}
+  #  port: 8428

@@ -57,4 +57,14 @@
 {{- $_ := include "remedy.checkPort" (dict "what" "networkPolicy.alertmanager" "port" $am.port) }}
 {{- end }}
 {{- end }}
+{{- $mt := .Values.networkPolicy.metrics | default dict }}
+{{- if $mt }}
+{{- if not (and (kindIs "string" $mt.namespace) (regexMatch "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$" $mt.namespace)) }}
+{{- fail (printf "networkPolicy.metrics.namespace is required and must be a namespace name (lower case letters, digits and dashes, at most 63 characters), got %v" (default "nothing" $mt.namespace)) }}
+{{- end }}
+{{- if not (and (kindIs "map" $mt.podSelector) $mt.podSelector) }}
+{{- fail "networkPolicy.metrics.podSelector is required and must not be empty: an empty selector would admit every pod of the namespace; name the metrics pods by their labels" }}
+{{- end }}
+{{- $_ := include "remedy.checkPort" (dict "what" "networkPolicy.metrics" "port" $mt.port) }}
+{{- end }}
 {{- end }}
