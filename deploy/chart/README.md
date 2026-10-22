@@ -24,7 +24,7 @@ Spec: [`docs/specs/2026-10-06-kubernetes-deployment-design.md`](../../docs/specs
 | Ingress | `remedy` | optional |
 | StatefulSet, Service | `remedy-postgres` | the bundled PostgreSQL (the default; not with `database.existingSecret`): one pod, headless Service, claim `data-remedy-postgres-0` |
 | CronJob, PersistentVolumeClaim | `remedy-postgres-backup` | the nightly `pg_dump` of the bundled PostgreSQL (`postgres.backup.enabled`, default on) |
-| NetworkPolicies | `remedy-server`, `remedy-runner`, `remedy-token-refresher` (only with `cluster.write.enabled`: DNS and the API server, nothing else), `remedy-postgres` (only with the bundled PostgreSQL: ingress from the control plane and the backup job) | on by default; `networkPolicy.*` (`database` is required with `database.existingSecret` and refused otherwise; `hosts`, `alertmanager` and `metrics` are optional; all add egress to the control plane only) |
+| NetworkPolicies | `remedy-server`, `remedy-runner`, `remedy-token-refresher` (only with `cluster.write.enabled`: DNS and the API server, nothing else), `remedy-postgres` and `remedy-postgres-backup` (only with the bundled PostgreSQL and its backup) | on by default; `networkPolicy.*` (`database` is required with `database.existingSecret` and refused otherwise; `hosts`, `alertmanager` and `metrics` are optional; all add egress to the control plane only) |
 
 With `cluster.enabled` the control plane runs as the read account (a projected token) and the chart creates a read-only ClusterRole.
 With `cluster.write.enabled` a CronJob (default schedule `*/30 * * * *`, `cluster.write.tokenRefresh.schedule`) and a Job that runs as a post-install and post-upgrade
@@ -45,7 +45,9 @@ The control plane keeps all its state in PostgreSQL, in one of two ways:
 
 `postgres.enabled` is unset by default, which means "bundled unless `database.existingSecret` is set". The render fails
 for `postgres.enabled: true` together with `database.existingSecret` (a contradiction) and for `postgres.enabled: false`
-without it (no database at all).
+without it (no database at all). With `database.existingSecret` set every other `postgres.*` value must stay at its default:
+the render refuses one that would have no effect. An unknown key anywhere under `postgres` is refused in both cases, without
+its value in the message.
 
 ### The bundled PostgreSQL
 
@@ -63,37 +65,129 @@ kubectl -n remedy create secret generic remedy-postgres --from-literal=password=
 ```
 
 (or the same as a SealedSecret). The chart never generates or stores the password: a generated one would change on every
-render, and Helm's `lookup` does not work under Argo CD. **The password must be URL-safe** (letters and digits, as
-`openssl rand -hex` gives): the control plane's connection URL is composed with it as it is, without percent-encoding.
+render, and Helm's `lookup` does not work under Argo CD. Any characters are fine: the control plane gets the password as
+`PGPASSWORD`, not inside a URL.
 
 What it renders:
 
-- A StatefulSet `remedy-postgres` with one pod, the image `postgres.image.repository:postgres.image.tag` (default
-  `postgres:16.15`; the tag must be an exact minor version such as `16.15`, the render refuses `16` or `latest`), user and
-  database `remedy`, the data directory in `pgdata` below the claim's mount, readiness and liveness by `pg_isready` over TCP,
-  and the restricted Pod Security Standard (user, group and `fsGroup` 999, no privilege escalation, no capabilities, a
-  read-only root file system with `emptyDir` for the socket directory and `/tmp`, no service account token). Its claim
-  `data-remedy-postgres-0` comes from the claim template `data` (`postgres.persistence.size`, default `5Gi`;
-  `postgres.persistence.storageClass`, empty: the cluster's default). `postgres.resources` sizes the pod.
-- A headless Service `remedy-postgres`. The control plane gets `REMEDY_POSTGRES_PASSWORD` from the Secret
-  (`secretKeyRef`) and, after it, `REMEDY_DATABASE_URL` as
-  `postgres://remedy:$(REMEDY_POSTGRES_PASSWORD)@remedy-postgres.<namespace>.svc:5432/remedy?sslmode=disable`, which
-  Kubernetes expands when it starts the container. No rendered object holds the password.
-- With `networkPolicy.enabled`: a rule on the `remedy-server` policy to the PostgreSQL pods on 5432 (instead of
-  `networkPolicy.database`, which is refused here), and a policy `remedy-postgres` that admits ingress on 5432 from the control
-  plane's pods and the backup job's pods of the release only. It has no egress rule and does not restrict the database's
-  egress. The PostgreSQL pods carry `app.kubernetes.io/name: remedy-postgres`, so none of the chart's other policies selects
-  them.
-- With `postgres.backup.enabled` (the default): a claim `remedy-postgres-backup` (`postgres.backup.size`, default `2Gi`;
-  `postgres.backup.storageClass`, empty: the data's class) and a CronJob `remedy-postgres-backup` (`postgres.backup.schedule`,
-  default `17 3 * * *`) that runs `pg_dump --format=custom --no-owner` with the same image into
-  `/backup/remedy-<UTC timestamp>.dump`. The dump is written as `.part` and renamed only when `pg_dump` succeeded; dumps older
-  than `postgres.backup.retentionDays` (default 7) are deleted only after a new dump was written. Run one now with
-  `kubectl -n <namespace> create job --from=cronjob/remedy-postgres-backup backup-now`; restore one with `pg_restore` into an
-  empty database, with the control plane scaled to zero. A claim of a storage class that binds on first use (such as
-  `local-path`) stays `Pending` until the first backup runs.
+- A StatefulSet `remedy-postgres` with one pod: the image `postgres.image.repository:postgres.image.tag` (default
+  `postgres:16.15`), user and database `remedy`, and the data directory in `pgdata` below the claim's mount.
+  - **The tag** must be exactly `MAJOR.MINOR` of the Debian-based image, such as `16.15`. The render refuses a moving tag
+    (`16`, `latest`), `-alpine` (that image runs postgres as uid 70, the chart as 999), any other suffix, and a digest:
+    this value takes a tag only.
+  - **Probes:** a startup probe by `pg_isready` over TCP (every 5 s, up to 60 times: five minutes for `initdb` or a crash
+    recovery), then readiness and liveness the same way. `terminationGracePeriodSeconds: 60` leaves time for a clean
+    shutdown.
+  - **Security:** the restricted Pod Security Standard (user, group and `fsGroup` 999, no privilege escalation, no
+    capabilities, a read-only root file system with `emptyDir` for the socket directory and `/tmp`, no service account
+    token). The pod template carries no chart version, so a chart upgrade that changes nothing of the database does not
+    restart it.
+  - **Storage:** its claim `data-remedy-postgres-0` comes from the claim template `data` (`postgres.persistence.size`,
+    default `5Gi`; `postgres.persistence.storageClass`, empty: the cluster's default). `postgres.resources` sizes the pod.
+- A headless Service `remedy-postgres`. The control plane gets `PGPASSWORD` from the Secret (`secretKeyRef`) and
+  `REMEDY_DATABASE_URL` as `postgres://remedy@remedy-postgres.<namespace>.svc:5432/remedy?sslmode=disable`, a URL without a
+  password: the driver (pgx) takes the password from `PGPASSWORD`. No rendered object holds the password, and `server.env`
+  cannot set `PGPASSWORD` (its name contains `PASSWORD`).
+- With `networkPolicy.enabled`:
+  - A rule on the `remedy-server` policy to the PostgreSQL pods on 5432. It takes the place of `networkPolicy.database`,
+    which is refused here.
+  - A policy `remedy-postgres`. It admits ingress on 5432 only from the release's control-plane pods and backup-job pods,
+    and it allows no egress at all: the database connects to nothing.
+  - With the backup on, a policy `remedy-postgres-backup`. The job takes no connection; it may reach DNS (the same kube-dns
+    rule as the other policies, `networkPolicy.dnsNamespace`) and the PostgreSQL pods on 5432, nothing else.
+  - The PostgreSQL pods carry `app.kubernetes.io/name: remedy-postgres` and the backup pods `remedy-postgres-backup`, so
+    none of the chart's other policies selects them.
+- With `postgres.backup.enabled` (the default): a claim and a CronJob, both named `remedy-postgres-backup`.
+  - **The claim:** `postgres.backup.size`, default `2Gi`; `postgres.backup.storageClass`, empty: the data's class.
+  - **The CronJob:** `postgres.backup.schedule`, default `17 3 * * *`; `startingDeadlineSeconds: 86400`, so a run missed by
+    less than a day still runs. It runs `pg_dump --format=custom --no-owner` with the same image into
+    `/backup/remedy-<UTC timestamp>.dump`.
+  - **Safety:** the dump is written as `.part` and renamed only when `pg_dump` succeeded. Old dumps are deleted only after a
+    new dump was written. A dump is deleted once it is older than `postgres.backup.retentionDays` (default 7) times 1440
+    minutes when a run ends, so the claim holds the dumps of about the last N days.
 
-**`sslmode=disable`** is deliberate: the bundled server has no TLS, and the connection stays on the pod network inside the
+**Right after the install, run the first backup by hand:**
+
+```sh
+kubectl -n <namespace> create job --from=cronjob/remedy-postgres-backup first-backup
+```
+
+A claim of a storage class that binds on first use (`WaitForFirstConsumer`, such as `local-path`) stays `Pending` until a
+pod uses it, and Argo CD shows the application as `Progressing` until then. The same command takes a backup at any time
+(use a new job name).
+
+**Restore a dump.**
+
+1. Stop the control plane. Under Argo CD, turn off auto-sync of the application first: its self-heal would scale the
+   control plane back up. Then run `kubectl -n <namespace> scale deployment/remedy-server --replicas=0`.
+2. Start a pod that mounts the backup claim read-only. It carries the backup job's labels, so the chart's policies let it
+   reach the database. Use your release name for `instance`, and your Secret and key for the password:
+
+   ```yaml
+   apiVersion: v1
+   kind: Pod
+   metadata:
+     name: remedy-postgres-restore
+     labels: {app.kubernetes.io/name: remedy-postgres-backup, app.kubernetes.io/instance: remedy}
+   spec:
+     restartPolicy: Never
+     automountServiceAccountToken: false
+     securityContext:
+       runAsNonRoot: true
+       runAsUser: 999
+       runAsGroup: 999
+       fsGroup: 999
+       seccompProfile: {type: RuntimeDefault}
+     containers:
+       - name: restore
+         image: postgres:16.15            # the tag of postgres.image.tag
+         command: [sleep, "3600"]
+         env:
+           - {name: PGHOST, value: remedy-postgres}
+           - {name: PGUSER, value: remedy}
+           - {name: PGDATABASE, value: remedy}
+           - {name: PGSSLMODE, value: disable}
+           - name: PGPASSWORD
+             valueFrom: {secretKeyRef: {name: remedy-postgres, key: password}}
+         securityContext:
+           allowPrivilegeEscalation: false
+           readOnlyRootFilesystem: true
+           capabilities: {drop: [ALL]}
+         volumeMounts:
+           - {name: backup, mountPath: /backup, readOnly: true}
+           - {name: tmp, mountPath: /tmp}
+     volumes:
+       - name: backup
+         persistentVolumeClaim: {claimName: remedy-postgres-backup, readOnly: true}
+       - name: tmp
+         emptyDir: {}
+   ```
+
+   Apply it with `kubectl -n <namespace> apply -f restore.yaml`, then wait for it with
+   `kubectl -n <namespace> wait --for=condition=Ready pod/remedy-postgres-restore`.
+3. List the dumps with `kubectl -n <namespace> exec remedy-postgres-restore -- ls -l /backup`. Then restore one into the
+   database named `remedy`, the one the control plane uses:
+
+   ```sh
+   kubectl -n <namespace> exec remedy-postgres-restore -- \
+     pg_restore --clean --if-exists --no-owner --single-transaction -h remedy-postgres -U remedy -d remedy /backup/remedy-<timestamp>.dump
+   ```
+
+   `--clean --if-exists` drops what is there first, and `--single-transaction` leaves the database unchanged if the restore
+   fails. `--clean` drops only the objects the dump contains: a table made after the dump stays, for example one from a
+   migration of a newer Remedy. To return to exactly the dump, restore into an empty database. To get one, delete the claim
+   `data-remedy-postgres-0` with the StatefulSet scaled to zero, then scale it back.
+4. Delete the pod: `kubectl -n <namespace> delete pod remedy-postgres-restore`. Scale the control plane back to 1, or turn
+   auto-sync on again.
+
+Two notes on the restore:
+
+- The backup claim is `ReadWriteOnce`. On a cluster with several nodes the restore pod must land on the node that holds the
+  claim; a `local-path` volume already pins the pod there.
+- A dump holds the sealed values as bytes and everything else as plain text. They open again only with the same
+  `REMEDY_MASTER_KEY`.
+
+**`sslmode=disable`** is deliberate. The bundled server has no TLS, and the connection stays on the pod network inside the
 namespace, where the `remedy-postgres` policy admits only the control plane and the backup job.
 
 What it does **not** provide: high availability, replication, backups that leave the node (the backup claim is in the same
