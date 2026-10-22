@@ -29,6 +29,8 @@ const (
 	AlertmanagerToken        = "alertmanager_token"
 	AlertmanagerAutoMaxAge   = "alertmanager_auto_max_age"
 	AutoApprovalTimeout      = "auto_approval_timeout"
+	MetricsURL               = "metrics_url"
+	MetricsToken             = "metrics_token"
 )
 
 // Spec says what one setting is. problem is the sentence that follows the variable's name when a value is refused; check is the
@@ -117,6 +119,21 @@ var specs = []Spec{
 		Effect:  "Takes effect when an incident opens.",
 		problem: "must be a duration of at least 1m, for example 1h",
 		check:   func(v Value) bool { return v.Dur >= time.Minute },
+	},
+	{
+		Key: MetricsURL, Group: "Metrics", Label: "Metrics address", Env: "REMEDY_METRICS_URL",
+		Kind: KindText, Rule: "An http or https address without a user name, for example http://victoria:8428 or https://host/select/0/prometheus. Empty: I do not ask for metrics.",
+		Effect:    "Takes effect at the next request.",
+		problem:   "must be an http or https address without a user name, a query or a fragment, for example http://victoria:8428",
+		check:     func(v Value) bool { return validAlertmanagerURL(v.Str) }, // the same rules as Alertmanager's address
+		normalize: func(v Value) Value { v.Str = strings.TrimRight(v.Str, "/"); return v },
+	},
+	{
+		Key: MetricsToken, Group: "Metrics", Label: "Metrics token",
+		Kind: KindSecret, Rule: "Written once and never shown again. Empty: I send no token.",
+		Effect:  "Takes effect at the next request.",
+		problem: "must be 1 to 4096 characters without a line break or a control character",
+		check:   func(v Value) bool { return validSecretText(v.Str) },
 	},
 	{
 		Key: AutoApprovalTimeout, Group: "Runs", Label: "How long I wait for an approval in an automatic run", Env: "REMEDY_AUTO_APPROVAL_TIMEOUT",
