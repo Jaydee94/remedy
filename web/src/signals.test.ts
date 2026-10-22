@@ -38,4 +38,24 @@ describe('signalLine', () => {
     assert.equal(signalLine(src({ checkedAt: undefined }), at), 'I asked Alertmanager and it listed 7 active alerts.')
     assert.equal(signalLine(src({ checkedAt: '2026-10-16T12:05:00Z' }), at), 'I asked Alertmanager just now and it listed 7 active alerts.')
   })
+  describe('the metrics store', () => {
+    const metrics = (over: Partial<SignalSource> = {}): SignalSource => ({ name: 'metrics', state: 'ok', checkedAt: '2026-10-16T11:57:00Z', active: 0, ...over })
+    it('says how long ago it asked and that the store answered', () => {
+      assert.equal(signalLine(metrics(), at), 'I asked the metrics store 3 min ago and it answered.')
+      assert.equal(signalLine(metrics({ checkedAt: '2026-10-16T11:59:48Z' }), at), 'I asked the metrics store 12 seconds ago and it answered.')
+      assert.equal(signalLine(metrics({ checkedAt: undefined }), at), 'I asked the metrics store and it answered.')
+    })
+    it('says that no address is set when it is off', () => {
+      assert.equal(signalLine(metrics({ state: 'off', checkedAt: undefined }), at), "I don't ask the metrics store: no address is set.")
+    })
+    it('says that it has not asked yet', () => {
+      assert.equal(signalLine(metrics({ state: 'pending', checkedAt: undefined }), at), "I haven't asked the metrics store yet.")
+    })
+    it('shows the error and that nothing was changed', () => {
+      assert.equal(
+        signalLine(metrics({ state: 'error', error: 'metrics: HTTP 401' }), at),
+        "I couldn't ask the metrics store 3 min ago: metrics: HTTP 401. I changed nothing because of it.",
+      )
+    })
+  })
 })
