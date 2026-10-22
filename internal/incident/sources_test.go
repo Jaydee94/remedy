@@ -70,7 +70,7 @@ func TestAnAlertOpensAnIncidentWithoutARepositoryAndSeeingItAgainChangesNothing(
 	}
 }
 
-func TestAnAlertThatStopsResolvesItsIncidentAndAFreshOneOpensAnother(t *testing.T) {
+func TestAnAlertThatStopsResolvesItsIncidentAndReopensItWhenItReturns(t *testing.T) {
 	v := newEnv(t)
 	firing := alert(incident.Bad, "a/1", "HighLatency api")
 	v.observe(t, firing)
@@ -92,15 +92,15 @@ func TestAnAlertThatStopsResolvesItsIncidentAndAFreshOneOpensAnother(t *testing.
 		t.Fatalf("history = %q, want %q", got, want)
 	}
 
-	// A signal that is not there and was never there opens nothing, and a resolved key reopens as a new incident.
+	// A signal that is not there and was never there opens nothing, and a resolved key reopens its incident.
 	v.observe(t, alert(incident.Green, "never/1", "never fired"))
 	v.observe(t, firing)
 	second := v.incidents(t, "active")
-	if len(second) != 1 || second[0].ID == first.ID {
+	if len(second) != 1 || second[0].ID != first.ID || second[0].Occurrences != 2 {
 		t.Fatalf("after the alert fired again: %+v (the first incident was %d)", second, first.ID)
 	}
-	if all := v.incidents(t, "all"); len(all) != 2 {
-		t.Fatalf("%d incidents in all, want 2", len(all))
+	if all := v.incidents(t, "all"); len(all) != 1 {
+		t.Fatalf("%d incidents in all, want 1", len(all))
 	}
 }
 

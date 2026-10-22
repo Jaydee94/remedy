@@ -403,16 +403,6 @@ func (s *Store) ListUnresolvedBySource(ctx context.Context, source string) ([]In
 	return collectIncidents(rows)
 }
 
-// RecentlyDiagnosed says whether a resolved incident with this source and key was diagnosed at or after since.
-func (s *Store) RecentlyDiagnosed(ctx context.Context, source, key string, since time.Time) (bool, error) {
-	var n int
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM incidents
-		WHERE source = ? AND key = ? AND state = 'resolved' AND diagnosed_at IS NOT NULL AND diagnosed_at >= ?`,
-		source, key, formatTS(since)).Scan(&n)
-	return n > 0, err
-}
-
 // ResolveIncident resolves an incident that is not resolved yet. It remembers whether the incident was ignored, so that a
 // reopen can leave it ignored.
 func (s *Store) ResolveIncident(ctx context.Context, id int64, reason string, act NewActivity) error {
