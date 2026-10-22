@@ -17,14 +17,11 @@ ARG VERSION=dev
 ARG COMMIT=
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags webui -ldflags "-X github.com/Jaydee94/remedy/internal/version.Version=$VERSION -X github.com/Jaydee94/remedy/internal/version.Commit=$COMMIT" -o /out/remedy-server ./cmd/remedy-server
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/remedy-tokenrefresh ./cmd/remedy-tokenrefresh
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/remedy-import-sqlite ./cmd/remedy-import-sqlite
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/remedy-server /remedy-server
 # The Helm chart runs this as the CronJob that keeps the write identity's token fresh.
 COPY --from=build /out/remedy-tokenrefresh /remedy-tokenrefresh
-# The one-time move from SQLite (docs/runbook/postgres-cutover.md): run with --entrypoint /remedy-import-sqlite, kept for one release.
-COPY --from=build /out/remedy-import-sqlite /remedy-import-sqlite
 # The image keeps no state: the database is PostgreSQL, reached by REMEDY_DATABASE_URL, and it runs as nonroot (65532).
 EXPOSE 8080 8081
 ENTRYPOINT ["/remedy-server"]

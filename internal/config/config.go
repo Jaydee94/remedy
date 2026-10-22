@@ -61,7 +61,7 @@ func ServerFromEnv(get func(string) string) (Server, error) {
 		GitHubAPIURL:  orDefault(get("REMEDY_GITHUB_API_URL"), defaultGitHub),
 	}
 	if get("REMEDY_DB") != "" {
-		return Server{}, errors.New("REMEDY_DB is gone: the control plane uses PostgreSQL (set REMEDY_DATABASE_URL); see docs/runbook/postgres-cutover.md")
+		return Server{}, errors.New("REMEDY_DB is gone: the control plane uses PostgreSQL (REMEDY_DATABASE_URL); existing SQLite data is not migrated, see docs/runbook/postgres.md")
 	}
 	if err := c.loadDatabase(get); err != nil {
 		return Server{}, err

@@ -1,7 +1,6 @@
 // Package pgtext makes a Go string storable in a PostgreSQL text column. PostgreSQL refuses a text value with a NUL byte or
 // with bytes that are not valid UTF-8 (SQLSTATE 22021); SQLite stored both. The store's database wrapper (internal/store, db.go)
-// cleans every text argument with Clean, and the importer from SQLite (internal/importsqlite) does the same when it is told to
-// with --replace-invalid-text, so the two convert in exactly the same way.
+// cleans every text argument with Clean.
 package pgtext
 
 import (

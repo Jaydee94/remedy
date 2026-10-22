@@ -30,7 +30,7 @@ type Store struct{ db *pool }
 func (s *Store) Close() error { return s.db.Close() }
 
 // migrationsFS holds the PostgreSQL migrations: 001_baseline.sql (the schema as SQLite migration 018 left it) and the ones
-// after it, applied in name order. The SQLite migrations are not here; they are the importer's test data.
+// after it, applied in name order.
 //
 //go:embed migrations/*.sql
 var migrationsFS embed.FS

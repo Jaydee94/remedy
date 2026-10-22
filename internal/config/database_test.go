@@ -72,7 +72,7 @@ func TestServerFromEnvRefusesTheOldDatabaseVariable(t *testing.T) {
 	if err == nil {
 		t.Fatal("REMEDY_DB must be refused, not ignored")
 	}
-	for _, want := range []string{"REMEDY_DB is gone", "PostgreSQL", "docs/runbook/postgres-cutover.md"} {
+	for _, want := range []string{"REMEDY_DB is gone", "PostgreSQL (REMEDY_DATABASE_URL)", "not migrated", "docs/runbook/postgres.md"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
 		}

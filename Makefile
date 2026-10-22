@@ -13,15 +13,13 @@ LDFLAGS = -X github.com/Jaydee94/remedy/internal/version.Version=$(VERSION) -X g
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
-build-go: ## Build the Go binaries into ./bin (no UI embedded): server, runner, the one-time SQLite importer
+build-go: ## Build the Go binaries into ./bin (no UI embedded): server, runner
 	go build -ldflags '$(LDFLAGS)' -o bin/remedy-server ./cmd/remedy-server
 	go build -ldflags '$(LDFLAGS)' -o bin/remedy-runner ./cmd/remedy-runner
-	go build -ldflags '$(LDFLAGS)' -o bin/remedy-import-sqlite ./cmd/remedy-import-sqlite
 
-build: web-build ## Build the UI, then the Go binaries with the UI embedded (server, runner, SQLite importer)
+build: web-build ## Build the UI, then the Go binaries with the UI embedded (server, runner)
 	go build -tags webui -ldflags '$(LDFLAGS)' -o bin/remedy-server ./cmd/remedy-server
 	go build -ldflags '$(LDFLAGS)' -o bin/remedy-runner ./cmd/remedy-runner
-	go build -ldflags '$(LDFLAGS)' -o bin/remedy-import-sqlite ./cmd/remedy-import-sqlite
 
 images: ## Build the control plane and runner images for this machine (tag $(IMAGE_TAG), default dev)
 	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t remedy-server:$(IMAGE_TAG) .

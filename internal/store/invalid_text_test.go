@@ -3,15 +3,11 @@ package store_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/secret"
@@ -200,20 +196,5 @@ func TestASealedCredentialStillOpensAfterTheStore(t *testing.T) {
 	opened, err := key.Open(e.Credential.Ciphertext, store.HostCredentialAAD(h.ID))
 	if err != nil || !bytes.Equal(opened, plain) {
 		t.Fatalf("Open = %q, %v", opened, err)
-	}
-}
-
-// The importer's transaction is the driver's own: its arguments are not cleaned (the importer has its own rules, and refuses
-// such text unless it is told to replace it).
-func TestImportTxDoesNotCleanText(t *testing.T) {
-	s, ctx := openStore(t), context.Background()
-	err := s.ImportTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)`,
-			"k", "v\x00", "2026-10-22T12:00:00.000000000Z")
-		return err
-	})
-	var pe *pgconn.PgError
-	if !errors.As(err, &pe) || pe.Code != "22021" {
-		t.Fatalf("ImportTx with a NUL = %v, want SQLSTATE 22021", err)
 	}
 }
