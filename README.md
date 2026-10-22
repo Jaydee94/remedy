@@ -118,13 +118,13 @@ Open <http://localhost:8080> and sign in with the admin password.
 
 `REMEDY_DATABASE_URL` is required: a libpq-style URL (`sslmode`, `sslrootcert` and the like travel in it) or a `key=value` string. For a database on another host put
 `sslmode=require` (encrypted) or better `sslmode=verify-full` with `sslrootcert=...` (encrypted, and the server's certificate checked)
-in it: the default, `prefer`, falls back to plain text without a word (what the chart can do is in section 5 of
-[`docs/runbook/postgres-cutover.md`](docs/runbook/postgres-cutover.md)). The URL holds
+in it: the default, `prefer`, falls back to plain text without a word (what the chart can do is in section 4 of
+[`docs/runbook/postgres.md`](docs/runbook/postgres.md)). The URL holds
 the database password, so Remedy never prints it (the start-up log names only `host:port/dbname`); in a cluster it comes from a Secret,
 never from a values file. `REMEDY_DATABASE_MAX_CONNS` (default `10`, 2 to 100) sizes the connection pool. At start-up the server
 retries for up to 30 seconds while the database is still coming up, then exits with an error. `REMEDY_DB` (the SQLite file of earlier
-versions) is refused with an error: to bring an existing SQLite database over, use the one-time importer `remedy-import-sqlite` and
-follow [`docs/runbook/postgres-cutover.md`](docs/runbook/postgres-cutover.md).
+versions) is refused with an error: existing SQLite data is not migrated; an installation of an earlier version is reinstalled
+with an empty database ([`docs/runbook/postgres.md`](docs/runbook/postgres.md), section 10).
 
 `REMEDY_MASTER_KEY` is required: Remedy refuses to start without it. Keep it outside the database and its
 backups; whoever has both can read the stored GitHub token. If you lose or change the key, enter the token

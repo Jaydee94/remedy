@@ -197,8 +197,7 @@ the task report (`.superpowers/sdd/postgres-only/task-6-report.md`).
   of kind string) with U+FFFD before the statement is sent (`internal/pgtext`). This is a deliberate change from SQLite's behaviour, and it
   touches only text: byte slices, among them every sealed value and token hash on its way to a `BYTEA` column, are sent as
   they are. Arrays and other slice types, such as the `[]string` of an `= ANY(?)`, are not covered either: a caller that
-  passes a slice of text must clean its elements. `ImportTx` is not affected; the importer refuses such text unless it runs with `--replace-invalid-text`, which
-  applies the same function and counts the changed values.
+  passes a slice of text must clean its elements.
   Different dirty values can collapse to one after cleaning: a run of adjacent invalid bytes becomes one U+FFFD and a NUL
   becomes U+FFFD. Two different `tool_use_id`s such as `"a\x00"` and `"a\uFFFD"` would therefore become one key of
   `UNIQUE (run_id, tool_use_id)`, and the second call would be treated as a replay of the first. That is the safe direction:

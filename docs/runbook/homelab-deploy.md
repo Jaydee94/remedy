@@ -13,7 +13,7 @@ package of the chart, as an OCI install would pull it), while Argo CD renders wi
 The first install is cycle 6 of the hosts and skills series ([spec](../specs/2026-10-21-operation-6-design.md)); its drill is [`home-server-drill.md`](home-server-drill.md), and
 the record of what it showed will say here what is proven.
 
-**The database.** Since the release that moved the control plane to PostgreSQL (`docs/specs/2026-10-22-postgres-only-design.md`) the chart has no volume for the control plane and takes a connection to a PostgreSQL that you provide: sections 2, 4, 5 and 11 describe that. An installation that still runs on SQLite moves with [`postgres-cutover.md`](postgres-cutover.md) before it takes this version. This runbook has not been run with PostgreSQL either.
+**The database.** Since the release that moved the control plane to PostgreSQL (`docs/specs/2026-10-22-postgres-only-design.md`) the chart has no volume for the control plane and takes a connection to a PostgreSQL that you provide: sections 2, 4, 5 and 11 describe that. An installation that still runs on SQLite is reinstalled with an empty database: its data is not migrated ([`postgres.md`](postgres.md), section 10). This runbook has not been run with PostgreSQL either.
 
 This installs Remedy from a release of this repository, the way the maintainer runs it. The pieces are the chart
 [`deploy/chart`](../../deploy/chart/README.md), the pinned CLI [`deploy/cli-pin.yaml`](../../deploy/cli-pin.yaml) and the
@@ -96,7 +96,7 @@ printf 'url=%s\n' "$DBURL" \
 unset DBURL
 ```
 
-`sslmode=require` encrypts without verifying the server; `verify-full` needs a CA that the server image already trusts (an operator's private CA cannot be given to the chart yet). Commit it as `argocd/apps/remedy/templates/sealedsecret-database.yaml`. `sslmode`, `sslrootcert` and what the chart can and cannot give the pod for TLS are in `postgres-cutover.md`, section 5 (a private CA cannot be mounted by the chart yet).
+`sslmode=require` encrypts without verifying the server; `verify-full` needs a CA that the server image already trusts (an operator's private CA cannot be given to the chart yet). Commit it as `argocd/apps/remedy/templates/sealedsecret-database.yaml`. `sslmode`, `sslrootcert` and what the chart can and cannot give the pod for TLS are in [`postgres.md`](postgres.md), section 4 (a private CA cannot be mounted by the chart yet).
 
 ## 5. The values
 
@@ -394,10 +394,10 @@ The PostgreSQL database is the only state of the control plane (incidents, runs,
 CLI login, which you can make again with section 7. The master key of section 4 is not in the database: keep it apart, and keep it with the backups, because a backup without it restores everything except the sealed values.
 
 Take a `pg_dump` (or use the operator's backup feature) on a schedule and before every upgrade; the control plane may run meanwhile. The commands, the restore into an empty database, and what a dump contains are in
-[`postgres-cutover.md`](postgres-cutover.md), section 4. A volume snapshot of the database's own storage (Longhorn, Velero, the operator's) works the same way it does for any database: it is crash-consistent, so test one restore.
+[`postgres.md`](postgres.md), section 3. A volume snapshot of the database's own storage (Longhorn, Velero, the operator's) works the same way it does for any database: it is crash-consistent, so test one restore.
 Where the database lives and who backs it up is the operator's concern; this chart neither installs nor backs up a PostgreSQL.
 
-**Stopping the control plane** (for a restore, the cutover, or to take Remedy away): with `selfHeal` Argo CD scales it back at once, so disable auto-sync on the Application first (Argo CD UI, App Details, Disable Auto-Sync, or `argocd app set remedy --sync-policy none`). If a parent application with `selfHeal` manages the Application, it must stop syncing it too. Then
+**Stopping the control plane** (for a restore, or to take Remedy away): with `selfHeal` Argo CD scales it back at once, so disable auto-sync on the Application first (Argo CD UI, App Details, Disable Auto-Sync, or `argocd app set remedy --sync-policy none`). If a parent application with `selfHeal` manages the Application, it must stop syncing it too. Then
 `kubectl -n remedy scale deployment/remedy-server --replicas=0`, and when you are done scale back to one (`--replicas=1`) and enable auto-sync again.
 
 ## 12. Troubleshooting
@@ -409,7 +409,7 @@ Where the database lives and who backs it up is the operator's concern; this cha
   package `charts/remedy` is still private, or the version is not a released one. Make it public (`release.md`) and check
   the version with `helm show chart oci://ghcr.io/jaydee94/charts/remedy --version X.Y.Z`. With the wrapper chart the error appears as a failed `helm dependency build` in the Application's conditions.
 - Every run ends "Not logged in": do section 7.
-- The control plane pod restarts in a loop and its log says `cannot open database ... cannot reach the database`: the database is not reachable within 30 s of the start. Check the URL's host and port, `networkPolicy.database` (and the database's own policy), and the `sslmode` (a TLS mode against a server without TLS looks like `context deadline exceeded`). A wrong password or database fails at once with the server's message. `/healthz` does not depend on the database. More in `postgres-cutover.md`, section 7.
+- The control plane pod restarts in a loop and its log says `cannot open database ... cannot reach the database`: the database is not reachable within 30 s of the start. Check the URL's host and port, `networkPolicy.database` (and the database's own policy), and the `sslmode` (a TLS mode against a server without TLS looks like `context deadline exceeded`). A wrong password or database fails at once with the server's message. `/healthz` does not depend on the database. More in [`postgres.md`](postgres.md), section 6.
 - The UI loads but nothing live updates: a proxy buffers the streams. Traefik streams by default; with nginx set
   `nginx.ingress.kubernetes.io/proxy-buffering: "off"` in `ingress.annotations`.
 - "the cluster cannot be reached with the read token" in the control plane log: the network policy. Check

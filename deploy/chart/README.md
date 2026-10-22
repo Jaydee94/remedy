@@ -124,13 +124,9 @@ cannot mount a CA file, so `sslrootcert=/path` has nothing to read and the contr
 works only with a CA the server image already trusts, and for a private CA `require` is what is left: encrypted, not verified). The pod receives the URL as `REMEDY_DATABASE_URL` through a `secretKeyRef`.
 There is no `database.url` value and no other key under `database`: the render fails for them (a password in
 `values.yaml` ends up in the repository), and `server.env` may not set `REMEDY_DATABASE_URL` or `REMEDY_DB` either. The
-pool size is `REMEDY_DATABASE_MAX_CONNS` (default 10, 2 to 100), which `server.env` may set. The claim `remedy-data` and the
-values `server.persistence.*` are gone. The chart renders no claim for the control plane any more, and Helm itself deletes nothing: the
-claim an earlier release made carries `helm.sh/resource-policy: keep`, which keeps it on a plain `helm upgrade`. Under Argo CD with
-pruning on, the old claim is an orphan that Argo CD may prune (whether it honors that annotation was not checked): protect it
-first, as step 2 of the cutover runbook says. This chart is only usable together with the version of
-Remedy that reads `REMEDY_DATABASE_URL`; moving an existing SQLite file into the database is the job of the importer and the
-cutover runbook of that version.
+pool size is `REMEDY_DATABASE_MAX_CONNS` (default 10, 2 to 100), which `server.env` may set. The old SQLite claim `remedy-data`
+(and the values `server.persistence.*`) is no longer rendered. Existing SQLite data is not migrated: an installation of an
+earlier version is reinstalled with an empty database (see `docs/runbook/postgres.md`).
 
 The control plane may reach a database of your own only through `networkPolicy.database`, required while
 `networkPolicy.enabled` is true, in exactly one of two forms (the render fails for neither, both or any other key):
