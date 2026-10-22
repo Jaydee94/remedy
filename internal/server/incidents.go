@@ -45,6 +45,10 @@ type incidentView struct {
 	Diagnosis       json.RawMessage `json:"diagnosis,omitempty"`
 	DiagnosedSHA    string          `json:"diagnosedSha,omitempty"`
 	RunID           string          `json:"runId,omitempty"`
+
+	// Firings24h is how often the alert opened or came back in the last 24 hours, LastFiredAt when it last did.
+	Firings24h  int        `json:"firings24h,omitempty"`
+	LastFiredAt *time.Time `json:"lastFiredAt,omitempty"`
 }
 
 func incidentViewOf(in store.Incident) incidentView {
@@ -56,7 +60,7 @@ func incidentViewOf(in store.Incident) incidentView {
 		Occurrences: in.Occurrences, FirstSeen: in.FirstSeen, LastSeen: in.LastSeen,
 		ResolvedAt: in.ResolvedAt, ResolvedReason: in.ResolvedReason,
 		Diagnoses: in.Diagnoses, LastDiagnosisAt: in.LastDiagnosisAt, DiagnosedAt: in.DiagnosedAt, Diagnosis: in.Diagnosis,
-		DiagnosedSHA: in.DiagnosedSHA, RunID: in.RunID,
+		DiagnosedSHA: in.DiagnosedSHA, RunID: in.RunID, Firings24h: in.Firings24h, LastFiredAt: in.LastFiredAt,
 	}
 }
 

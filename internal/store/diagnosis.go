@@ -63,7 +63,7 @@ type StartParams struct {
 func (s *Store) StartDiagnosis(ctx context.Context, p StartParams, act NewActivity) (run.Run, error) {
 	id := run.NewID()
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
-		in, err := scanIncident(tx.QueryRowContext(ctx, `SELECT `+incidentCols+incidentFrom+` WHERE i.id = ?`, p.IncidentID))
+		in, err := scanIncident(tx.QueryRowContext(ctx, `SELECT `+incidentCols()+incidentFrom+` WHERE i.id = ?`, p.IncidentID))
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -217,7 +217,7 @@ func (s *Store) logRunActivity(ctx context.Context, tx *sql.Tx, incidentID int64
 // diagnosed alert is not diagnosed again on its own. Incidents of other sources are never candidates. Every candidate is below the
 // per-incident cap and past the cooldown. The daily limit and "one run at a time" are checked by StartDiagnosis.
 func (s *Store) ListAutoCandidates(ctx context.Context, now time.Time, l DiagnosisLimits, freshFor time.Duration) ([]Incident, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+incidentCols+incidentFrom+`
+	rows, err := s.db.QueryContext(ctx, `SELECT `+incidentCols()+incidentFrom+`
 		WHERE i.auto_diagnose = 1
 		  AND i.source IN ('github', 'alertmanager')
 		  AND (i.state = 'open' OR (i.state = 'diagnosed' AND i.source = 'github' AND i.head_sha <> i.diagnosed_sha))
