@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.15.0](https://github.com/Jaydee94/remedy/compare/v0.14.1...v0.15.0) (2026-10-22)
+
+### Features
+
+* reopen returning alerts, pace Alertmanager on its own and give the agent alert and metric tools ([#174](https://github.com/Jaydee94/remedy/issues/174)) ([66074ca](https://github.com/Jaydee94/remedy/commit/66074cab3b830407f11a01c118e2c4670a231403))
+
 ## [0.14.1](https://github.com/Jaydee94/remedy/compare/v0.14.0...v0.14.1) (2026-10-22)
 
 ### Bug Fixes
