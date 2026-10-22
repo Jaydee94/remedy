@@ -114,6 +114,8 @@ running as a service for other people's homelabs.
   database are a non-goal. Column types stay as they are (fixed-width text timestamps,
   integer booleans, text JSON), and the existing data is carried over by a one-time import
   tool with ids unchanged, so that sealed values still open with the same master key.
+  The Helm chart installs a small single-node PostgreSQL of its own by default and takes a connection to a database of
+  your own instead (`database.existingSecret`); it has no operator, no replication and no off-node backup (spec, decision 11).
 - Two processes:
   - **Control plane:** API, event pipeline, incident logic, graph, gatekeeper (MCP),
     git/GitHub access, DB.

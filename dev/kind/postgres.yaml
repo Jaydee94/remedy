@@ -1,5 +1,5 @@
-# The database of the dummy setup: one PostgreSQL pod in the release namespace, for the testbed only. The chart installs no
-# database; dummy-up.sh applies this file and the Secret remedy-postgres before the chart, and the chart's
+# The database of the dummy setup: one PostgreSQL pod in the release namespace, for the testbed only. The chart's own
+# PostgreSQL (its default) is not used here, because dummy-values.yaml names this one; dummy-up.sh applies this file and the Secret remedy-postgres before the chart, and the chart's
 # database.existingSecret points at that Secret (dummy-values.yaml).
 #
 # The Secret is NOT in this file. dummy-up.sh makes it from a password it generates (REMEDY_POSTGRES_PASSWORD in

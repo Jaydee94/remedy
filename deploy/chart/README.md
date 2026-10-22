@@ -7,9 +7,10 @@ Spec: [`docs/specs/2026-10-06-kubernetes-deployment-design.md`](../../docs/specs
 
 - A Secret with three keys (`admin-password`, `runner-token`, `master-key`; the names are values). The chart never creates
   it. `openssl rand -hex 12` (password), `openssl rand -hex 24` (runner token), `openssl rand -base64 32` (master key).
-- A PostgreSQL 16 or newer and a Secret with its connection URL (`database.existingSecret`, the key `database.secretKey`,
-  default `url`). The chart does not install a database and never creates this Secret; it refuses the URL as a value,
-  because the URL holds a password. See "The database" below.
+- For the database, one of two (see "The database" below): by default the chart installs a small single-node PostgreSQL of
+  its own and needs a Secret with its password (`postgres.existingSecret`, the key `postgres.passwordKey`, default
+  `password`); or a PostgreSQL 16 or newer of your own and a Secret with its connection URL (`database.existingSecret`, the
+  key `database.secretKey`, default `url`). The chart never creates either Secret and refuses a password or URL as a value.
 - The pinned CLI: `runner.cli.version`, `runner.cli.urlTemplate`, and the platform names and SHA-256 per architecture
   (`docs/research/k8s-s4-cli-install.md` says where they come from). No image contains the CLI.
 
@@ -21,7 +22,9 @@ Spec: [`docs/specs/2026-10-06-kubernetes-deployment-design.md`](../../docs/specs
 | Services | `remedy-server`, `remedy-server-internal` | only the first may be exposed |
 | StatefulSet | `remedy-runner` | init container `install-cli`; no Kubernetes token |
 | Ingress | `remedy` | optional |
-| NetworkPolicies | `remedy-server`, `remedy-runner`, `remedy-token-refresher` (only with `cluster.write.enabled`: DNS and the API server, nothing else) | on by default; `networkPolicy.*` (`database` is required; `hosts`, `alertmanager` and `metrics` are optional; all add egress to the control plane only) |
+| StatefulSet, Service | `remedy-postgres` | the bundled PostgreSQL (the default; not with `database.existingSecret`): one pod, headless Service, claim `data-remedy-postgres-0` |
+| CronJob, PersistentVolumeClaim | `remedy-postgres-backup` | the nightly `pg_dump` of the bundled PostgreSQL (`postgres.backup.enabled`, default on) |
+| NetworkPolicies | `remedy-server`, `remedy-runner`, `remedy-token-refresher` (only with `cluster.write.enabled`: DNS and the API server, nothing else), `remedy-postgres` (only with the bundled PostgreSQL: ingress from the control plane and the backup job) | on by default; `networkPolicy.*` (`database` is required with `database.existingSecret` and refused otherwise; `hosts`, `alertmanager` and `metrics` are optional; all add egress to the control plane only) |
 
 With `cluster.enabled` the control plane runs as the read account (a projected token) and the chart creates a read-only ClusterRole.
 With `cluster.write.enabled` a CronJob (default schedule `*/30 * * * *`, `cluster.write.tokenRefresh.schedule`) and a Job that runs as a post-install and post-upgrade
@@ -32,12 +35,86 @@ fail closed after the token expires. Under Argo CD add an `ignoreDifferences` fo
 
 ## The database
 
-The control plane keeps all its state in a PostgreSQL that you provide: an operator (for example CloudNativePG), a
-StatefulSet of your own, or a server on another host. The chart takes only a connection to it:
+The control plane keeps all its state in PostgreSQL, in one of two ways:
+
+- **The bundled PostgreSQL (the default).** With `database.existingSecret` empty the chart installs a small single-node
+  PostgreSQL of its own in the release namespace (`postgres.*`).
+- **A database of your own.** With `database.existingSecret` set the chart renders nothing of the bundled one and takes only
+  a connection: an operator (for example CloudNativePG), a server on another host, or anything else that speaks PostgreSQL
+  16 or newer.
+
+`postgres.enabled` is unset by default, which means "bundled unless `database.existingSecret` is set". The render fails
+for `postgres.enabled: true` together with `database.existingSecret` (a contradiction) and for `postgres.enabled: false`
+without it (no database at all).
+
+### The bundled PostgreSQL
+
+The smallest values:
+
+```yaml
+postgres:
+  existingSecret: remedy-postgres   # required: a Secret that exists already, with the password under the key password
+```
+
+for example made with
+
+```sh
+kubectl -n remedy create secret generic remedy-postgres --from-literal=password="$(openssl rand -hex 24)"
+```
+
+(or the same as a SealedSecret). The chart never generates or stores the password: a generated one would change on every
+render, and Helm's `lookup` does not work under Argo CD. **The password must be URL-safe** (letters and digits, as
+`openssl rand -hex` gives): the control plane's connection URL is composed with it as it is, without percent-encoding.
+
+What it renders:
+
+- A StatefulSet `remedy-postgres` with one pod, the image `postgres.image.repository:postgres.image.tag` (default
+  `postgres:16.15`; the tag must be an exact minor version such as `16.15`, the render refuses `16` or `latest`), user and
+  database `remedy`, the data directory in `pgdata` below the claim's mount, readiness and liveness by `pg_isready` over TCP,
+  and the restricted Pod Security Standard (user, group and `fsGroup` 999, no privilege escalation, no capabilities, a
+  read-only root file system with `emptyDir` for the socket directory and `/tmp`, no service account token). Its claim
+  `data-remedy-postgres-0` comes from the claim template `data` (`postgres.persistence.size`, default `5Gi`;
+  `postgres.persistence.storageClass`, empty: the cluster's default). `postgres.resources` sizes the pod.
+- A headless Service `remedy-postgres`. The control plane gets `REMEDY_POSTGRES_PASSWORD` from the Secret
+  (`secretKeyRef`) and, after it, `REMEDY_DATABASE_URL` as
+  `postgres://remedy:$(REMEDY_POSTGRES_PASSWORD)@remedy-postgres.<namespace>.svc:5432/remedy?sslmode=disable`, which
+  Kubernetes expands when it starts the container. No rendered object holds the password.
+- With `networkPolicy.enabled`: a rule on the `remedy-server` policy to the PostgreSQL pods on 5432 (instead of
+  `networkPolicy.database`, which is refused here), and a policy `remedy-postgres` that admits ingress on 5432 from the control
+  plane's pods and the backup job's pods of the release only. It has no egress rule and does not restrict the database's
+  egress. The PostgreSQL pods carry `app.kubernetes.io/name: remedy-postgres`, so none of the chart's other policies selects
+  them.
+- With `postgres.backup.enabled` (the default): a claim `remedy-postgres-backup` (`postgres.backup.size`, default `2Gi`;
+  `postgres.backup.storageClass`, empty: the data's class) and a CronJob `remedy-postgres-backup` (`postgres.backup.schedule`,
+  default `17 3 * * *`) that runs `pg_dump --format=custom --no-owner` with the same image into
+  `/backup/remedy-<UTC timestamp>.dump`. The dump is written as `.part` and renamed only when `pg_dump` succeeded; dumps older
+  than `postgres.backup.retentionDays` (default 7) are deleted only after a new dump was written. Run one now with
+  `kubectl -n <namespace> create job --from=cronjob/remedy-postgres-backup backup-now`; restore one with `pg_restore` into an
+  empty database, with the control plane scaled to zero. A claim of a storage class that binds on first use (such as
+  `local-path`) stays `Pending` until the first backup runs.
+
+**`sslmode=disable`** is deliberate: the bundled server has no TLS, and the connection stays on the pod network inside the
+namespace, where the `remedy-postgres` policy admits only the control plane and the backup job.
+
+What it does **not** provide: high availability, replication, backups that leave the node (the backup claim is in the same
+cluster and, on a single-node cluster, on the same disk: it protects against a damaged or wrongly changed database, not
+against losing the disk; copy the dumps elsewhere for that), TLS, and major-version upgrades. A new minor version of the
+same major (for example `16.15` to `16.16`) is a change of `postgres.image.tag` and a restart. A new major version cannot
+open the old data directory: take a dump, install the new major on an empty claim, and restore the dump into it.
+
+Ownership: the claim `data-remedy-postgres-0` is made by the StatefulSet, not by Helm, and the StatefulSet keeps it when it is
+deleted or scaled down (`persistentVolumeClaimRetentionPolicy: Retain`): `helm uninstall` leaves it, and a new install with
+the same namespace finds the old data. The backup claim carries `helm.sh/resource-policy: keep`, so `helm uninstall` leaves
+it too. Delete either by hand to start empty. The claim template cannot be changed after the install (a new size or class
+fails the upgrade): resize the claim itself if its storage class allows it. The password is set when the data directory is
+first created; changing it in the Secret later does not change it in the database (change it with `ALTER ROLE remedy
+PASSWORD ...` and in the Secret, then restart the control plane).
+
+### A database of your own
 
 ```yaml
 database:
-  existingSecret: remedy-database   # required: a Secret that exists already
+  existingSecret: remedy-database   # a Secret that exists already
   secretKey: url                    # the key that holds the URL (default url)
 ```
 
@@ -55,8 +132,8 @@ first, as step 2 of the cutover runbook says. This chart is only usable together
 Remedy that reads `REMEDY_DATABASE_URL`; moving an existing SQLite file into the database is the job of the importer and the
 cutover runbook of that version.
 
-The control plane may reach the database only through `networkPolicy.database`, required while `networkPolicy.enabled` is
-true, in exactly one of two forms (the render fails for neither, both or any other key):
+The control plane may reach a database of your own only through `networkPolicy.database`, required while
+`networkPolicy.enabled` is true, in exactly one of two forms (the render fails for neither, both or any other key):
 
 ```yaml
 networkPolicy:

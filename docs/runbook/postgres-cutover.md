@@ -5,8 +5,9 @@ scratch database on the test PostgreSQL (see "What was walked" at the end); the 
 real `remedy.db` were not touched. Read every step of the cutover as expected, not as tried.
 
 Background: `docs/specs/2026-10-22-postgres-only-design.md` (decisions 7, 9 and 10), `docs/design.md` 2.6. Since this
-version the control plane keeps all its state in a PostgreSQL 16 or newer that you provide. The chart does not install one
-(`deploy/chart/README.md`, "The database"). The importer, `remedy-import-sqlite`, is a one-time tool that is kept for one
+version the control plane keeps all its state in PostgreSQL. The chart installs a single-node one of its own by default, or
+takes a connection to one you provide (`deploy/chart/README.md`, "The database"); the steps below were written for one you
+provide. The importer, `remedy-import-sqlite`, is a one-time tool that is kept for one
 release.
 
 Contents: 1 what you need, 2 the cutover (steps 0 to 9), 3 rollback, 4 backup and restore, 5 TLS, 6 pool sizing, 7 when
@@ -17,7 +18,8 @@ operational notes.
 
 - A PostgreSQL 16 or newer, an empty database on it, and a role that owns that database (it must be able to create tables,
   indexes and sequences there; Remedy uses no extension). An operator in the cluster (for example CloudNativePG), a
-  StatefulSet of your own, or a server on another host: the chart takes only a connection.
+  StatefulSet of your own, or a server on another host (`database.existingSecret`); or the chart's own, the default
+  (`postgres.existingSecret`, `deploy/chart/README.md`), which this runbook does not cover.
 - **A dedicated, empty database.** Point `REMEDY_DATABASE_URL` at a database (or schema) that holds nothing but Remedy.
   Before it creates anything, the importer checks the connection's current schema. It accepts a schema with no table, or one
   that Remedy's server already created and never used. Any other table makes it stop with `the destination is not a
