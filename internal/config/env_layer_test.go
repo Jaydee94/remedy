@@ -31,7 +31,8 @@ func TestTheServerKeepsTheEnvironmentAsALayerOfItsOwn(t *testing.T) {
 	if c.PollInterval != 30*time.Second || c.DiagnoseMaxPerDay != 5 || c.DiagnoseCooldown != 15*time.Minute || c.DiagnoseMaxPerIncident != 3 {
 		t.Errorf("fields = %v %d %v %d", c.PollInterval, c.DiagnoseMaxPerDay, c.DiagnoseCooldown, c.DiagnoseMaxPerIncident)
 	}
-	if len(c.Env) != 3 || c.Env.Duration(settings.PollInterval) != 30*time.Second || c.Env.Int(settings.DiagnoseMaxPerDay) != 5 ||
+	// The Alertmanager interval is in the layer too: it takes REMEDY_POLL_INTERVAL's value until its own variable is set.
+	if len(c.Env) != 4 || c.Env.Duration(settings.AlertmanagerPollInterval) != 30*time.Second || c.Env.Duration(settings.PollInterval) != 30*time.Second || c.Env.Int(settings.DiagnoseMaxPerDay) != 5 ||
 		c.Env.Duration(settings.RunTimeout) != 20*time.Minute {
 		t.Errorf("layer = %v", c.Env)
 	}

@@ -45,6 +45,7 @@ func TestTheTextOfAValueIsCheckedAgainstTheBounds(t *testing.T) {
 	}{
 		{settings.PollInterval, "10s", true}, {settings.PollInterval, "2m", true}, {settings.PollInterval, "9s", false},
 		{settings.PollInterval, "abc", false}, {settings.PollInterval, "60", false},
+		{settings.AlertmanagerPollInterval, "10s", true}, {settings.AlertmanagerPollInterval, "5s", false},
 		{settings.DiagnoseCooldown, "1m", true}, {settings.DiagnoseCooldown, "59s", false},
 		{settings.DiagnoseMaxPerIncident, "0", true}, {settings.DiagnoseMaxPerIncident, "20", true},
 		{settings.DiagnoseMaxPerIncident, "21", false}, {settings.DiagnoseMaxPerIncident, "-1", false}, {settings.DiagnoseMaxPerIncident, "x", false},
@@ -116,7 +117,8 @@ func TestTheEnvironmentLayerHoldsOnlyWhatWasSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := l[settings.DiagnoseCooldown]; ok || len(l) != 2 {
+	// The Alertmanager interval takes the value of REMEDY_POLL_INTERVAL when its own variable is unset, so the layer holds three keys.
+	if _, ok := l[settings.DiagnoseCooldown]; ok || len(l) != 3 {
 		t.Fatalf("layer = %v", l)
 	}
 	if l.Duration(settings.PollInterval) != 30*time.Second || l.Duration(settings.DiagnoseCooldown) != 15*time.Minute {
@@ -248,5 +250,16 @@ func TestEnvironmentVariablesOfTheTextKind(t *testing.T) {
 	}
 	if _, set, err := settings.EnvValue(settings.AlertmanagerAutoMaxAge, env(nil)); err != nil || set {
 		t.Errorf("a setting without a variable: set = %v, err = %v", set, err)
+	}
+}
+
+func TestTheAlertmanagerIntervalHasItsOwnWordsAndTheGitHubIntervalDoesNotMentionAlertmanager(t *testing.T) {
+	poll := spec(t, settings.PollInterval)
+	if strings.Contains(poll.Label+poll.Rule, "Alertmanager") || poll.Rule != "At least 10s, for example 60s or 2m." {
+		t.Errorf("poll_interval label %q, rule %q", poll.Label, poll.Rule)
+	}
+	am := spec(t, settings.AlertmanagerPollInterval)
+	if am.Label != "How often I ask Alertmanager" || am.Group != "Polling" || am.Env != "REMEDY_ALERTMANAGER_POLL_INTERVAL" || am.Default.Dur != time.Minute {
+		t.Errorf("alertmanager_poll_interval = %+v", am)
 	}
 }

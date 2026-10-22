@@ -117,7 +117,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		NewSource:  func(token secret.Value) responder.Source { return reader(token) },
 		LimitsFunc: set.DiagnosisLimits,
 		// An alert incident must have been seen within three polls (at least ten minutes) to be diagnosed on its own.
-		AlertFresh: func() time.Duration { return max(10*time.Minute, 3*set.Duration(settings.PollInterval)) },
+		AlertFresh: func() time.Duration { return max(10*time.Minute, 3*set.Duration(settings.AlertmanagerPollInterval)) },
 		Log:        log,
 	}
 	// One configuration, with the live allowlist, for the writer, the action tools and the capabilities: the tool, the
@@ -254,7 +254,7 @@ func signalRunner(cfg config.Server, st *store.Store, engine *incident.Engine, s
 	return &signals.Runner{
 		Sources:  []signals.Source{am},
 		Engine:   engine,
-		Interval: func() time.Duration { return set.Duration(settings.PollInterval) },
+		Interval: func() time.Duration { return set.Duration(settings.AlertmanagerPollInterval) },
 		Log:      log,
 		Hosts: func(ctx context.Context) ([]signals.HostRules, error) {
 			entries, err := st.ListHosts(ctx)

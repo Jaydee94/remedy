@@ -1,14 +1,21 @@
 import type { SignalSource } from './api.ts'
 import { duration } from './setup.ts'
 
+/** "12 seconds", "48 min", "2 h": a minute or more rolls up to the unit below it, rounded down. */
+function age(seconds: number): string {
+  if (seconds < 60) return duration(seconds)
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min`
+  return `${Math.floor(seconds / 3600)} h`
+}
+
 function ago(checkedAt: string | undefined, now: number): string {
   if (!checkedAt) return ''
   const seconds = Math.round((now - Date.parse(checkedAt)) / 1000)
   if (!Number.isFinite(seconds)) return ''
-  return seconds < 1 ? ' just now' : ` ${duration(seconds)} ago`
+  return seconds < 1 ? ' just now' : ` ${age(seconds)} ago`
 }
 
-/** The state of a signal source as one sentence in Remedy's voice. `duration` words are those of the Setup page ("12 seconds"). */
+/** The state of a signal source as one sentence in Remedy's voice. Under a minute the words are those of the Setup page ("12 seconds"). */
 export function signalLine(s: SignalSource, now: number): string {
   const name = s.name === 'alertmanager' ? 'Alertmanager' : s.name
   switch (s.state) {
