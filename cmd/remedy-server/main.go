@@ -35,15 +35,19 @@ func main() {
 		os.Exit(2)
 	}
 
-	st, err := store.Open(cfg.DBPath)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Open waits up to 30 s for a database that is still starting; a signal during that wait ends it. No error of Open holds the
+	// URL, and the log names only host:port/dbname.
+	log.Info("connecting to the database", "database", cfg.DatabaseTarget())
+	st, err := store.Open(ctx, cfg.DatabaseURL, store.WithMaxConns(cfg.DatabaseMaxConns), store.WithLogger(log))
 	if err != nil {
-		log.Error("cannot open database", "path", cfg.DBPath, "err", err)
+		log.Error("cannot open database", "database", cfg.DatabaseTarget(), "err", err)
+		stop()
 		os.Exit(1)
 	}
 	defer st.Close()
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	// Background workers stop with ctx. They are waited for before the database closes.
 	var workers sync.WaitGroup
@@ -90,7 +94,11 @@ func main() {
 		}()
 	}
 
+	// ListenAndServe returns as soon as Shutdown starts, while handlers may still be draining: main waits for shutdownDone
+	// before the deferred workers.Wait and st.Close, so no handler meets a closed store.
+	shutdownDone := make(chan struct{})
 	go func() {
+		defer close(shutdownDone)
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -100,9 +108,10 @@ func main() {
 		}
 	}()
 
-	log.Info("control plane listening", "addr", cfg.Addr, "db", cfg.DBPath, "pollInterval", a.Settings.Duration(settings.PollInterval))
+	log.Info("control plane listening", "addr", cfg.Addr, "database", cfg.DatabaseTarget(), "pollInterval", a.Settings.Duration(settings.PollInterval))
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("server failed", "err", err)
 		os.Exit(1)
 	}
+	<-shutdownDone
 }

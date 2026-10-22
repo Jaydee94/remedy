@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +16,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/app"
 	"github.com/Jaydee94/remedy/internal/config"
 	"github.com/Jaydee94/remedy/internal/kube"
-	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 func TestAChangedSettingReachesTheComponentsThatUseIt(t *testing.T) {
@@ -160,6 +159,8 @@ func appWithEnv(t *testing.T, extra map[string]string) *app.App {
 	env := map[string]string{
 		"REMEDY_ADMIN_PASSWORD": password, "REMEDY_RUNNER_TOKEN": runnerToken,
 		"REMEDY_MASTER_KEY": base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{5}, 32)),
+		// only parsed here; the store is opened below
+		"REMEDY_DATABASE_URL": "postgres://remedy:unused@localhost/remedy",
 	}
 	for k, v := range extra {
 		env[k] = v
@@ -168,10 +169,6 @@ func appWithEnv(t *testing.T, extra map[string]string) *app.App {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	return app.New(cfg, st, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 }

@@ -2,7 +2,6 @@ package incident_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"slices"
 	"strings"
@@ -11,19 +10,13 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
-// setDiagnosedAt rewrites diagnosed_at of every incident through a second connection with a busy timeout.
+// setDiagnosedAt rewrites diagnosed_at of every incident through a second connection.
 func (v *env) setDiagnosedAt(t *testing.T, at time.Time) {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+v.path+"?_pragma=busy_timeout(5000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.Exec(`UPDATE incidents SET diagnosed_at = ?`, at.UTC().Format("2006-01-02T15:04:05.000000000Z")); err != nil {
-		t.Fatal(err)
-	}
+	testutil.SQL(t, v.dsn, `UPDATE incidents SET diagnosed_at = ?`, testutil.TS(at))
 }
 
 // diagnosedAndResolved opens the alert, marks it diagnosed at the given time and lets it clear.

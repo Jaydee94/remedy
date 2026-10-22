@@ -2,10 +2,8 @@ package server_test
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,6 +12,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/skill"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 func runOK() run.Outcome { return run.Outcome{ExitCode: 0, Result: "ok"} }
@@ -135,12 +134,7 @@ func TestASkillTurnedOffBetweenTheQueueAndTheClaimIsNotListed(t *testing.T) {
 // If the skills cannot be read, the claim must not hand out a prompt without the list (or with a wrong one): it answers 500 and the run,
 // which is claimed already, is failed so that it does not sit in "running" until the reaper comes.
 func TestAClaimWhoseSkillsCannotBeReadAnswers500AndFailsTheRun(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	st, err := store.Open(dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st, dsn := testutil.StoreDSN(t)
 	ts := httptest.NewServer(server.New(server.Deps{Store: st, Auth: auth.New(password), RunnerToken: runnerToken}))
 	t.Cleanup(ts.Close)
 
@@ -151,14 +145,7 @@ func TestAClaimWhoseSkillsCannotBeReadAnswers500AndFailsTheRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A timestamp that cannot be read makes the scan of the skill fail, while the run is still claimable.
-	db, err := sql.Open("sqlite", "file:"+dbPath+"?_pragma=busy_timeout(5000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.Exec(`UPDATE skills SET updated_at = 'not a time' WHERE id = ?`, k.ID); err != nil {
-		t.Fatal(err)
-	}
+	testutil.SQL(t, dsn, `UPDATE skills SET updated_at = 'not a time' WHERE id = ?`, k.ID)
 
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/runner/v1/claim", nil)
 	req.Header.Set("Authorization", "Bearer "+runnerToken)

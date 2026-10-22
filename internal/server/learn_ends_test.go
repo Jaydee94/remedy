@@ -2,7 +2,6 @@ package server_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 // learnFailures counts the learn_failed entries of a run.
@@ -38,12 +38,11 @@ func TestALearningRunWhoseTokenCannotBeMintedFailsWithOneLearnFailedEntry(t *tes
 	}
 	_ = json.Unmarshal([]byte(started), &s)
 
-	db, err := sql.Open("sqlite", "file:"+e.dbPath+"?_pragma=busy_timeout(5000)")
-	if err != nil {
+	db := testutil.RawDB(t, e.dsn)
+	if _, err := db.Exec(`CREATE FUNCTION no_tokens_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'no tokens'; END $$`); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.Exec(`CREATE TRIGGER no_tokens BEFORE INSERT ON run_tokens BEGIN SELECT RAISE(ABORT, 'no tokens'); END`); err != nil {
+	if _, err := db.Exec(`CREATE TRIGGER no_tokens BEFORE INSERT ON run_tokens FOR EACH ROW EXECUTE FUNCTION no_tokens_fn()`); err != nil {
 		t.Fatal(err)
 	}
 

@@ -98,9 +98,22 @@ running as a service for other people's homelabs.
 
 ### 2.6 Architecture and stack (branch 6)
 
-- **Go backend**, **SQLite** (relational, graph via node/edge tables and recursive CTEs,
-  FTS5 for full text), backed up e.g. with Litestream. The graph layer sits behind an
-  interface.
+- **Go backend**, **PostgreSQL** (relational, graph via node/edge tables and recursive CTEs,
+  full text search available when it is needed), which can be backed up, for example with
+  ordinary Postgres tooling.
+  The graph layer sits behind an interface. PostgreSQL is the only database of the control
+  plane (decision of 2026-10-22, replacing SQLite;
+  [spec](specs/2026-10-22-postgres-only-design.md), plan
+  [`plans/postgres-only.md`](plans/postgres-only.md); approved by the maintainer; implemented
+  except the cutover on the home server, and not proven by a real run). The reasons are
+  assumed, because the maintainer gave none: backups and restores with ordinary Postgres
+  tooling, no single-node volume that holds the only copy of
+  the data, a database that other tools can read, and room to grow. **This is not a
+  high-availability change:** sessions, the claim of runs, the gatekeeper's waiting handlers,
+  the signals state and the SSE streams stay in one process, and two replicas against one
+  database are a non-goal. Column types stay as they are (fixed-width text timestamps,
+  integer booleans, text JSON), and the existing data is carried over by a one-time import
+  tool with ids unchanged, so that sealed values still open with the same master key.
 - Two processes:
   - **Control plane:** API, event pipeline, incident logic, graph, gatekeeper (MCP),
     git/GitHub access, DB.
@@ -254,11 +267,11 @@ Decided on 2026-10-09; the specification is
 
 | Phase | Content | Result |
 |---|---|---|
-| **0 Foundation** | Monorepo, SQLite, control plane + runner, auth, UI shell, Claude adapter, **billing spike** | A run starts from the UI and streams live |
+| **0 Foundation** | Monorepo, database (SQLite at the time, PostgreSQL since 2.6), control plane + runner, auth, UI shell, Claude adapter, **billing spike** | A run starts from the UI and streams live |
 | **1 Pipeline fixer** | GitHub (PAT), CI events, responder + fixer, bot PRs automatic, timeline, HA notify | Red CI gets repaired, the human merges |
 | **2 Gatekeeper + cluster** | MCP gatekeeper, approval inbox, cluster actions, Alertmanager/Argo signals, incident model | Reaction to outages |
 | **2.5 Hosts and skills** | Inventory and credentials, host tools in the gatekeeper, settings in the UI, the Alertmanager source and the responder for outages, skills and the learning run, operation on the home server (6 cycles, see 2.10) | Remedy knows and reaches the machines outside the cluster |
-| **3 Learning phase + graph** | Parsers, graph in SQLite, learner, review queue, drift, Loki signals | Fewer tokens, better fixes |
+| **3 Learning phase + graph** | Parsers, graph in PostgreSQL, learner, review queue, drift, Loki signals | Fewer tokens, better fixes |
 | **4 Expansion** | `agy` adapter and fallback, ad-hoc chat, graph explorer, hardening | Comfort, hardening |
 
 Phase plans live in [`plans/`](plans/). Phase 1 is delivered in parts: the first part (detect and diagnose, with the

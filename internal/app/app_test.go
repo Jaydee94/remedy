@@ -15,7 +15,6 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -194,11 +193,7 @@ func newStack(t *testing.T, withRunner bool) *stack {
 	gh.blobURL = "http://localhost:" + strconv.Itoa(ghServer.Listener.Addr().(*net.TCPAddr).Port)
 	gh.set("aaaaaaa", "failure", true)
 
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	key, err := secret.ParseKey(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{5}, 32)))
 	if err != nil {
 		t.Fatal(err)

@@ -2,9 +2,7 @@ package store_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"path/filepath"
 	"testing"
 
 	"github.com/Jaydee94/remedy/internal/store"
@@ -82,12 +80,7 @@ func TestACallOfARunWithoutAnIncidentHasNone(t *testing.T) {
 }
 
 func TestAnIncidentThatWasDeletedIsNotAnError(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "test.db")
-	s, err := store.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
+	s, dsn := openStoreAt(t)
 	ctx := context.Background()
 	auto := automaticRun(t, s)
 	r, err := s.GetRun(ctx, auto.ID)
@@ -95,14 +88,7 @@ func TestAnIncidentThatWasDeletedIsNotAnError(t *testing.T) {
 		t.Fatalf("run = %+v, %v", r, err)
 	}
 
-	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer raw.Close()
-	if _, err := raw.Exec(`DELETE FROM incidents WHERE id = ?`, *r.IncidentID); err != nil {
-		t.Fatal(err)
-	}
+	sqlOn(t, dsn, `DELETE FROM incidents WHERE id = ?`, *r.IncidentID)
 
 	c, _, err := s.BeginToolCall(ctx, store.NewToolCall{RunID: auto.ID, ToolUseID: "u1", Tool: "cluster_rollout_restart", Kind: store.CallKindMutating, Arguments: json.RawMessage(`{}`)})
 	if err != nil {

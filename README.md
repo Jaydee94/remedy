@@ -87,27 +87,44 @@ make dev-web     # Vite dev server, proxies /api and /healthz to :8080
 make check       # everything CI checks: fmt, vet, Go tests, UI lint, UI tests, UI build
 ```
 
-`make dev-server` needs the three variables of the quick start. The UI tests (`cd web && npm test`) cover the
+`make dev-server` needs the variables of the quick start (the three secrets and `REMEDY_DATABASE_URL`); `make pg-up` starts a throwaway PostgreSQL for the tests (`dev/pg/README.md`). The UI tests (`cd web && npm test`) cover the
 pure logic only (what a thread or the digest says, how a run is read); a UI change is also looked at in a real browser.
 
 ## Quick start (local)
 
-Prerequisite: the `claude` CLI is installed and logged in with your subscription
-(run `claude`, then `/login`).
+Prerequisites: the `claude` CLI is installed and logged in with your subscription
+(run `claude`, then `/login`), and a PostgreSQL 16 server you can create a database on. The control plane keeps everything in
+PostgreSQL; SQLite is gone.
 
 ```sh
+# a local PostgreSQL for a try-out (data is lost with the container; use a volume or a real server for anything you keep)
+docker run -d --name remedy-db -p 127.0.0.1:5432:5432 \
+  -e POSTGRES_USER=remedy -e POSTGRES_PASSWORD=choose-a-db-password -e POSTGRES_DB=remedy postgres:16
+
 make web-install # once: installs the UI dependencies
 make build       # builds the UI, then both binaries (the server embeds the UI)
+
+export REMEDY_DATABASE_URL='postgres://remedy:choose-a-db-password@127.0.0.1:5432/remedy?sslmode=disable'
 
 export REMEDY_ADMIN_PASSWORD='choose-a-long-password'   # min. 12 characters
 export REMEDY_RUNNER_TOKEN="$(openssl rand -hex 24)"    # min. 24 characters
 export REMEDY_MASTER_KEY="$(openssl rand -base64 32)"   # seals the GitHub token in the database
 
-./bin/remedy-server &    # control plane on :8080, database in ./remedy.db
+./bin/remedy-server &    # control plane on :8080; it creates and migrates its tables in the database
 ./bin/remedy-runner      # needs the same REMEDY_RUNNER_TOKEN
 ```
 
 Open <http://localhost:8080> and sign in with the admin password.
+
+`REMEDY_DATABASE_URL` is required: a libpq-style URL (`sslmode`, `sslrootcert` and the like travel in it) or a `key=value` string. For a database on another host put
+`sslmode=require` (encrypted) or better `sslmode=verify-full` with `sslrootcert=...` (encrypted, and the server's certificate checked)
+in it: the default, `prefer`, falls back to plain text without a word (what the chart can do is in section 5 of
+[`docs/runbook/postgres-cutover.md`](docs/runbook/postgres-cutover.md)). The URL holds
+the database password, so Remedy never prints it (the start-up log names only `host:port/dbname`); in a cluster it comes from a Secret,
+never from a values file. `REMEDY_DATABASE_MAX_CONNS` (default `10`, 2 to 100) sizes the connection pool. At start-up the server
+retries for up to 30 seconds while the database is still coming up, then exits with an error. `REMEDY_DB` (the SQLite file of earlier
+versions) is refused with an error: to bring an existing SQLite database over, use the one-time importer `remedy-import-sqlite` and
+follow [`docs/runbook/postgres-cutover.md`](docs/runbook/postgres-cutover.md).
 
 `REMEDY_MASTER_KEY` is required: Remedy refuses to start without it. Keep it outside the database and its
 backups; whoever has both can read the stored GitHub token. If you lose or change the key, enter the token
@@ -193,15 +210,17 @@ testbed is described in [`docs/runbook/cluster-real-run.md`](docs/runbook/cluste
 
 ```sh
 docker build -t remedy-server .
-docker run -p 8080:8080 -v remedy-data:/data \
-  -e REMEDY_ADMIN_PASSWORD -e REMEDY_RUNNER_TOKEN -e REMEDY_MASTER_KEY remedy-server
+docker run -p 8080:8080 \
+  -e REMEDY_DATABASE_URL -e REMEDY_ADMIN_PASSWORD -e REMEDY_RUNNER_TOKEN -e REMEDY_MASTER_KEY remedy-server
 ```
 
-The image runs as a non-root user; `/data` holds the SQLite database. Use a named volume
-or a directory writable by uid 65532. The runner has its own image (`Dockerfile.runner`;
+The image runs as a non-root user and keeps no state: there is no volume, the database is the PostgreSQL that
+`REMEDY_DATABASE_URL` names (from inside the container, `127.0.0.1` is the container itself: use the host's address or a shared
+network). The runner has its own image (`Dockerfile.runner`;
 `make images` builds both; a release publishes them to GHCR). It does not contain the
 `claude` CLI: the Helm chart's init container installs the pinned CLI, and the login is done
-once with `kubectl exec`. The chart is in [`deploy/chart`](deploy/chart/README.md); how to
+once with `kubectl exec`. The chart is in [`deploy/chart`](deploy/chart/README.md); it takes a connection to a PostgreSQL that you provide
+(a Secret with the URL, `database.existingSecret`, and the egress rule `networkPolicy.database`) and installs no database. How to
 install it on k3s under Argo CD is in [`docs/runbook/homelab-deploy.md`](docs/runbook/homelab-deploy.md).
 
 Releases are automated: a merge to `main` with a `feat` or a `fix` publishes the images

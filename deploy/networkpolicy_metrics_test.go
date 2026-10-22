@@ -50,8 +50,8 @@ func TestTheMetricsRuleNamesNamespacePodLabelsAndPort(t *testing.T) {
 }
 
 func TestTheMetricsRuleIsAbsentByDefaultAndIndependentOfTheAlertmanagerRule(t *testing.T) {
-	if n := len(egressRules(t, policy(t, mustRender(t, baseValues()), "remedy-server"))); n != 2 {
-		t.Errorf("no value: %d egress rules on the server policy, want 2 (DNS, internet)", n)
+	if n := len(egressRules(t, policy(t, mustRender(t, baseValues()), "remedy-server"))); n != 3 {
+		t.Errorf("no value: %d egress rules on the server policy, want 3 (DNS, database, internet)", n)
 	}
 	values := baseValues()
 	set(values, "networkPolicy.alertmanager", alertmanagerValues("monitoring", map[string]any{"app.kubernetes.io/name": "vmalertmanager"}))

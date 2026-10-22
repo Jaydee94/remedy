@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -13,17 +12,13 @@ import (
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/gatekeeper"
 	"github.com/Jaydee94/remedy/internal/server"
-	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 // splitServers starts the two handlers of NewSplit on two test servers: the public one with a UI, the internal one.
 func splitServers(t *testing.T) (public, internal *httptest.Server) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	gate := gatekeeper.New(gatekeeper.Config{
 		Store: st,
 		Tools: gatekeeper.IncidentTools(st),

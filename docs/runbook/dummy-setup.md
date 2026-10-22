@@ -19,7 +19,7 @@ subscription you can log in with. Port `18080` on the host must be free (`8080` 
 
 | Command | What it does |
 |---|---|
-| `make dummy-up` | Cluster, demo workloads, Argo CD, both images, the chart; on a fresh install it restarts the control plane once, after the write token exists. Cold start about 1.5 to 2 minutes. Ends with a `Ready.` block: the URL, where the password is, and the runner's login state (`the runner is logged in`, `NOT logged in` or `has not said yet`). |
+| `make dummy-up` | Cluster, demo workloads, Argo CD, a small PostgreSQL for the control plane (`dev/kind/postgres.yaml`, in the release namespace, its Secret `remedy-postgres` made from a generated password), both images, the chart; on a fresh install it restarts the control plane once, after the write token exists. Cold start about 1.5 to 2 minutes. Ends with a `Ready.` block: the URL, where the password is, and the runner's login state (`the runner is logged in`, `NOT logged in` or `has not said yet`). |
 | `make dummy-login` | Interactive, once: starts `claude` in the runner pod. Type `/login`, open the URL, paste the code, `/exit`. |
 | `make dummy-smoke` | Two real runs (a question about a crashing deployment in `demo`, an approved restart of `demo/web`). About 20 s (19 to 25 s measured), two short runs of quota. Stops before the first run when the runner is not connected or not logged in. |
 | `make dummy-status` | `key: value` lines (below). |
@@ -49,7 +49,7 @@ kept in memory only (`docs/design.md` 2.7.1). No script of the dummy setup opens
 
 ## Where things are
 
-- `~/remedy-kind/dummy.env` (mode `0600`): the URL, the generated admin password, runner token and master key. Removed by
+- `~/remedy-kind/dummy.env` (mode `0600`): the URL, the generated admin password, runner token, master key and database password. Removed by
   `dummy-down`, made again by `dummy-up`.
 - `~/remedy-kind/claude`: the CLI login (the runner pod's `HOME`, mounted into the kind node and exposed by a hostPath volume).
   It is outside the repository and outside the cluster on purpose, so that `dummy-down` and `dummy-up` do not ask for a login
@@ -76,7 +76,7 @@ kept in memory only (`docs/design.md` 2.7.1). No script of the dummy setup opens
   runner pod: Running, restarts 0
   write token: present
   token refresher: last scheduled success <time or never>
-  database volume: Bound
+  database: 1/1 ready (postgres)
   login directory: ~/remedy-kind/claude (present)
   url: http://127.0.0.1:18080 (200 on /healthz)
   runner: connected, login ok

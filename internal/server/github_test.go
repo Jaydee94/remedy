@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +20,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 const ghToken = "ghp_DISTINCTIVE0123456789abcdefghijklmnopqrst"
@@ -88,12 +88,7 @@ type ghEnv struct {
 func newGHEnv(t *testing.T, st *store.Store, key secret.Key) *ghEnv {
 	t.Helper()
 	if st == nil {
-		var err error
-		st, err = store.Open(filepath.Join(t.TempDir(), "test.db"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = st.Close() })
+		st = testutil.Store(t)
 	}
 	gh := &fakeGitHub{
 		user:  github.User{Login: "octo"},

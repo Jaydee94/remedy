@@ -7,24 +7,19 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/settings"
-	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 // newSettingsEnv is a server with settings over a new store; the settings tests of this package use it.
 func newSettingsEnv(t *testing.T, tune func(*server.Deps)) (*env, *settings.Settings) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	set := settings.New(context.Background(), st, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	d := server.Deps{Store: st, Auth: auth.New(password), RunnerToken: runnerToken, Settings: set}
 	if tune != nil {
@@ -61,11 +56,7 @@ func TestTheClaimLeavesTheRunTimeoutOutWhileTheSettingIsTheDefault(t *testing.T)
 }
 
 func TestTheClaimCarriesARunTimeoutFromTheEnvironmentLayer(t *testing.T) {
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	set := settings.New(context.Background(), st, settings.Layer{settings.RunTimeout: {Dur: 20 * time.Minute}},
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	ts := httptest.NewServer(server.New(server.Deps{Store: st, Auth: auth.New(password), RunnerToken: runnerToken, Settings: set}))

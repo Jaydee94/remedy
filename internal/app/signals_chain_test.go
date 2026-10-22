@@ -3,7 +3,6 @@ package app_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -262,11 +261,7 @@ func TestAnUnreadableCABundleLeavesTheSourceOff(t *testing.T) {
 	fake := alertmanagertest.New(t, alertmanagerToken)
 	fake.SetAlerts(alertmanagertest.Alert("aaaa1111", "NodeDown", map[string]string{"severity": "critical"}, time.Now()))
 
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	key, err := secret.ParseKey(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{5}, 32)))
 	if err != nil {
 		t.Fatal(err)
@@ -300,12 +295,7 @@ func TestAnUnreadableCABundleLeavesTheSourceOff(t *testing.T) {
 // that diagnosis is. An ignored alert stays ignored across its returns.
 func TestAFlappingAlertReopensItsIncidentAndIsDiagnosedOnce(t *testing.T) {
 	fake := alertmanagertest.New(t, alertmanagerToken)
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	st, err := store.Open(dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st, dsn := testutil.StoreDSN(t)
 	key, err := secret.ParseKey(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{5}, 32)))
 	if err != nil {
 		t.Fatal(err)
@@ -399,15 +389,8 @@ func TestAFlappingAlertReopensItsIncidentAndIsDiagnosedOnce(t *testing.T) {
 	}
 
 	// The diagnosis is made old, so that neither a quiet time nor the cooldown is what keeps a second run away.
-	old := time.Now().Add(-3 * time.Hour).UTC().Format("2006-01-02T15:04:05.000000000Z")
-	db, err := sql.Open("sqlite", "file:"+dbPath+"?_pragma=busy_timeout(5000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`UPDATE incidents SET diagnosed_at = ?, last_diagnosis_at = ? WHERE id = ?`, old, old, node.ID); err != nil {
-		t.Fatal(err)
-	}
-	_ = db.Close()
+	old := testutil.TS(time.Now().Add(-3 * time.Hour))
+	testutil.SQL(t, dsn, `UPDATE incidents SET diagnosed_at = ?, last_diagnosis_at = ? WHERE id = ?`, old, old, node.ID)
 
 	// 2. Absent, fire, absent, fire: as when the alerts flap, or Alertmanager restarts and delivers them again with a fresh start.
 	for round := 2; round <= 3; round++ {

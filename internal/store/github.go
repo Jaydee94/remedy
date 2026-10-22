@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
 )
 
@@ -82,16 +81,12 @@ func (s *Store) UpdateConnectionStatus(ctx context.Context, status ConnectionSta
 	return nil
 }
 
-// DeleteConnection removes the connection and, through the foreign key, its repos.
+// DeleteConnection removes the connection and, through the foreign key, its repos. Like DeleteRepo it cascades, so its
+// lock waits are bounded (inDeleteTx).
 func (s *Store) DeleteConnection(ctx context.Context) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM github_connections WHERE id = ?`, ConnectionID)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return ErrNotFound
-	}
-	return nil
+	return s.inDeleteTx(ctx, func(tx *txn) error {
+		return oneRow(tx.ExecContext(ctx, `DELETE FROM github_connections WHERE id = ?`, ConnectionID))
+	})
 }
 
 type Repo struct {
@@ -135,17 +130,14 @@ func scanRepo(sc scanner) (Repo, error) {
 // AddRepo registers a repository. It returns ErrExists if the name is already registered,
 // ignoring case.
 func (s *Store) AddRepo(ctx context.Context, connectionID int64, fullName, defaultBranch string) (Repo, error) {
-	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO repos (connection_id, full_name, default_branch, enabled, created_at) VALUES (?, ?, ?, 1, ?)`,
-		connectionID, fullName, defaultBranch, formatTS(time.Now()))
+	var id int64
+	err := s.db.QueryRowContext(ctx,
+		`INSERT INTO repos (connection_id, full_name, default_branch, enabled, created_at) VALUES (?, ?, ?, 1, ?) RETURNING id`,
+		connectionID, fullName, defaultBranch, formatTS(time.Now())).Scan(&id)
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if isUnique(err) {
 			return Repo{}, ErrExists
 		}
-		return Repo{}, err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
 		return Repo{}, err
 	}
 	return s.GetRepo(ctx, id)
@@ -160,7 +152,8 @@ func (s *Store) GetRepo(ctx context.Context, id int64) (Repo, error) {
 }
 
 func (s *Store) ListRepos(ctx context.Context) ([]Repo, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+repoCols+` FROM repos ORDER BY full_name`)
+	// SQLite ordered the NOCASE column by its ASCII-folded bytes; COLLATE "C" keeps that order whatever the database's collation.
+	rows, err := s.db.QueryContext(ctx, `SELECT `+repoCols+` FROM repos ORDER BY lower(full_name) COLLATE "C", full_name COLLATE "C"`)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +171,7 @@ func (s *Store) ListRepos(ctx context.Context) ([]Repo, error) {
 }
 
 func (s *Store) SetRepoEnabled(ctx context.Context, id int64, enabled bool) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE repos SET enabled = ? WHERE id = ?`, enabled, id)
+	res, err := s.db.ExecContext(ctx, `UPDATE repos SET enabled = ? WHERE id = ?`, flagInt(enabled), id)
 	if err != nil {
 		return err
 	}
@@ -188,13 +181,11 @@ func (s *Store) SetRepoEnabled(ctx context.Context, id int64, enabled bool) erro
 	return nil
 }
 
+// DeleteRepo removes a repository and, through the foreign keys, its incidents (their notes, and the links of runs, calls and
+// activity to them). The cascade locks the repository before its incidents while other transactions lock an incident before the
+// repository, so the delete's lock waits are bounded (inDeleteTx).
 func (s *Store) DeleteRepo(ctx context.Context, id int64) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM repos WHERE id = ?`, id)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return ErrNotFound
-	}
-	return nil
+	return s.inDeleteTx(ctx, func(tx *txn) error {
+		return oneRow(tx.ExecContext(ctx, `DELETE FROM repos WHERE id = ?`, id))
+	})
 }

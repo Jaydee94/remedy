@@ -15,7 +15,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -207,7 +206,8 @@ type chainRunner struct {
 
 type loginChain struct {
 	t      *testing.T
-	dbPath string
+	dsn    string // the database, for the walk over every column
+	raw    *sql.DB
 	st     *store.Store
 	cfg    config.Server
 	logs   *lockedBuffer
@@ -230,13 +230,7 @@ func newLoginChain(t *testing.T, fake testutil.RelayOptions) *loginChain {
 	c := &loginChain{t: t, logs: &lockedBuffer{}, rec: &recorder{}, adminT: &http.Transport{}}
 	t.Cleanup(c.adminT.CloseIdleConnections)
 	c.log = slog.New(slog.NewTextHandler(c.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	c.dbPath = filepath.Join(t.TempDir(), "remedy.db")
-	st, err := store.Open(c.dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c.st = st
-	t.Cleanup(func() { _ = st.Close() })
+	c.st, c.dsn = testutil.StoreDSN(t)
 	key, err := secret.ParseKey(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)))
 	if err != nil {
 		t.Fatal(err)
@@ -544,15 +538,13 @@ func (c *loginChain) loginKinds() string {
 	return strings.Join(out, ", ")
 }
 
-// readDB opens a second, read-only connection to the database file.
+// readDB is a second connection to the database, past the store; the walk only reads.
 func (c *loginChain) readDB() *sql.DB {
 	c.t.Helper()
-	db, err := sql.Open("sqlite", "file:"+c.dbPath+"?mode=ro&_pragma=busy_timeout(5000)")
-	if err != nil {
-		c.t.Fatal(err)
+	if c.raw == nil {
+		c.raw = testutil.RawDB(c.t, c.dsn)
 	}
-	c.t.Cleanup(func() { _ = db.Close() })
-	return db
+	return c.raw
 }
 
 func (c *loginChain) countRuns() int {
@@ -722,11 +714,11 @@ func (c *loginChain) readSSE(entries int) []byte {
 	return out.Bytes()
 }
 
-// checkDB checks every column of every row of every table, through a second read-only connection, and the raw files.
+// checkDB checks every column of every row of every table, through a second connection.
 func (c *loginChain) checkDB(t *testing.T) {
 	t.Helper()
 	db := c.readDB()
-	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type = 'table'`)
+	rows, err := db.Query(`SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -776,11 +768,6 @@ func (c *loginChain) checkDB(t *testing.T) {
 	}
 	if cells == 0 {
 		t.Error("the database dump read no cell")
-	}
-	for _, suffix := range []string{"", "-wal", "-shm"} {
-		if b, err := os.ReadFile(c.dbPath + suffix); err == nil {
-			expectClean(t, "the database file"+suffix, b, false, false)
-		}
 	}
 }
 

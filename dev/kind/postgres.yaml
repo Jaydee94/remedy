@@ -1,0 +1,74 @@
+# The database of the dummy setup: one PostgreSQL pod in the release namespace, for the testbed only. The chart installs no
+# database; dummy-up.sh applies this file and the Secret remedy-postgres before the chart, and the chart's
+# database.existingSecret points at that Secret (dummy-values.yaml).
+#
+# The Secret is NOT in this file. dummy-up.sh makes it from a password it generates (REMEDY_POSTGRES_PASSWORD in
+# ~/remedy-kind/dummy.env, mode 0600), with two keys: password (this pod's POSTGRES_PASSWORD) and url (the connection
+# URL the control plane reads as REMEDY_DATABASE_URL). No password is ever committed.
+#
+# The data lives on a claim of the cluster's default storage class and goes with the cluster (make dummy-down).
+apiVersion: v1
+kind: Service
+metadata:
+  name: remedy-postgres
+  namespace: remedy-system
+  labels:
+    app.kubernetes.io/name: remedy-postgres
+spec:
+  selector:
+    app.kubernetes.io/name: remedy-postgres
+  ports:
+    - {name: postgres, port: 5432, targetPort: postgres}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: remedy-postgres
+  namespace: remedy-system
+  labels:
+    app.kubernetes.io/name: remedy-postgres
+spec:
+  serviceName: remedy-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: remedy-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: remedy-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - {name: postgres, containerPort: 5432}
+          env:
+            - {name: POSTGRES_USER, value: remedy}
+            - {name: POSTGRES_DB, value: remedy}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: remedy-postgres, key: password}
+            # A subdirectory: the claim's mount point can hold a lost+found that initdb refuses.
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          # Over TCP: the image's first server (initdb) listens on its socket only, so a check over the socket would answer too early.
+          readinessProbe:
+            exec:
+              command: [pg_isready, -h, 127.0.0.1, -U, remedy, -d, remedy]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: [pg_isready, -h, 127.0.0.1, -U, remedy, -d, remedy]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 512Mi}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: {requests: {storage: 1Gi}}

@@ -3,29 +3,24 @@ package incident_test
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"slices"
 	"testing"
 
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 type env struct {
 	e    *incident.Engine
 	st   *store.Store
 	repo store.Repo
-	path string // the database file, for a test that changes a row the store has no method for
+	dsn  string // the database, for a test that changes a row the store has no method for
 }
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "test.db")
-	st, err := store.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st, dsn := testutil.StoreDSN(t)
 	ctx := context.Background()
 	if err := st.SaveConnection(ctx, store.Connection{
 		TokenCiphertext: []byte{1}, TokenHint: "1234", Login: "octo", Status: store.ConnOK,
@@ -36,7 +31,7 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &env{e: &incident.Engine{Store: st}, st: st, repo: repo, path: path}
+	return &env{e: &incident.Engine{Store: st}, st: st, repo: repo, dsn: dsn}
 }
 
 func (v *env) obs(class incident.Class, ref, check, sha, conclusion string) incident.Observation {

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -13,17 +12,13 @@ import (
 
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/server"
-	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 // splitRunnerServers starts the two handlers of NewSplit with a RunnerStatus.
 func splitRunnerServers(t *testing.T) (public, internal *httptest.Server) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	pub, in := server.NewSplit(server.Deps{
 		Store: st, Auth: auth.New(password), RunnerToken: runnerToken, RunnerStatus: server.NewRunnerStatus(),
 		Web: fstest.MapFS{"index.html": {Data: []byte("<html>shell</html>")}},

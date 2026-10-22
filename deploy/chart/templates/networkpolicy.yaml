@@ -3,8 +3,9 @@
 {{- fail "networkPolicy.public.from must list at least one peer: an empty list in a NetworkPolicy allows every source, which would open the public port to everyone. Name the Ingress controller's namespace or pod, or an ipBlock." }}
 {{- end }}
 # The control plane. Ingress: the public port from the configured peers (the Ingress controller, the node), the
-# internal port from runner pods only. Egress: DNS, the Kubernetes API when the cluster is on, and HTTPS to the
-# internet (GitHub), never to a private range.
+# internal port from runner pods only. Egress: DNS, the Kubernetes API when the cluster is on, PostgreSQL
+# (networkPolicy.database), the typed extras (hosts, Alertmanager, metrics) and HTTPS to the internet (GitHub), never to a
+# private range.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -50,6 +51,23 @@ spec:
         {{- end }}
       ports:
         - {protocol: TCP, port: {{ .Values.networkPolicy.apiServer.port }}}
+    {{- end }}
+    {{- /* networkPolicy.database: PostgreSQL, the pods of the cluster or an external range, one rule, validated in validate.yaml. */ -}}
+    {{- with .Values.networkPolicy.database }}
+    - to:
+        {{- if .cidr }}
+        - ipBlock:
+            cidr: {{ .cidr }}
+        {{- else }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .podSelector | nindent 14 }}
+        {{- end }}
+      ports:
+        - {protocol: TCP, port: {{ if hasKey . "port" }}{{ int64 .port }}{{ else }}5432{{ end }}}
     {{- end }}
     {{- /* networkPolicy.hosts: one rule per single address (SSH for the host tools); networkPolicy.alertmanager and networkPolicy.metrics: one pod selection each. All validated in validate.yaml. */ -}}
     {{- range .Values.networkPolicy.hosts }}

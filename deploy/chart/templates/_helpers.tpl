@@ -26,6 +26,24 @@ app.kubernetes.io/component: {{ .component }}
 {{ required "existingSecret.name is required: the chart never creates the admin password, the runner token or the master key" .Values.existingSecret.name }}
 {{- end }}
 
+{{/* The Secret that holds the database connection URL. The chart never creates it and never accepts the URL as a value. */}}
+{{- define "remedy.databaseSecret" -}}
+{{- if not (kindIs "string" .Values.database.existingSecret) -}}
+{{- fail "database.existingSecret is required and must be the name of a Secret (text)" -}}
+{{- end -}}
+{{ required "database.existingSecret is required: the name of a Secret that holds the PostgreSQL connection URL (the chart never creates it and never takes the URL as a value, it holds a password)" .Values.database.existingSecret }}
+{{- end }}
+
+{{/* The key of that Secret; url when unset or empty. A Secret key is letters, digits, dash, underscore and dot. */}}
+{{- define "remedy.databaseSecretKey" -}}
+{{- $key := .Values.database.secretKey | default "url" -}}
+{{- if not (and (kindIs "string" $key) (regexMatch "^[-._a-zA-Z0-9]+$" $key)) -}}
+{{- /* The value is never echoed: a connection URL pasted into this field would show its password. */ -}}
+{{- fail "database.secretKey is not a valid Secret key name (letters, digits, dash, underscore and dot; the value is not shown)" -}}
+{{- end -}}
+{{- $key -}}
+{{- end }}
+
 {{/* The private ranges: an egress rule for the internet leaves them out. */}}
 {{- define "remedy.privateRanges" -}}
 - 10.0.0.0/8

@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"time"
 )
 
@@ -18,7 +17,7 @@ type Setting struct {
 
 // ListSettings returns every override, by key.
 func (s *Store) ListSettings(ctx context.Context) ([]Setting, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT key, value, updated_at FROM settings ORDER BY key`)
+	rows, err := s.db.QueryContext(ctx, `SELECT key, value, updated_at FROM settings ORDER BY key COLLATE "C"`)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +39,7 @@ func (s *Store) ListSettings(ctx context.Context) ([]Setting, error) {
 
 // SetSetting writes an override, and the activity entry that says so, in one transaction.
 func (s *Store) SetSetting(ctx context.Context, key, value string, act NewActivity) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
 			ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
@@ -54,7 +53,7 @@ func (s *Store) SetSetting(ctx context.Context, key, value string, act NewActivi
 // DeleteSetting removes an override. It reports whether there was one; only then is the activity entry written.
 func (s *Store) DeleteSetting(ctx context.Context, key string, act NewActivity) (bool, error) {
 	removed := false
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *txn) error {
 		res, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key = ?`, key)
 		if err != nil {
 			return err

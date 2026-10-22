@@ -21,10 +21,10 @@ func TestTheServerRunsOnceWithRecreateAndHardening(t *testing.T) {
 		t.Fatal("no Deployment remedy-server")
 	}
 	if got := dig(t, dep, "spec", "replicas"); got != 1 {
-		t.Fatalf("replicas = %v, want 1 (SQLite has one connection)", got)
+		t.Fatalf("replicas = %v, want 1 (sessions and the signal state are in memory)", got)
 	}
 	if got := dig(t, dep, "spec", "strategy", "type"); got != "Recreate" {
-		t.Fatalf("strategy = %v, want Recreate (a second pod must not open the same file)", got)
+		t.Fatalf("strategy = %v, want Recreate (two control planes must not run side by side, not even during a rollout)", got)
 	}
 	pod := podSpec(t, dep)
 	if pod["automountServiceAccountToken"] != false {
@@ -52,7 +52,7 @@ func TestTheServerListensOnTwoPortsAndTakesItsSecretsFromTheSecret(t *testing.T)
 	d := mustRender(t, baseValues())
 	c := container(t, podSpec(t, d.find("Deployment", "remedy-server")), "server")
 	e := env(c)
-	for name, want := range map[string]string{"REMEDY_ADDR": ":8080", "REMEDY_INTERNAL_ADDR": ":8081", "REMEDY_DB": "/data/remedy.db"} {
+	for name, want := range map[string]string{"REMEDY_ADDR": ":8080", "REMEDY_INTERNAL_ADDR": ":8081"} {
 		if e[name]["value"] != want {
 			t.Errorf("%s = %v, want %q", name, e[name]["value"], want)
 		}
@@ -130,34 +130,29 @@ func TestThePublicServiceCanBeANodePort(t *testing.T) {
 	}
 }
 
-func TestTheDataVolumeIsKeptAndAnExistingClaimIsUsedAsIs(t *testing.T) {
+func TestTheServerHasNoDataVolumeAndNoClaim(t *testing.T) {
+	// The database is a Postgres the chart does not install: the control plane keeps no state on a volume.
 	d := mustRender(t, baseValues())
-	pvc := d.find("PersistentVolumeClaim", "remedy-data")
-	if pvc == nil {
-		t.Fatal("no PersistentVolumeClaim remedy-data")
+	if got := d.all("PersistentVolumeClaim"); len(got) != 0 {
+		t.Fatalf("%d PersistentVolumeClaim objects, want none (the runner's claim comes from its StatefulSet template)", len(got))
 	}
-	if dig(t, pvc, "metadata", "annotations", "helm.sh/resource-policy") != "keep" {
-		t.Fatalf("the data claim must survive helm uninstall: annotations = %v", dig(t, pvc, "metadata", "annotations"))
-	}
-	if dig(t, pvc, "spec", "accessModes", 0) != "ReadWriteOnce" {
-		t.Fatalf("accessModes = %v", dig(t, pvc, "spec", "accessModes"))
-	}
-
-	values := baseValues()
-	set(values, "server.persistence.existingClaim", "my-claim")
-	d = mustRender(t, values)
-	if d.find("PersistentVolumeClaim", "remedy-data") != nil {
-		t.Fatal("no claim may be created when an existing one is named")
-	}
-	vols, _ := podSpec(t, d.find("Deployment", "remedy-server"))["volumes"].([]any)
-	found := false
-	for _, v := range vols {
-		if dig(t, v, "persistentVolumeClaim", "claimName") == "my-claim" {
-			found = true
+	pod := podSpec(t, d.find("Deployment", "remedy-server"))
+	for _, v := range listOf(pod["volumes"]) {
+		if name := dig(t, v, "name"); name == "data" || dig(t, v, "persistentVolumeClaim") != nil {
+			t.Errorf("the server pod has the volume %v, want no data volume and no claim", v)
 		}
 	}
-	if !found {
-		t.Fatalf("the pod does not use my-claim: %v", vols)
+	for _, m := range listOf(container(t, pod, "server")["volumeMounts"]) {
+		if dig(t, m, "mountPath") == "/data" {
+			t.Errorf("the server mounts /data: %v", m)
+		}
+	}
+
+	// A values file of an older release still names the claim; the value is gone and has no effect.
+	values := baseValues()
+	set(values, "server.persistence.existingClaim", "my-claim")
+	if got := mustRender(t, values).all("PersistentVolumeClaim"); len(got) != 0 {
+		t.Fatalf("server.persistence.existingClaim still renders a claim: %v", got)
 	}
 }
 
@@ -605,8 +600,8 @@ func TestTheEgressStructureOfTheServerPolicyIsPinned(t *testing.T) {
 		checkDNSRule(t, "server", p, ns)
 		checkInternetRule(t, "server", p)
 		rules := egressRules(t, p)
-		if len(rules) != 2 {
-			t.Errorf("server, cluster off: %d egress rules, want 2 (DNS, internet): %v", len(rules), rules)
+		if len(rules) != 3 {
+			t.Errorf("server, cluster off: %d egress rules, want 3 (DNS, database, internet): %v", len(rules), rules)
 		}
 		if blocks := ipBlocks(rules); len(blocks) != 1 || blocks[0].cidr != "0.0.0.0/0" {
 			t.Errorf("server, cluster off: ipBlocks = %v, want only 0.0.0.0/0", blocks)
@@ -623,8 +618,8 @@ func TestTheServerPolicyWithTheClusterOnHasExactlyTheConfiguredAPIAddresses(t *t
 	checkDNSRule(t, "server", p, "kube-system")
 	checkInternetRule(t, "server", p)
 	rules := egressRules(t, p)
-	if len(rules) != 3 {
-		t.Fatalf("%d egress rules, want 3 (DNS, API server, internet): %v", len(rules), rules)
+	if len(rules) != 4 {
+		t.Fatalf("%d egress rules, want 4 (DNS, API server, database, internet): %v", len(rules), rules)
 	}
 	var api []map[string]any
 	for _, r := range rules {
@@ -782,7 +777,7 @@ func TestTheRunTimeoutReachesTheServerAsWellAsTheRunner(t *testing.T) {
 }
 
 func TestServerEnvRefusesTheNamesTheChartSetsItself(t *testing.T) {
-	for _, name := range []string{"REMEDY_ADDR", "REMEDY_INTERNAL_ADDR", "REMEDY_DB", "REMEDY_K8S_API", "REMEDY_K8S_WRITE_NAMESPACES", "REMEDY_K8S_READ_TOKEN_FILE"} {
+	for _, name := range []string{"REMEDY_ADDR", "REMEDY_INTERNAL_ADDR", "REMEDY_DB", "REMEDY_DATABASE_URL", "REMEDY_K8S_API", "REMEDY_K8S_WRITE_NAMESPACES", "REMEDY_K8S_READ_TOKEN_FILE"} {
 		values := baseValues()
 		set(values, "server.env", map[string]any{name: ""})
 		mustFail(t, values, "server.env."+name)

@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"log/slog"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/sshhost"
 	"github.com/Jaydee94/remedy/internal/sshhost/sshtest"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 type accessRig struct {
@@ -45,11 +45,7 @@ func masterKey(t *testing.T, fill byte) secret.Key {
 func newAccessRig(t *testing.T, cmds map[string]sshtest.Reply) *accessRig {
 	t.Helper()
 	ctx := context.Background()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	key := masterKey(t, 6)
 	srv := sshtest.Start(t, sshtest.Config{Password: "pw", Commands: cmds})
 	h, err := st.CreateHost(ctx, store.HostFields{

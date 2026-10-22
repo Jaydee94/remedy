@@ -32,3 +32,4 @@ EOF
 echo
 echo "Ready. The tokens are good for 24 hours; run this script again for new ones."
 echo "  . $OUT/env.sh   # then start remedy-server"
+echo "The server also needs a PostgreSQL (REMEDY_DATABASE_URL): dev/pg/up.sh starts a throwaway one, see dev/pg/README.md."

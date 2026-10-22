@@ -294,6 +294,9 @@ func (s *srv) deleteHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := s.d.Store.DeleteHost(r.Context(), e.Host.ID)
+	if writeBusy(w, err) {
+		return
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "host not found")
 		return

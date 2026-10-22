@@ -2,7 +2,6 @@ package reaper_test
 
 import (
 	"context"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -10,15 +9,12 @@ import (
 	"github.com/Jaydee94/remedy/internal/reaper"
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 func toolRun(t *testing.T) (*store.Store, run.Run) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	ctx := context.Background()
 	if _, err := st.CreateToolRun(ctx, "claude", "use the tools"); err != nil {
 		t.Fatal(err)

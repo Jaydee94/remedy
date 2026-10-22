@@ -8,14 +8,19 @@ the incident the agent works on is put into a fresh database. Plan on about 40 m
 
 ```sh
 make web-install && make build
+# a PostgreSQL for the run, a throwaway container on the loopback (data is lost with it; docker rm -f remedy-realrun-db removes it)
+docker run -d --name remedy-realrun-db -p 127.0.0.1:55432:5432 -e POSTGRES_USER=remedy -e POSTGRES_PASSWORD=remedy -e POSTGRES_DB=remedy postgres:16
 mkdir -p ~/remedy-gate-run && cd ~/remedy-gate-run
 cat > env.sh <<EOF
 export REMEDY_ADMIN_PASSWORD='$(openssl rand -hex 12)'
 export REMEDY_RUNNER_TOKEN='$(openssl rand -hex 24)'
 export REMEDY_MASTER_KEY='$(openssl rand -base64 32)'
-export REMEDY_DB='$PWD/remedy.db' REMEDY_LOG_LEVEL=debug
+export REMEDY_DATABASE_URL='postgres://remedy:remedy@127.0.0.1:55432/remedy?sslmode=disable' REMEDY_LOG_LEVEL=debug
 EOF
 chmod 600 env.sh && . ./env.sh
+rpsql() { docker exec -i remedy-realrun-db psql -U remedy -d remedy "$@"; }   # psql inside the container
+rdump() { docker exec remedy-realrun-db pg_dump -U remedy -d remedy; }        # a text dump of the database, for the leak check
+hexof() { od -An -v -tx1 | tr -d ' \n'; }                                   # lower-case hex of stdin: how a dump shows a bytea column
 
 <path-to-remedy>/bin/remedy-server > server.log 2>&1 &
 <path-to-remedy>/bin/remedy-runner > runner.log 2>&1 &
@@ -24,16 +29,17 @@ chmod 600 env.sh && . ./env.sh
 The `claude` CLI must be installed and logged in. The runner's time limit stays at its default of 10 minutes: the point of
 scenario A is that a run which waits longer than that is not stopped.
 
-Put an incident into the database (the server has created it on start):
+Put an incident into the database (the server has made its tables on start; the rows get the ids 1 because no id is given, which the later steps rely on):
 
 ```sh
-sqlite3 -cmd '.timeout 5000' "$REMEDY_DB" <<'SQL'
+rpsql -v ON_ERROR_STOP=1 <<'SQL'
 INSERT INTO github_connections (id, token_ciphertext, token_hint, login, status, status_detail, checked_at)
-VALUES (1, x'00', 'seed', 'octo', 'error', 'Seeded for the real run; polling is off.', '2026-10-02T12:00:00.000000000Z');
-INSERT INTO repos (id, connection_id, full_name, default_branch, enabled, created_at)
-VALUES (1, 1, 'octo/hello', 'main', 1, '2026-10-02T12:00:00.000000000Z');
-INSERT INTO incidents (id, repo_id, ref, ref_url, check_name, state, conclusion, head_sha, check_url, occurrences, diagnoses, first_seen, last_seen, last_diagnosis_at, resolved_at, resolved_reason, diagnosis, diagnosed_sha, run_id)
-VALUES (1, 1, 'pr:7', 'https://github.com/octo/hello/pull/7', 'web', 'open', 'failure', 'abc1234def5678', '', 1, 0, '2026-10-02T10:00:00.000000000Z', '2026-10-02T10:00:00.000000000Z', NULL, NULL, '', NULL, '', NULL);
+VALUES (1, '\x00', 'seed', 'octo', 'error', 'Seeded for the real run; polling is off.', '2026-10-02T12:00:00.000000000Z');
+INSERT INTO repos (connection_id, full_name, default_branch, enabled, created_at)
+VALUES (1, 'octo/hello', 'main', 1, '2026-10-02T12:00:00.000000000Z');
+INSERT INTO incidents (source, key, title, repo_id, ref, ref_url, check_name, state, conclusion, head_sha, check_url, occurrences, diagnoses, first_seen, last_seen)
+VALUES ('github', 1 || chr(31) || 'pr:7' || chr(31) || 'web', 'web failed on pr:7', 1, 'pr:7', 'https://github.com/octo/hello/pull/7', 'web', 'open', 'failure', 'abc1234def5678', '', 1, 0,
+        '2026-10-02T10:00:00.000000000Z', '2026-10-02T10:00:00.000000000Z');
 SQL
 ```
 
@@ -102,9 +108,13 @@ approval is abandoned. Start the runner again; it works as before.
 
 ## 7. The audit
 
-- Run token: `scripts/check-no-token-leak.sh http://localhost:8080 server.log runner.log "$REMEDY_DB" < token.txt` (from the Remedy
-  checkout, with `REMEDY_ADMIN_PASSWORD` exported). It must end with "the token appears nowhere that was searched": the token is in no log, not in
-  the database (only its hash is), and in no admin API answer, the run events included.
+- Run token: `scripts/check-no-token-leak.sh http://localhost:8080 server.log runner.log db.sql < token.txt` (after `rdump > db.sql`; from the Remedy
+  checkout, with `REMEDY_ADMIN_PASSWORD` exported). It must end with "the token appears nowhere that was searched": the token is in no log, in no
+  admin API answer (the run events included), and as plain text in no line of the database dump. A dump writes a `bytea` column (the run token's hash,
+  the sealed credentials) as hex, so that last search is blind to a plain-text token stored in one. Run the script a second time with the hex form:
+  `tr -d '\n' < token.txt | hexof | scripts/check-no-token-leak.sh http://localhost:8080 server.log runner.log db.sql`. Both runs must end with the same line.
+  What this cannot see is what a dump does not show (dead tuples, the write-ahead log); the guarantee that only the hash is stored rests on the
+  code and its tests, which check every column, not on this scan.
 - `grep -c 'could not' server.log runner.log` and a look at both logs: no warnings that are not explained by a scenario.
 - The audit of a run: `curl -s -b cookies http://localhost:8080/api/runs/<id>/tool-calls | jq` lists every call, with its arguments, outcome and decision.
 

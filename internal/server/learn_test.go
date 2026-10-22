@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,6 +17,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/skill"
 	"github.com/Jaydee94/remedy/internal/sshhost/sshtest"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 const learnAnswer = `{"profile":{"os":"Debian 12","role":"NAS","services":["docker"],"containers":["remedy-drill"],"notes":""},` +
@@ -30,13 +30,8 @@ type learnEnv struct {
 
 func newLearnEnv(t *testing.T) *learnEnv {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	st, err := store.Open(dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	he := newHostEnv(t, st, dbPath, secret.Key{}, sshtest.Start(t, sshtest.Config{}), func(d *server.Deps) {
+	st, dsn := testutil.StoreDSN(t)
+	he := newHostEnv(t, st, dsn, secret.Key{}, sshtest.Start(t, sshtest.Config{}), func(d *server.Deps) {
 		d.Learner = &learner.Learner{Store: st}
 	})
 	return &learnEnv{hostEnv: he, st: st}

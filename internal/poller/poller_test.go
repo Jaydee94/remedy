@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,6 +22,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/poller"
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 const token = "ghp_POLLERTEST0123456789abcdefghijklmnopqr"
@@ -165,11 +165,7 @@ func testKey(t *testing.T, fill byte) secret.Key {
 func newEnv(t *testing.T, sealKey, openKey secret.Key) *env {
 	t.Helper()
 	gh, ts := newFake(t)
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 
 	ctx := context.Background()
 	sealed, err := sealKey.Seal([]byte(token), store.ConnectionAAD())

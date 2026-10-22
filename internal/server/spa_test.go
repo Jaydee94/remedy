@@ -4,23 +4,18 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
 
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/server"
-	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 func newWebServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	web := fstest.MapFS{
 		"index.html":    {Data: []byte("<html>shell</html>")},
 		"assets/app.js": {Data: []byte("console.log('app')")},

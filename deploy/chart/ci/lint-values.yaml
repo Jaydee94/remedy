@@ -1,6 +1,8 @@
 # The values helm lint and kubeconform need to render the chart. Not used for an install.
 existingSecret:
   name: remedy-secrets
+database:
+  existingSecret: remedy-database
 runner:
   cli:
     version: 2.1.288
@@ -24,3 +26,7 @@ networkPolicy:
     namespace: monitoring
     podSelector: {app.kubernetes.io/name: vmalertmanager}
     port: 9093
+  database:
+    namespace: databases
+    podSelector: {cnpg.io/cluster: remedy}
+    port: 5432

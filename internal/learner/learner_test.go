@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,6 +17,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/skill"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 type env struct {
@@ -28,11 +28,7 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	return &env{t: t, st: st, l: &learner.Learner{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}}
 }
 

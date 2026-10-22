@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,16 +13,12 @@ import (
 	"github.com/Jaydee94/remedy/internal/secret"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/settings"
-	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 func keyedSettingsServer(t *testing.T) (*env, *http.Client) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	k, _ := secret.ParseKey("BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU=")
 	set := settings.New(context.Background(), st, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), settings.WithKey(k))
 	ts := httptest.NewServer(server.New(server.Deps{Store: st, Auth: auth.New(password), RunnerToken: runnerToken, Settings: set}))

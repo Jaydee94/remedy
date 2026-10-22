@@ -11,6 +11,22 @@ permissions:
 jobs:
   go:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: remedy
+          POSTGRES_PASSWORD: remedy
+          POSTGRES_DB: remedy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U remedy -d remedy"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      REMEDY_TEST_DATABASE_URL: postgres://remedy:remedy@localhost:5432/remedy?sslmode=disable
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7

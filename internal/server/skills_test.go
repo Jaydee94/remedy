@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/skill"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 type skillEnv struct {
@@ -26,11 +26,7 @@ type skillEnv struct {
 // newSkillEnv serves the API over a store with nothing but the store: the skill routes need no other dependency.
 func newSkillEnv(t *testing.T) *skillEnv {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	ts := httptest.NewServer(server.New(server.Deps{Store: st, Auth: auth.New(password), RunnerToken: runnerToken}))
 	t.Cleanup(ts.Close)
 	jar, _ := cookiejar.New(nil)

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -17,6 +16,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 // claimOne is what a runner gets when it claims the next queued run.
@@ -81,11 +81,7 @@ func TestAnAdhocRunWithoutAnIncidentIsClaimedAsItIs(t *testing.T) {
 // questionEnv is a server with the gatekeeper, a signed-in admin client and one open incident.
 func questionEnv(t *testing.T, cluster server.Cluster) (*env, *http.Client, store.Incident) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	ctx := context.Background()
 	if err := st.SaveConnection(ctx, store.Connection{TokenCiphertext: []byte{1}, TokenHint: "1234", Login: "octo", Status: store.ConnOK}); err != nil {
 		t.Fatal(err)

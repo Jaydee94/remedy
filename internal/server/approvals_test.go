@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 // gateEnv is a server with the gatekeeper, the incident and note tools, and a signed-in admin client.
@@ -32,11 +32,7 @@ type gateEnv struct {
 
 func newGateEnv(t *testing.T) *gateEnv {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	g := gatekeeper.New(gatekeeper.Config{
 		Store: st, Tools: append(gatekeeper.IncidentTools(st), gatekeeper.NoteTool(st)),
 		ProgressInterval: 20 * time.Millisecond, Grace: 200 * time.Millisecond,
@@ -250,9 +246,10 @@ func (e *gateEnv) approvals(t *testing.T, query string) []approvalJSON {
 func (e *gateEnv) pendingApproval(t *testing.T) approvalJSON {
 	t.Helper()
 	var got approvalJSON
-	e.eventually(t, "a pending approval in the API", func() bool {
+	// The row exists a moment before the stream of the call has its waiter; a test that decides or cancels needs the waiter.
+	e.eventually(t, "a pending approval with a waiter in the API", func() bool {
 		list := e.approvals(t, "")
-		if len(list) > 0 {
+		if len(list) > 0 && list[0].Waiting {
 			got = list[0]
 			return true
 		}

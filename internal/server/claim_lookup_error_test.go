@@ -2,12 +2,12 @@ package server_test
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"strconv"
 	"testing"
 
 	"github.com/Jaydee94/remedy/internal/run"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 // An error of the incident lookup that is not "not found" must not turn an alert's run into a GitHub run (the wrong schema and a
@@ -20,14 +20,7 @@ func TestAClaimWhoseIncidentLookupFailsAnswers500AndFailsTheRun(t *testing.T) {
 		t.Fatalf("diagnose = %d %s", code, body)
 	}
 	// A timestamp that cannot be read makes the lookup of the incident fail, while the run is still claimable.
-	db, err := sql.Open("sqlite", "file:"+e.dbPath+"?_pragma=busy_timeout(5000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.Exec(`UPDATE incidents SET first_seen = 'not a time' WHERE id = ?`, in.ID); err != nil {
-		t.Fatal(err)
-	}
+	testutil.SQL(t, e.dsn, `UPDATE incidents SET first_seen = 'not a time' WHERE id = ?`, in.ID)
 
 	resp, raw := e.runner(t, http.MethodPost, "/runner/v1/claim", "", runnerToken)
 	if resp.StatusCode != http.StatusInternalServerError {

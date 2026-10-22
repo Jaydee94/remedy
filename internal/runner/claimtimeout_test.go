@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -17,7 +16,6 @@ import (
 	"github.com/Jaydee94/remedy/internal/runner"
 	"github.com/Jaydee94/remedy/internal/server"
 	"github.com/Jaydee94/remedy/internal/settings"
-	"github.com/Jaydee94/remedy/internal/store"
 	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
@@ -25,11 +23,7 @@ func TestTheTimeoutOfTheClaimReplacesTheRunnersOwn(t *testing.T) {
 	if testing.Short() {
 		t.Skip("takes about ten seconds: the smallest run timeout the settings accept")
 	}
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
 	set := settings.New(context.Background(), st, nil, quiet)
 	if _, err := set.Set(context.Background(), settings.RunTimeout, json.RawMessage(`"10s"`)); err != nil {

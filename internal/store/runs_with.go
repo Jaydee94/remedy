@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"time"
 
@@ -42,10 +41,12 @@ func (s *Store) CreateRunWith(ctx context.Context, o RunOptions) (run.Run, error
 		}
 	}
 	mcp := o.Tools || o.Cluster || o.IncidentID != 0 || len(hosts) > 0
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *txn) error {
+		// The reads take FOR KEY SHARE, the lock the inserts' foreign keys need anyway: a host (or incident) that is here now
+		// cannot be deleted before the run and its bindings are stored, and a delete that came first is seen as missing.
 		if o.IncidentID != 0 {
 			var n int
-			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM incidents WHERE id = ?`, o.IncidentID).Scan(&n); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT 1 FROM incidents WHERE id = ? FOR KEY SHARE) i`, o.IncidentID).Scan(&n); err != nil {
 				return err
 			}
 			if n == 0 {
@@ -54,7 +55,7 @@ func (s *Store) CreateRunWith(ctx context.Context, o RunOptions) (run.Run, error
 		}
 		for _, h := range hosts {
 			var n int
-			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM hosts WHERE id = ?`, h).Scan(&n); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT 1 FROM hosts WHERE id = ? FOR KEY SHARE) h`, h).Scan(&n); err != nil {
 				return err
 			}
 			if n == 0 {
@@ -82,7 +83,7 @@ func (s *Store) CreateRunWith(ctx context.Context, o RunOptions) (run.Run, error
 
 // RunHosts returns the hosts bound to a run with their logins, ordered by name. A host that was deleted is not in it.
 func (s *Store) RunHosts(ctx context.Context, runID string) ([]HostEntry, error) {
-	rows, err := s.db.QueryContext(ctx, hostSelect+` JOIN run_hosts rh ON rh.host_id = h.id WHERE rh.run_id = ? ORDER BY h.name`, runID)
+	rows, err := s.db.QueryContext(ctx, hostSelect+` JOIN run_hosts rh ON rh.host_id = h.id WHERE rh.run_id = ? ORDER BY lower(h.name) COLLATE "C", h.name COLLATE "C"`, runID)
 	if err != nil {
 		return nil, err
 	}

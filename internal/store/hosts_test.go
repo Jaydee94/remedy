@@ -3,10 +3,9 @@ package store_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"errors"
-	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,6 +70,29 @@ func TestCreateGetListHost(t *testing.T) {
 	}
 }
 
+// The order is the one SQLite's NOCASE column gave: the names folded to lower case, then compared byte by byte, whatever the
+// database's collation (en_US would ignore the hyphen and put nas-2 last).
+func TestListHostsOrdersByTheFoldedBytesOfTheName(t *testing.T) {
+	s, ctx := openStore(t), context.Background()
+	for _, name := range []string{"nas10", "NAS1", "nas-2", "Beta", "alpha"} {
+		if _, err := s.CreateHost(ctx, hostFields(name)); err != nil {
+			t.Fatalf("CreateHost(%s): %v", name, err)
+		}
+	}
+	list, err := s.ListHosts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range list {
+		got = append(got, e.Host.Name)
+	}
+	want := []string{"alpha", "Beta", "nas-2", "NAS1", "nas10"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("order = %v, want %v", got, want)
+	}
+}
+
 func TestUpdateHostClearsThePinWhenTheEndpointChanges(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	h, _ := s.CreateHost(ctx, hostFields("nas"))
@@ -132,12 +154,7 @@ func TestPinUnpinAndTestStatus(t *testing.T) {
 }
 
 func TestHostCredentialAndCascade(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "hosts.db")
-	s, err := store.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
+	s, dsn := openStoreAt(t)
 	ctx := context.Background()
 	h, _ := s.CreateHost(ctx, hostFields("nas"))
 
@@ -161,13 +178,8 @@ func TestHostCredentialAndCascade(t *testing.T) {
 	if err := s.DeleteHost(ctx, h.ID); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := sql.Open("sqlite", "file:"+path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer raw.Close()
 	var n int
-	if err := raw.QueryRow(`SELECT COUNT(*) FROM host_credentials`).Scan(&n); err != nil || n != 0 {
+	if err := rawDB(t, dsn).QueryRow(`SELECT COUNT(*) FROM host_credentials`).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("credentials left after deleting the host: %d, %v", n, err)
 	}
 	if err := s.DeleteHost(ctx, h.ID); !errors.Is(err, store.ErrNotFound) {

@@ -7,6 +7,9 @@ Spec: [`docs/specs/2026-10-06-kubernetes-deployment-design.md`](../../docs/specs
 
 - A Secret with three keys (`admin-password`, `runner-token`, `master-key`; the names are values). The chart never creates
   it. `openssl rand -hex 12` (password), `openssl rand -hex 24` (runner token), `openssl rand -base64 32` (master key).
+- A PostgreSQL 16 or newer and a Secret with its connection URL (`database.existingSecret`, the key `database.secretKey`,
+  default `url`). The chart does not install a database and never creates this Secret; it refuses the URL as a value,
+  because the URL holds a password. See "The database" below.
 - The pinned CLI: `runner.cli.version`, `runner.cli.urlTemplate`, and the platform names and SHA-256 per architecture
   (`docs/research/k8s-s4-cli-install.md` says where they come from). No image contains the CLI.
 
@@ -14,12 +17,11 @@ Spec: [`docs/specs/2026-10-06-kubernetes-deployment-design.md`](../../docs/specs
 
 | Object | Name | Note |
 |---|---|---|
-| Deployment | `remedy-server` | one replica, `Recreate`, ports 8080 (public) and 8081 (internal) |
+| Deployment | `remedy-server` | one replica, `Recreate`, ports 8080 (public) and 8081 (internal); no volume, the state is in PostgreSQL |
 | Services | `remedy-server`, `remedy-server-internal` | only the first may be exposed |
-| PVC | `remedy-data` | kept on uninstall; `server.persistence.existingClaim` uses your own |
 | StatefulSet | `remedy-runner` | init container `install-cli`; no Kubernetes token |
 | Ingress | `remedy` | optional |
-| NetworkPolicies | `remedy-server`, `remedy-runner`, `remedy-token-refresher` (only with `cluster.write.enabled`: DNS and the API server, nothing else) | on by default; `networkPolicy.*` (`hosts`, `alertmanager` and `metrics` add egress to the control plane only) |
+| NetworkPolicies | `remedy-server`, `remedy-runner`, `remedy-token-refresher` (only with `cluster.write.enabled`: DNS and the API server, nothing else) | on by default; `networkPolicy.*` (`database` is required; `hosts`, `alertmanager` and `metrics` are optional; all add egress to the control plane only) |
 
 With `cluster.enabled` the control plane runs as the read account (a projected token) and the chart creates a read-only ClusterRole.
 With `cluster.write.enabled` a CronJob (default schedule `*/30 * * * *`, `cluster.write.tokenRefresh.schedule`) and a Job that runs as a post-install and post-upgrade
@@ -27,6 +29,56 @@ hook mint a two-hour token of the write account into the Secret
 `remedy-write-token`, which the pod mounts; Roles are created in each of `cluster.write.namespaces` (which must exist) and in
 `cluster.argoNamespace`. `cluster.write.namespaces` can never contain the release namespace or `cluster.argoNamespace`, and `cluster.argoNamespace` can never be the release namespace (the chart refuses to render). If the refresher stops, actions
 fail closed after the token expires. Under Argo CD add an `ignoreDifferences` for the Secret's `/data`.
+
+## The database
+
+The control plane keeps all its state in a PostgreSQL that you provide: an operator (for example CloudNativePG), a
+StatefulSet of your own, or a server on another host. The chart takes only a connection to it:
+
+```yaml
+database:
+  existingSecret: remedy-database   # required: a Secret that exists already
+  secretKey: url                    # the key that holds the URL (default url)
+```
+
+The Secret's value is a libpq-style URL, for example
+`postgres://remedy:PASSWORD@db.databases.svc:5432/remedy?sslmode=require` (`sslmode` and the like travel in the URL; the chart
+cannot mount a CA file, so `sslrootcert=/path` has nothing to read and the control plane would fail at start: `verify-full`
+works only with a CA the server image already trusts, and for a private CA `require` is what is left: encrypted, not verified). The pod receives the URL as `REMEDY_DATABASE_URL` through a `secretKeyRef`.
+There is no `database.url` value and no other key under `database`: the render fails for them (a password in
+`values.yaml` ends up in the repository), and `server.env` may not set `REMEDY_DATABASE_URL` or `REMEDY_DB` either. The
+pool size is `REMEDY_DATABASE_MAX_CONNS` (default 10, 2 to 100), which `server.env` may set. The claim `remedy-data` and the
+values `server.persistence.*` are gone. The chart renders no claim for the control plane any more, and Helm itself deletes nothing: the
+claim an earlier release made carries `helm.sh/resource-policy: keep`, which keeps it on a plain `helm upgrade`. Under Argo CD with
+pruning on, the old claim is an orphan that Argo CD may prune (whether it honors that annotation was not checked): protect it
+first, as step 2 of the cutover runbook says. This chart is only usable together with the version of
+Remedy that reads `REMEDY_DATABASE_URL`; moving an existing SQLite file into the database is the job of the importer and the
+cutover runbook of that version.
+
+The control plane may reach the database only through `networkPolicy.database`, required while `networkPolicy.enabled` is
+true, in exactly one of two forms (the render fails for neither, both or any other key):
+
+```yaml
+networkPolicy:
+  database:                          # pods inside the cluster, like the Alertmanager
+    namespace: databases
+    podSelector: {cnpg.io/cluster: remedy}   # must not be empty
+    port: 5432                       # default 5432
+  # or an external server:
+  # database: {cidr: 192.168.178.20/32, port: 5432}
+```
+
+`cidr` is the range of the external server. An IPv4 range must be `/16` to `/32` and start at its network address
+(`192.168.178.20/8` or `192.168.178.20/24` is refused: a typo of the prefix would open a whole network), and an IPv6 range
+must be `/16` to `/128` and lie outside `::/16` (which holds `::/0`, `::1` and the IPv4-mapped range `::ffff:0:0/96`); the
+rest is refused because it would open everything to the pod that holds the credentials. Use the single address (`/32`,
+`/128`) when you can. The rule is on the `remedy-server` policy only: the runner and the token refresher never
+get it.
+
+The probes of the control plane (`/healthz`) do not depend on the database. At start the control plane waits up to 30 s
+for a database that is not reachable yet and then exits, so a database that is down when the pod starts makes the pod
+crash-loop until it is back. Once the control plane runs, a database that goes away does not restart the pod: the pod
+stays ready, and requests that need the database fail until it is back.
 
 ## The login from the Setup page
 

@@ -167,7 +167,7 @@ func truncateRunes(s string, max int) string {
 }
 
 // callActivity logs act for a call: linked to its run and incident, and to the incident's repository.
-func callActivity(ctx context.Context, tx *sql.Tx, kind, summary string, c ToolCall) error {
+func callActivity(ctx context.Context, tx *txn, kind, summary string, c ToolCall) error {
 	var repoID int64
 	if c.IncidentID != 0 {
 		var repo sql.NullInt64
@@ -186,12 +186,27 @@ func callActivity(ctx context.Context, tx *sql.Tx, kind, summary string, c ToolC
 // first call is returned and nothing is written: a repeat (the CLI replays an in-flight call when it is stopped
 // with SIGTERM) must never become a second call. A new call needs a running run that was not cancelled, and
 // stays within MaxCallsPerRun and MaxPendingPerRun.
+//
+// The run's row is locked first: the calls of one run, and the cancel and the end of the run, take their turns. So repeats
+// that arrive at the same time are one insert and answers with existed for the others (never a unique violation), the
+// limits are counted with nothing in between, and no call is left waiting on a run that was cancelled or ended meanwhile.
 func (s *Store) BeginToolCall(ctx context.Context, n NewToolCall) (ToolCall, bool, error) {
 	var (
 		out     ToolCall
 		existed bool
 	)
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *txn) error {
+		var (
+			status                     string
+			cancelRequested, automatic int
+			runIncident                sql.NullInt64
+		)
+		runErr := tx.QueryRowContext(ctx, `SELECT status, cancel_requested, automatic, incident_id FROM runs WHERE id = ? FOR NO KEY UPDATE`,
+			n.RunID).Scan(&status, &cancelRequested, &automatic, &runIncident)
+		if runErr != nil && !errors.Is(runErr, sql.ErrNoRows) {
+			return runErr
+		}
+
 		first, err := scanCall(tx.QueryRowContext(ctx,
 			`SELECT `+callCols+` FROM tool_calls WHERE run_id = ? AND tool_use_id = ?`, n.RunID, n.ToolUseID))
 		if err == nil {
@@ -202,17 +217,12 @@ func (s *Store) BeginToolCall(ctx context.Context, n NewToolCall) (ToolCall, boo
 			return err
 		}
 
-		var live int
-		if err := tx.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM runs WHERE id = ? AND status = 'running' AND cancel_requested = 0`, n.RunID).Scan(&live); err != nil {
-			return err
-		}
-		if live == 0 {
+		if runErr != nil || status != string(run.Running) || cancelRequested != 0 {
 			return ErrNotFound
 		}
 		var total, waiting int
 		if err := tx.QueryRowContext(ctx,
-			`SELECT COUNT(*), COALESCE(SUM(status = 'waiting'), 0) FROM tool_calls WHERE run_id = ?`, n.RunID).Scan(&total, &waiting); err != nil {
+			`SELECT COUNT(*), COALESCE(SUM(CASE WHEN status = 'waiting' THEN 1 ELSE 0 END), 0) FROM tool_calls WHERE run_id = ?`, n.RunID).Scan(&total, &waiting); err != nil {
 			return err
 		}
 		if total >= MaxCallsPerRun {
@@ -224,19 +234,14 @@ func (s *Store) BeginToolCall(ctx context.Context, n NewToolCall) (ToolCall, boo
 		}
 
 		incident := n.IncidentID
-		if incident == 0 {
+		if incident == 0 && runIncident.Valid {
 			// The cluster and host tools name no incident: the call belongs to the incident of its run.
-			var runIncident sql.NullInt64
-			if err := tx.QueryRowContext(ctx, `SELECT incident_id FROM runs WHERE id = ?`, n.RunID).Scan(&runIncident); err != nil {
-				return err
-			}
-			if runIncident.Valid {
-				incident = runIncident.Int64
-			}
+			incident = runIncident.Int64
 		}
 		if incident != 0 {
 			var one int
-			if err := tx.QueryRowContext(ctx, `SELECT 1 FROM incidents WHERE id = ?`, incident).Scan(&one); errors.Is(err, sql.ErrNoRows) {
+			// FOR KEY SHARE: an incident that is here now is not deleted (with its repository) before the call is stored.
+			if err := tx.QueryRowContext(ctx, `SELECT 1 FROM incidents WHERE id = ? FOR KEY SHARE`, incident).Scan(&one); errors.Is(err, sql.ErrNoRows) {
 				incident = 0
 			} else if err != nil {
 				return err
@@ -252,23 +257,14 @@ func (s *Store) BeginToolCall(ctx context.Context, n NewToolCall) (ToolCall, boo
 		}
 		now := time.Now()
 		expires := sql.NullString{}
-		if mutating && n.ExpiresIn > 0 {
-			var automatic int
-			if err := tx.QueryRowContext(ctx, `SELECT automatic FROM runs WHERE id = ?`, n.RunID).Scan(&automatic); err != nil {
-				return err
-			}
-			if automatic == 1 {
-				expires = sql.NullString{String: formatTS(now.Add(n.ExpiresIn)), Valid: true}
-			}
+		if mutating && n.ExpiresIn > 0 && automatic == 1 {
+			expires = sql.NullString{String: formatTS(now.Add(n.ExpiresIn)), Valid: true}
 		}
-		res, err := tx.ExecContext(ctx, `
+		var id int64
+		err = tx.QueryRowContext(ctx, `
 			INSERT INTO tool_calls (run_id, incident_id, tool_use_id, tool, kind, arguments, status, decision, created_at, expires_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			n.RunID, nullInt(incident), n.ToolUseID, n.Tool, n.Kind, string(args), status, decision, formatTS(now), expires)
-		if err != nil {
-			return err
-		}
-		id, err := res.LastInsertId()
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			n.RunID, nullInt(incident), n.ToolUseID, n.Tool, n.Kind, string(args), status, decision, formatTS(now), expires).Scan(&id)
 		if err != nil {
 			return err
 		}
@@ -306,7 +302,7 @@ func (s *Store) FinishToolCallWithActivity(ctx context.Context, id int64, result
 
 // FinishToolCallWithActivityKind is FinishToolCallWithActivity with the kind of the activity entry passed in.
 func (s *Store) FinishToolCallWithActivityKind(ctx context.Context, id int64, result, summary, kind string) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
 		if err := oneRow(tx.ExecContext(ctx, `
 			UPDATE tool_calls SET status = ?, result = ?, error = '', finished_at = ?
 			WHERE id = ? AND status = 'running'`, CallSucceeded, result, formatTS(time.Now()), id)); err != nil {
@@ -370,9 +366,13 @@ func (s *Store) PendingApprovalForRun(ctx context.Context, runID string) (int64,
 // DecideApproval records the maintainer's decision. Approving only records it: the call stays waiting until a
 // handler wins BeginExecution. Denying ends the call as denied. The call must be waiting for a decision and its run
 // must be running and not cancelled.
+//
+// The run's row is held (FOR SHARE) so that it cannot be cancelled or ended during the decision, and the update repeats
+// the check that the call still waits with its decision pending: an expiry or an abandon that came first wins, and the
+// decision is ErrNotPending.
 func (s *Store) DecideApproval(ctx context.Context, id int64, approve bool, reason string) (ToolCall, error) {
 	var out ToolCall
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *txn) error {
 		c, err := scanCall(tx.QueryRowContext(ctx, `SELECT `+callCols+` FROM tool_calls WHERE id = ?`, id))
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
@@ -385,7 +385,7 @@ func (s *Store) DecideApproval(ctx context.Context, id int64, approve bool, reas
 		}
 		var live int
 		if err := tx.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM runs WHERE id = ? AND status = 'running' AND cancel_requested = 0`, c.RunID).Scan(&live); err != nil {
+			`SELECT COUNT(*) FROM (SELECT 1 FROM runs WHERE id = ? AND status = 'running' AND cancel_requested = 0 FOR SHARE) r`, c.RunID).Scan(&live); err != nil {
 			return err
 		}
 		if live == 0 {
@@ -394,21 +394,25 @@ func (s *Store) DecideApproval(ctx context.Context, id int64, approve bool, reas
 
 		now := formatTS(time.Now())
 		verb := "Approved"
+		var res sql.Result
 		if approve {
-			_, err = tx.ExecContext(ctx,
-				`UPDATE tool_calls SET decision = 'approved', decision_reason = ?, decided_at = ? WHERE id = ?`, reason, now, id)
+			res, err = tx.ExecContext(ctx,
+				`UPDATE tool_calls SET decision = 'approved', decision_reason = ?, decided_at = ?
+				WHERE id = ? AND status = 'waiting' AND decision = 'pending'`, reason, now, id)
 		} else {
 			verb = "Denied"
 			text := "denied"
 			if reason != "" {
 				text += ": " + reason
 			}
-			_, err = tx.ExecContext(ctx, `
+			res, err = tx.ExecContext(ctx, `
 				UPDATE tool_calls SET decision = 'denied', status = 'denied', decision_reason = ?, error = ?,
 					decided_at = ?, finished_at = ?
-				WHERE id = ?`, reason, text, now, now, id)
+				WHERE id = ? AND status = 'waiting' AND decision = 'pending'`, reason, text, now, now, id)
 		}
-		if err != nil {
+		if err := oneRow(res, err); errors.Is(err, ErrNotFound) {
+			return ErrNotPending
+		} else if err != nil {
 			return err
 		}
 		if out, err = scanCall(tx.QueryRowContext(ctx, `SELECT `+callCols+` FROM tool_calls WHERE id = ?`, id)); err != nil {
@@ -447,12 +451,15 @@ func (s *Store) BeginExecution(ctx context.Context, id int64) (ToolCall, bool, e
 // abandonTx abandons the waiting calls that match cond (a constant SQL condition with args) and logs each. A call
 // whose decision is still pending becomes abandoned; an approved one keeps its decision, so the log says that it was
 // approved and did not run. It returns how many calls it abandoned.
-func abandonTx(ctx context.Context, tx *sql.Tx, now time.Time, cond string, args ...any) (int, error) {
+func abandonTx(ctx context.Context, tx *txn, now time.Time, cond string, args ...any) (int, error) {
+	// RETURNING has no order of its own: the calls are logged in the order they were made.
 	rows, err := tx.QueryContext(ctx, `
-		UPDATE tool_calls SET status = 'abandoned', error = ?, finished_at = ?,
-			decision = CASE WHEN decision = 'pending' THEN 'abandoned' ELSE decision END
-		WHERE status = 'waiting' AND `+cond+`
-		RETURNING `+callCols,
+		WITH abandoned AS (
+			UPDATE tool_calls SET status = 'abandoned', error = ?, finished_at = ?,
+				decision = CASE WHEN decision = 'pending' THEN 'abandoned' ELSE decision END
+			WHERE status = 'waiting' AND `+cond+`
+			RETURNING `+callCols+`)
+		SELECT `+callCols+` FROM abandoned ORDER BY id`,
 		append([]any{"abandoned: the agent stopped waiting or the run ended", formatTS(now)}, args...)...)
 	if err != nil {
 		return 0, err
@@ -494,7 +501,7 @@ func durationText(d time.Duration) string {
 // decision pending moves, so a decision that arrived first wins and a late decision is refused (ErrNotPending). An approved call is never expired.
 func (s *Store) ExpireCall(ctx context.Context, id int64, now time.Time) (bool, error) {
 	done := false
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *txn) error {
 		c, err := scanCall(tx.QueryRowContext(ctx, `SELECT `+callCols+` FROM tool_calls WHERE id = ?`, id))
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
@@ -526,7 +533,7 @@ func (s *Store) ExpireCall(ctx context.Context, id int64, now time.Time) (bool, 
 // AbandonCall abandons a waiting call. The bool says whether it did: a call that is done, or abandoned already, is left alone.
 func (s *Store) AbandonCall(ctx context.Context, id int64) (bool, error) {
 	var n int
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *txn) error {
 		var err error
 		n, err = abandonTx(ctx, tx, time.Now(), `id = ?`, id)
 		return err
@@ -538,7 +545,7 @@ func (s *Store) AbandonCall(ctx context.Context, id int64) (bool, error) {
 // for them died with the process.
 func (s *Store) AbandonAllWaiting(ctx context.Context) (int, error) {
 	var n int
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *txn) error {
 		var err error
 		n, err = abandonTx(ctx, tx, time.Now(), `1 = 1`)
 		return err
@@ -557,7 +564,7 @@ type Note struct {
 
 // AddNote stores a note on an incident and logs it. It returns ErrNotFound for an unknown incident.
 func (s *Store) AddNote(ctx context.Context, incidentID int64, runID, note string) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
 		var repoID sql.NullInt64
 		err := tx.QueryRowContext(ctx, `SELECT repo_id FROM incidents WHERE id = ?`, incidentID).Scan(&repoID)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -620,9 +627,12 @@ func cancellableRole(r run.Role) bool {
 // a running run without gatekeeper access has no heartbeat to hear it, and a responder run belongs to its incident. A learning run has
 // gatekeeper access and belongs to no incident, so the maintainer may cancel it; it then stores nothing. The roles are an allowlist
 // (cancellableRole): a role added later is not cancellable until that is decided.
+//
+// The run's row is locked first, so a claim or the end of the run that comes at the same moment is either before the cancel
+// (and the cancel sees it) or after it.
 func (s *Store) CancelRun(ctx context.Context, id string) (run.Run, error) {
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
-		r, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runCols+` FROM runs WHERE id = ?`, id))
+	err := s.inTx(ctx, func(tx *txn) error {
+		r, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runCols+` FROM runs WHERE id = ? FOR NO KEY UPDATE`, id))
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}

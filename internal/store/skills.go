@@ -63,7 +63,10 @@ const skillSelect = `
 	FROM skills s LEFT JOIN hosts h ON h.id = s.host_id`
 
 // skillOrder puts the global skills first, then the skills of each host by host name, each by name.
-const skillOrder = ` ORDER BY (s.host_id IS NOT NULL), h.name, s.name, s.id`
+//
+// The names are compared byte by byte (COLLATE "C"), the host's name folded to lower case first, which is the order SQLite's BINARY
+// and NOCASE collations gave, whatever the database's own collation is.
+const skillOrder = ` ORDER BY (s.host_id IS NOT NULL), lower(h.name) COLLATE "C", h.name COLLATE "C", s.name COLLATE "C", s.id`
 
 func scanSkill(sc scanner) (Skill, error) {
 	var (
@@ -124,7 +127,7 @@ func plural(n int, word string) string {
 }
 
 // scopeCount is how many skills of a scope count against the limit: every one that is not a proposal.
-func scopeCount(ctx context.Context, tx *sql.Tx, hostID int64) (int, error) {
+func scopeCount(ctx context.Context, tx *txn, hostID int64) (int, error) {
 	var n int
 	err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM skills WHERE COALESCE(host_id, 0) = ? AND state <> 'proposed'`, hostID).Scan(&n)
 	return n, err
@@ -169,7 +172,10 @@ func (s *Store) CreateSkill(ctx context.Context, hostID int64, f skill.Fields) (
 		return Skill{}, err
 	}
 	var id int64
-	err = s.inTx(ctx, func(tx *sql.Tx) error {
+	err = s.inTx(ctx, func(tx *txn) error {
+		if err := s.lockSkills(ctx, tx); err != nil { // the scope's count holds until the insert
+			return err
+		}
 		host := ""
 		if hostID != 0 {
 			if host, err = hostName(ctx, tx, hostID); err != nil {
@@ -184,16 +190,13 @@ func (s *Store) CreateSkill(ctx context.Context, hostID int64, f skill.Fields) (
 			return ErrScopeFull
 		}
 		now := formatTS(time.Now())
-		res, err := tx.ExecContext(ctx, `
+		err = tx.QueryRowContext(ctx, `
 			INSERT INTO skills (host_id, name, description, body, origin, state, created_at, updated_at)
-			VALUES (?, ?, ?, ?, 'written', 'active', ?, ?)`, nullInt(hostID), f.Name, f.Description, f.Body, now, now)
+			VALUES (?, ?, ?, ?, 'written', 'active', ?, ?) RETURNING id`, nullInt(hostID), f.Name, f.Description, f.Body, now, now).Scan(&id)
 		if err != nil {
 			if isUnique(err) {
 				return ErrExists
 			}
-			return err
-		}
-		if id, err = res.LastInsertId(); err != nil {
 			return err
 		}
 		return insertActivity(ctx, tx, NewActivity{Kind: KindSkillCreated, Summary: fmt.Sprintf("Skill %s created (%s)", f.Name, scopeText(host))})
@@ -214,8 +217,9 @@ func (s *Store) UpdateSkill(ctx context.Context, id int64, f skill.Fields, state
 	if err != nil {
 		return Skill{}, err
 	}
-	err = s.inTx(ctx, func(tx *sql.Tx) error {
-		cur, err := scanSkill(tx.QueryRowContext(ctx, skillSelect+` WHERE s.id = ?`, id))
+	err = s.inTx(ctx, func(tx *txn) error {
+		// Locked: the row read is the row updated (a delete or another update waits, or came first and is seen).
+		cur, err := scanSkill(tx.QueryRowContext(ctx, skillSelect+` WHERE s.id = ? FOR NO KEY UPDATE OF s`, id))
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -248,10 +252,12 @@ func (s *Store) UpdateSkill(ctx context.Context, id int64, f skill.Fields, state
 	return s.GetSkill(ctx, id)
 }
 
-// DeleteSkill removes a skill that is not a proposal (a proposal is rejected) and logs it.
+// DeleteSkill removes a skill that is not a proposal (a proposal is rejected) and logs it. The proposals that replace it lose
+// their link (a cascade that locks them after the skill), so the delete's lock waits are bounded (inDeleteTx).
 func (s *Store) DeleteSkill(ctx context.Context, id int64) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
-		cur, err := scanSkill(tx.QueryRowContext(ctx, skillSelect+` WHERE s.id = ?`, id))
+	return s.inDeleteTx(ctx, func(tx *txn) error {
+		// Locked for the delete: a second delete of the skill waits and then finds nothing.
+		cur, err := scanSkill(tx.QueryRowContext(ctx, skillSelect+` WHERE s.id = ? FOR UPDATE OF s`, id))
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}

@@ -8,6 +8,12 @@ image:
 existingSecret:
   name: remedy-secrets
 
+# The testbed's own PostgreSQL (postgres.yaml). dummy-up.sh makes the Secret remedy-postgres from the generated password;
+# its key url holds the connection URL, which is never in these values.
+database:
+  existingSecret: remedy-postgres
+  secretKey: url
+
 server:
   service:
     type: NodePort
@@ -28,6 +34,10 @@ cluster:
 
 networkPolicy:
   enabled: true         # kind enforces policies (spike S3); dummy-up.sh adds the API server's address and its port 6443
+  database:             # the control plane's egress to the testbed's PostgreSQL pod (postgres.yaml), in the release namespace
+    namespace: remedy-system
+    podSelector: {app.kubernetes.io/name: remedy-postgres}
+    port: 5432
   public:
     from:
       - ipBlock: {cidr: 0.0.0.0/0}

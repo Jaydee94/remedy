@@ -39,6 +39,13 @@ func baseValues() map[string]any {
 	sha := strings.Repeat("a", 64)
 	return map[string]any{
 		"existingSecret": map[string]any{"name": "remedy-secrets"},
+		"database":       map[string]any{"existingSecret": "remedy-database"},
+		// The egress to the database is required while the policies are on; the pod form is the common one.
+		"networkPolicy": map[string]any{"database": map[string]any{
+			"namespace":   "database",
+			"podSelector": map[string]any{"app.kubernetes.io/name": "postgres"},
+			"port":        5432,
+		}},
 		"runner": map[string]any{"cli": map[string]any{
 			"version":     "2.1.288",
 			"urlTemplate": "https://downloads.example.invalid/{version}/{platform}/claude",

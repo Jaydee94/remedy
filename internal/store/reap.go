@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"time"
 
 	"github.com/Jaydee94/remedy/internal/run"
@@ -12,13 +11,16 @@ import (
 // transaction (its token, its waiting calls) and returns their IDs. result becomes a run's result text if it has none.
 func (s *Store) failRuns(ctx context.Context, reason, result, cond string, condArgs ...any) ([]string, error) {
 	var ids []string
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *txn) error {
 		now := time.Now()
+		// RETURNING has no order of its own: the runs are closed oldest first.
 		rows, err := tx.QueryContext(ctx, `
-			UPDATE runs SET status = 'failed', exit_code = -1, failure_reason = ?, finished_at = ?,
-				result = CASE WHEN result = '' THEN ? ELSE result END
-			WHERE status = 'running' AND `+cond+`
-			RETURNING id`, append([]any{reason, formatTS(now), result}, condArgs...)...)
+			WITH failed AS (
+				UPDATE runs SET status = 'failed', exit_code = -1, failure_reason = ?, finished_at = ?,
+					result = CASE WHEN result = '' THEN ? ELSE result END
+				WHERE status = 'running' AND `+cond+`
+				RETURNING id, created_at)
+			SELECT id FROM failed ORDER BY created_at, id`, append([]any{reason, formatTS(now), result}, condArgs...)...)
 		if err != nil {
 			return err
 		}

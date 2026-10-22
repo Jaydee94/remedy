@@ -155,6 +155,9 @@ func (s *srv) checkConnection(w http.ResponseWriter, r *http.Request) {
 
 func (s *srv) deleteConnection(w http.ResponseWriter, r *http.Request) {
 	err := s.d.Store.DeleteConnection(r.Context())
+	if writeBusy(w, err) {
+		return
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "no GitHub connection")
 		return
@@ -295,6 +298,9 @@ func (s *srv) deleteRepo(w http.ResponseWriter, r *http.Request) {
 	repo, err := s.d.Store.GetRepo(r.Context(), id)
 	if err == nil {
 		err = s.d.Store.DeleteRepo(r.Context(), id)
+	}
+	if writeBusy(w, err) {
+		return
 	}
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "repository not found")

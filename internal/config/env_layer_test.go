@@ -16,6 +16,7 @@ func baseEnv() map[string]string {
 		"REMEDY_ADMIN_PASSWORD": "a-long-enough-password",
 		"REMEDY_RUNNER_TOKEN":   "a-runner-token-of-24-chars!!",
 		"REMEDY_MASTER_KEY":     base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{5}, 32)),
+		"REMEDY_DATABASE_URL":   testDatabaseURL,
 	}
 }
 

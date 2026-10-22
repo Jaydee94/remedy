@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/Jaydee94/remedy/internal/run"
@@ -38,7 +37,7 @@ func (s *Store) MintRunToken(ctx context.Context, runID string) (string, error) 
 		return "", err // crypto/rand failing is unrecoverable
 	}
 	token := base64.RawURLEncoding.EncodeToString(raw)
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *txn) error {
 		var one int
 		err := tx.QueryRowContext(ctx, `SELECT 1 FROM runs WHERE id = ? AND status = 'running' AND mcp = 1`, runID).Scan(&one)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -50,7 +49,7 @@ func (s *Store) MintRunToken(ctx context.Context, runID string) (string, error) 
 		_, err = tx.ExecContext(ctx,
 			`INSERT INTO run_tokens (run_id, token_hash, created_at) VALUES (?, ?, ?)`,
 			runID, hashToken(token), formatTS(time.Now()))
-		if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if err != nil && isUnique(err) {
 			return ErrExists
 		}
 		return err
@@ -75,7 +74,7 @@ func (s *Store) RunForToken(ctx context.Context, token string) (run.Run, error) 
 
 // closeRunTx is what ending a run does besides setting its status, in the transaction that ends it: its token
 // stops working and its waiting calls are abandoned.
-func closeRunTx(ctx context.Context, tx *sql.Tx, runID string, now time.Time) error {
+func closeRunTx(ctx context.Context, tx *txn, runID string, now time.Time) error {
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE run_tokens SET revoked_at = ? WHERE run_id = ? AND revoked_at IS NULL`, formatTS(now), runID); err != nil {
 		return err

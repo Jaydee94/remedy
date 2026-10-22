@@ -4,22 +4,17 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/Jaydee94/remedy/internal/auth"
 	"github.com/Jaydee94/remedy/internal/server"
-	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 // capsEnv is a server with the given cluster capabilities and a signed-in admin client.
 func capsEnv(t *testing.T, cluster server.Cluster) (*env, *http.Client) {
 	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testutil.Store(t)
 	ts := httptest.NewServer(server.New(server.Deps{Store: st, Auth: auth.New(password), RunnerToken: runnerToken, Cluster: cluster}))
 	t.Cleanup(ts.Close)
 	e := &env{ts: ts, store: st}

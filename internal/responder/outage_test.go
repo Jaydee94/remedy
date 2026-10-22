@@ -2,7 +2,6 @@ package responder_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/responder"
 	"github.com/Jaydee94/remedy/internal/run"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 const goodOutage = `{"summary":"The pod web keeps crashing.","cause":"It runs out of memory: the limit is 128Mi.","confidence":"high","category":"resource_pressure","affected":["deployment/demo/web"],"proposed_action":"Raise the memory limit of deployment demo/web to 256Mi.","evidence":"cluster_describe showed OOMKilled."}`
@@ -44,14 +44,7 @@ func (e *env) host(name string, enabled bool) store.Host {
 // setLastSeen rewrites last_seen through a second connection, as the age of an alert is not something the store lets a test set.
 func (e *env) setLastSeen(in store.Incident, at time.Time) {
 	e.t.Helper()
-	db, err := sql.Open("sqlite", "file:"+e.path)
-	if err != nil {
-		e.t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.Exec(`UPDATE incidents SET last_seen = ? WHERE id = ?`, at.UTC().Format("2006-01-02T15:04:05.000000000Z"), in.ID); err != nil {
-		e.t.Fatal(err)
-	}
+	testutil.SQL(e.t, e.dsn, `UPDATE incidents SET last_seen = ? WHERE id = ?`, testutil.TS(at), in.ID)
 }
 
 func TestAnAlertIncidentIsDiagnosedWithToolsTheClusterAndItsHost(t *testing.T) {

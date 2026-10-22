@@ -1,14 +1,12 @@
 package server_test
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -18,12 +16,13 @@ import (
 	"github.com/Jaydee94/remedy/internal/sshhost"
 	"github.com/Jaydee94/remedy/internal/sshhost/sshtest"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
 type hostEnv struct {
 	ts     *httptest.Server
 	store  *store.Store
-	dbPath string
+	dsn    string // the database, for the walk for secrets
 	ssh    *sshtest.Server
 	client *http.Client
 	seen   []string // every response body, for the walk for secrets
@@ -39,15 +38,10 @@ func nasCommands() map[string]sshtest.Reply {
 }
 
 // newHostEnv starts a server over st (a new store if nil) that seals with key, next to an SSH test server, and logs in.
-func newHostEnv(t *testing.T, st *store.Store, dbPath string, key secret.Key, ssh *sshtest.Server, opts ...func(*server.Deps)) *hostEnv {
+func newHostEnv(t *testing.T, st *store.Store, dsn string, key secret.Key, ssh *sshtest.Server, opts ...func(*server.Deps)) *hostEnv {
 	t.Helper()
 	if st == nil {
-		dbPath = filepath.Join(t.TempDir(), "test.db")
-		var err error
-		if st, err = store.Open(dbPath); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = st.Close() })
+		st, dsn = testutil.StoreDSN(t)
 	}
 	d := server.Deps{
 		Store: st, Auth: auth.New(password), RunnerToken: runnerToken, Key: key, Hosts: &sshhost.Service{},
@@ -58,7 +52,7 @@ func newHostEnv(t *testing.T, st *store.Store, dbPath string, key secret.Key, ss
 	ts := httptest.NewServer(server.New(d))
 	t.Cleanup(ts.Close)
 	jar, _ := cookiejar.New(nil)
-	e := &hostEnv{ts: ts, store: st, dbPath: dbPath, ssh: ssh, client: &http.Client{Jar: jar}}
+	e := &hostEnv{ts: ts, store: st, dsn: dsn, ssh: ssh, client: &http.Client{Jar: jar}}
 	if code, _ := e.do(t, http.MethodPost, "/api/login", `{"password":"`+password+`"}`); code != http.StatusNoContent {
 		t.Fatalf("login status = %d", code)
 	}
@@ -283,13 +277,9 @@ func TestPutCredentialRejectsBadKeys(t *testing.T) {
 }
 
 // dump returns every value of the tables as text, except the sealed column.
-func dump(t *testing.T, path string) string {
+func dump(t *testing.T, dsn string) string {
 	t.Helper()
-	raw, err := sql.Open("sqlite", "file:"+path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer raw.Close()
+	raw := testutil.RawDB(t, dsn)
 	var out strings.Builder
 	for _, q := range []string{
 		`SELECT * FROM hosts`,
@@ -342,7 +332,7 @@ func TestCredentialsAreWriteOnly(t *testing.T) {
 	e.do(t, http.MethodPost, fmt.Sprintf("/api/hosts/%d/test", pwHost.ID), "")
 	e.do(t, http.MethodDelete, fmt.Sprintf("/api/hosts/%d/credential", pwHost.ID), "")
 
-	haystack := strings.Join(e.seen, "\n") + "\n" + dump(t, e.dbPath)
+	haystack := strings.Join(e.seen, "\n") + "\n" + dump(t, e.dsn)
 	for _, secretText := range []string{"pp-DISTINCTIVE", "hunter2-DISTINCTIVE", pemBody, "OPENSSH PRIVATE KEY"} {
 		if strings.Contains(haystack, secretText) {
 			t.Errorf("%q appears outside the sealed column", secretText)
@@ -478,7 +468,7 @@ func TestAnUndecryptableLoginIsReported(t *testing.T) {
 	a.pin(t, h.ID, a.test(t, h.ID).PresentedKey.Fingerprint)
 
 	// The same database, opened by a control plane with another master key.
-	b := newHostEnv(t, a.store, a.dbPath, ghKey(t, 2), srv)
+	b := newHostEnv(t, a.store, a.dsn, ghKey(t, 2), srv)
 	got := b.test(t, h.ID)
 	if got.Status != "undecryptable" || !strings.Contains(got.StatusDetail, "REMEDY_MASTER_KEY") {
 		t.Fatalf("test with the wrong master key = %+v", got)

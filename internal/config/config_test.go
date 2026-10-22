@@ -20,6 +20,7 @@ func serverEnv(extra map[string]string) func(string) string {
 		"REMEDY_ADMIN_PASSWORD": "a-long-enough-password",
 		"REMEDY_RUNNER_TOKEN":   "a-runner-token-of-24-chars-or-more",
 		"REMEDY_MASTER_KEY":     masterKey,
+		"REMEDY_DATABASE_URL":   testDatabaseURL,
 	}
 	for k, v := range extra {
 		m[k] = v
@@ -32,7 +33,7 @@ func TestServerFromEnvDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Addr != ":8080" || c.DBPath != "remedy.db" || c.GitHubAPIURL != "https://api.github.com" {
+	if c.Addr != ":8080" || c.GitHubAPIURL != "https://api.github.com" {
 		t.Fatalf("defaults = %+v", c)
 	}
 }

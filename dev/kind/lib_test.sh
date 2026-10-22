@@ -145,5 +145,49 @@ fresh_is "failed" yes '{"info":{"status":"failed"}}'
 fresh_is "pending-install" yes '{"info":{"status":"pending-install"}}'
 fresh_is "unreadable answer" yes 'not json'
 
+# The database password of dummy.env: made with the file, added to a file from before the database existed, never changed.
+mkdir "$T/env"
+(DUMMY_ENV=$T/env/new.env; write_dummy_env)
+for key in REMEDY_URL REMEDY_ADMIN_PASSWORD REMEDY_RUNNER_TOKEN REMEDY_MASTER_KEY REMEDY_POSTGRES_PASSWORD; do
+  if grep -q "^$key=." "$T/env/new.env"; then pass "a new dummy.env has $key"; else fail "a new dummy.env has $key"; fi
+done
+pw=$(sed -n 's/^REMEDY_POSTGRES_PASSWORD=//p' "$T/env/new.env")
+if printf '%s' "$pw" | grep -Eq '^[0-9a-f]{32}$'; then pass "the database password is 32 hex characters (it can sit in a URL)"; else fail "the database password is 32 hex characters (got $pw)"; fi
+mode=$(stat -c %a "$T/env/new.env" 2> /dev/null || stat -f %Lp "$T/env/new.env")
+[ "$mode" = 600 ] && pass "a new dummy.env has mode 600" || fail "a new dummy.env has mode 600 (got $mode)"
+before=$(cat "$T/env/new.env")
+(DUMMY_ENV=$T/env/new.env; write_dummy_env)
+[ "$(cat "$T/env/new.env")" = "$before" ] && pass "write_dummy_env keeps a complete dummy.env as it is" || fail "write_dummy_env keeps a complete dummy.env as it is"
+
+printf 'REMEDY_URL=http://127.0.0.1:18080\nREMEDY_ADMIN_PASSWORD=aaa\nREMEDY_RUNNER_TOKEN=bbb\nREMEDY_MASTER_KEY=ccc\n' > "$T/env/old.env"
+chmod 600 "$T/env/old.env"
+(DUMMY_ENV=$T/env/old.env; write_dummy_env)
+if [ "$(head -n 4 "$T/env/old.env")" = "$(printf 'REMEDY_URL=http://127.0.0.1:18080\nREMEDY_ADMIN_PASSWORD=aaa\nREMEDY_RUNNER_TOKEN=bbb\nREMEDY_MASTER_KEY=ccc')" ] &&
+   [ "$(wc -l < "$T/env/old.env" | tr -d ' ')" = 5 ] && grep -q '^REMEDY_POSTGRES_PASSWORD=[0-9a-f]\{32\}$' "$T/env/old.env"; then
+  pass "a dummy.env from before the database gets a password and keeps its other lines"
+else
+  fail "a dummy.env from before the database gets a password and keeps its other lines"
+fi
+mode=$(stat -c %a "$T/env/old.env" 2> /dev/null || stat -f %Lp "$T/env/old.env")
+[ "$mode" = 600 ] && pass "the old dummy.env keeps mode 600" || fail "the old dummy.env keeps mode 600 (got $mode)"
+before=$(cat "$T/env/old.env")
+(DUMMY_ENV=$T/env/old.env; ensure_postgres_password)
+[ "$(cat "$T/env/old.env")" = "$before" ] && pass "an existing database password is never replaced" || fail "an existing database password is never replaced"
+printf 'REMEDY_URL=u\nREMEDY_POSTGRES_PASSWORD=\n' > "$T/env/empty.env"
+(DUMMY_ENV=$T/env/empty.env; ensure_postgres_password)
+if [ "$(. "$T/env/empty.env"; printf '%s' "$REMEDY_POSTGRES_PASSWORD" | wc -c | tr -d ' ')" = 32 ]; then pass "an empty database password is replaced (the later line wins)"; else fail "an empty database password is replaced"; fi
+(DUMMY_ENV=$T/env/missing.env; ensure_postgres_password) > /dev/null 2>&1 && fail "ensure_postgres_password refuses a missing file" || pass "ensure_postgres_password refuses a missing file"
+
+# The connection URL: from the password, the service of postgres.yaml and the release namespace; no password, no URL.
+got=$(REMEDY_POSTGRES_PASSWORD=abc123 postgres_url)
+[ "$got" = "postgres://remedy:abc123@remedy-postgres.remedy-system.svc:5432/remedy?sslmode=disable" ] && pass "postgres_url" || fail "postgres_url (got $got)"
+(unset REMEDY_POSTGRES_PASSWORD; postgres_url) > /dev/null 2>&1 && fail "postgres_url without a password fails" || pass "postgres_url without a password fails"
+
+# No password is committed: the manifest reads it from the Secret and holds no Secret, and the chart values hold no URL.
+if grep -q 'POSTGRES_PASSWORD' "$KIND_DIR/postgres.yaml" && grep -A2 'name: POSTGRES_PASSWORD' "$KIND_DIR/postgres.yaml" | grep -q secretKeyRef; then pass "postgres.yaml reads the password from a Secret"; else fail "postgres.yaml reads the password from a Secret"; fi
+if grep -Eq '^kind: Secret|stringData|^[[:space:]]+data:|password:[[:space:]]+[^ #{]' "$KIND_DIR/postgres.yaml"; then fail "postgres.yaml holds no Secret and no password"; else pass "postgres.yaml holds no Secret and no password"; fi
+if grep -Eq 'postgres(ql)?://' "$KIND_DIR/dummy-values.yaml"; then fail "dummy-values.yaml holds no connection URL"; else pass "dummy-values.yaml holds no connection URL"; fi
+if grep -q 'existingSecret: remedy-postgres' "$KIND_DIR/dummy-values.yaml"; then pass "dummy-values.yaml points the chart at the Secret remedy-postgres"; else fail "dummy-values.yaml points the chart at the Secret remedy-postgres"; fi
+
 [ "$failed" -eq 0 ] && echo "all passed"
 exit "$failed"

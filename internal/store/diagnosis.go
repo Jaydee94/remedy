@@ -60,10 +60,18 @@ type StartParams struct {
 
 // StartDiagnosis creates a queued responder run for an incident and marks the incident diagnosing, in
 // one transaction. act describes the activity entry; its run and incident are filled in.
+//
+// Two starts at once are taken one after the other (lockDiagnosis), so "one run at a time", the daily limit and the
+// per-incident cap are counted with nothing in between; the incident's row is locked, so an ignore or a resolve that
+// arrives meanwhile is not overwritten.
 func (s *Store) StartDiagnosis(ctx context.Context, p StartParams, act NewActivity) (run.Run, error) {
 	id := run.NewID()
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
-		in, err := scanIncident(tx.QueryRowContext(ctx, `SELECT `+incidentCols()+incidentFrom+` WHERE i.id = ?`, p.IncidentID))
+	err := s.inTx(ctx, func(tx *txn) error {
+		if err := s.lockDiagnosis(ctx, tx); err != nil {
+			return err
+		}
+		q, args := incidentSelect(` WHERE i.id = ? FOR NO KEY UPDATE OF i`, p.IncidentID)
+		in, err := scanIncident(tx.QueryRowContext(ctx, q, args...))
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -98,7 +106,8 @@ func (s *Store) StartDiagnosis(ctx context.Context, p StartParams, act NewActivi
 			}
 			seen[h] = true
 			var n int
-			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM hosts WHERE id = ?`, h).Scan(&n); err != nil {
+			// FOR KEY SHARE: a host that is here now cannot be deleted before the binding is stored.
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT 1 FROM hosts WHERE id = ? FOR KEY SHARE) h`, h).Scan(&n); err != nil {
 				return err
 			}
 			if n == 1 {
@@ -131,7 +140,7 @@ func (s *Store) StartDiagnosis(ctx context.Context, p StartParams, act NewActivi
 	return s.GetRun(ctx, id)
 }
 
-func checkAutomatic(ctx context.Context, tx *sql.Tx, in Incident, p StartParams) error {
+func checkAutomatic(ctx context.Context, tx *txn, in Incident, p StartParams) error {
 	if !in.AutoDiagnose {
 		return &LimitError{Reason: fmt.Sprintf("a %s result is not diagnosed automatically", in.Conclusion)}
 	}
@@ -160,7 +169,7 @@ func checkAutomatic(ctx context.Context, tx *sql.Tx, in Incident, p StartParams)
 // latest one of that incident. A diagnosing or open incident becomes diagnosed (an open one is an incident that was
 // un-ignored between the end of the run and this call); an ignored or resolved incident stays as it is.
 func (s *Store) CompleteDiagnosis(ctx context.Context, runID string, diagnosis json.RawMessage, act NewActivity) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
 		var incidentID sql.NullInt64
 		var sha string
 		err := tx.QueryRowContext(ctx, `SELECT incident_id, head_sha FROM runs WHERE id = ?`, runID).Scan(&incidentID, &sha)
@@ -183,7 +192,7 @@ func (s *Store) CompleteDiagnosis(ctx context.Context, runID string, diagnosis j
 // FailDiagnosis closes the diagnosis of a responder run that failed, if the run is the latest one of its
 // incident. A diagnosing incident goes back to diagnosed if it has a diagnosis from before, else to open.
 func (s *Store) FailDiagnosis(ctx context.Context, runID string, act NewActivity) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	return s.inTx(ctx, func(tx *txn) error {
 		var incidentID sql.NullInt64
 		err := tx.QueryRowContext(ctx, `SELECT incident_id FROM runs WHERE id = ?`, runID).Scan(&incidentID)
 		if errors.Is(err, sql.ErrNoRows) || (err == nil && !incidentID.Valid) {
@@ -202,7 +211,7 @@ func (s *Store) FailDiagnosis(ctx context.Context, runID string, act NewActivity
 	})
 }
 
-func (s *Store) logRunActivity(ctx context.Context, tx *sql.Tx, incidentID int64, runID string, act NewActivity) error {
+func (s *Store) logRunActivity(ctx context.Context, tx *txn, incidentID int64, runID string, act NewActivity) error {
 	var repoID sql.NullInt64
 	if err := tx.QueryRowContext(ctx, `SELECT repo_id FROM incidents WHERE id = ?`, incidentID).Scan(&repoID); err != nil {
 		return err
@@ -217,7 +226,7 @@ func (s *Store) logRunActivity(ctx context.Context, tx *sql.Tx, incidentID int64
 // diagnosed alert is not diagnosed again on its own. Incidents of other sources are never candidates. Every candidate is below the
 // per-incident cap and past the cooldown. The daily limit and "one run at a time" are checked by StartDiagnosis.
 func (s *Store) ListAutoCandidates(ctx context.Context, now time.Time, l DiagnosisLimits, freshFor time.Duration) ([]Incident, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+incidentCols()+incidentFrom+`
+	q, args := incidentSelect(`
 		WHERE i.auto_diagnose = 1
 		  AND i.source IN ('github', 'alertmanager')
 		  AND (i.state = 'open' OR (i.state = 'diagnosed' AND i.source = 'github' AND i.head_sha <> i.diagnosed_sha))
@@ -227,6 +236,7 @@ func (s *Store) ListAutoCandidates(ctx context.Context, now time.Time, l Diagnos
 		  AND (i.source = 'github' OR i.last_seen >= ?)
 		ORDER BY i.first_seen, i.id LIMIT 20`,
 		l.MaxPerIncident, formatTS(now.Add(-l.Cooldown)), formatTS(now.Add(-freshFor)))
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
