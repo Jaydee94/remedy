@@ -75,8 +75,8 @@ change on every render, and Helm's `lookup` does not work under Argo CD. Any pas
 What it renders:
 
 - A StatefulSet `remedy-postgres` with one pod: the image `postgres.image.repository:postgres.image.tag` (default
-  `postgres:16.15`), user and database `remedy`, and the data directory in `pgdata` below the claim's mount.
-  - **The tag** must be exactly `MAJOR.MINOR` of the Debian-based image, such as `16.15`. The render refuses a moving tag
+  `postgres:18.6`), user and database `remedy`, and the data directory in `pgdata` below the claim's mount.
+  - **The tag** must be exactly `MAJOR.MINOR` of the Debian-based image, such as `18.6`. The render refuses a moving tag
     (`16`, `latest`), `-alpine` (that image runs postgres as uid 70, the chart as 999), any other suffix, and a digest:
     this value takes a tag only.
   - **Probes:** a startup probe by `pg_isready` over TCP (every 5 s, up to 60 times: five minutes for `initdb` or a crash
@@ -144,7 +144,7 @@ pod uses it, and Argo CD shows the application as `Progressing` until then. The 
        seccompProfile: {type: RuntimeDefault}
      containers:
        - name: restore
-         image: postgres:16.15            # the tag of postgres.image.tag
+         image: postgres:18.6            # the tag of postgres.image.tag
          command: [sleep, "3600"]
          env:
            - {name: PGHOST, value: remedy-postgres}
@@ -197,8 +197,13 @@ namespace, where the `remedy-postgres` policy admits only the control plane and 
 What it does **not** provide: high availability, replication, backups that leave the node (the backup claim is in the same
 cluster and, on a single-node cluster, on the same disk: it protects against a damaged or wrongly changed database, not
 against losing the disk; copy the dumps elsewhere for that), TLS, and major-version upgrades. A new minor version of the
-same major (for example `16.15` to `16.16`) is a change of `postgres.image.tag` and a restart. A new major version cannot
+same major (for example `18.6` to `18.7`) is a change of `postgres.image.tag` and a restart. A new major version cannot
 open the old data directory: take a dump, install the new major on an empty claim, and restore the dump into it.
+
+**An install made with a chart that bundled PostgreSQL 16** (chart versions up to 0.16.x) keeps a version 16 data directory,
+and the default tag is now `18.6`: upgrading the release without more would start a server that refuses the directory, and
+`remedy-postgres-0` would not become ready. Either set `postgres.image.tag` to the `16.x` you ran (the old data stays usable),
+or take a dump first and restore it into an empty claim as above (`docs/runbook/postgres.md`, section 3, "A new major version").
 
 Ownership: the claim `data-remedy-postgres-0` is made by the StatefulSet, not by Helm, and the StatefulSet keeps it when it is
 deleted or scaled down (`persistentVolumeClaimRetentionPolicy: Retain`): `helm uninstall` leaves it, and a new install with

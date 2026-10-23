@@ -88,7 +88,7 @@ existingSecret: ""
 passwordKey: password
 image:
   repository: postgres
-  tag: "16.15"
+  tag: "18.6"
 persistence:
   size: 5Gi
   storageClass: ""

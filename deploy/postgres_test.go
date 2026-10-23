@@ -131,8 +131,8 @@ func TestTheBundledDatabaseIsAOneReplicaStatefulSetWithAPinnedImage(t *testing.T
 	}
 	pod := podSpec(t, s)
 	c := container(t, pod, "postgres")
-	if got := c["image"]; got != "postgres:16.15" {
-		t.Errorf("image = %v, want postgres:16.15", got)
+	if got := c["image"]; got != "postgres:18.6" {
+		t.Errorf("image = %v, want postgres:18.6", got)
 	}
 	e := env(c)
 	if e["POSTGRES_USER"]["value"] != "remedy" || e["POSTGRES_DB"]["value"] != "remedy" {
@@ -231,12 +231,12 @@ func TestTheBundledDatabaseValuesAreUsed(t *testing.T) {
 
 func TestTheBundledDatabaseImageTagMustBeExact(t *testing.T) {
 	// Only MAJOR.MINOR of the Debian-based image: the Alpine image runs postgres as uid 70, and a digest is no tag.
-	for _, tag := range []string{"", "16", "latest", "17", "16.15-alpine", "16.15-bookworm", "16.15.1", "16.15@sha256:" + strings.Repeat("a", 64)} {
+	for _, tag := range []string{"", "16", "latest", "17", "18.6-alpine", "18.6-bookworm", "18.6.1", "18.6@sha256:" + strings.Repeat("a", 64)} {
 		values := bundledValues()
 		set(values, "postgres.image.tag", tag)
 		mustFail(t, values, "postgres.image.tag")
 	}
-	for _, tag := range []string{"16.15", "17.6"} {
+	for _, tag := range []string{"18.6", "17.6"} {
 		values := bundledValues()
 		set(values, "postgres.image.tag", tag)
 		mustRender(t, values)
@@ -678,7 +678,7 @@ func TestUnknownKeysBelowPostgresAreRefusedWithoutTheirValue(t *testing.T) {
 		}
 	}
 	values := bundledValues()
-	set(values, "postgres.image", "postgres:16.15")
+	set(values, "postgres.image", "postgres:18.6")
 	mustFail(t, values, "postgres.image must be an object")
 }
 
@@ -703,6 +703,6 @@ func TestPostgresValuesAreRefusedWithADatabaseOfYourOwn(t *testing.T) {
 	set(values, "postgres.enabled", false)
 	mustRender(t, values)
 	values = baseValues()
-	set(values, "postgres.image.tag", "16.15")
+	set(values, "postgres.image.tag", "18.6")
 	mustRender(t, values)
 }
