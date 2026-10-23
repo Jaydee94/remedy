@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.0](https://github.com/Jaydee94/remedy/compare/v0.16.0...v0.17.0) (2026-10-23)
+
+### ⚠ BREAKING CHANGES
+
+* bundle PostgreSQL 18 in the chart (#179)
+
+* bundle PostgreSQL 18 in the chart ([#179](https://github.com/Jaydee94/remedy/issues/179)) ([db56175](https://github.com/Jaydee94/remedy/commit/db56175f52a7fe57270803dcb342ac239bbdc5bf))
+
 ## [0.16.0](https://github.com/Jaydee94/remedy/compare/v0.15.0...v0.16.0) (2026-10-22)
 
 ### ⚠ BREAKING CHANGES
