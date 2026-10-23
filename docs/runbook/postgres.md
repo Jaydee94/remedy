@@ -20,7 +20,7 @@ versions.
 
 **The bundled PostgreSQL (the default).** Nothing but a Secret with its password (section 2) and the value
 `postgres.existingSecret`. The chart renders a StatefulSet `remedy-postgres` (one pod, image `postgres.image`, default
-`postgres:16.15`, user and database `remedy`) with the claim `data-remedy-postgres-0` (`postgres.persistence.size`, default
+`postgres:18.6`, user and database `remedy`) with the claim `data-remedy-postgres-0` (`postgres.persistence.size`, default
 `5Gi`), a headless Service `remedy-postgres`, a NetworkPolicy `remedy-postgres` (while `networkPolicy.enabled`) that admits
 only the control plane and the backup job, and a nightly backup (section 3). The control plane gets the password as
 `PGPASSWORD` from the Secret (`secretKeyRef`) and `REMEDY_DATABASE_URL` as
@@ -152,7 +152,7 @@ Define the variables and the function once, and run the blocks below **in the sa
 ```sh
 NS=remedy
 RELEASE=remedy                 # the Helm release name (app.kubernetes.io/instance of the remedy-postgres pod)
-PGIMAGE=postgres:16.15         # postgres.image.repository:postgres.image.tag of your values
+PGIMAGE=postgres:18.6         # postgres.image.repository:postgres.image.tag of your values
 PGSECRET=remedy-postgres       # postgres.existingSecret
 PGKEY=password                 # postgres.passwordKey
 
@@ -246,12 +246,12 @@ Then enable auto-sync again. The id sequences are part of the dump, so the next 
 start the control plane on the empty database before the restore: it would make the tables, and `pg_restore` would stop
 at the first `relation ... already exists`.
 
-**A new minor version** of the same major (for example `16.15` to `16.16`) is a change of `postgres.image.tag` and a
+**A new minor version** of the same major (for example `18.6` to `18.7`) is a change of `postgres.image.tag` and a
 restart of `remedy-postgres-0`, nothing else.
 
 **A new major version** of PostgreSQL cannot open the old data directory, so it needs both a change of `postgres.image.tag`
 and a dump and a restore. The render accepts any exact `MAJOR.MINOR` tag of the Debian-based image (it checks the form,
-`^[0-9]+\.[0-9]+$`, not the major), so `17.6` is as valid a value as `16.15`; a tag such as `17` or `17.6-alpine` is
+`^[0-9]+\.[0-9]+$`, not the major), so `19.1` is as valid a value as `18.6`; a tag such as `17` or `17.6-alpine` is
 refused. The steps (none of them tried):
 
 1. Take a dump (above) and copy it off the node (above). The backup claim is not touched by the next steps, but a copy off
