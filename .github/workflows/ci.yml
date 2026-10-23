@@ -10,10 +10,16 @@ permissions:
 
 jobs:
   go:
+    # 16 is the oldest PostgreSQL the control plane supports, 18 is what the chart bundles.
+    name: go (postgres ${{ matrix.postgres }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["16", "18"]
     services:
       postgres:
-        image: postgres:18
+        image: postgres:${{ matrix.postgres }}
         env:
           POSTGRES_USER: remedy
           POSTGRES_PASSWORD: remedy
