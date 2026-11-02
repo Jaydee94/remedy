@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.18.0](https://github.com/Jaydee94/remedy/compare/v0.17.1...v0.18.0) (2026-11-02)
+
+### ⚠ BREAKING CHANGES
+
+* a stranger can install Remedy (cycle 7a) (#183)
+
+### Features
+
+* a stranger can install Remedy (cycle 7a) ([#183](https://github.com/Jaydee94/remedy/issues/183)) ([64b5d8b](https://github.com/Jaydee94/remedy/commit/64b5d8bbbeddf48fc56e16f20d7aca6245fc6dfb))
+
 ## [0.17.1](https://github.com/Jaydee94/remedy/compare/v0.17.0...v0.17.1) (2026-11-02)
 
 ### Bug Fixes
