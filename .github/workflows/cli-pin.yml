@@ -1,12 +1,12 @@
 name: cli-pin
 
-# Renovate bumps the version in deploy/cli-pin.yaml but cannot compute the checksums of the new artifacts. This recomputes
+# Renovate bumps the version in runner.cli of deploy/chart/values.yaml but cannot compute the checksums of the new artifacts. This recomputes
 # them and fails when they differ, so that a pin with a wrong checksum cannot merge. To fix a failing pull request:
 #   scripts/cli-checksums.sh <the new version>   and push the result.
 on:
   pull_request:
     paths:
-      - deploy/cli-pin.yaml
+      - deploy/chart/values.yaml
       - scripts/cli-checksums.sh
       - .github/workflows/cli-pin.yml
   workflow_dispatch:

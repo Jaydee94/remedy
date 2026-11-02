@@ -164,8 +164,8 @@ overwrites the same tags). Re-run only the **latest** run of `main`: an older ru
   pushes `sha-<short>` and `edge`. This is the normal way.
 - `[skip ci]` in a commit message of the merge skips the whole workflow, so the images are not rebuilt either. Use it only when
   nothing should run.
-- A pin bump of the CLI (`deploy/cli-pin.yaml`, a Renovate pull request) is expected to be a `chore(deps)` commit and releases nothing;
-  the cluster reads the pin at the release tag. Retitling the pull request `fix: pin the claude CLI X.Y.Z` to release it is the
+- A pin bump of the CLI (`runner.cli` in `deploy/chart/values.yaml`, a Renovate pull request) is expected to be a `chore(deps)` commit and releases nothing;
+  the pin is the chart's default, so an installation gets it with the next release of the chart. Retitling the pull request `fix: pin the claude CLI X.Y.Z` to release it is the
   maintainer's decision.
   Renovate opens the pull request; `cli-pin.yml` fails it until `scripts/cli-checksums.sh <version>` has written the checksums on
   its branch.

@@ -152,7 +152,7 @@ provoked.
   and `describe pod`; most often a pod waits for an image (`make dummy-redeploy` loads them again) or the runner's init container
   cannot download the CLI (next line).
 - The CLI download fails (the runner pod stays in `Init`, `kubectl ... logs remedy-runner-0 -c install-cli`): the node needs
-  internet access to `downloads.claude.ai`, and the SHA-256 in `deploy/cli-pin.yaml` must match the downloaded file. A mismatch is
+  internet access to `downloads.claude.ai`, and the SHA-256 in `runner.cli` of `deploy/chart/values.yaml` must match the downloaded file. A mismatch is
   refused on purpose.
 - A pod is rejected with a Pod Security message: the namespace enforces `restricted`. A pod that runs as root, has a writable
   root filesystem or lacks the `RuntimeDefault` seccomp profile is refused; fix the chart, do not relax the label.

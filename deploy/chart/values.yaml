@@ -107,15 +107,22 @@ runner:
     size: 1Gi
     storageClass: ""
     existingClaim: ""  # set: use this claim for the login and the CLI's state, create none
-  # The init container installs this CLI before the runner starts. No image contains it.
+  # The init container installs this CLI before the runner starts and checks its SHA-256. No image contains it (the
+  # binary is proprietary). This is the pinned default: an install works with no value here. Override all of it to pin
+  # another version. The vendor publishes the checksums in
+  # https://downloads.claude.ai/claude-code-releases/<version>/manifest.json (platforms.<platform>.checksum, signed by
+  # manifest.json.sig). scripts/cli-checksums.sh writes the version and both checksums; the cli-pin workflow checks them
+  # and Renovate bumps the version, so keep exactly one line of each of the shapes below.
+  # archive: none, or tar.gz with member the file to take out of it. platforms: the vendor's name for the platform and
+  # the SHA-256 of its artifact, per architecture.
   cli:
-    version: ""        # required, pinned
-    urlTemplate: ""    # required: an https URL with {version} and {platform}
-    archive: none      # none, or tar.gz with member the file to take out of it
+    version: "2.1.316"
+    urlTemplate: "https://downloads.claude.ai/claude-code-releases/{version}/{platform}/claude"
+    archive: none
     member: ""
-    platforms:         # the vendor's name for the platform and the SHA-256 of its artifact, per architecture
-      amd64: {name: "", sha256: ""}
-      arm64: {name: "", sha256: ""}
+    platforms:
+      amd64: {name: "linux-x64", sha256: "fd13c70000fec3f2116dfbcbb6121210b4a29328bf0e46210a59dd594a67d824"}
+      arm64: {name: "linux-arm64", sha256: "55cdb8e162d190432696ea54010e0fca2e18d06fa7a7127fd563b9ffd4f22624"}
 
 cluster:
   enabled: false       # the control plane reads the cluster; it runs as the read account (needs networkPolicy.apiServer.cidrs)

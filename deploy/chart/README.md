@@ -306,17 +306,19 @@ networkPolicy:
 
 ## Install from the OCI registry
 
-A release publishes the chart as an OCI artifact (expected from the first release; none exists yet):
+A release publishes the chart as an OCI artifact:
 
 ```sh
-helm install remedy oci://ghcr.io/jaydee94/charts/remedy --version X.Y.Z -n remedy-system \
-  -f deploy/cli-pin.yaml -f my-values.yaml
+helm install remedy oci://ghcr.io/jaydee94/charts/remedy --version X.Y.Z -n remedy-system -f my-values.yaml
 ```
 
-`deploy/cli-pin.yaml` is the pin file of the repository at the tag `vX.Y.Z` (the chart does not contain it). The chart in the
-registry is packaged by the release with `version` and `appVersion` equal to the release, so its default image tag pulls the
-images `X.Y.Z`. The package `charts/remedy` must be public. Under Argo CD see the runbook; the OCI install is not yet proven on a
-cluster. The release is described in [`docs/runbook/release.md`](../../docs/runbook/release.md).
+The chart carries the pinned CLI as the default of `runner.cli` (version, download URL and the SHA-256 of both platforms), so
+`my-values.yaml` needs no pin. Set all of `runner.cli` to pin another version. Installs before the release that moved the pin
+passed it as `-f deploy/cli-pin.yaml`; that file is gone, and passing the pin of an older release still works, because your
+values win over the chart's defaults. The chart in the registry is packaged by the release with `version` and `appVersion`
+equal to the release, so its default image tag pulls the images `X.Y.Z`. The package `charts/remedy` is public. Under Argo CD
+see the runbook; the OCI install is not yet proven on a cluster. The release is described in
+[`docs/runbook/release.md`](../../docs/runbook/release.md).
 
 ## Checking it
 
@@ -325,5 +327,4 @@ cluster. The release is described in [`docs/runbook/release.md`](../../docs/runb
 ## Installing it in a homelab
 
 [`docs/runbook/homelab-deploy.md`](../../docs/runbook/homelab-deploy.md): the namespace, a SealedSecret, the values, an Argo CD
-Application with two sources of this repository (the chart, and the pinned CLI in `deploy/cli-pin.yaml`), the one-time login and
-upgrades.
+Application, the one-time login and upgrades.

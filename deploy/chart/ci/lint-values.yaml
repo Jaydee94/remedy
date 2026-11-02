@@ -3,14 +3,6 @@ existingSecret:
   name: remedy-secrets
 database:
   existingSecret: remedy-database
-runner:
-  cli:
-    version: 2.1.288
-    urlTemplate: https://downloads.example.invalid/{version}/{platform}/claude
-    archive: none
-    platforms:
-      amd64: {name: linux-x64, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
-      arm64: {name: linux-arm64, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 cluster:
   enabled: true
   write:
