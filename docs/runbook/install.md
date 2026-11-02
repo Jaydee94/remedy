@@ -1,8 +1,8 @@
 # Runbook: installing Remedy on a cluster of your own
 
-**Status.** Walked on 2026-11-02 on a throwaway kind cluster as far as the login, with the chart of this repository: sections 3 to 7 and 11. Not walked: the login (section 8) and
-everything after it, an Ingress controller, the OCI install of the release that carries this text, k3s, amd64. The record is
-[`docs/research/install-walkthrough.md`](../research/install-walkthrough.md).
+**Status.** Walked on 2026-11-02 on throwaway kind clusters as far as the login: sections 3 to 7 and 11 with the chart of this repository, and sections 3 to 6
+again with the published chart 0.18.0 from the registry (`helm install ... oci://ghcr.io/jaydee94/charts/remedy --version 0.18.0`). Not walked: the login (section 8) and
+everything after it, an Ingress controller, k3s, amd64. The record is [`docs/research/install-walkthrough.md`](../research/install-walkthrough.md).
 
 This installs Remedy from a release with plain `helm install`: no GitOps tool, no second repository, no file besides your own
 values. It needs the first release after 0.17.1 (the release that moved the CLI pin into the chart and removed the default of
