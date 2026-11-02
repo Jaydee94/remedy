@@ -138,13 +138,14 @@ cluster:
 networkPolicy:
   enabled: true
   dnsNamespace: kube-system
-  # Who may reach the public port (8080). The default is where k3s's Traefik runs. The list must not be empty: in a
-  # NetworkPolicy an empty list means every source, so the render fails instead.
+  # Who may reach the public port (8080). There is no default: it depends on what is in front of Remedy, and a guess
+  # would leave the UI unreachable on another cluster or open to the wrong source. The list must not be empty (in a
+  # NetworkPolicy an empty list means every source), so the render fails until you name the peers. Presets:
+  #   k3s with its Traefik:   - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+  #   ingress-nginx:          - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}
+  #   a node or proxy address (no Ingress controller, or a NodePort/LoadBalancer in front): - ipBlock: {cidr: 192.0.2.10/32}
   public:
-    from:
-      - namespaceSelector:
-          matchLabels:
-            kubernetes.io/metadata.name: kube-system
+    from: []
   # The address and port behind kubernetes.default.svc, as the cluster shows them (kubectl get endpoints kubernetes).
   # Required when cluster.enabled is true. The rule is by endpoint address and port (6443 on k3s and kind), not by the
   # service address. The runner's egress to the public range is 443 only, which keeps it from an API server on 6443 by

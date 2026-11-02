@@ -320,6 +320,17 @@ equal to the release, so its default image tag pulls the images `X.Y.Z`. The pac
 see the runbook; the OCI install is not yet proven on a cluster. The release is described in
 [`docs/runbook/release.md`](../../docs/runbook/release.md).
 
+## Upgrading from 0.17
+
+Two defaults went away in the release after 0.17:
+
+- `networkPolicy.public.from` has no default any more (it was the `kube-system` namespace, where k3s's Traefik runs). The render
+  fails with the presets until you name who may reach the UI: `kube-system` for k3s, `ingress-nginx`, or an `ipBlock` for a node or
+  proxy address. An install that already sets it, as the homelab runbook does, is not affected. With `networkPolicy.enabled=false`
+  nothing is needed.
+- `deploy/cli-pin.yaml` is gone; the pinned CLI is the default of `runner.cli` (see above). Drop `-f deploy/cli-pin.yaml` or the
+  Argo CD source that reads it. A pin you pass yourself keeps winning.
+
 ## Checking it
 
 `make chart-check` lints, renders, validates (kubeconform) and runs the render tests in `deploy/`.

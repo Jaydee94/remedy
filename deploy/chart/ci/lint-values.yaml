@@ -9,6 +9,9 @@ cluster:
     enabled: true
     namespaces: [demo]
 networkPolicy:
+  public:
+    from:
+      - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
   apiServer:
     cidrs: [172.18.0.2/32]
   hosts:

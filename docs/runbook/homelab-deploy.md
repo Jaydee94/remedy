@@ -363,6 +363,10 @@ holds firing alerts: every young `critical` or `warning` alert would otherwise b
 
 ## 9. Upgrading
 
+**Coming from 0.17 or earlier:** `networkPolicy.public.from` has no default any more and `deploy/cli-pin.yaml` is gone (the pinned CLI is the chart's
+default). The values of section 5 already set `public.from`, so nothing changes for them; if yours do not, add it before the upgrade, and drop the source that
+reads `deploy/cli-pin.yaml` from a three-source Application. Details: [`deploy/chart/README.md`](../../deploy/chart/README.md), "Upgrading from 0.17".
+
 A new release: with the wrapper chart, bump the dependency's `version` in `Chart.yaml` and the `runner.cli` block in `values.yaml` to the new release's `deploy/cli-pin.yaml` in one pull request
 (and run `helm dependency build` so that `Chart.lock` agrees, if your repository commits it). With the three-source form, bump `targetRevision` of the chart source to the new version `X.Y.Z` and of the source with `ref: remedy` to the
 tag `vX.Y.Z` (with the git form of the chart, both sources of this repository take the tag). A release exists only when the
