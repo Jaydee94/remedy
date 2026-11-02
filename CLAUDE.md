@@ -30,7 +30,8 @@ make dummy-up                                    # kind + demo workloads + Argo 
 make dummy-smoke                                 # two real runs against it (a cluster question, an approved restart of demo/web); costs subscription quota
 make dummy-down                                  # removes the cluster and what was generated; the CLI login stays (make dummy-logout removes it)
 make release-test                                # the release configuration in a scratch repository and the chart's OCI push (needs node, git, helm, docker)
-make shell-test                                  # the shell tests: the directory guard, the smoke decisions, the rule that no script reads the CLI login, the release and CLI checksum scripts
+make shell-test                                  # the shell tests: the directory guard, the smoke decisions, the rule that no script reads the CLI login, the release and CLI checksum scripts, the lab-values check
+sh scripts/check-no-lab-values.sh                # fails on a value only the maintainer's lab has (patterns: scripts/lab-values.deny) in a tracked file outside the history; make shell-test runs it
 make test                                        # all Go tests; they need a PostgreSQL: starts dev/pg/up.sh when REMEDY_TEST_DATABASE_URL is unset and docker exists
 make pg-up                                       # a throwaway postgres:16 for the tests (127.0.0.1, tmpfs); writes dev/pg/env.sh: . dev/pg/env.sh sets REMEDY_TEST_DATABASE_URL (dev/pg/README.md)
 make pg-down                                     # removes it

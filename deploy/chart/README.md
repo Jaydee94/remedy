@@ -11,8 +11,10 @@ Spec: [`docs/specs/2026-10-06-kubernetes-deployment-design.md`](../../docs/specs
   its own and needs a Secret with its password (`postgres.existingSecret`, the key `postgres.passwordKey`, default
   `password`); or a PostgreSQL 16 or newer of your own and a Secret with its connection URL (`database.existingSecret`, the
   key `database.secretKey`, default `url`). The chart never creates either Secret and refuses a password or URL as a value.
-- The pinned CLI: `runner.cli.version`, `runner.cli.urlTemplate`, and the platform names and SHA-256 per architecture
-  (`docs/research/k8s-s4-cli-install.md` says where they come from). No image contains the CLI.
+- Who may reach the UI: `networkPolicy.public.from`, the peers in front of Remedy (the Ingress controller's namespace, or an
+  `ipBlock`). It has no default; the render fails with the presets until you set it.
+- The pinned CLI needs nothing from you: the chart ships one as the default of `runner.cli` (version, URL and the SHA-256
+  per architecture; `docs/research/k8s-s4-cli-install.md` says where they come from). No image contains the CLI.
 
 ## What it renders
 
@@ -335,7 +337,8 @@ Two defaults went away in the release after 0.17:
 
 `make chart-check` lints, renders, validates (kubeconform) and runs the render tests in `deploy/`.
 
-## Installing it in a homelab
+## Installing it
 
-[`docs/runbook/homelab-deploy.md`](../../docs/runbook/homelab-deploy.md): the namespace, a SealedSecret, the values, an Argo CD
+[`docs/runbook/install.md`](../../docs/runbook/install.md) is the install on a cluster of your own. The maintainer's install on a k3s
+homelab under Argo CD is the example in [`docs/runbook/homelab-deploy.md`](../../docs/runbook/homelab-deploy.md): the namespace, a SealedSecret, the values, an Argo CD
 Application, the one-time login and upgrades.
