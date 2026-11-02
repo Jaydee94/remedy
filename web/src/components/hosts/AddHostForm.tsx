@@ -38,7 +38,7 @@ export default function AddHostForm() {
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="myhost" className="h-11 text-base md:text-sm" autoComplete="off" />
       </Field>
       <Field label="Address" hint="A host name or an IP address.">
-        <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="192.168.178.118" className="h-11 text-base md:text-sm" autoComplete="off" />
+        <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="192.0.2.10" className="h-11 text-base md:text-sm" autoComplete="off" />
       </Field>
       {error && (
         <Alert variant="destructive">

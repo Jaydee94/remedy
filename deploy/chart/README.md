@@ -245,11 +245,11 @@ networkPolicy:
     podSelector: {cnpg.io/cluster: remedy}   # must not be empty
     port: 5432                       # default 5432
   # or an external server:
-  # database: {cidr: 192.168.178.20/32, port: 5432}
+  # database: {cidr: 192.0.2.20/32, port: 5432}
 ```
 
 `cidr` is the range of the external server. An IPv4 range must be `/16` to `/32` and start at its network address
-(`192.168.178.20/8` or `192.168.178.20/24` is refused: a typo of the prefix would open a whole network), and an IPv6 range
+(`192.0.2.20/8` or `192.0.2.20/24` is refused: a typo of the prefix would open a whole network), and an IPv6 range
 must be `/16` to `/128` and lie outside `::/16` (which holds `::/0`, `::1` and the IPv4-mapped range `::ffff:0:0/96`); the
 rest is refused because it would open everything to the pod that holds the credentials. Use the single address (`/32`,
 `/128`) when you can. The rule is on the `remedy-server` policy only: the runner and the token refresher never
@@ -296,7 +296,7 @@ and then render nothing; the render fails for a value that breaks a rule, and ig
 ```yaml
 networkPolicy:
   hosts:
-    - {cidr: 192.168.178.118/32, port: 22}
+    - {cidr: 192.0.2.10/32, port: 22}
   alertmanager:
     namespace: monitoring
     podSelector: {app.kubernetes.io/name: vmalertmanager}

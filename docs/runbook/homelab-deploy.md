@@ -1,22 +1,18 @@
 # Runbook: Remedy on a homelab k3s cluster, under Argo CD
 
-**Status of this runbook.** It has **not** been run end to end. Success criterion 4 of the spec is not shown. The k3s half of the
-NetworkPolicy spike (S3) is not measured (`docs/research/k8s-s3-networkpolicy.md`). The automated release ([`release.md`](release.md)) has made releases (`0.8.0` at the time of writing), but whether the three `ghcr.io/jaydee94` packages are public was not checked from a cluster, and they are
-expected to be private until the maintainer makes them public.
-The **install of the OCI chart under Argo CD is not proven on a cluster**, in either of the two forms below. Argo CD's documentation shows an OCI Helm source (a
-registry URL without `oci://`, `chart:`, `targetRevision:`), but that source together with a `ref` source for
-`deploy/cli-pin.yaml` is not shown there and was not tried; and the wrapper chart of section 6 (a chart whose only dependency is the OCI chart, built by Argo CD's repo
-server) is equally untried. The chart was only rendered with Helm 4.3.0 (also from a local
-package of the chart, as an OCI install would pull it), while Argo CD renders with its own bundled Helm. Argo CD's handling of the `PostSync` hook and of the Secret without data
-(`remedy-write-token`) is unproven. What was proven is the same chart on kind with the real agent
-(`docs/research/k8s-dummy-real-run.md`, `docs/research/k8s-runner-status-real-run.md`). Read every step as expected, not as tried.
-The first install is cycle 6 of the hosts and skills series ([spec](../specs/2026-10-21-operation-6-design.md)); its drill is [`home-server-drill.md`](home-server-drill.md), and
-the record of what it showed will say here what is proven.
+**Status of this runbook.** This is the maintainer's own install, the example next to the generic [`install.md`](install.md) (plain `helm install`, no GitOps tool;
+start there if you are not on Argo CD). It has been run once: Remedy 0.16.0 was installed on the home server under Argo CD as a wrapper chart with the OCI chart as its
+dependency (record: `docs/research/alert-recurrence-and-tools-real-run.md`). The three `ghcr.io/jaydee94` packages are public (anonymous `helm show chart` and image pulls work). Argo CD
+showed the application as `Progressing` for the whole run while every pod was ready; the likely cause is the chart's backup claim `remedy-postgres-backup`, which stays `Pending` until the first nightly dump (not confirmed).
+Not proven: the three-source Application and the git form of section 6, Argo CD's handling of the `PostSync` hook and of the Secret without data (`remedy-write-token`; the home server runs with the write side
+off), and the probes under k3s's kube-router by a measurement of their own. What was proven on kind with the real agent is in `docs/research/k8s-dummy-real-run.md` and
+`docs/research/k8s-runner-status-real-run.md`. Read every step that is not in those records as expected, not as tried. The drill of cycle 6 is
+[`home-server-drill.md`](home-server-drill.md) ([spec](../specs/2026-10-21-operation-6-design.md)).
 
 **The database.** Since the release that moved the control plane to PostgreSQL (`docs/specs/2026-10-22-postgres-only-design.md`) the chart has no volume for the control plane. By default it installs a small single-node PostgreSQL of its own (`postgres.*`, decision 11 of the spec); a PostgreSQL that you provide is the alternative (`database.existingSecret`). Sections 2, 4, 5 and 11 describe both, the bundled one first. An installation that still runs on SQLite is reinstalled with an empty database: its data is not migrated. Copy `remedy.db` out **before** you bump the chart version: under Argo CD, `prune` can delete the old claim `remedy-data`, and a `local-path` volume loses its data with it ([`postgres.md`](postgres.md), section 10). This runbook has not been run with PostgreSQL either.
 
 This installs Remedy from a release of this repository, the way the maintainer runs it. The pieces are the chart
-[`deploy/chart`](../../deploy/chart/README.md), the pinned CLI [`deploy/cli-pin.yaml`](../../deploy/cli-pin.yaml) and the
+[`deploy/chart`](../../deploy/chart/README.md) (the pinned CLI is its default) and the
 [spec](../specs/2026-10-06-kubernetes-deployment-design.md) behind both. Plan on about an hour, most of it waiting for images
 and DNS.
 
@@ -127,8 +123,7 @@ dependencies:
     repository: oci://ghcr.io/jaydee94/charts
 ```
 
-(`0.8.0` is the release at the time of writing: use the latest one when you install.) The values, **everything under the key `remedy:`** (the name of the dependency), with the pin of `deploy/cli-pin.yaml`
-of the same release copied under it:
+(`0.8.0` is the release at the time of writing: use the latest one when you install.) The values, **everything under the key `remedy:`** (the name of the dependency). The CLI pin is the chart's default and needs no value:
 
 ```yaml
 # values.yaml
@@ -148,14 +143,7 @@ remedy:
     model: sonnet
     persistence:
       size: 1Gi
-    cli:                  # copied from deploy/cli-pin.yaml at the release tag: a bump of the chart version and of the pin are one pull request
-      version: "2.1.292"
-      urlTemplate: "https://downloads.claude.ai/claude-code-releases/{version}/{platform}/claude"
-      archive: none
-      member: ""
-      platforms:
-        amd64: {name: "linux-x64", sha256: "..."}
-        arm64: {name: "linux-arm64", sha256: "..."}
+    # runner.cli: the pinned CLI is the chart's default. Set all of it only to pin another version (an install before the release after 0.17.1 had to copy it from deploy/cli-pin.yaml).
 
   ingress:
     enabled: true
@@ -191,7 +179,7 @@ remedy:
       port: 9093
 ```
 
-The pinned CLI must be in the values: no image contains it. Copy it from `deploy/cli-pin.yaml` **at the release tag** you depend on (the file's `runner:` block goes under `remedy:`), with both platforms. Find the API server's address
+No image contains the CLI; the chart installs the one it pins (its default `runner.cli`, checked against its SHA-256). Find the API server's address
 with `kubectl get endpoints kubernetes -o jsonpath='{.subsets[0].addresses[0].ip}'`; on a k3s cluster with several servers list
 each one. The chart refuses to render when `cluster.write.namespaces` contains the Remedy namespace or the Argo CD namespace, when `cluster.argoNamespace` is the Remedy namespace, when `server.env` sets a variable the chart sets itself (`REMEDY_ADDR`, `REMEDY_INTERNAL_ADDR`, `REMEDY_DATABASE_URL`, `REMEDY_DB`, `REMEDY_K8S_*`), when neither `postgres.existingSecret` (the bundled database) nor `database.existingSecret` (a database of your own) is set, when both kinds of database are configured (`postgres.enabled: true` together with `database.existingSecret`), when a database of your own has no `networkPolicy.database` (while the policies are on) or the bundled one has one, when
 the network policies and `cluster.enabled` are on but `networkPolicy.apiServer.cidrs` is empty, and for a `networkPolicy.hosts` entry that is not a single address or whose port is not 1 to 65535, or an `alertmanager` without a namespace or with an empty `podSelector`
@@ -213,8 +201,8 @@ server builds an OCI dependency without one, that a `Namespace` template sits ne
 git form of the same chart: copy `deploy/chart` at the release tag into the wrapper directory (as `charts/remedy/`, so the dependency is local) and keep the same values. Add the
 `ignoreDifferences` entry for `remedy-write-token` below to the ApplicationSet's template only if you turn the write side on.
 
-**Without such an ApplicationSet**, use the **three-source Application**: the chart of a release from the OCI registry, the pinned CLI as a values file of this repository at the
-release tag (through `ref`), and the values of the GitOps repository (the values file without the `remedy:` key):
+**Without such an ApplicationSet**, use the **two-source Application**: the chart of a release from the OCI registry and the values of the GitOps repository (the values file without the `remedy:` key). Before the release after 0.17.1 there was a third
+source, the pin file `deploy/cli-pin.yaml` of this repository through `ref`; it is gone and a leftover one can be dropped:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -231,11 +219,7 @@ spec:
       helm:
         releaseName: remedy
         valueFiles:
-          - $remedy/deploy/cli-pin.yaml
           - $gitops/apps/remedy/values.yaml
-    - repoURL: https://github.com/Jaydee94/remedy.git
-      targetRevision: v0.8.0              # the tag vX.Y.Z of the same release: the pin file of that version
-      ref: remedy
     - repoURL: https://github.com/you/gitops.git      # your GitOps repository
       targetRevision: main
       ref: gitops
@@ -266,12 +250,12 @@ The form of the first source is the one in Argo CD's documentation for a public 
 included", `chart:` and `targetRevision:`, no `path`). A public registry needs no repository entry in Argo CD; this needs the
 three packages to be public (`release.md`, one-time setup). The documentation also shows a newer `oci://` source with `path: .`
 for OCI artifacts in general; this runbook does not use it. Verified in the documentation (2026-10-09): the form of the source
-and the rule that a source with `ref` has no `chart`. Not verified anywhere: that Argo CD resolves `$remedy/deploy/cli-pin.yaml`
-next to an OCI chart source (its documentation shows `ref` next to a classic Helm repository); the first sync is the proof.
+and the rule that a source with `ref` has no `chart`. Not verified anywhere: that Argo CD resolves `$gitops/...` next to an OCI chart source
+(its documentation shows `ref` next to a classic Helm repository); the first sync is the proof.
 
 The chart in the registry has `version` and `appVersion` equal to the release, and the chart's image tag defaults to its
 `appVersion`: the OCI chart `0.8.0` pulls `remedy-server:0.8.0` and `remedy-runner:0.8.0`. `helm template` of a local package of
-the chart with values like those of section 5 and `deploy/cli-pin.yaml` renders about 25 objects that `kubeconform -strict` accepts (measured with the
+the chart with values like those of section 5 renders about 25 objects that `kubeconform -strict` accepts (measured with the
 write side on, before the two network values of cycle 6 existed).
 
 Installing from git at the tag works too, and is the alternative while the OCI install is unproven: replace the first source by
@@ -283,7 +267,6 @@ Installing from git at the tag works too, and is the alternative while the OCI i
       helm:
         releaseName: remedy
         valueFiles:
-          - $remedy/deploy/cli-pin.yaml
           - $gitops/apps/remedy/values.yaml
 ```
 
@@ -365,16 +348,16 @@ holds firing alerts: every young `critical` or `warning` alert would otherwise b
 
 **Coming from 0.17 or earlier:** `networkPolicy.public.from` has no default any more and `deploy/cli-pin.yaml` is gone (the pinned CLI is the chart's
 default). The values of section 5 already set `public.from`, so nothing changes for them; if yours do not, add it before the upgrade, and drop the source that
-reads `deploy/cli-pin.yaml` from a three-source Application. Details: [`deploy/chart/README.md`](../../deploy/chart/README.md), "Upgrading from 0.17".
+reads `deploy/cli-pin.yaml` from a three-source Application (a `runner.cli` block in your values keeps winning over the default; drop it to follow the chart's pin). Details: [`deploy/chart/README.md`](../../deploy/chart/README.md), "Upgrading from 0.17".
 
-A new release: with the wrapper chart, bump the dependency's `version` in `Chart.yaml` and the `runner.cli` block in `values.yaml` to the new release's `deploy/cli-pin.yaml` in one pull request
-(and run `helm dependency build` so that `Chart.lock` agrees, if your repository commits it). With the three-source form, bump `targetRevision` of the chart source to the new version `X.Y.Z` and of the source with `ref: remedy` to the
-tag `vX.Y.Z` (with the git form of the chart, both sources of this repository take the tag). A release exists only when the
+A new release: with the wrapper chart, bump the dependency's `version` in `Chart.yaml` in one pull request
+(and run `helm dependency build` so that `Chart.lock` agrees, if your repository commits it); a `runner.cli` block of your own in `values.yaml` is bumped by hand or dropped. With the two-source form, bump `targetRevision` of the chart source to the new version `X.Y.Z`
+(with the git form of the chart, the source takes the tag `vX.Y.Z`). A release exists only when the
 GitHub release `vX.Y.Z` does: the images and the chart are pushed before the tag is made, so a version with a tag has its images
 and its chart. `release.yml` pushes `sha-<short>` and `edge` images from `main` too, but the chart pulls only `X.Y.Z`. The control plane restarts with `Recreate`: a minute without UI, runs in
 flight end as lost, sessions end.
 
-A new CLI version comes with a Renovate pull request on `deploy/cli-pin.yaml`. Check out that branch and run
+A new CLI version comes with a Renovate pull request on `runner.cli` in `deploy/chart/values.yaml` (the maintainer of this repository merges it; the chart of the next release carries it). If you pin your own CLI, check out that branch and run
 `scripts/cli-checksums.sh <version>` with the checksums the vendor publishes. This prints the checksums, amd64 then arm64:
 
 ```sh
@@ -386,9 +369,8 @@ Pass them as `--expect amd64=… --expect arm64=…`. To trust the manifest itse
 it with `gpg --verify` against the key at `https://downloads.claude.ai/keys/claude-code.asc`, fingerprint
 `31DD DE24 DDFA B679 F42D 7BD2 BAA9 29FF 1A7E CACE`. Push, and merge when the `cli-pin` check is green.
 
-The pin is read from `deploy/cli-pin.yaml` at the tag the Application points to (three-source form) or from the copy in the wrapper's values, so a new CLI reaches the cluster with the next
-release and the next bump of the pin, not with the merge of the pin in this repository: a pin bump is a `chore` or `ci` commit, which releases nothing. To release it, give the
-pull request the title `fix: pin the claude CLI X.Y.Z` (the squash title decides), then bump the chart version and the pin copy (this section).
+The pin is the chart's default, so a new CLI reaches the cluster with the next release of the chart, not with the merge of the pin in this repository: a pin bump is a `chore` or `ci` commit, which releases nothing. To release it, give the
+pull request the title `fix: pin the claude CLI X.Y.Z` (the squash title decides), then bump the chart version (this section).
 
 A host that was added before cycle 6 and already has the `docker ps -a` line in its `sudoers` file: that command is now run as `docker ps -a --filter name=...`, which the old line does not allow. Apply
 the new snippet from the Hosts page again (`home-server-drill.md`, section 5).
