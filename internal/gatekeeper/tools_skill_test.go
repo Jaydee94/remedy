@@ -64,7 +64,7 @@ func newSkillRig(t *testing.T) *skillRig {
 		return k
 	}
 	mk(0, "lab-notes", "Line one.\nLine two.")
-	mk(r.nas.ID, "paperless", "Paperless keeps its data in /volume1/docker.")
+	mk(r.nas.ID, "nextcloud", "Nextcloud keeps its data in /storage/docker.")
 	mk(alpha.ID, "alpha-only", "ALPHA-ONLY-BODY")
 	off := mk(r.nas.ID, "nas-off", "NAS-OFF-BODY")
 	if _, err := e.st.UpdateSkill(ctx, off.ID, skill.Fields{Name: "nas-off", Description: "About nas-off.", Body: "NAS-OFF-BODY"}, store.SkillOff); err != nil {
@@ -118,7 +118,7 @@ func TestSkillGetReturnsTheBodyBehindTheFrameAndNamesWhereItComesFrom(t *testing
 		t.Errorf("the body is not inside the delimited block:\n%s", text)
 	}
 
-	text, _ = r.get(t, "g2", map[string]any{"name": "paperless"})
+	text, _ = r.get(t, "g2", map[string]any{"name": "nextcloud"})
 	if !strings.Contains(text, "Scope: host nas") {
 		t.Errorf("a host skill names its host:\n%s", text)
 	}
@@ -176,7 +176,7 @@ func TestSkillGetAnswersLikeAnUnknownSkillForEverythingThatIsNotVisible(t *testi
 			}
 		}
 		// The names the run may load are listed, and only those.
-		if !strings.Contains(text, "lab-notes (global)") || !strings.Contains(text, "paperless (host: nas)") {
+		if !strings.Contains(text, "lab-notes (global)") || !strings.Contains(text, "nextcloud (host: nas)") {
 			t.Errorf("%s: the answer does not list what the run may load: %q", name, text)
 		}
 		for _, secretName := range []string{"nas-proposal", "nas-off", "alpha-only"} {
@@ -192,10 +192,10 @@ func TestSkillGetFindsASkillOfTheRunsHostOnlyNotOfAnotherOne(t *testing.T) {
 	if text, isErr := r.get(t, "g1", map[string]any{"name": "alpha-only", "host": "alpha"}); !isErr || !strings.Contains(text, "no skill with that name") {
 		t.Errorf("a host the run does not have: %q, %v", text, isErr)
 	}
-	if text, isErr := r.get(t, "g2", map[string]any{"name": "paperless", "host": "NAS"}); isErr || !strings.Contains(text, "Paperless keeps its data") {
+	if text, isErr := r.get(t, "g2", map[string]any{"name": "nextcloud", "host": "NAS"}); isErr || !strings.Contains(text, "Nextcloud keeps its data") {
 		t.Errorf("the host's name matches without regard to case: %q, %v", text, isErr)
 	}
-	if text, isErr := r.get(t, "g3", map[string]any{"name": "paperless", "host": "(global)"}); !isErr || !strings.Contains(text, "no skill with that name") {
+	if text, isErr := r.get(t, "g3", map[string]any{"name": "nextcloud", "host": "(global)"}); !isErr || !strings.Contains(text, "no skill with that name") {
 		t.Errorf("a host skill asked for as global: %q, %v", text, isErr)
 	}
 }
@@ -227,13 +227,13 @@ func TestSkillGetWithTheSameNameInTwoScopesAsksWhichOne(t *testing.T) {
 func TestSkillGetSeesAChangeMadeDuringTheRun(t *testing.T) {
 	r := newSkillRig(t)
 	ctx := context.Background()
-	if text, isErr := r.get(t, "g1", map[string]any{"name": "paperless"}); isErr {
+	if text, isErr := r.get(t, "g1", map[string]any{"name": "nextcloud"}); isErr {
 		t.Fatalf("before: %q", text)
 	}
-	if _, err := r.e.st.UpdateSkill(ctx, r.ids["paperless"], skill.Fields{Name: "paperless", Description: "About paperless.", Body: "b"}, store.SkillOff); err != nil {
+	if _, err := r.e.st.UpdateSkill(ctx, r.ids["nextcloud"], skill.Fields{Name: "nextcloud", Description: "About nextcloud.", Body: "b"}, store.SkillOff); err != nil {
 		t.Fatal(err)
 	}
-	if text, isErr := r.get(t, "g2", map[string]any{"name": "paperless"}); !isErr || !strings.Contains(text, "no skill with that name") {
+	if text, isErr := r.get(t, "g2", map[string]any{"name": "nextcloud"}); !isErr || !strings.Contains(text, "no skill with that name") {
 		t.Errorf("a skill turned off during the run: %q, %v", text, isErr)
 	}
 	if err := r.e.st.DeleteHost(ctx, r.nas.ID); err != nil {
@@ -268,11 +268,11 @@ func TestSkillGetRefusesArgumentsThatAreNotWhatItAsksFor(t *testing.T) {
 	r := newSkillRig(t)
 	for name, args := range map[string]map[string]any{
 		"no name":             {},
-		"an upper case name":  {"name": "Paperless"},
+		"an upper case name":  {"name": "Nextcloud"},
 		"a name with a space": {"name": "a b"},
 		"a long name":         {"name": strings.Repeat("a", 41)},
-		"an unknown member":   {"name": "paperless", "id": 3},
-		"a bad host":          {"name": "paperless", "host": "a b"},
+		"an unknown member":   {"name": "nextcloud", "id": 3},
+		"a bad host":          {"name": "nextcloud", "host": "a b"},
 		"a number for a name": {"name": 7},
 	} {
 		if text, isErr := r.get(t, "bad_"+strings.ReplaceAll(name, " ", "_"), args); !isErr {

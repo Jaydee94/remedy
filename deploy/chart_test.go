@@ -392,7 +392,7 @@ func TestTheServerPolicyLetsOnlyRunnersReachTheInternalPort(t *testing.T) {
 	if !strings.Contains(public, "port: 8080") || strings.Contains(public, "8081") {
 		t.Errorf("the public rule must list only 8080:\n%s", public)
 	}
-	if !strings.Contains(public, "kubernetes.io/metadata.name: kube-system") {
+	if !strings.Contains(public, "kubernetes.io/metadata.name: ingress-nginx") {
 		t.Errorf("the public rule must name the configured peers:\n%s", public)
 	}
 	if !strings.Contains(internal, "port: 8081") || strings.Contains(internal, "8080") ||

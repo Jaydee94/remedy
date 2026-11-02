@@ -13,13 +13,13 @@ import (
 func goodLearn() map[string]any {
 	return map[string]any{
 		"profile": map[string]any{
-			"os": "Debian 12", "role": "NAS with Paperless and a media server",
-			"services": []string{"docker", "sshd"}, "containers": []string{"remedy-paperless", "remedy-jellyfin"}, "notes": "Backups run at night.",
+			"os": "Debian 12", "role": "NAS with Nextcloud and a media server",
+			"services": []string{"docker", "sshd"}, "containers": []string{"remedy-nextcloud", "remedy-jellyfin"}, "notes": "Backups run at night.",
 		},
 		"skills": []any{
 			map[string]any{
-				"name": "paperless", "description": "Paperless keeps its data in /volume1/docker/paperless.",
-				"body": "The consume folder is /volume1/docker/paperless/consume.\n\nA restart is safe.", "evidence": [][]string{{"docker", "ps", "-a"}, {"docker", "inspect", "remedy-paperless"}},
+				"name": "nextcloud", "description": "Nextcloud keeps its data in /storage/docker/nextcloud.",
+				"body": "The consume folder is /storage/docker/nextcloud/consume.\n\nA restart is safe.", "evidence": [][]string{{"docker", "ps", "-a"}, {"docker", "inspect", "remedy-nextcloud"}},
 			},
 		},
 	}
@@ -44,7 +44,7 @@ func skillOf(m map[string]any) map[string]any   { return m["skills"].([]any)[0].
 
 func TestAGoodLearningAnswerIsAccepted(t *testing.T) {
 	l, err := diagnosis.ParseLearn(learnJSON(t, nil))
-	if err != nil || l.Profile.OS != "Debian 12" || len(l.Skills) != 1 || l.Skills[0].Name != "paperless" || len(l.Skills[0].Evidence) != 2 {
+	if err != nil || l.Profile.OS != "Debian 12" || len(l.Skills) != 1 || l.Skills[0].Name != "nextcloud" || len(l.Skills[0].Evidence) != 2 {
 		t.Fatalf("%+v, %v", l, err)
 	}
 	// An answer with no skill is valid: it stores only the profile.
@@ -207,7 +207,7 @@ func TestTheNamesOfProposedSkills(t *testing.T) {
 	cases := map[string]func(m map[string]any){
 		"a duplicate name":           twice,
 		"the reserved name profile":  func(m map[string]any) { skillOf(m)["name"] = "profile" },
-		"an upper case name":         func(m map[string]any) { skillOf(m)["name"] = "Paperless" },
+		"an upper case name":         func(m map[string]any) { skillOf(m)["name"] = "Nextcloud" },
 		"a name with a space":        func(m map[string]any) { skillOf(m)["name"] = "my skill" },
 		"the name of the global tag": func(m map[string]any) { skillOf(m)["name"] = "(global)" },
 		"an empty name":              func(m map[string]any) { skillOf(m)["name"] = "" },
@@ -246,18 +246,18 @@ func TestLearnJSONIsTheCanonicalForm(t *testing.T) {
 
 func TestParseLearnReturnsTheNormalisedSkill(t *testing.T) {
 	l, err := diagnosis.ParseLearn(learnJSON(t, func(m map[string]any) {
-		skillOf(m)["name"] = " paperless "
-		skillOf(m)["description"] = "  Paperless.  "
+		skillOf(m)["name"] = " nextcloud "
+		skillOf(m)["description"] = "  Nextcloud.  "
 		skillOf(m)["body"] = "line one\r\nline two\r\n"
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	k := l.Skills[0]
-	if k.Name != "paperless" || k.Description != "Paperless." || k.Body != "line one\nline two" {
+	if k.Name != "nextcloud" || k.Description != "Nextcloud." || k.Body != "line one\nline two" {
 		t.Fatalf("not normalised: %q %q %q", k.Name, k.Description, k.Body)
 	}
-	if strings.Contains(string(l.JSON()), `\r`) || strings.Contains(string(l.JSON()), ` paperless `) {
+	if strings.Contains(string(l.JSON()), `\r`) || strings.Contains(string(l.JSON()), ` nextcloud `) {
 		t.Errorf("the stored form is not normalised: %s", l.JSON())
 	}
 	// A body at the limit plus trailing spaces is accepted and comes back at the limit; one byte of content more is refused.
@@ -276,7 +276,7 @@ func TestParseLearnReturnsTheNormalisedSkill(t *testing.T) {
 // learnText is the good answer as text, so that a case can place a duplicate or a differently cased key.
 func learnText(top, profile, skill string) string {
 	return `{"profile":{"os":"Debian 12","role":"NAS","services":["sshd"],"containers":[],"notes":""` + profile + `},` +
-		`"skills":[{"name":"paperless","description":"Paperless.","body":"b","evidence":[["uname","-a"]]` + skill + `}]` + top + `}`
+		`"skills":[{"name":"nextcloud","description":"Nextcloud.","body":"b","evidence":[["uname","-a"]]` + skill + `}]` + top + `}`
 }
 
 func TestRepeatedAndDifferentlyCasedKeysAreRefused(t *testing.T) {

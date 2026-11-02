@@ -20,7 +20,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/testutil"
 )
 
-const goodOutage = `{"summary":"NodeDown: the NAS does not answer.","cause":"The host ugreen-nas is unreachable; the exporter reports no scrape.","confidence":"medium","category":"host_problem","affected":["host/ugreen-nas"],"proposed_action":"Check the power and the network of the NAS.","evidence":"incident_get showed the alert and no cluster object belongs to it."}`
+const goodOutage = `{"summary":"NodeDown: the NAS does not answer.","cause":"The host myhost-nas is unreachable; the exporter reports no scrape.","confidence":"medium","category":"host_problem","affected":["host/myhost-nas"],"proposed_action":"Check the power and the network of the NAS.","evidence":"incident_get showed the alert and no cluster object belongs to it."}`
 
 // waitDiagnosed polls the store until the incident is diagnosed.
 func waitDiagnosed(t *testing.T, st *store.Store, id int64) store.Incident {
@@ -82,14 +82,14 @@ func TestAnAlertIsDiagnosedWithoutGitHubAndAnOldOneOnlyByAClick(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &host); err != nil || host.ID == 0 {
 		t.Fatalf("host = %s (%v)", body, err)
 	}
-	patch, _ := json.Marshal(map[string]string{"matchers": `instance=~"ugreen-nas(:[0-9]+)?"`})
+	patch, _ := json.Marshal(map[string]string{"matchers": `instance=~"myhost-nas(:[0-9]+)?"`})
 	if code, body := s.admin(http.MethodPatch, "/api/hosts/"+strconv.FormatInt(host.ID, 10), string(patch)); code != http.StatusOK {
 		t.Fatalf("PATCH host = %d %s", code, body)
 	}
 
 	now := time.Now()
 	fake.SetAlerts(
-		alertmanagertest.Alert("aaaa1111", "NodeDown", map[string]string{"instance": "ugreen-nas", "severity": "critical"}, now.Add(-5*time.Minute)),
+		alertmanagertest.Alert("aaaa1111", "NodeDown", map[string]string{"instance": "myhost-nas", "severity": "critical"}, now.Add(-5*time.Minute)),
 		alertmanagertest.Alert("bbbb2222", "DiskFilling", map[string]string{"severity": "warning"}, now.Add(-5*time.Hour)),
 	)
 	s.app.Signals.RunOnce(ctx)

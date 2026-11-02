@@ -156,7 +156,7 @@ func TestCreateAGlobalAndAHostSkillAndListThem(t *testing.T) {
 	nas := e.host(t, "nas")
 
 	g := e.create(t, `{"name":"lab-notes","description":"How the lab is laid out.","body":"# Lab\n\nThe NAS is nas."}`)
-	h := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"paperless","description":"Paperless keeps its data in /volume1/docker.","body":"Restart is safe."}`, nas.ID))
+	h := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"nextcloud","description":"Nextcloud keeps its data in /storage/docker.","body":"Restart is safe."}`, nas.ID))
 	if g.HostID != nil || g.Host != "" || g.Origin != "written" || g.State != "active" || g.Body != "# Lab\n\nThe NAS is nas." || len(g.Evidence) != 0 || g.Replaces != nil {
 		t.Errorf("global = %+v", g)
 	}
@@ -164,10 +164,10 @@ func TestCreateAGlobalAndAHostSkillAndListThem(t *testing.T) {
 		t.Errorf("host skill = %+v", h)
 	}
 	all := e.list(t, "")
-	if len(all) != 2 || all[0].Name != "lab-notes" || all[1].Name != "paperless" {
+	if len(all) != 2 || all[0].Name != "lab-notes" || all[1].Name != "nextcloud" {
 		t.Errorf("list = %+v, want the global skill first", all)
 	}
-	if one := e.list(t, fmt.Sprintf("?host=%d", nas.ID)); len(one) != 1 || one[0].Name != "paperless" {
+	if one := e.list(t, fmt.Sprintf("?host=%d", nas.ID)); len(one) != 1 || one[0].Name != "nextcloud" {
 		t.Errorf("?host = %+v", one)
 	}
 	if none := e.list(t, "?state=off"); none == nil || len(none) != 0 {
@@ -289,13 +289,13 @@ func TestDeleteRemovesASkillAndRefusesAProposal(t *testing.T) {
 func TestTheProposalsCarryTheirEvidenceAndWhatTheyReplace(t *testing.T) {
 	e := newSkillEnv(t)
 	nas := e.host(t, "nas")
-	current := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"paperless","description":"Current description.","body":"Current body."}`, nas.ID))
+	current := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"nextcloud","description":"Current description.","body":"Current body."}`, nas.ID))
 	e.propose(t, nas.ID,
-		proposal("paperless", "Proposed description.", "Proposed body."),
+		proposal("nextcloud", "Proposed description.", "Proposed body."),
 		proposal("profile", "What the NAS is.", "A NAS."))
 
 	waiting := e.list(t, "?state=proposed")
-	if len(waiting) != 2 || waiting[0].Name != "paperless" || waiting[1].Name != "profile" {
+	if len(waiting) != 2 || waiting[0].Name != "nextcloud" || waiting[1].Name != "profile" {
 		t.Fatalf("proposals = %+v", waiting)
 	}
 	p := waiting[0]
@@ -322,8 +322,8 @@ func TestTheProposalsCarryTheirEvidenceAndWhatTheyReplace(t *testing.T) {
 func TestTheReplacedSkillIsShownWithItsCurrentTextAndOnlyWhileItIsStillTheSameSkill(t *testing.T) {
 	e := newSkillEnv(t)
 	nas := e.host(t, "nas")
-	current := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"paperless","description":"Current.","body":"Current body."}`, nas.ID))
-	e.propose(t, nas.ID, proposal("paperless", "Proposed.", "Proposed body."))
+	current := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"nextcloud","description":"Current.","body":"Current body."}`, nas.ID))
+	e.propose(t, nas.ID, proposal("nextcloud", "Proposed.", "Proposed body."))
 
 	// The maintainer edits the replaced skill after the proposal was made: the review shows the text as it is now.
 	if code, out := e.do(t, http.MethodPatch, fmt.Sprintf("/api/skills/%d", current.ID), `{"description":"Edited since.","body":"Edited body."}`); code != http.StatusOK {
@@ -334,7 +334,7 @@ func TestTheReplacedSkillIsShownWithItsCurrentTextAndOnlyWhileItIsStillTheSameSk
 		t.Errorf("replaces = %+v, want the text as edited", p.Replaces)
 	}
 	// Renamed: it is another skill now, so the proposal replaces nothing.
-	if code, out := e.do(t, http.MethodPatch, fmt.Sprintf("/api/skills/%d", current.ID), `{"name":"paperless-ng"}`); code != http.StatusOK {
+	if code, out := e.do(t, http.MethodPatch, fmt.Sprintf("/api/skills/%d", current.ID), `{"name":"nextcloud-ng"}`); code != http.StatusOK {
 		t.Fatalf("rename = %d %s", code, out)
 	}
 	if p := e.list(t, "?state=proposed")[0]; p.Replaces != nil {
@@ -352,7 +352,7 @@ func TestTheReplacedSkillIsShownWithItsCurrentTextAndOnlyWhileItIsStillTheSameSk
 func TestConfirmActivatesAProposalAndAnEditIsValidated(t *testing.T) {
 	e := newSkillEnv(t)
 	nas := e.host(t, "nas")
-	made := e.propose(t, nas.ID, proposal("profile", "What the NAS is.", "A NAS."), proposal("paperless", "d", "b"))
+	made := e.propose(t, nas.ID, proposal("profile", "What the NAS is.", "A NAS."), proposal("nextcloud", "d", "b"))
 	path := func(id int64, verb string) string { return fmt.Sprintf("/api/skills/%d/%s", id, verb) }
 
 	if code, out := e.do(t, http.MethodPost, path(made[0].ID, "confirm"), `{"description":"","body":"x"}`); code != http.StatusBadRequest || !strings.Contains(out, "description") {
@@ -397,8 +397,8 @@ func TestConfirmWithoutABodyKeepsTheProposalAsItIs(t *testing.T) {
 func TestConfirmingAReplacingProposalUpdatesTheReplacedSkillAndANameTakenMeanwhileIsRefused(t *testing.T) {
 	e := newSkillEnv(t)
 	nas := e.host(t, "nas")
-	current := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"paperless","description":"Current.","body":"Current body."}`, nas.ID))
-	made := e.propose(t, nas.ID, proposal("paperless", "Proposed.", "Proposed body."))
+	current := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"nextcloud","description":"Current.","body":"Current body."}`, nas.ID))
+	made := e.propose(t, nas.ID, proposal("nextcloud", "Proposed.", "Proposed body."))
 
 	code, out := e.do(t, http.MethodPost, fmt.Sprintf("/api/skills/%d/confirm", made[0].ID), "")
 	got := decodeBody[skillJSON](t, out)
@@ -410,11 +410,11 @@ func TestConfirmingAReplacingProposalUpdatesTheReplacedSkillAndANameTakenMeanwhi
 	}
 
 	// A proposal whose replaced skill was deleted, and whose name was taken by a skill the maintainer wrote since.
-	second := e.propose(t, nas.ID, proposal("paperless", "Again.", "Again body."))
+	second := e.propose(t, nas.ID, proposal("nextcloud", "Again.", "Again body."))
 	if code, _ := e.do(t, http.MethodDelete, fmt.Sprintf("/api/skills/%d", current.ID), ""); code != http.StatusNoContent {
 		t.Fatalf("delete = %d", code)
 	}
-	mine := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"paperless","description":"Mine.","body":"My own note."}`, nas.ID))
+	mine := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"nextcloud","description":"Mine.","body":"My own note."}`, nas.ID))
 	if code, out := e.do(t, http.MethodPost, fmt.Sprintf("/api/skills/%d/confirm", second[0].ID), ""); code != http.StatusConflict || !strings.Contains(out, "already exists") {
 		t.Errorf("confirm over a skill the maintainer wrote = %d %s", code, out)
 	}
@@ -426,8 +426,8 @@ func TestConfirmingAReplacingProposalUpdatesTheReplacedSkillAndANameTakenMeanwhi
 func TestConfirmingAnAlreadyHandledReplacingProposalIsA404AndANewOneA409(t *testing.T) {
 	e := newSkillEnv(t)
 	nas := e.host(t, "nas")
-	e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"paperless","description":"Current.","body":"Current body."}`, nas.ID))
-	replacing := e.propose(t, nas.ID, proposal("paperless", "Proposed.", "Proposed body."))[0]
+	e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"nextcloud","description":"Current.","body":"Current body."}`, nas.ID))
+	replacing := e.propose(t, nas.ID, proposal("nextcloud", "Proposed.", "Proposed body."))[0]
 	fresh := e.propose(t, nas.ID, proposal("profile", "What the NAS is.", "A NAS."))[0]
 
 	for _, p := range []store.Skill{replacing, fresh} {
@@ -466,8 +466,8 @@ func TestConfirmRefusesANewSkillInAFullScope(t *testing.T) {
 func TestNoAnswerEchoesWhatAnAgentWrote(t *testing.T) {
 	e := newSkillEnv(t)
 	nas := e.host(t, "nas")
-	e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"paperless","description":"d","body":"b"}`, nas.ID))
-	made := e.propose(t, nas.ID, proposal("paperless", "AGENT-DESCRIPTION", "AGENT-BODY"))
+	e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"nextcloud","description":"d","body":"b"}`, nas.ID))
+	made := e.propose(t, nas.ID, proposal("nextcloud", "AGENT-DESCRIPTION", "AGENT-BODY"))
 	id := made[0].ID
 
 	var answers []string
@@ -587,8 +587,8 @@ func TestTheConflictSentenceFitsTheAction(t *testing.T) {
 func TestGetOneSkillCarriesWhatAProposalReplaces(t *testing.T) {
 	e := newSkillEnv(t)
 	nas := e.host(t, "nas")
-	current := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"paperless","description":"Current.","body":"Current body."}`, nas.ID))
-	made := e.propose(t, nas.ID, proposal("paperless", "Proposed.", "Proposed body."))
+	current := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"nextcloud","description":"Current.","body":"Current body."}`, nas.ID))
+	made := e.propose(t, nas.ID, proposal("nextcloud", "Proposed.", "Proposed body."))
 
 	code, out := e.do(t, http.MethodGet, fmt.Sprintf("/api/skills/%d", made[0].ID), "")
 	p := decodeBody[skillJSON](t, out)
@@ -630,7 +630,7 @@ func TestRejectDeletesAProposalAndNothingElse(t *testing.T) {
 func TestEveryChangeIsInTheActivityFeedWithoutWhatTheSkillSays(t *testing.T) {
 	e := newSkillEnv(t)
 	nas := e.host(t, "nas")
-	a := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"paperless","description":"SECRET-DESCRIPTION","body":"SECRET-BODY"}`, nas.ID))
+	a := e.create(t, fmt.Sprintf(`{"hostId":%d,"name":"nextcloud","description":"SECRET-DESCRIPTION","body":"SECRET-BODY"}`, nas.ID))
 	e.do(t, http.MethodPatch, fmt.Sprintf("/api/skills/%d", a.ID), `{"state":"off"}`)
 	made := e.propose(t, nas.ID, proposal("profile", "SECRET-DESCRIPTION", "SECRET-BODY"))
 	e.do(t, http.MethodPost, fmt.Sprintf("/api/skills/%d/confirm", made[0].ID), "")
@@ -643,7 +643,7 @@ func TestEveryChangeIsInTheActivityFeedWithoutWhatTheSkillSays(t *testing.T) {
 		t.Fatalf("activity = %d %s", code, out)
 	}
 	for _, want := range []string{"skill_created", "skill_updated", "skills_proposed", "skill_confirmed", "skill_rejected", "skill_deleted",
-		"Skill paperless created (host nas)", "Skill paperless turned off (host nas)", "Skill profile confirmed (host nas)", "Proposal other rejected (host nas)", "Skill paperless deleted (host nas)"} {
+		"Skill nextcloud created (host nas)", "Skill nextcloud turned off (host nas)", "Skill profile confirmed (host nas)", "Proposal other rejected (host nas)", "Skill nextcloud deleted (host nas)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the activity feed lacks %q:\n%s", want, out)
 		}

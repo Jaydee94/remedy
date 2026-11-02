@@ -19,7 +19,7 @@ export function statusView(status: HostStatus): { label: string; dot: string; so
   }
 }
 
-/** "192.168.178.118 · tested 5 minutes ago". The port shows only when it is not 22; an IPv6 address gets brackets with a port. */
+/** "192.0.2.10 · tested 5 minutes ago". The port shows only when it is not 22; an IPv6 address gets brackets with a port. */
 export function hostLine(h: Host, now: number): string {
   let where = h.address
   if (h.port !== 22) where = h.address.includes(':') ? `[${h.address}]:${h.port}` : `${h.address}:${h.port}`

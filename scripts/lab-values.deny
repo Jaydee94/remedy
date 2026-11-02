@@ -1,0 +1,7 @@
+# Values that only the maintainer's lab has. scripts/check-no-lab-values.sh fails when a tracked file (outside the history
+# it skips) matches one of them, case-insensitively. One extended regular expression per line.
+# Add the maintainer's own domains here.
+ugreen
+paperless
+jaydee94/homelab
+/volume1

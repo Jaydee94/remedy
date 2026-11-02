@@ -107,15 +107,22 @@ runner:
     size: 1Gi
     storageClass: ""
     existingClaim: ""  # set: use this claim for the login and the CLI's state, create none
-  # The init container installs this CLI before the runner starts. No image contains it.
+  # The init container installs this CLI before the runner starts and checks its SHA-256. No image contains it (the
+  # binary is proprietary). This is the pinned default: an install works with no value here. Override all of it to pin
+  # another version. The vendor publishes the checksums in
+  # https://downloads.claude.ai/claude-code-releases/<version>/manifest.json (platforms.<platform>.checksum, signed by
+  # manifest.json.sig). scripts/cli-checksums.sh writes the version and both checksums; the cli-pin workflow checks them
+  # and Renovate bumps the version, so keep exactly one line of each of the shapes below.
+  # archive: none, or tar.gz with member the file to take out of it. platforms: the vendor's name for the platform and
+  # the SHA-256 of its artifact, per architecture.
   cli:
-    version: ""        # required, pinned
-    urlTemplate: ""    # required: an https URL with {version} and {platform}
-    archive: none      # none, or tar.gz with member the file to take out of it
+    version: "2.1.316"
+    urlTemplate: "https://downloads.claude.ai/claude-code-releases/{version}/{platform}/claude"
+    archive: none
     member: ""
-    platforms:         # the vendor's name for the platform and the SHA-256 of its artifact, per architecture
-      amd64: {name: "", sha256: ""}
-      arm64: {name: "", sha256: ""}
+    platforms:
+      amd64: {name: "linux-x64", sha256: "fd13c70000fec3f2116dfbcbb6121210b4a29328bf0e46210a59dd594a67d824"}
+      arm64: {name: "linux-arm64", sha256: "55cdb8e162d190432696ea54010e0fca2e18d06fa7a7127fd563b9ffd4f22624"}
 
 cluster:
   enabled: false       # the control plane reads the cluster; it runs as the read account (needs networkPolicy.apiServer.cidrs)
@@ -131,13 +138,14 @@ cluster:
 networkPolicy:
   enabled: true
   dnsNamespace: kube-system
-  # Who may reach the public port (8080). The default is where k3s's Traefik runs. The list must not be empty: in a
-  # NetworkPolicy an empty list means every source, so the render fails instead.
+  # Who may reach the public port (8080). There is no default: it depends on what is in front of Remedy, and a guess
+  # would leave the UI unreachable on another cluster or open to the wrong source. The list must not be empty (in a
+  # NetworkPolicy an empty list means every source), so the render fails until you name the peers. Presets:
+  #   k3s with its Traefik:   - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+  #   ingress-nginx:          - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}
+  #   a node or proxy address (no Ingress controller, or a NodePort/LoadBalancer in front): - ipBlock: {cidr: 192.0.2.10/32}
   public:
-    from:
-      - namespaceSelector:
-          matchLabels:
-            kubernetes.io/metadata.name: kube-system
+    from: []
   # The address and port behind kubernetes.default.svc, as the cluster shows them (kubectl get endpoints kubernetes).
   # Required when cluster.enabled is true. The rule is by endpoint address and port (6443 on k3s and kind), not by the
   # service address. The runner's egress to the public range is 443 only, which keeps it from an API server on 6443 by
@@ -155,14 +163,14 @@ networkPolicy:
   # An external server: one address range and TCP to it. An IPv4 range must be /16 to /32 and start at its network
   # address (no host bits), an IPv6 range must be /16 to /128 and lie outside ::/16; 0.0.0.0/0, ::/0 and the like are
   # refused, because they would open everything. Name the server by a single address when you can (/32, /128).
-  #   database: {cidr: 192.168.178.20/32, port: 5432}
+  #   database: {cidr: 192.0.2.20/32, port: 5432}
   # port defaults to 5432 in both forms (an integer from 1 to 65535).
   database: {}
   # Where the control plane may open SSH connections (the host tools): single addresses, never a range. Each entry is
   # one egress rule on the remedy-server policy; the runner has no such rule. The render refuses an IPv4 address that
   # is not /32, an IPv6 address that is not /128, a port outside 1 to 65535, and the API server's own address.
   hosts: []
-  #  - {cidr: 192.168.178.118/32, port: 22}
+  #  - {cidr: 192.0.2.10/32, port: 22}
   # An Alertmanager inside the cluster, one rule on the remedy-server policy: TCP to the pods that match podSelector in
   # the namespace. Empty: no rule. namespace and a non-empty podSelector are required (an empty selector would admit
   # every pod of the namespace); port defaults to 9093.

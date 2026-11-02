@@ -141,7 +141,7 @@ func TestAnAlertBecomesAnIncidentMappedToAHostAndResolvesWhenItIsGone(t *testing
 		t.Fatalf("host = %s (%v)", body, err)
 	}
 	hostPath := "/api/hosts/" + strconv.FormatInt(host.ID, 10)
-	patch, _ := json.Marshal(map[string]string{"matchers": `instance=~"ugreen-nas(:[0-9]+)?"`})
+	patch, _ := json.Marshal(map[string]string{"matchers": `instance=~"myhost-nas(:[0-9]+)?"`})
 	if code, body := do(http.MethodPatch, hostPath, string(patch)); code != http.StatusOK {
 		t.Fatalf("PATCH host = %d %s", code, body)
 	}
@@ -149,7 +149,7 @@ func TestAnAlertBecomesAnIncidentMappedToAHostAndResolvesWhenItIsGone(t *testing
 	// 3. Three alerts: a young critical one of the NAS, an old warning without an instance, and the Watchdog.
 	now := time.Now()
 	fake.SetAlerts(
-		alertmanagertest.Alert("aaaa1111", "NodeDown", map[string]string{"instance": "ugreen-nas", "severity": "critical"}, now.Add(-5*time.Minute)),
+		alertmanagertest.Alert("aaaa1111", "NodeDown", map[string]string{"instance": "myhost-nas", "severity": "critical"}, now.Add(-5*time.Minute)),
 		alertmanagertest.Alert("bbbb2222", "DiskFilling", map[string]string{"severity": "warning"}, now.Add(-5*time.Hour)),
 		alertmanagertest.Alert("cccc3333", "Watchdog", map[string]string{"severity": "none"}, now.Add(-24*time.Hour)),
 	)
@@ -357,7 +357,7 @@ func TestAFlappingAlertReopensItsIncidentAndIsDiagnosedOnce(t *testing.T) {
 	}
 	alerts := func(startsAt time.Time) []map[string]any {
 		return []map[string]any{
-			alertmanagertest.Alert("aaaa1111", "NodeDown", map[string]string{"instance": "ugreen-nas", "severity": "critical"}, startsAt),
+			alertmanagertest.Alert("aaaa1111", "NodeDown", map[string]string{"instance": "myhost-nas", "severity": "critical"}, startsAt),
 			alertmanagertest.Alert("bbbb2222", "DiskFilling", map[string]string{"severity": "warning"}, startsAt.Add(-5*time.Hour)),
 		}
 	}

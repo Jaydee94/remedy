@@ -23,8 +23,8 @@ func PsFilter(pattern string) (string, bool) {
 }
 
 // Expand is the command that runs on the host for a classified command. Every verdict but a read of `docker ps -a` runs
-// as it was asked. That one runs with the host's filter, so that a host shows only the containers of its pattern (a Paperless
-// container next to the drill container never reaches the agent). It is false when no filter can be built, and the
+// as it was asked. That one runs with the host's filter, so that a host shows only the containers of its pattern (another
+// application's container next to the drill container never reaches the agent). It is false when no filter can be built, and the
 // plain `docker ps -a` is never the fallback.
 func Expand(v Verdict, argv []string, r Rules) ([]string, bool) {
 	if v.Form != psForm {

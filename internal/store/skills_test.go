@@ -20,12 +20,12 @@ func TestCreateSkillWritesAnActiveWrittenSkillAndItsActivity(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
 
-	host, err := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
+	host, err := s.CreateSkill(ctx, nas.ID, skillFields("nextcloud"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if host.HostID != nas.ID || host.HostName != "nas" || host.Origin != store.SkillOriginWritten || host.State != store.SkillActive ||
-		host.RunID != "" || host.ReplacesID != 0 || host.ConfirmedAt != nil || len(host.Evidence) != 0 || host.CreatedAt.IsZero() || host.Body != "Body of paperless." {
+		host.RunID != "" || host.ReplacesID != 0 || host.ConfirmedAt != nil || len(host.Evidence) != 0 || host.CreatedAt.IsZero() || host.Body != "Body of nextcloud." {
 		t.Errorf("host skill = %+v", host)
 	}
 	global, err := s.CreateSkill(ctx, 0, skillFields("lab-notes"))
@@ -33,7 +33,7 @@ func TestCreateSkillWritesAnActiveWrittenSkillAndItsActivity(t *testing.T) {
 		t.Fatalf("global skill = %+v, %v", global, err)
 	}
 	got := activitySummaries(t, s)
-	if len(got) < 2 || got[0] != "Skill lab-notes created (global)" || got[1] != "Skill paperless created (host nas)" {
+	if len(got) < 2 || got[0] != "Skill lab-notes created (global)" || got[1] != "Skill nextcloud created (host nas)" {
 		t.Errorf("activity = %q", got)
 	}
 	for _, line := range got {
@@ -110,23 +110,23 @@ func TestAScopeHoldsAtMostThirtySkills(t *testing.T) {
 func TestUpdateSkillChangesTheTextsAndTheStateAndSaysWhich(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	k, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
+	k, _ := s.CreateSkill(ctx, nas.ID, skillFields("nextcloud"))
 
 	time.Sleep(5 * time.Millisecond) // so that a later updated_at is strictly later
-	off, err := s.UpdateSkill(ctx, k.ID, skillFields("paperless"), store.SkillOff)
+	off, err := s.UpdateSkill(ctx, k.ID, skillFields("nextcloud"), store.SkillOff)
 	if err != nil || off.State != store.SkillOff || off.Origin != store.SkillOriginWritten || !off.UpdatedAt.After(k.UpdatedAt) {
 		t.Fatalf("off = %+v, %v", off, err)
 	}
-	on, err := s.UpdateSkill(ctx, k.ID, skillFields("paperless"), store.SkillActive)
+	on, err := s.UpdateSkill(ctx, k.ID, skillFields("nextcloud"), store.SkillActive)
 	if err != nil || on.State != store.SkillActive {
 		t.Fatalf("on = %+v, %v", on, err)
 	}
-	changed, err := s.UpdateSkill(ctx, k.ID, skill.Fields{Name: "paperless-ngx", Description: "New description.", Body: "New body."}, store.SkillActive)
-	if err != nil || changed.Name != "paperless-ngx" || changed.Description != "New description." || changed.Body != "New body." {
+	changed, err := s.UpdateSkill(ctx, k.ID, skill.Fields{Name: "nextcloud-ngx", Description: "New description.", Body: "New body."}, store.SkillActive)
+	if err != nil || changed.Name != "nextcloud-ngx" || changed.Description != "New description." || changed.Body != "New body." {
 		t.Fatalf("changed = %+v, %v", changed, err)
 	}
 	got := activitySummaries(t, s)
-	want := []string{"Skill paperless-ngx changed (host nas)", "Skill paperless turned on (host nas)", "Skill paperless turned off (host nas)"}
+	want := []string{"Skill nextcloud-ngx changed (host nas)", "Skill nextcloud turned on (host nas)", "Skill nextcloud turned off (host nas)"}
 	for i, w := range want {
 		if got[i] != w {
 			t.Errorf("activity %d = %q, want %q", i, got[i], w)
@@ -184,7 +184,7 @@ func TestListSkillsIsOrderedAndFiltered(t *testing.T) {
 	for _, c := range []struct {
 		host int64
 		name string
-	}{{nas.ID, "profile"}, {0, "zeta"}, {alpha.ID, "backup"}, {0, "alpha-notes"}, {nas.ID, "paperless"}} {
+	}{{nas.ID, "profile"}, {0, "zeta"}, {alpha.ID, "backup"}, {0, "alpha-notes"}, {nas.ID, "nextcloud"}} {
 		if _, err := s.CreateSkill(ctx, c.host, skillFields(c.name)); err != nil {
 			t.Fatal(err)
 		}
@@ -204,13 +204,13 @@ func TestListSkillsIsOrderedAndFiltered(t *testing.T) {
 		}
 		return strings.Join(out, " ")
 	}
-	if got, want := names(store.SkillFilter{}), "/alpha-notes /zeta alpha/backup nas/paperless nas/profile"; got != want {
+	if got, want := names(store.SkillFilter{}), "/alpha-notes /zeta alpha/backup nas/nextcloud nas/profile"; got != want {
 		t.Errorf("all = %q, want %q (global first, then by host and name)", got, want)
 	}
-	if got := names(store.SkillFilter{HostID: nas.ID}); got != "nas/paperless nas/profile" {
+	if got := names(store.SkillFilter{HostID: nas.ID}); got != "nas/nextcloud nas/profile" {
 		t.Errorf("host = %q", got)
 	}
-	if got := names(store.SkillFilter{State: store.SkillOff}); got != "nas/paperless" {
+	if got := names(store.SkillFilter{State: store.SkillOff}); got != "nas/nextcloud" {
 		t.Errorf("state off = %q", got)
 	}
 	if list, err := s.ListSkills(ctx, store.SkillFilter{State: store.SkillProposed}); err != nil || list == nil || len(list) != 0 {
@@ -224,7 +224,7 @@ func TestDeletingAHostDeletesItsSkillsAndSaysHowMany(t *testing.T) {
 	for _, c := range []struct {
 		host int64
 		name string
-	}{{nas.ID, "paperless"}, {nas.ID, "profile"}, {alpha.ID, "backup"}, {0, "lab-notes"}} {
+	}{{nas.ID, "nextcloud"}, {nas.ID, "profile"}, {alpha.ID, "backup"}, {0, "lab-notes"}} {
 		if _, err := s.CreateSkill(ctx, c.host, skillFields(c.name)); err != nil {
 			t.Fatal(err)
 		}

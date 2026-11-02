@@ -215,7 +215,7 @@ func TestTheAnswerOfTheHomeServerIsReadAsItIs(t *testing.T) {
 	}
 	var nas int
 	for _, a := range got {
-		if a.Labels["instance"] == "ugreen-nas" {
+		if a.Labels["instance"] == "myhost-nas" {
 			nas++
 		}
 	}

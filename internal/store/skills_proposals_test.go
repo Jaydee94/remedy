@@ -53,7 +53,7 @@ func TestCreateProposalsStoresProposedSkillsWithTheirEvidenceAndOneActivityEntry
 
 	got, err := s.CreateProposals(ctx, store.ProposalSet{HostID: nas.ID, RunID: runID, Items: []store.Proposal{
 		{Fields: skillFields("profile"), Evidence: dockerPS},
-		{Fields: skillFields("paperless"), Evidence: []skill.Evidence{{Argv: []string{"uname", "-a"}, Ran: false}}},
+		{Fields: skillFields("nextcloud"), Evidence: []skill.Evidence{{Argv: []string{"uname", "-a"}, Ran: false}}},
 	}})
 	if err != nil || len(got) != 2 {
 		t.Fatalf("CreateProposals = %+v, %v", got, err)
@@ -149,9 +149,9 @@ func TestAProposalDoesNotCountAgainstTheLimitAndNeverCollidesWithAnActiveSkill(t
 func TestANewProposalReplacesThePendingOneOfTheSameName(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas, alpha := hostNamed(t, s, "nas"), hostNamed(t, s, "alpha")
-	first := propose(t, s, nas.ID, "paperless", "profile")
-	propose(t, s, alpha.ID, "paperless")
-	second := propose(t, s, nas.ID, "paperless")
+	first := propose(t, s, nas.ID, "nextcloud", "profile")
+	propose(t, s, alpha.ID, "nextcloud")
+	second := propose(t, s, nas.ID, "nextcloud")
 
 	var onNas []string
 	for _, p := range proposals(t, s) {
@@ -159,8 +159,8 @@ func TestANewProposalReplacesThePendingOneOfTheSameName(t *testing.T) {
 			onNas = append(onNas, p.Name)
 		}
 	}
-	if strings.Join(onNas, " ") != "paperless profile" {
-		t.Errorf("proposals of nas = %v, want one paperless and the profile", onNas)
+	if strings.Join(onNas, " ") != "nextcloud profile" {
+		t.Errorf("proposals of nas = %v, want one nextcloud and the profile", onNas)
 	}
 	if n := len(proposals(t, s)); n != 3 {
 		t.Errorf("%d proposals, want 3 (the other host's is untouched)", n)
@@ -176,7 +176,7 @@ func TestANewProposalReplacesThePendingOneOfTheSameName(t *testing.T) {
 func TestConfirmMakesAProposalActiveAndKeepsItsOrigin(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	p := propose(t, s, nas.ID, "paperless")[0]
+	p := propose(t, s, nas.ID, "nextcloud")[0]
 
 	got, err := s.ConfirmSkill(ctx, p.ID, nil)
 	if err != nil {
@@ -186,7 +186,7 @@ func TestConfirmMakesAProposalActiveAndKeepsItsOrigin(t *testing.T) {
 		len(got.Evidence) != 1 || got.Description != p.Description || got.Body != p.Body {
 		t.Errorf("confirmed = %+v", got)
 	}
-	if first := activitySummaries(t, s)[0]; first != "Skill paperless confirmed (host nas)" {
+	if first := activitySummaries(t, s)[0]; first != "Skill nextcloud confirmed (host nas)" {
 		t.Errorf("activity = %q", first)
 	}
 	if _, err := s.ConfirmSkill(ctx, p.ID, nil); !errors.Is(err, store.ErrSkillState) {
@@ -203,7 +203,7 @@ func TestConfirmMakesAProposalActiveAndKeepsItsOrigin(t *testing.T) {
 func TestConfirmWithAnEditUsesTheEditedTextAndRefusesABadOne(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	p := propose(t, s, nas.ID, "paperless")[0]
+	p := propose(t, s, nas.ID, "nextcloud")[0]
 
 	var fe *skill.FieldError
 	if _, err := s.ConfirmSkill(ctx, p.ID, &skill.Fields{Description: "", Body: "b"}); !errors.As(err, &fe) || fe.Field != "description" {
@@ -216,7 +216,7 @@ func TestConfirmWithAnEditUsesTheEditedTextAndRefusesABadOne(t *testing.T) {
 		t.Fatalf("a refused edit changed the proposal: %+v", got)
 	}
 	got, err := s.ConfirmSkill(ctx, p.ID, &skill.Fields{Name: "ignored", Description: "Edited description.", Body: "Edited body."})
-	if err != nil || got.Name != "paperless" || got.Description != "Edited description." || got.Body != "Edited body." || got.State != store.SkillActive {
+	if err != nil || got.Name != "nextcloud" || got.Description != "Edited description." || got.Body != "Edited body." || got.State != store.SkillActive {
 		t.Fatalf("confirmed with an edit = %+v, %v", got, err)
 	}
 }
@@ -224,11 +224,11 @@ func TestConfirmWithAnEditUsesTheEditedTextAndRefusesABadOne(t *testing.T) {
 func TestConfirmingAReplacingProposalUpdatesTheReplacedSkillInPlace(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
-	if _, err := s.UpdateSkill(ctx, old.ID, skillFields("paperless"), store.SkillOff); err != nil {
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("nextcloud"))
+	if _, err := s.UpdateSkill(ctx, old.ID, skillFields("nextcloud"), store.SkillOff); err != nil {
 		t.Fatal(err)
 	}
-	p := propose(t, s, nas.ID, "paperless")[0]
+	p := propose(t, s, nas.ID, "nextcloud")[0]
 	if p.ReplacesID != old.ID {
 		t.Fatalf("the proposal replaces %d, want %d", p.ReplacesID, old.ID)
 	}
@@ -248,7 +248,7 @@ func TestConfirmingAReplacingProposalUpdatesTheReplacedSkillInPlace(t *testing.T
 	if len(all) != 1 {
 		t.Errorf("%d skills, want the one that was updated", len(all))
 	}
-	if first := activitySummaries(t, s)[0]; first != "Skill paperless confirmed (host nas); it replaces the earlier text" {
+	if first := activitySummaries(t, s)[0]; first != "Skill nextcloud confirmed (host nas); it replaces the earlier text" {
 		t.Errorf("activity = %q", first)
 	}
 }
@@ -256,8 +256,8 @@ func TestConfirmingAReplacingProposalUpdatesTheReplacedSkillInPlace(t *testing.T
 func TestConfirmingAProposalWhoseReplacedSkillWasDeletedCreatesANewSkill(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
-	p := propose(t, s, nas.ID, "paperless")[0]
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("nextcloud"))
+	p := propose(t, s, nas.ID, "nextcloud")[0]
 	if err := s.DeleteSkill(ctx, old.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -270,12 +270,12 @@ func TestConfirmingAProposalWhoseReplacedSkillWasDeletedCreatesANewSkill(t *test
 func TestConfirmingRefusesToOverwriteASkillTheMaintainerWroteMeanwhile(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
-	p := propose(t, s, nas.ID, "paperless")[0]
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("nextcloud"))
+	p := propose(t, s, nas.ID, "nextcloud")[0]
 	if err := s.DeleteSkill(ctx, old.ID); err != nil {
 		t.Fatal(err)
 	}
-	mine, err := s.CreateSkill(ctx, nas.ID, skill.Fields{Name: "paperless", Description: "Mine.", Body: "My own note."})
+	mine, err := s.CreateSkill(ctx, nas.ID, skill.Fields{Name: "nextcloud", Description: "Mine.", Body: "My own note."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,14 +314,14 @@ func TestConfirmingAtTheLimitIsRefusedUnlessItReplaces(t *testing.T) {
 func TestRejectDeletesTheProposalAndLogsIt(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	p := propose(t, s, nas.ID, "paperless")[0]
+	p := propose(t, s, nas.ID, "nextcloud")[0]
 	if err := s.RejectSkill(ctx, p.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.GetSkill(ctx, p.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("the rejected proposal is still there: %v", err)
 	}
-	if first := activitySummaries(t, s)[0]; first != "Proposal paperless rejected (host nas)" {
+	if first := activitySummaries(t, s)[0]; first != "Proposal nextcloud rejected (host nas)" {
 		t.Errorf("activity = %q", first)
 	}
 	if n := count(activityKinds(t, s), store.KindSkillRejected); n != 1 {
@@ -339,8 +339,8 @@ func TestRejectDeletesTheProposalAndLogsIt(t *testing.T) {
 func TestAProposalCanOnlyBeConfirmedOrRejectedNotEditedOrDeleted(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	p := propose(t, s, nas.ID, "paperless")[0]
-	if _, err := s.UpdateSkill(ctx, p.ID, skillFields("paperless"), store.SkillActive); !errors.Is(err, store.ErrSkillState) {
+	p := propose(t, s, nas.ID, "nextcloud")[0]
+	if _, err := s.UpdateSkill(ctx, p.ID, skillFields("nextcloud"), store.SkillActive); !errors.Is(err, store.ErrSkillState) {
 		t.Errorf("UpdateSkill on a proposal = %v, want ErrSkillState", err)
 	}
 	if err := s.DeleteSkill(ctx, p.ID); !errors.Is(err, store.ErrSkillState) {
@@ -483,8 +483,8 @@ func TestConfirmAndRejectAfterTheHostWasDeletedAreNotFound(t *testing.T) {
 func TestConfirmingAReplacingProposalTwiceIsNotFoundTheSecondTime(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
-	p := propose(t, s, nas.ID, "paperless")[0]
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("nextcloud"))
+	p := propose(t, s, nas.ID, "nextcloud")[0]
 	if _, err := s.ConfirmSkill(ctx, p.ID, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -499,8 +499,8 @@ func TestConfirmingAReplacingProposalTwiceIsNotFoundTheSecondTime(t *testing.T) 
 func TestAReplacingConfirmationWithoutAnEditAppliesTheProposalsText(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
-	p := propose(t, s, nas.ID, "paperless")[0]
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("nextcloud"))
+	p := propose(t, s, nas.ID, "nextcloud")[0]
 
 	got, err := s.ConfirmSkill(ctx, p.ID, nil)
 	if err != nil || got.ID != old.ID || got.Description != p.Description || got.Body != p.Body || len(got.Evidence) != 1 {
@@ -511,20 +511,20 @@ func TestAReplacingConfirmationWithoutAnEditAppliesTheProposalsText(t *testing.T
 func TestAReplacingConfirmationNeverOverwritesASkillThatWasRenamedMeanwhile(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
-	p := propose(t, s, nas.ID, "paperless")[0]
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("nextcloud"))
+	p := propose(t, s, nas.ID, "nextcloud")[0]
 	if p.ReplacesID != old.ID {
 		t.Fatalf("the proposal replaces %d, want %d", p.ReplacesID, old.ID)
 	}
-	if _, err := s.UpdateSkill(ctx, old.ID, skill.Fields{Name: "paperless-ngx", Description: "Renamed.", Body: "Renamed body."}, store.SkillActive); err != nil {
+	if _, err := s.UpdateSkill(ctx, old.ID, skill.Fields{Name: "nextcloud-ngx", Description: "Renamed.", Body: "Renamed body."}, store.SkillActive); err != nil {
 		t.Fatal(err)
 	}
 
 	got, err := s.ConfirmSkill(ctx, p.ID, nil)
-	if err != nil || got.ID != p.ID || got.Name != "paperless" || got.State != store.SkillActive {
+	if err != nil || got.ID != p.ID || got.Name != "nextcloud" || got.State != store.SkillActive {
 		t.Fatalf("confirmed = %+v, %v; the proposal becomes a skill of its own", got, err)
 	}
-	if kept, _ := s.GetSkill(ctx, old.ID); kept.Name != "paperless-ngx" || kept.Body != "Renamed body." || kept.Origin != store.SkillOriginWritten {
+	if kept, _ := s.GetSkill(ctx, old.ID); kept.Name != "nextcloud-ngx" || kept.Body != "Renamed body." || kept.Origin != store.SkillOriginWritten {
 		t.Errorf("the renamed skill was overwritten: %+v", kept)
 	}
 }
@@ -532,12 +532,12 @@ func TestAReplacingConfirmationNeverOverwritesASkillThatWasRenamedMeanwhile(t *t
 func TestAReplacingConfirmationRefusesWhenTheRenamedSkillsOldNameIsTakenAgain(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
-	p := propose(t, s, nas.ID, "paperless")[0]
-	if _, err := s.UpdateSkill(ctx, old.ID, skillFields("paperless-ngx"), store.SkillActive); err != nil {
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("nextcloud"))
+	p := propose(t, s, nas.ID, "nextcloud")[0]
+	if _, err := s.UpdateSkill(ctx, old.ID, skillFields("nextcloud-ngx"), store.SkillActive); err != nil {
 		t.Fatal(err)
 	}
-	mine, err := s.CreateSkill(ctx, nas.ID, skill.Fields{Name: "paperless", Description: "Mine.", Body: "My own note."})
+	mine, err := s.CreateSkill(ctx, nas.ID, skill.Fields{Name: "nextcloud", Description: "Mine.", Body: "My own note."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -552,9 +552,9 @@ func TestAReplacingConfirmationRefusesWhenTheRenamedSkillsOldNameIsTakenAgain(t 
 func TestAReplacingConfirmationAppliesTheProposalsTextOverAnEditMadeMeanwhile(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
-	p := propose(t, s, nas.ID, "paperless")[0]
-	if _, err := s.UpdateSkill(ctx, old.ID, skill.Fields{Name: "paperless", Description: "Edited later.", Body: "Edited later body."}, store.SkillActive); err != nil {
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("nextcloud"))
+	p := propose(t, s, nas.ID, "nextcloud")[0]
+	if _, err := s.UpdateSkill(ctx, old.ID, skill.Fields{Name: "nextcloud", Description: "Edited later.", Body: "Edited later body."}, store.SkillActive); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.ConfirmSkill(ctx, p.ID, nil)
@@ -566,8 +566,8 @@ func TestAReplacingConfirmationAppliesTheProposalsTextOverAnEditMadeMeanwhile(t 
 func TestProposalWithReplacedReturnsBothInOneRead(t *testing.T) {
 	s, ctx := openStore(t), context.Background()
 	nas := hostNamed(t, s, "nas")
-	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("paperless"))
-	got := propose(t, s, nas.ID, "paperless", "fresh")
+	old, _ := s.CreateSkill(ctx, nas.ID, skillFields("nextcloud"))
+	got := propose(t, s, nas.ID, "nextcloud", "fresh")
 
 	p, replaced, err := s.ProposalWithReplaced(ctx, got[0].ID)
 	if err != nil || p.ID != got[0].ID || p.State != store.SkillProposed || replaced == nil || replaced.ID != old.ID || replaced.Body != old.Body {

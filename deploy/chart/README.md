@@ -11,8 +11,10 @@ Spec: [`docs/specs/2026-10-06-kubernetes-deployment-design.md`](../../docs/specs
   its own and needs a Secret with its password (`postgres.existingSecret`, the key `postgres.passwordKey`, default
   `password`); or a PostgreSQL 16 or newer of your own and a Secret with its connection URL (`database.existingSecret`, the
   key `database.secretKey`, default `url`). The chart never creates either Secret and refuses a password or URL as a value.
-- The pinned CLI: `runner.cli.version`, `runner.cli.urlTemplate`, and the platform names and SHA-256 per architecture
-  (`docs/research/k8s-s4-cli-install.md` says where they come from). No image contains the CLI.
+- Who may reach the UI: `networkPolicy.public.from`, the peers in front of Remedy (the Ingress controller's namespace, or an
+  `ipBlock`). It has no default; the render fails with the presets until you set it.
+- The pinned CLI needs nothing from you: the chart ships one as the default of `runner.cli` (version, URL and the SHA-256
+  per architecture; `docs/research/k8s-s4-cli-install.md` says where they come from). No image contains the CLI.
 
 ## What it renders
 
@@ -243,11 +245,11 @@ networkPolicy:
     podSelector: {cnpg.io/cluster: remedy}   # must not be empty
     port: 5432                       # default 5432
   # or an external server:
-  # database: {cidr: 192.168.178.20/32, port: 5432}
+  # database: {cidr: 192.0.2.20/32, port: 5432}
 ```
 
 `cidr` is the range of the external server. An IPv4 range must be `/16` to `/32` and start at its network address
-(`192.168.178.20/8` or `192.168.178.20/24` is refused: a typo of the prefix would open a whole network), and an IPv6 range
+(`192.0.2.20/8` or `192.0.2.20/24` is refused: a typo of the prefix would open a whole network), and an IPv6 range
 must be `/16` to `/128` and lie outside `::/16` (which holds `::/0`, `::1` and the IPv4-mapped range `::ffff:0:0/96`); the
 rest is refused because it would open everything to the pod that holds the credentials. Use the single address (`/32`,
 `/128`) when you can. The rule is on the `remedy-server` policy only: the runner and the token refresher never
@@ -294,7 +296,7 @@ and then render nothing; the render fails for a value that breaks a rule, and ig
 ```yaml
 networkPolicy:
   hosts:
-    - {cidr: 192.168.178.118/32, port: 22}
+    - {cidr: 192.0.2.10/32, port: 22}
   alertmanager:
     namespace: monitoring
     podSelector: {app.kubernetes.io/name: vmalertmanager}
@@ -306,24 +308,37 @@ networkPolicy:
 
 ## Install from the OCI registry
 
-A release publishes the chart as an OCI artifact (expected from the first release; none exists yet):
+A release publishes the chart as an OCI artifact:
 
 ```sh
-helm install remedy oci://ghcr.io/jaydee94/charts/remedy --version X.Y.Z -n remedy-system \
-  -f deploy/cli-pin.yaml -f my-values.yaml
+helm install remedy oci://ghcr.io/jaydee94/charts/remedy --version X.Y.Z -n remedy-system -f my-values.yaml
 ```
 
-`deploy/cli-pin.yaml` is the pin file of the repository at the tag `vX.Y.Z` (the chart does not contain it). The chart in the
-registry is packaged by the release with `version` and `appVersion` equal to the release, so its default image tag pulls the
-images `X.Y.Z`. The package `charts/remedy` must be public. Under Argo CD see the runbook; the OCI install is not yet proven on a
-cluster. The release is described in [`docs/runbook/release.md`](../../docs/runbook/release.md).
+The chart carries the pinned CLI as the default of `runner.cli` (version, download URL and the SHA-256 of both platforms), so
+`my-values.yaml` needs no pin. Set all of `runner.cli` to pin another version. Installs before the release that moved the pin
+passed it as `-f deploy/cli-pin.yaml`; that file is gone, and passing the pin of an older release still works, because your
+values win over the chart's defaults. The chart in the registry is packaged by the release with `version` and `appVersion`
+equal to the release, so its default image tag pulls the images `X.Y.Z`. The package `charts/remedy` is public. Under Argo CD
+see the runbook; the OCI install is not yet proven on a cluster. The release is described in
+[`docs/runbook/release.md`](../../docs/runbook/release.md).
+
+## Upgrading from 0.17
+
+Two defaults went away in the release after 0.17:
+
+- `networkPolicy.public.from` has no default any more (it was the `kube-system` namespace, where k3s's Traefik runs). The render
+  fails with the presets until you name who may reach the UI: `kube-system` for k3s, `ingress-nginx`, or an `ipBlock` for a node or
+  proxy address. An install that already sets it, as the homelab runbook does, is not affected. With `networkPolicy.enabled=false`
+  nothing is needed.
+- `deploy/cli-pin.yaml` is gone; the pinned CLI is the default of `runner.cli` (see above). Drop `-f deploy/cli-pin.yaml` or the
+  Argo CD source that reads it. A pin you pass yourself keeps winning, which also means it freezes the CLI: drop it to follow the chart's pin, which moves with each release.
 
 ## Checking it
 
 `make chart-check` lints, renders, validates (kubeconform) and runs the render tests in `deploy/`.
 
-## Installing it in a homelab
+## Installing it
 
-[`docs/runbook/homelab-deploy.md`](../../docs/runbook/homelab-deploy.md): the namespace, a SealedSecret, the values, an Argo CD
-Application with two sources of this repository (the chart, and the pinned CLI in `deploy/cli-pin.yaml`), the one-time login and
-upgrades.
+[`docs/runbook/install.md`](../../docs/runbook/install.md) is the install on a cluster of your own. The maintainer's install on a k3s
+homelab under Argo CD is the example in [`docs/runbook/homelab-deploy.md`](../../docs/runbook/homelab-deploy.md): the namespace, a SealedSecret, the values, an Argo CD
+Application, the one-time login and upgrades.
