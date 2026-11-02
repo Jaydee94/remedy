@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.18.1](https://github.com/Jaydee94/remedy/compare/v0.18.0...v0.18.1) (2026-11-02)
+
+### Bug Fixes
+
+* UpdateSkill answers with the row it updated, read in the same transaction ([#186](https://github.com/Jaydee94/remedy/issues/186)) ([e4e224b](https://github.com/Jaydee94/remedy/commit/e4e224bc6e2b6ecee28ebb7f242601e1918cbc4c))
+
 ## [0.18.0](https://github.com/Jaydee94/remedy/compare/v0.17.1...v0.18.0) (2026-11-02)
 
 ### ⚠ BREAKING CHANGES
