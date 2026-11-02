@@ -80,4 +80,32 @@ r=$(mkrepo j); cp "$HERE/check-no-lab-values_test.sh" "$r/scripts/" 2> /dev/null
 printf 'ugreen\n' >> "$r/scripts/check-no-lab-values_test.sh"; git -C "$r" add -A
 run "$r"; want "the script, its deny file and its test are not scanned" 0
 
+# (k) A text file that is not valid UTF-8 is still scanned: grep -I treats it as binary in a UTF-8 locale, so the script reads in the C locale.
+UTF=
+for l in en_US.UTF-8 C.UTF-8 en_US.utf8 C.utf8; do if locale -a 2> /dev/null | grep -qix "$l"; then UTF=$l; break; fi; done
+r=$(mkrepo k); printf 'caf\351 ugreen\n' > "$r/latin1.txt"; git -C "$r" add -A
+if [ -n "$UTF" ]; then
+  export LC_ALL=$UTF; run "$r"; unset LC_ALL
+  want "a Latin-1 text file is scanned under a UTF-8 locale" 1
+else
+  echo "skip  no UTF-8 locale installed: the Latin-1 case is not run"
+fi
+
+# (l) A deny file written with CRLF line endings, or with trailing blanks, still matches.
+r=$(mkrepo l); printf 'ugreen\r\n' > "$r/scripts/lab-values.deny"; printf 'ugreen\n' > "$r/x.txt"; git -C "$r" add -A
+run "$r"; want "a CRLF line in the deny file matches" 1
+r=$(mkrepo l2); printf 'ugreen  \n' > "$r/scripts/lab-values.deny"; printf 'ugreen\n' > "$r/x.txt"; git -C "$r" add -A
+run "$r"; want "trailing blanks in the deny file are ignored" 1
+
+# (m) A pattern that is not a valid regular expression is an error, not a pass.
+r=$(mkrepo m); printf 'a(\n' > "$r/scripts/lab-values.deny"; printf 'ugreen\n' > "$r/x.txt"; git -C "$r" add -A
+run "$r"; want "an invalid regular expression is an error" 2
+
+# (n) A grep that cannot do its job must not look like a clean pass.
+r=$(mkrepo n); printf 'ugreen\n' > "$r/x.txt"; git -C "$r" add -A
+real_grep=$(command -v grep); fake=$WORK/fakebin; mkdir -p "$fake"
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -I ] && { echo "grep: broken" >&2; exit 2; }; done\nexec %s "$@"\n' "$real_grep" > "$fake/grep"; chmod +x "$fake/grep"
+out=$(cd "$r" && PATH="$fake:$PATH" sh scripts/check-no-lab-values.sh 2>&1); rc=$?
+want "a failing grep is an error" 2
+
 [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails failed" >&2; exit 1; }

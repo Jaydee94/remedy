@@ -331,7 +331,7 @@ Two defaults went away in the release after 0.17:
   proxy address. An install that already sets it, as the homelab runbook does, is not affected. With `networkPolicy.enabled=false`
   nothing is needed.
 - `deploy/cli-pin.yaml` is gone; the pinned CLI is the default of `runner.cli` (see above). Drop `-f deploy/cli-pin.yaml` or the
-  Argo CD source that reads it. A pin you pass yourself keeps winning.
+  Argo CD source that reads it. A pin you pass yourself keeps winning, which also means it freezes the CLI: drop it to follow the chart's pin, which moves with each release.
 
 ## Checking it
 

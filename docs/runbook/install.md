@@ -141,7 +141,7 @@ to watch. A failed check becomes an incident, and Remedy diagnoses it. Then, as 
   `cluster.write.enabled` and the namespaces they may touch. See the [chart README](../../deploy/chart/README.md).
 - **Other machines.** The Hosts page and `networkPolicy.hosts` for the SSH egress; [`skills.md`](skills.md) for what Remedy
   learns about them.
-- **An Alertmanager.** [`alertmanager.md`](alertmanager.md). If it already holds firing alerts, set `diagnose_max_per_day` to 0
+- **An Alertmanager.** [`alertmanager.md`](alertmanager.md). If it already holds firing alerts, set "Automatic diagnoses per 24 hours" (`diagnose_max_per_day`) to 0
   in Setup first: every young `critical` or `warning` alert would otherwise be diagnosed on its own, at the cost of
   subscription quota.
 
@@ -165,7 +165,8 @@ helm upgrade remedy oci://ghcr.io/jaydee94/charts/remedy --version X.Y.Z -n reme
 ```
 
 The control plane restarts with `Recreate`: a minute without the UI, runs in flight end as lost. The CLI pin is part of the
-chart, so a new CLI version arrives with a new release.
+chart, so a new CLI version arrives with a new release, *unless you set `runner.cli` yourself* (or still pass the pin file of an
+older release with `-f`): a pin of your own wins over the chart's and stays until you remove it.
 
 ## 12. If it does not work
 
@@ -173,5 +174,8 @@ chart, so a new CLI version arrives with a new release.
 - `helm install` fails with `networkPolicy.public.from must list at least one peer`: section 5.
 - The runner restarts in a loop and its probes fail: the CNI may block the kubelet's probes on port 8082. Set
   `networkPolicy.enabled=false` for the time of the check. More in [`homelab-deploy.md`](homelab-deploy.md), section 12.
+- The control plane never becomes Ready: its probes on port 8080 reach the pod from the node, and `networkPolicy.public.from` names
+  only the peers you gave it. On a CNI that blocks the node's traffic add the node's address range as an `ipBlock` to
+  `networkPolicy.public.from`, or set `networkPolicy.enabled=false` for the time of the check.
 - `init:Error` on the runner: the init container could not download the CLI or its checksum did not match
   (`kubectl -n remedy logs remedy-runner-0 -c install-cli`).

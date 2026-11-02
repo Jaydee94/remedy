@@ -295,7 +295,7 @@ At the first sync:
   that restarts in a loop with failing probes means the CNI blocks them. A value `networkPolicy.runner.probeFrom` does not
   exist yet; until it does, the workaround is `networkPolicy.enabled=false`.
 - The control plane's own readiness and liveness probes (port 8080) pass the default policy only if the CNI lets the kubelet in:
-  `networkPolicy.public.from` defaults to the `kube-system` namespace and does not include the node. This was never exercised on
+  `networkPolicy.public.from` has no default (the values of section 5 name the `kube-system` namespace) and does not include the node. This was never exercised on
   the kind dummy, because `dummy-values.yaml` opens `public.from` to `0.0.0.0/0`. On a CNI that blocks the node's traffic the
   server would never become Ready, Argo CD would never report it Healthy and (with the write side on) the `PostSync` hook would never run. k3s's
   kube-router is believed to let sources on the local node through, but that is unverified. The workaround that exists today: add

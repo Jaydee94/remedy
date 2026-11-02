@@ -19,25 +19,34 @@ top=$(git rev-parse --show-toplevel 2> /dev/null) || { echo "check-no-lab-values
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 pat=$tmp/patterns
-grep -v -E '^[[:space:]]*(#|$)' "$DENY" > "$pat"
+# Comments and blank lines go; a CRLF line ending or trailing blanks are not part of a pattern.
+grep -v -E '^[[:space:]]*(#|$)' "$DENY" | sed 's/[[:space:]]*$//' > "$pat"
 [ -s "$pat" ] || { echo "check-no-lab-values: $DENY holds no pattern" >&2; exit 2; }
 
 # A pattern grep cannot read must not look like "no hit": xargs below cannot tell grep's exit 2 from its exit 1.
-printf '' | grep -E -f "$pat" > /dev/null 2>&1
+printf '' | LC_ALL=C grep -E -f "$pat" > /dev/null 2>&1
 [ $? -le 1 ] || { echo "check-no-lab-values: a pattern in $DENY is not a valid extended regular expression" >&2; exit 2; }
 
 cd "$top" || exit 2
-# /dev/null is a file operand that keeps grep from reading standard input when xargs has nothing to pass.
+# The C locale: in a UTF-8 locale grep -I treats a text file with one invalid byte (Latin-1, say) as binary and skips it, and the
+# patterns are ASCII, so -i still works. /dev/null is a file operand that keeps grep from reading standard input when xargs has
+# nothing to pass.
 git ls-files -z -- . \
   ':(exclude)docs/specs' ':(exclude)docs/research' ':(exclude)docs/plans' \
   ':(exclude)docs/runbook/home-server-drill.md' ':(exclude)CHANGELOG.md' ':(exclude)scripts/spike' \
   ':(exclude)scripts/lab-values.deny' ':(exclude)scripts/check-no-lab-values.sh' ':(exclude)scripts/check-no-lab-values_test.sh' \
   ':(exclude).claude' \
-  | xargs -0 grep -I -n -i -H -E -f "$pat" /dev/null > "$tmp/hits" 2> /dev/null
+  | LC_ALL=C xargs -0 grep -I -n -i -H -E -f "$pat" /dev/null > "$tmp/hits" 2> "$tmp/err"
 
 if [ -s "$tmp/hits" ]; then
   cat "$tmp/hits"
   echo "check-no-lab-values: the lines above carry a lab value (patterns: scripts/lab-values.deny). Rename it, or add the file to the exclusions in scripts/check-no-lab-values.sh if it is history." >&2
   exit 1
+fi
+# Without a hit, anything on standard error means grep did not do its job: that is not a clean pass.
+if [ -s "$tmp/err" ]; then
+  cat "$tmp/err" >&2
+  echo "check-no-lab-values: grep reported errors, so the result cannot be trusted" >&2
+  exit 2
 fi
 exit 0

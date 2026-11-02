@@ -148,7 +148,7 @@
 {{- fail "networkPolicy.database.podSelector is required and must not be empty: an empty selector would admit every pod of the namespace; name the database pods by their labels" }}
 {{- end }}
 {{- else }}
-{{- /* The range of an external server. A rule for everything is not a rule: an IPv4 range must be /16 to /32 (a typo of the prefix such as 192.168.178.20/8 would open a whole network) and start at its network address (no host bits: 192.168.178.20/24 is a typo too), and an IPv6 range must be /16 to /128 and lie outside ::/16, which holds ::/0, ::1 and the IPv4-mapped range ::ffff:0:0/96 (that one would reach IPv4 addresses past the IPv4 rules). */ -}}
+{{- /* The range of an external server. A rule for everything is not a rule: an IPv4 range must be /16 to /32 (a typo of the prefix such as 192.0.2.20/8 would open a whole network) and start at its network address (no host bits: 192.168.178.20/24 is a typo too), and an IPv6 range must be /16 to /128 and lie outside ::/16, which holds ::/0, ::1 and the IPv4-mapped range ::ffff:0:0/96 (that one would reach IPv4 addresses past the IPv4 rules). */ -}}
 {{- $v4 := printf "^(%s\\.){3}%s/(3[0-2]|2[0-9]|1[6-9])$" $octet $octet }}
 {{- $v6 := "^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}/(1[6-9]|[2-9][0-9]|1[01][0-9]|12[0-8])$" }}
 {{- $cidrOK := false }}
