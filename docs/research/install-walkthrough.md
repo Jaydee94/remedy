@@ -29,11 +29,18 @@ throwaway kind cluster. No login was made (it costs subscription quota and needs
 - **The policy:** a pod in another namespace could not reach `remedy-server:8080` (`curl` timed out, exit 28), so kindnet enforces the
   chart's NetworkPolicies and the peer named in `networkPolicy.public.from` is what opens the port.
 
+## The published chart, 0.18.0
+
+After the release of this change (v0.18.0, the same day) the runbook was walked again from the registry on a second throwaway kind cluster, anonymously:
+`helm show chart oci://ghcr.io/jaydee94/charts/remedy --version 0.18.0` works, its default `runner.cli` is the pin of 2.1.316 with both checksums, and
+`helm install remedy oci://ghcr.io/jaydee94/charts/remedy --version 0.18.0 -n remedy -f values.yaml` with the YAML of section 5 (nothing else) made `remedy-postgres-0`, `remedy-runner-0`
+and `remedy-server-…` `Ready` within a minute; `install-cli` installed 2.1.316 for arm64. A render without `networkPolicy.public.from` fails with the message
+that names the value and the three presets. The server image 0.18.0 pulls anonymously. The cluster was deleted afterwards.
+
 ## Not walked
 
 - **The login** (section 8) and everything after it: a first diagnosis, GitHub, a host.
-- **The OCI install** of the published chart, and the upgrade from 0.17.1 to the release of this change. Until that release, an install from
-  the registry needs the pin and `networkPolicy.public.from` passed by hand (chart README, "Upgrading from 0.17").
+- **The upgrade from 0.17.1 to 0.18.0** of an existing install (only an upgrade with unchanged values was walked, on the local chart).
 - **A real Ingress controller** and TLS: no controller was installed, the UI was reached by port-forward only. The preset peers `kube-system`
   (k3s) and `ipBlock` were rendered by the chart tests, not walked.
 - **`cluster.enabled`** and the write side, `networkPolicy.hosts`, an Alertmanager.
