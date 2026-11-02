@@ -115,6 +115,7 @@ Trust boundaries that span several files and are easy to break:
 
 ## Conventions
 
+- A release that breaks an existing install (a new major of the bundled PostgreSQL, a removed chart value or default) ships its upgrade path in the same pull request: the chart README's "Upgrading from <version>", tried once on a copy of an old install, and a hold on the home server's chart bump until it is applied (`docs/runbook/release.md`, section 2).
 - Everything in the repo is English: docs, plans, code, comments, commit messages, UI copy. Conversation with the maintainer may be in German.
 - Pull request titles are conventional commits (`feat:`, `fix:`, `docs:` ...): the squash title decides the release. A `[skip ci]` in a commit message skips the release run of that merge.
 - Go: stdlib-first (`net/http` method patterns, `log/slog`). A new dependency needs a reason; today there are `github.com/jackc/pgx/v5` (the PostgreSQL driver, pure Go) and `golang.org/x/crypto`.
