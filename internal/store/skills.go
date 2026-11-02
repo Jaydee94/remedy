@@ -217,6 +217,7 @@ func (s *Store) UpdateSkill(ctx context.Context, id int64, f skill.Fields, state
 	if err != nil {
 		return Skill{}, err
 	}
+	var out Skill
 	err = s.inTx(ctx, func(tx *txn) error {
 		// Locked: the row read is the row updated (a delete or another update waits, or came first and is seen).
 		cur, err := scanSkill(tx.QueryRowContext(ctx, skillSelect+` WHERE s.id = ? FOR NO KEY UPDATE OF s`, id))
@@ -244,12 +245,18 @@ func (s *Store) UpdateSkill(ctx context.Context, id int64, f skill.Fields, state
 				summary = fmt.Sprintf("Skill %s turned on (%s)", f.Name, scopeText(cur.HostName))
 			}
 		}
-		return insertActivity(ctx, tx, NewActivity{Kind: KindSkillUpdated, Summary: summary})
+		if err := insertActivity(ctx, tx, NewActivity{Kind: KindSkillUpdated, Summary: summary}); err != nil {
+			return err
+		}
+		// Read in the transaction, with the row still locked: a read after the commit could find the row already deleted
+		// by a delete that was waiting for it, and the call would answer ErrNotFound for an update that did happen.
+		out, err = scanSkill(tx.QueryRowContext(ctx, skillSelect+` WHERE s.id = ?`, id))
+		return err
 	})
 	if err != nil {
 		return Skill{}, err
 	}
-	return s.GetSkill(ctx, id)
+	return out, nil
 }
 
 // DeleteSkill removes a skill that is not a proposal (a proposal is rejected) and logs it. The proposals that replace it lose
