@@ -52,6 +52,24 @@ With the squash setting of section 3 the body is blank, so the line never reache
 release (reviewer ran the real analyzer). GitHub's Revert button titles the pull request `Revert "feat: x"`, which the title check
 refuses: retitle it. To ship a revert, title the pull request `fix: revert <what>`.
 
+**A release that breaks an existing install needs its upgrade path in the same pull request.** The `!` in the title is only the
+release signal. It does not tell an operator what to do, and the `BREAKING CHANGE:` footer never reaches `main` (the squash body is
+blank), so the release notes carry the title and the pull request number and nothing more. What counts as breaking an install: a new
+major version of the bundled PostgreSQL (the new server refuses the old data directory), a chart value or default that goes away
+(`networkPolicy.public.from`, the CLI pin file), a required Secret key, a migration that cannot be undone. Before such a pull request is merged:
+
+1. The upgrade path is written down where an operator looks: the chart README under "Upgrading from <version>" (for the bundled
+   database that is the pin to the old tag, or the dump and the restore), and the pull request description says what to do **before**
+   the upgrade and what happens if you do not.
+2. For the bundled database, the upgrade was tried once on a copy of an old install: install the previous release, write a row,
+   upgrade, and see either the documented path work or the failure the README names. A README alone is not enough when the failure is
+   a silent crash loop; where the chart can refuse at render time, it should.
+3. The maintainer's own installation takes releases through a Renovate pull request in the home-server repository. One that bumps the
+   chart to a release marked `!` is not merged on green CI alone: read the pull request of that release first and apply what it names
+   (a pin, a value) in the same pull request. Why: Remedy 0.17.0 (2026-10-23) moved the bundled PostgreSQL from 16 to 18, the chart bump
+   was merged, the data directory was a version 16 one, and `remedy-postgres-0` and `remedy-server` crash-looped until 2026-11-02
+   (about 2800 and 3800 restarts, every nightly dump failing) before `postgres.image.tag: "16.15"` was pinned again.
+
 Traps:
 
 - **`[skip ci]` skips the whole release run.** GitHub documents the keywords `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`
