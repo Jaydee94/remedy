@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.17.1](https://github.com/Jaydee94/remedy/compare/v0.17.0...v0.17.1) (2026-11-02)
+
+### Bug Fixes
+
+* **deps:** update module github.com/jackc/pgx/v5 to v5.12.0 ([#180](https://github.com/Jaydee94/remedy/issues/180)) ([e9d875d](https://github.com/Jaydee94/remedy/commit/e9d875d65b58c5f68074a134fece1de1d4002eaa))
+
 ## [0.17.0](https://github.com/Jaydee94/remedy/compare/v0.16.0...v0.17.0) (2026-10-23)
 
 ### ⚠ BREAKING CHANGES
