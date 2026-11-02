@@ -41,7 +41,7 @@ func TestAQuestionAboutAnIncidentIsClaimedWithTheListBeforeTheQuestionAndTheStor
 	}
 	// Created after the run: the list is read when the run is claimed.
 	mkSkill(t, e.store, 0, "lab-notes")
-	mkSkill(t, e.store, nas.ID, "paperless")
+	mkSkill(t, e.store, nas.ID, "nextcloud")
 	mkSkill(t, e.store, alpha.ID, "alpha-only")
 	off := mkSkill(t, e.store, nas.ID, "nas-off")
 	if _, err := e.store.UpdateSkill(ctx, off.ID, skill.Fields{Name: "nas-off", Description: off.Description, Body: off.Body}, store.SkillOff); err != nil {
@@ -55,7 +55,7 @@ func TestAQuestionAboutAnIncidentIsClaimedWithTheListBeforeTheQuestionAndTheStor
 	if c.ID != q.ID {
 		t.Fatalf("claimed %s, want %s", c.ID, q.ID)
 	}
-	for _, want := range []string{"incident_get", "available_skills", "lab-notes (global) \u2014 About lab-notes.", "paperless (host: nas) \u2014 About paperless."} {
+	for _, want := range []string{"incident_get", "available_skills", "lab-notes (global) \u2014 About lab-notes.", "nextcloud (host: nas) \u2014 About nextcloud."} {
 		if !strings.Contains(c.Prompt, want) {
 			t.Errorf("the claimed prompt lacks %q:\n%s", want, c.Prompt)
 		}
@@ -117,7 +117,7 @@ func TestASkillTurnedOffBetweenTheQueueAndTheClaimIsNotListed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	keep, soon := mkSkill(t, e.store, nas.ID, "paperless"), mkSkill(t, e.store, nas.ID, "turned-off-later")
+	keep, soon := mkSkill(t, e.store, nas.ID, "nextcloud"), mkSkill(t, e.store, nas.ID, "turned-off-later")
 	if _, err := e.store.CreateRunWith(ctx, store.RunOptions{Provider: "claude", Prompt: "check the nas", Tools: true, HostIDs: []int64{nas.ID}}); err != nil {
 		t.Fatal(err)
 	}

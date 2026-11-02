@@ -65,7 +65,7 @@ export default function HostsPage() {
 
       {hosts !== null && hosts.length === 0 && (
         <p className="font-serif text-[17px] leading-relaxed text-pretty">
-          I don't know any machine yet. Add the ones outside the cluster that I should be able to look at, such as your NAS.
+          I don't know any machine yet. Add the ones outside the cluster that I should be able to look at, such as a NAS, a VM or a server.
         </p>
       )}
 

@@ -53,8 +53,8 @@ func (e *env) host(name string) store.Host {
 	return h
 }
 
-const goodAnswer = `{"profile":{"os":"Debian 12","role":"NAS with Paperless","services":["docker","sshd"],"containers":["remedy-paperless"],"notes":"Backups run at night."},
-"skills":[{"name":"paperless","description":"Paperless keeps its data in /volume1/docker/paperless.","body":"The consume folder is /volume1/docker/paperless/consume.","evidence":[["docker","ps","-a"],["cat","/etc/hostname"]]}]}`
+const goodAnswer = `{"profile":{"os":"Debian 12","role":"NAS with Nextcloud","services":["docker","sshd"],"containers":["remedy-nextcloud"],"notes":"Backups run at night."},
+"skills":[{"name":"nextcloud","description":"Nextcloud keeps its data in /storage/docker/nextcloud.","body":"The consume folder is /storage/docker/nextcloud/consume.","evidence":[["docker","ps","-a"],["cat","/etc/hostname"]]}]}`
 
 // ran claims the oldest queued run, records the successful host_read calls and ends the run with the output.
 func (e *env) ran(r run.Run, output string, exit int, reason string, reads ...[]string) run.Run {
@@ -190,7 +190,7 @@ func TestStartRefusesAHostThatIsNotReadyWithTheReason(t *testing.T) {
 func TestTheProfileDescriptionIsCutAtAWordAndFits(t *testing.T) {
 	p := diagnosis.LearnProfile{
 		OS:   "Debian GNU/Linux 12 (bookworm) with the Proxmox kernel 6.8.12-4-pve on an x86_64 board",
-		Role: "Network attached storage that runs Paperless, Immich, Nextcloud and the nightly backup jobs of the whole house",
+		Role: "Network attached storage that runs Nextcloud, Immich, Nextcloud and the nightly backup jobs of the whole house",
 	}
 	got := learner.ProfileDescription(p)
 	if r := []rune(got); len(r) > skill.MaxDescriptionRunes || !strings.HasSuffix(got, "…") {
@@ -236,19 +236,19 @@ func TestCompleteStoresTheProfileAndTheSkillsAsProposalsWithCheckedEvidence(t *t
 		}
 	}
 	profile := byName[skill.ProfileName]
-	wantBody := "## Operating system\n\nDebian 12\n\n## Role\n\nNAS with Paperless\n\n## Services\n\n- docker\n- sshd\n\n## Containers\n\n- remedy-paperless\n\n## Notes\n\n> Backups run at night."
+	wantBody := "## Operating system\n\nDebian 12\n\n## Role\n\nNAS with Nextcloud\n\n## Services\n\n- docker\n- sshd\n\n## Containers\n\n- remedy-nextcloud\n\n## Notes\n\n> Backups run at night."
 	if profile.Body != wantBody {
 		t.Errorf("profile body:\n%q\nwant\n%q", profile.Body, wantBody)
 	}
-	if profile.Description != "What this host is: Debian 12; NAS with Paperless" {
+	if profile.Description != "What this host is: Debian 12; NAS with Nextcloud" {
 		t.Errorf("profile description = %q", profile.Description)
 	}
 	if len(profile.Evidence) != 2 || !profile.Evidence[0].Ran || strings.Join(profile.Evidence[0].Argv, " ") != "uname -a" {
 		t.Errorf("profile evidence = %+v, want the commands that ran", profile.Evidence)
 	}
-	paperless := byName["paperless"]
-	if len(paperless.Evidence) != 2 || !paperless.Evidence[0].Ran || paperless.Evidence[1].Ran || strings.Join(paperless.Evidence[1].Argv, " ") != "cat /etc/hostname" {
-		t.Errorf("paperless evidence = %+v, want docker ps -a ran and cat /etc/hostname not", paperless.Evidence)
+	nextcloud := byName["nextcloud"]
+	if len(nextcloud.Evidence) != 2 || !nextcloud.Evidence[0].Ran || nextcloud.Evidence[1].Ran || strings.Join(nextcloud.Evidence[1].Argv, " ") != "cat /etc/hostname" {
+		t.Errorf("nextcloud evidence = %+v, want docker ps -a ran and cat /etc/hostname not", nextcloud.Evidence)
 	}
 	if entries := e.activity(store.KindSkillsProposed); len(entries) != 1 || entries[0] != "Learned about nas: 2 proposals" {
 		t.Errorf("skills_proposed entries = %v", entries)
@@ -323,11 +323,11 @@ func TestACitedCommandOfAFailedOrRefusedCallDidNotRun(t *testing.T) {
 	e.l.Complete(ctx, r.ID)
 	got := e.proposals()
 	if len(got) != 2 {
-		t.Fatalf("%d proposals, want the profile and paperless: %+v", len(got), got)
+		t.Fatalf("%d proposals, want the profile and nextcloud: %+v", len(got), got)
 	}
 	for _, k := range got {
-		if k.Name == "paperless" && len(k.Evidence) != 2 {
-			t.Errorf("paperless cites %d commands, want 2", len(k.Evidence))
+		if k.Name == "nextcloud" && len(k.Evidence) != 2 {
+			t.Errorf("nextcloud cites %d commands, want 2", len(k.Evidence))
 		}
 		if k.Name == skill.ProfileName && len(k.Evidence) != 0 {
 			t.Errorf("the profile cites %v, but nothing ran", k.Evidence)
@@ -344,7 +344,7 @@ func TestACitationOfANameThatTheHostHasMakesAReplacingProposal(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	nas := e.host("nas")
-	old, err := e.st.CreateSkill(ctx, nas.ID, skill.Fields{Name: "paperless", Description: "Old.", Body: "old body"})
+	old, err := e.st.CreateSkill(ctx, nas.ID, skill.Fields{Name: "nextcloud", Description: "Old.", Body: "old body"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,18 +353,18 @@ func TestACitationOfANameThatTheHostHasMakesAReplacingProposal(t *testing.T) {
 	e.l.Complete(ctx, done.ID)
 	found := false
 	for _, k := range e.proposals() {
-		if k.Name == "paperless" {
+		if k.Name == "nextcloud" {
 			found = true
 		}
-		if k.Name == "paperless" && k.ReplacesID != old.ID {
-			t.Errorf("the proposal for paperless replaces %d, want %d", k.ReplacesID, old.ID)
+		if k.Name == "nextcloud" && k.ReplacesID != old.ID {
+			t.Errorf("the proposal for nextcloud replaces %d, want %d", k.ReplacesID, old.ID)
 		}
 		if k.Name == skill.ProfileName && k.ReplacesID != 0 {
 			t.Errorf("the profile replaces %d", k.ReplacesID)
 		}
 	}
 	if !found || old.ID == 0 {
-		t.Errorf("no proposal for paperless (old id %d): %+v", old.ID, e.proposals())
+		t.Errorf("no proposal for nextcloud (old id %d): %+v", old.ID, e.proposals())
 	}
 	if still, _ := e.st.GetSkill(ctx, old.ID); still.Body != "old body" || still.State != store.SkillActive {
 		t.Errorf("the existing skill changed before any confirmation: %+v", still)
@@ -384,7 +384,7 @@ func TestAnythingButAGoodAnswerLeavesNothingAndLogsTheFailure(t *testing.T) {
 		"a cancel":             {output: goodAnswer, exit: -1, reason: run.ReasonCancelled, want: "Learning about nas failed: the run was cancelled"},
 		"a lost runner":        {output: "", exit: -1, reason: run.ReasonRunnerLost, want: "Learning about nas failed: the runner was lost"},
 		"an exit code":         {output: goodAnswer, exit: 2, want: "Learning about nas failed: the agent exited with code 2"},
-		"the profile as skill": {output: strings.Replace(goodAnswer, `"name":"paperless"`, `"name":"profile"`, 1), want: "Learning about nas failed: the answer was not valid"},
+		"the profile as skill": {output: strings.Replace(goodAnswer, `"name":"nextcloud"`, `"name":"profile"`, 1), want: "Learning about nas failed: the answer was not valid"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -596,7 +596,7 @@ func TestCompleteTwiceForASucceededRunStoresOneSet(t *testing.T) {
 	var rejected, profile int64
 	for _, k := range first {
 		switch k.Name {
-		case "paperless":
+		case "nextcloud":
 			rejected = k.ID
 		case skill.ProfileName:
 			profile = k.ID
@@ -799,7 +799,7 @@ func TestTheBiggestAnswerTheLimitsAllowStoresTheSkillsAndTheProfile(t *testing.T
 	}
 	profile["services"], profile["containers"] = services, containers
 	raw, err := json.Marshal(map[string]any{"profile": profile, "skills": []any{map[string]any{
-		"name": "paperless", "description": "Paperless keeps its data in /volume1.", "body": "b", "evidence": [][]string{{"docker", "ps", "-a"}},
+		"name": "nextcloud", "description": "Nextcloud keeps its data in /storage.", "body": "b", "evidence": [][]string{{"docker", "ps", "-a"}},
 	}}})
 	if err != nil {
 		t.Fatal(err)

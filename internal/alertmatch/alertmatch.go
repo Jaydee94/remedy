@@ -121,7 +121,7 @@ func parseLine(s string) (Matcher, error) {
 // unquote reads a double-quoted value with the escapes \\, \", \n and \t, and returns what follows the closing quote.
 func unquote(s string) (value, tail string, err error) {
 	if !strings.HasPrefix(s, `"`) {
-		return "", "", errors.New(`the value is written in double quotes, for example "ugreen-nas"`)
+		return "", "", errors.New(`the value is written in double quotes, for example "myhost-nas"`)
 	}
 	var b strings.Builder
 	for i := 1; i < len(s); i++ {

@@ -58,7 +58,7 @@ func (f *fakeHosts) set(change func(f *fakeHosts)) {
 }
 
 func nasInfo() gatekeeper.HostInfo {
-	return gatekeeper.HostInfo{Name: "nas", Notes: "The NAS. Paperless lives here.", DockerPattern: "remedy-*", Units: []string{"node_exporter.service"}}
+	return gatekeeper.HostInfo{Name: "nas", Notes: "The NAS. Nextcloud lives here.", DockerPattern: "remedy-*", Units: []string{"node_exporter.service"}}
 }
 
 // hostRunToken creates hosts, a run that has them, claims it and returns its token. With no names the run has tools but no hosts.
@@ -169,7 +169,7 @@ func TestHostListShowsTheRulesAndNoAddress(t *testing.T) {
 	if isErr {
 		t.Fatal(text)
 	}
-	for _, want := range []string{"nas", "Paperless lives here", "remedy-*", "node_exporter.service", "sudo: does not work"} {
+	for _, want := range []string{"nas", "Nextcloud lives here", "remedy-*", "node_exporter.service", "sudo: does not work"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("host_list lacks %q:\n%s", want, text)
 		}

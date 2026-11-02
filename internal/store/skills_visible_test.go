@@ -25,7 +25,7 @@ func listing(list []store.Skill) string {
 type visibleRig struct {
 	s                *store.Store
 	nas, alpha, gone store.Host
-	paperless        store.Skill
+	nextcloud        store.Skill
 }
 
 // newVisibleRig makes every kind of skill that must not be visible next to the ones that must.
@@ -47,7 +47,7 @@ func newVisibleRig(t *testing.T) *visibleRig {
 	}
 	mk(0, "lab-notes", store.SkillActive)
 	mk(0, "global-off", store.SkillOff)
-	r.paperless = mk(r.nas.ID, "paperless", store.SkillActive)
+	r.nextcloud = mk(r.nas.ID, "nextcloud", store.SkillActive)
 	mk(r.nas.ID, "nas-off", store.SkillOff)
 	mk(r.alpha.ID, "alpha-only", store.SkillActive)
 	mk(r.gone.ID, "gone-skill", store.SkillActive)
@@ -82,8 +82,8 @@ func TestARunSeesTheActiveGlobalSkillsAndTheActiveSkillsOfItsHostsOnly(t *testin
 		want  string
 	}{
 		{"a run without hosts", nil, "lab-notes"},
-		{"a run with the nas", []int64{r.nas.ID}, "lab-notes nas/paperless"},
-		{"a run with two hosts", []int64{r.nas.ID, r.alpha.ID}, "lab-notes alpha/alpha-only nas/paperless"},
+		{"a run with the nas", []int64{r.nas.ID}, "lab-notes nas/nextcloud"},
+		{"a run with two hosts", []int64{r.nas.ID, r.alpha.ID}, "lab-notes alpha/alpha-only nas/nextcloud"},
 	} {
 		got, err := r.s.RunSkills(ctx, r.run(t, c.hosts...))
 		if err != nil || listing(got) != c.want {
@@ -111,7 +111,7 @@ func TestNoProposalNoOffSkillAndNoOtherHostsSkillIsEverVisible(t *testing.T) {
 		}
 	}
 	all, err := r.s.VisibleSkills(ctx, []int64{r.nas.ID, r.alpha.ID, r.gone.ID})
-	if err != nil || listing(all) != "lab-notes alpha/alpha-only gone/gone-skill nas/paperless" {
+	if err != nil || listing(all) != "lab-notes alpha/alpha-only gone/gone-skill nas/nextcloud" {
 		t.Errorf("VisibleSkills for every host = %q, %v", listing(all), err)
 	}
 }
@@ -143,7 +143,7 @@ func TestADeletedHostTakesItsSkillsOutOfTheVisibleSetOfARunThatHadIt(t *testing.
 		t.Fatal(err)
 	}
 	got := r.skills(t, id)
-	if listing(got) != "lab-notes nas/paperless" {
+	if listing(got) != "lab-notes nas/nextcloud" {
 		t.Errorf("after the delete: %q", listing(got))
 	}
 }
@@ -151,13 +151,13 @@ func TestADeletedHostTakesItsSkillsOutOfTheVisibleSetOfARunThatHadIt(t *testing.
 func TestTurningASkillOffOrDeletingItTakesItOutAtOnceAndAConfirmedProposalComesIn(t *testing.T) {
 	r, ctx := newVisibleRig(t), context.Background()
 	id := r.run(t, r.nas.ID)
-	if _, err := r.s.UpdateSkill(ctx, r.paperless.ID, skillFields("paperless"), store.SkillOff); err != nil {
+	if _, err := r.s.UpdateSkill(ctx, r.nextcloud.ID, skillFields("nextcloud"), store.SkillOff); err != nil {
 		t.Fatal(err)
 	}
 	if got := r.skills(t, id); listing(got) != "lab-notes" {
 		t.Errorf("after turning it off: %q", listing(got))
 	}
-	if _, err := r.s.UpdateSkill(ctx, r.paperless.ID, skillFields("paperless"), store.SkillActive); err != nil {
+	if _, err := r.s.UpdateSkill(ctx, r.nextcloud.ID, skillFields("nextcloud"), store.SkillActive); err != nil {
 		t.Fatal(err)
 	}
 	pending, err := r.s.ListSkills(ctx, store.SkillFilter{State: store.SkillProposed})
@@ -167,10 +167,10 @@ func TestTurningASkillOffOrDeletingItTakesItOutAtOnceAndAConfirmedProposalComesI
 	if _, err := r.s.ConfirmSkill(ctx, pending[0].ID, nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := r.skills(t, id); listing(got) != "lab-notes nas/paperless nas/pending-proposal" {
+	if got := r.skills(t, id); listing(got) != "lab-notes nas/nextcloud nas/pending-proposal" {
 		t.Errorf("after the confirmation: %q", listing(got))
 	}
-	if err := r.s.DeleteSkill(ctx, r.paperless.ID); err != nil {
+	if err := r.s.DeleteSkill(ctx, r.nextcloud.ID); err != nil {
 		t.Fatal(err)
 	}
 	if got := r.skills(t, id); listing(got) != "lab-notes nas/pending-proposal" {
@@ -182,9 +182,9 @@ func TestAReplacingProposalIsInvisibleUntilItIsConfirmedAndThenReplacesTheText(t
 	r, ctx := newVisibleRig(t), context.Background()
 	id := r.run(t, r.nas.ID)
 	made, err := r.s.CreateProposals(ctx, store.ProposalSet{HostID: r.nas.ID, RunID: learningRun(t, r.s), Items: []store.Proposal{
-		{Fields: skill.Fields{Name: "paperless", Description: "Proposed description.", Body: "Proposed body."}},
+		{Fields: skill.Fields{Name: "nextcloud", Description: "Proposed description.", Body: "Proposed body."}},
 	}})
-	if err != nil || made[0].ReplacesID != r.paperless.ID {
+	if err != nil || made[0].ReplacesID != r.nextcloud.ID {
 		t.Fatalf("CreateProposals = %+v, %v", made, err)
 	}
 
@@ -192,13 +192,13 @@ func TestAReplacingProposalIsInvisibleUntilItIsConfirmedAndThenReplacesTheText(t
 		list := r.skills(t, id)
 		var out []string
 		for _, k := range list {
-			if k.Name == "paperless" {
+			if k.Name == "nextcloud" {
 				out = append(out, k.Body)
 			}
 		}
 		return out
 	}
-	if got := bodies(); len(got) != 1 || got[0] != "Body of paperless." {
+	if got := bodies(); len(got) != 1 || got[0] != "Body of nextcloud." {
 		t.Errorf("before the confirmation the run sees %q, want the current text only", got)
 	}
 	if _, err := r.s.ConfirmSkill(ctx, made[0].ID, nil); err != nil {
@@ -220,11 +220,11 @@ func TestASkillOfADisabledHostStaysVisibleToARunThatHasTheHost(t *testing.T) {
 	if _, _, err := r.s.UpdateHost(ctx, r.nas.ID, off); err != nil {
 		t.Fatal(err)
 	}
-	if got := r.skills(t, id); listing(got) != "lab-notes nas/paperless" {
+	if got := r.skills(t, id); listing(got) != "lab-notes nas/nextcloud" {
 		t.Errorf("after disabling the host: %q, want its active skill to stay", listing(got))
 	}
 	byHosts, err := r.s.VisibleSkills(ctx, []int64{r.nas.ID})
-	if err != nil || listing(byHosts) != "lab-notes nas/paperless" {
+	if err != nil || listing(byHosts) != "lab-notes nas/nextcloud" {
 		t.Errorf("VisibleSkills for the disabled host = %q, %v", listing(byHosts), err)
 	}
 }

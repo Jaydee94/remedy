@@ -268,13 +268,13 @@ func TestADisabledSourceIsNotAskedAndLeavesItsIncidentsAlone(t *testing.T) {
 
 func TestAnAlertIsMappedToTheFirstMatchingHostAndTheTieIsShown(t *testing.T) {
 	g := newRig(t)
-	nas := g.addHost(t, "nas", `instance=~"ugreen-nas(:[0-9]+)?"`)
+	nas := g.addHost(t, "nas", `instance=~"myhost-nas(:[0-9]+)?"`)
 	backup := g.addHost(t, "backup", `job="node-exporter"`)
 	g.addHost(t, "empty", "")
 	g.hosts = append(g.hosts, signals.HostRules{ID: 4, Name: "broken", Matchers: "this is not a rule"})
 
 	g.cycle(
-		sig("Both/1", "warning", false, map[string]string{"instance": "ugreen-nas", "job": "node-exporter"}),
+		sig("Both/1", "warning", false, map[string]string{"instance": "myhost-nas", "job": "node-exporter"}),
 		sig("Job/2", "warning", false, map[string]string{"job": "node-exporter"}),
 		sig("None/3", "warning", false, map[string]string{"job": "other"}),
 	)
@@ -307,8 +307,8 @@ func TestAnAlertIsMappedToTheFirstMatchingHostAndTheTieIsShown(t *testing.T) {
 
 func TestAChangedRuleAppliesInTheNextCycle(t *testing.T) {
 	g := newRig(t)
-	nas := g.addHost(t, "nas", `instance="ugreen-nas"`)
-	s := sig("A/1", "warning", false, map[string]string{"instance": "ugreen-nas"})
+	nas := g.addHost(t, "nas", `instance="myhost-nas"`)
+	s := sig("A/1", "warning", false, map[string]string{"instance": "myhost-nas"})
 	g.cycle(s)
 	if got := g.incidents(t)["A/1"]; got.HostID != nas.ID {
 		t.Fatalf("host = %d, want %d", got.HostID, nas.ID)
@@ -319,7 +319,7 @@ func TestAChangedRuleAppliesInTheNextCycle(t *testing.T) {
 		t.Fatalf("host = %d after the rule changed, want none", got.HostID)
 	}
 
-	g.hosts[0].Matchers = `instance="ugreen-nas"`
+	g.hosts[0].Matchers = `instance="myhost-nas"`
 	g.cycle(s)
 	if got := g.incidents(t)["A/1"]; got.HostID != nas.ID {
 		t.Fatalf("host = %d after the rule matched again, want %d", got.HostID, nas.ID)

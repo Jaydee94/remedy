@@ -185,7 +185,7 @@ is only its default) and, if it needs one, a bearer token. The token is sealed w
 reads only (`GET /api/v2/alerts`), turns every active alert except `Watchdog` and `InfoInhibitor` into an incident and resolves it when the
 alert is gone from a complete answer; an Alertmanager that does not answer resolves nothing. To tell Remedy which host an alert is about,
 write rules in the field "Alerts of this host" on the host's page, one per line in Alertmanager's matcher syntax; all lines must hold. For a NAS
-whose alerts carry `instance="ugreen-nas"`: `instance=~"ugreen-nas(:[0-9]+)?"`. **These incidents are diagnosed too:** on its own for a
+whose alerts carry `instance="myhost-nas"`: `instance=~"myhost-nas(:[0-9]+)?"`. **These incidents are diagnosed too:** on its own for a
 young `critical` or `warning` alert (one that started less than "Oldest alert I diagnose on my own" ago, 1 hour by default, and that Remedy saw in the last 10 minutes
 or three polls), by **Diagnose** in its thread otherwise. The run reads with the cluster tools (when the cluster is set up) and the tools of the host the alert is mapped
 to, and answers with a cause, a confidence, a category and what it read. Any change it asks for waits for you under **Needs you**; in an automatic run the approval

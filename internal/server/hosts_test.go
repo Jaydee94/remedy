@@ -191,9 +191,9 @@ func TestHostLifecycle(t *testing.T) {
 		t.Fatalf("bad docker pattern = %d", code)
 	}
 
-	code, b := e.do(t, http.MethodPatch, fmt.Sprintf("/api/hosts/%d", h.ID), `{"notes":"Paperless lives here","systemdUnits":["node_exporter"]}`)
+	code, b := e.do(t, http.MethodPatch, fmt.Sprintf("/api/hosts/%d", h.ID), `{"notes":"Nextcloud lives here","systemdUnits":["node_exporter"]}`)
 	got := decodeBody[hostJSON](t, b)
-	if code != http.StatusOK || got.Notes != "Paperless lives here" || len(got.SystemdUnits) != 1 || got.SystemdUnits[0] != "node_exporter.service" || got.PinCleared {
+	if code != http.StatusOK || got.Notes != "Nextcloud lives here" || len(got.SystemdUnits) != 1 || got.SystemdUnits[0] != "node_exporter.service" || got.PinCleared {
 		t.Fatalf("patch = %d %+v", code, got)
 	}
 
@@ -221,16 +221,16 @@ func TestHostAlertRulesAreCheckedStoredAndShown(t *testing.T) {
 	h := e.create(t, "nas")
 	path := fmt.Sprintf("/api/hosts/%d", h.ID)
 
-	code, b := e.do(t, http.MethodPatch, path, `{"matchers":"instance =~ \"ugreen-nas.*\""}`)
-	if code != http.StatusOK || !strings.Contains(b, `"matchers":"instance=~\"ugreen-nas.*\""`) {
+	code, b := e.do(t, http.MethodPatch, path, `{"matchers":"instance =~ \"myhost-nas.*\""}`)
+	if code != http.StatusOK || !strings.Contains(b, `"matchers":"instance=~\"myhost-nas.*\""`) {
 		t.Fatalf("patch = %d %s", code, b)
 	}
 	code, b = e.do(t, http.MethodGet, path, "")
-	if code != http.StatusOK || !strings.Contains(b, `"matchers":"instance=~\"ugreen-nas.*\""`) {
+	if code != http.StatusOK || !strings.Contains(b, `"matchers":"instance=~\"myhost-nas.*\""`) {
 		t.Fatalf("detail = %d %s", code, b)
 	}
 	code, b = e.do(t, http.MethodGet, "/api/hosts", "")
-	if code != http.StatusOK || !strings.Contains(b, `"matchers":"instance=~\"ugreen-nas.*\""`) {
+	if code != http.StatusOK || !strings.Contains(b, `"matchers":"instance=~\"myhost-nas.*\""`) {
 		t.Fatalf("list = %d %s", code, b)
 	}
 
@@ -240,7 +240,7 @@ func TestHostAlertRulesAreCheckedStoredAndShown(t *testing.T) {
 	}
 	// A refused edit leaves the stored rules alone, and an edit that does not mention them keeps them.
 	e.do(t, http.MethodPatch, path, `{"notes":"x"}`)
-	if _, b = e.do(t, http.MethodGet, path, ""); !strings.Contains(b, `"matchers":"instance=~\"ugreen-nas.*\""`) {
+	if _, b = e.do(t, http.MethodGet, path, ""); !strings.Contains(b, `"matchers":"instance=~\"myhost-nas.*\""`) {
 		t.Fatalf("rules after other edits: %s", b)
 	}
 	// A new host can be created with rules.

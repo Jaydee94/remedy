@@ -36,13 +36,13 @@ const onHost = (hostId: number, host: string, over: Partial<Skill> = {}) => skil
 
 describe('validSkillName', () => {
   it('accepts lower case letters, digits and dashes, 1 to 40, not starting with a dash', () => {
-    for (const ok of ['a', '0', 'paperless', 'node-exporter', 'a'.repeat(40)]) assert.equal(validSkillName(ok), true, ok)
+    for (const ok of ['a', '0', 'nextcloud', 'node-exporter', 'a'.repeat(40)]) assert.equal(validSkillName(ok), true, ok)
     for (const bad of ['', '-a', 'A', 'a b', 'a_b', 'é', 'a'.repeat(41), '(global)']) assert.equal(validSkillName(bad), false, bad)
   })
 })
 
 describe('skillProblem', () => {
-  const ok = { name: 'paperless', description: 'Paperless keeps its data in /volume1/docker.', body: 'Restart is safe.' }
+  const ok = { name: 'nextcloud', description: 'Nextcloud keeps its data in /storage/docker.', body: 'Restart is safe.' }
 
   it('is empty for a skill the server can be asked about', () => {
     assert.equal(skillProblem(ok), '')
@@ -51,7 +51,7 @@ describe('skillProblem', () => {
   })
 
   it('names the first rule that is broken, in the words of the API', () => {
-    assert.match(skillProblem({ ...ok, name: 'Paperless' }), /^The name may contain/)
+    assert.match(skillProblem({ ...ok, name: 'Nextcloud' }), /^The name may contain/)
     assert.match(skillProblem({ ...ok, description: '  ' }), /^The description must not be empty/)
     assert.match(skillProblem({ ...ok, description: 'x'.repeat(201) }), /at most 200 characters/)
     assert.match(skillProblem({ ...ok, description: 'one\ntwo' }), /one line of plain text/)
@@ -85,7 +85,7 @@ describe('scopeGroups', () => {
       skill({ id: 2, name: 'zeta' }),
       onHost(1, 'alpha', { id: 3, name: 'backup' }),
       skill({ id: 4, name: 'alpha-notes' }),
-      onHost(2, 'nas', { id: 5, name: 'paperless' }),
+      onHost(2, 'nas', { id: 5, name: 'nextcloud' }),
       onHost(2, 'nas', { id: 6, name: 'pending', state: 'proposed', origin: 'proposed' }),
     ])
     assert.deepEqual(
@@ -93,7 +93,7 @@ describe('scopeGroups', () => {
       [
         ['global', 'Global', ['alpha-notes', 'zeta']],
         ['host:1', 'alpha', ['backup']],
-        ['host:2', 'nas', ['paperless', 'profile']],
+        ['host:2', 'nas', ['nextcloud', 'profile']],
       ],
     )
   })
@@ -142,7 +142,7 @@ describe('reviewItems', () => {
   const proposal = (over: Partial<Skill> = {}) =>
     onHost(2, 'nas', {
       id: 10,
-      name: 'paperless',
+      name: 'nextcloud',
       state: 'proposed',
       origin: 'proposed',
       evidence: [
@@ -167,7 +167,7 @@ describe('reviewItems', () => {
   it('shows the current text of a skill the proposal replaces and whether it changed', () => {
     const changed = reviewItems([proposal({ replaces: { id: 3, description: 'Old.', body: 'Old body.' } })])[0].replaces
     assert.deepEqual(changed, { description: 'Old.', body: 'Old body.', changed: true })
-    const same = reviewItems([proposal({ replaces: { id: 3, description: 'About paperless.', body: 'b' }, description: 'About paperless.', body: 'b' })])[0].replaces
+    const same = reviewItems([proposal({ replaces: { id: 3, description: 'About nextcloud.', body: 'b' }, description: 'About nextcloud.', body: 'b' })])[0].replaces
     assert.equal(same?.changed, false)
   })
 
@@ -264,12 +264,12 @@ describe('nextProposals', () => {
 
 describe('skillNotice', () => {
   it('says what happened to the skill, for the live region', () => {
-    assert.equal(skillNotice('created', 'paperless'), 'Saved paperless. I list it for every run it fits.')
-    assert.equal(skillNotice('saved', 'paperless'), 'Saved paperless.')
-    assert.equal(skillNotice('confirmed', 'paperless'), 'Confirmed paperless. I list it for every run it fits.')
-    assert.equal(skillNotice('rejected', 'paperless'), 'Rejected the proposal paperless.')
-    assert.equal(skillNotice('deleted', 'paperless'), 'Deleted paperless.')
-    assert.equal(skillNotice('on', 'paperless'), 'paperless is on.')
-    assert.equal(skillNotice('off', 'paperless'), 'paperless is off. I no longer list it.')
+    assert.equal(skillNotice('created', 'nextcloud'), 'Saved nextcloud. I list it for every run it fits.')
+    assert.equal(skillNotice('saved', 'nextcloud'), 'Saved nextcloud.')
+    assert.equal(skillNotice('confirmed', 'nextcloud'), 'Confirmed nextcloud. I list it for every run it fits.')
+    assert.equal(skillNotice('rejected', 'nextcloud'), 'Rejected the proposal nextcloud.')
+    assert.equal(skillNotice('deleted', 'nextcloud'), 'Deleted nextcloud.')
+    assert.equal(skillNotice('on', 'nextcloud'), 'nextcloud is on.')
+    assert.equal(skillNotice('off', 'nextcloud'), 'nextcloud is off. I no longer list it.')
   })
 })
