@@ -81,7 +81,7 @@ func (s *srv) responderClaim(ctx context.Context, c *run.Claim) error {
 		return nil
 	case err != nil:
 		return err
-	case in.Source == store.SourceAlertmanager:
+	case store.IsOutageSource(in.Source):
 		c.Schema = json.RawMessage(diagnosis.OutageSchema)
 		c.Snapshot = false
 	}

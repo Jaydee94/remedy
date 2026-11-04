@@ -129,3 +129,16 @@ func TestAnArgoCDIncidentCannotBeDiagnosedYet(t *testing.T) {
 		t.Fatalf("diagnose = %d %s, want 409 saying it is not available yet", code, body)
 	}
 }
+
+func TestTheSourceFilterAcceptsWebhook(t *testing.T) {
+	e, _ := withRepo(t)
+	if _, err := e.store.OpenIncident(context.Background(), store.NewIncident{
+		Source: store.SourceWebhook, Key: "grafana/a", Title: "Disk full", Severity: "warning", Conclusion: "firing", Details: json.RawMessage(`{}`),
+	}, store.NewActivity{Kind: store.KindIncidentOpened, Summary: "opened"}); err != nil {
+		t.Fatal(err)
+	}
+	list := listBySource(t, e, "?source=webhook")
+	if len(list) != 1 || list[0].Source != "webhook" {
+		t.Fatalf("?source=webhook = %+v", list)
+	}
+}

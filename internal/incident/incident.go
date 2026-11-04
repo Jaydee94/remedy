@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/store"
 )
@@ -19,6 +20,8 @@ const (
 	ReasonPRClosed = "pr_closed"
 	// ReasonCleared is the reason for an incident of another source: the signal is no longer reported.
 	ReasonCleared = "cleared"
+	// ReasonExpired is the reason of a webhook incident whose sender fell silent for longer than its endpoint allows.
+	ReasonExpired = "expired"
 )
 
 // ErrNotActive is returned when an incident cannot be changed because it is resolved or ignored.
@@ -308,6 +311,8 @@ func noun(source string) string {
 	switch source {
 	case store.SourceAlertmanager:
 		return "alert"
+	case store.SourceWebhook:
+		return "webhook alert"
 	case store.SourceArgoCD:
 		return "Argo CD application"
 	}
@@ -352,6 +357,11 @@ func resolvedText(cur store.Incident) string {
 		return fmt.Sprintf("%s is green again on %s in %s", cur.CheckName, refLabel(cur.Ref), cur.RepoName)
 	}
 	return "Incident resolved: " + what(cur.Source, cur.Title) + " is no longer reported"
+}
+
+// ExpiredText is the thread's sentence for a webhook incident that was resolved because it was not reported any more: not "fixed".
+func ExpiredText(cur store.Incident, silent time.Duration) string {
+	return fmt.Sprintf("Incident resolved: %s was not reported for %s", what(cur.Source, cur.Title), silent)
 }
 
 func ignoredText(cur store.Incident) string {

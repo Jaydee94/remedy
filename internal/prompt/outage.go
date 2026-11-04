@@ -25,7 +25,10 @@ const (
 // else comes from the monitoring (or, for HostName, from the maintainer) and is untrusted.
 type OutageInput struct {
 	Title, Severity, StartsAt, HostName, GeneratorURL string
-	Labels, Annotations                               map[string]string
+	// Source is a fact Remedy writes ("Alertmanager" when empty, "Webhook" for the webhook source). SourceName is the name of the
+	// webhook endpoint, written inside a data block: the sender does not choose it, but the maintainer's naming is not an instruction.
+	Source, SourceName  string
+	Labels, Annotations map[string]string
 	// HasCluster and HasHost say which tools the run is offered besides the incident tools.
 	HasCluster, HasHost bool
 	// Skills are the notes the run may load with skill_get (the active ones that are global and those of its host).
@@ -62,7 +65,7 @@ func Outage(in OutageInput, delimiter string) string {
 	fmt.Fprintf(&b, outageInstructions, delimiter)
 
 	b.WriteString("\nFacts:\n")
-	b.WriteString("Source: Alertmanager\n")
+	b.WriteString("Source: " + sourceFact(in.Source) + "\n")
 	fmt.Fprintf(&b, "Severity: %s\n", fact(in.Severity, 20))
 	if in.StartsAt != "" {
 		fmt.Fprintf(&b, "Firing since: %s\n", fact(in.StartsAt, 40))
@@ -70,6 +73,9 @@ func Outage(in OutageInput, delimiter string) string {
 	b.WriteString("Cluster tools: " + availability(in.HasCluster) + "\n")
 	b.WriteString("Host tools: " + availability(in.HasHost) + "\n")
 
+	if in.SourceName != "" {
+		dataBlock(&b, delimiter, "webhook_endpoint", oneLine(in.SourceName, maxName))
+	}
 	dataBlock(&b, delimiter, "alert_title", oneLine(in.Title, maxOutageTitle))
 	dataBlock(&b, delimiter, "alert_labels", keyValues(in.Labels, maxOutageLabel))
 	dataBlock(&b, delimiter, "alert_annotations", annotations(in.Annotations))
@@ -79,6 +85,14 @@ func Outage(in OutageInput, delimiter string) string {
 	dataBlock(&b, delimiter, "generator_url", oneLine(in.GeneratorURL, maxOutageURL))
 	b.WriteString(SkillsSection(in.Skills, delimiter))
 	return b.String()
+}
+
+// sourceFact is the fixed word for a source; only the two the control plane writes are accepted, anything else reads as an alert.
+func sourceFact(s string) string {
+	if s == "Webhook" {
+		return s
+	}
+	return "Alertmanager"
 }
 
 func availability(ok bool) string {

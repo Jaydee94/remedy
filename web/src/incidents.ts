@@ -51,6 +51,7 @@ export const sourceLabels: Record<IncidentSource, string> = {
   github: 'GitHub',
   alertmanager: 'Alertmanager',
   argocd: 'Argo CD',
+  webhook: 'Webhook',
 }
 
 export function sourceLabel(source: IncidentSource): string {
@@ -69,6 +70,8 @@ export function reasonText(reason?: string): string {
       return 'the pull request was closed or merged'
     case 'cleared':
       return 'the signal is no longer reported'
+    case 'expired':
+      return 'the sender stopped reporting it'
     default:
       return reason ?? ''
   }

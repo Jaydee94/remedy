@@ -66,6 +66,20 @@ type WebhookAuth struct {
 	PreviousTokenHash []byte
 }
 
+// WebhookKeyParts splits the key of a webhook incident, "<endpoint>/<sender's key>", at its first slash. A key without a slash has
+// no endpoint.
+func WebhookKeyParts(key string) (endpoint, rest string) {
+	if i := strings.IndexByte(key, '/'); i >= 0 {
+		return key[:i], key[i+1:]
+	}
+	return "", key
+}
+
+// IsOutageSource says whether the incidents of a source are alerts about a running system, diagnosed by the outage responder.
+func IsOutageSource(source string) bool {
+	return source == SourceAlertmanager || source == SourceWebhook
+}
+
 // TokenMatches says whether token hashes to hash, in constant time.
 func TokenMatches(hash []byte, token string) bool {
 	return subtle.ConstantTimeCompare(hash, hashToken(token)) == 1

@@ -284,7 +284,7 @@ export type CredentialBody = { kind: 'key'; key: string; passphrase: string } | 
 
 export type IncidentState = 'open' | 'diagnosing' | 'diagnosed' | 'resolved' | 'ignored'
 
-export type IncidentSource = 'github' | 'alertmanager' | 'argocd'
+export type IncidentSource = 'github' | 'alertmanager' | 'argocd' | 'webhook'
 
 export interface Incident {
   id: number

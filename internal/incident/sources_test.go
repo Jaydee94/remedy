@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/Jaydee94/remedy/internal/incident"
 	"github.com/Jaydee94/remedy/internal/store"
@@ -189,5 +190,28 @@ func TestAnObservationOfAnotherSourceWithoutAKeyIsRefused(t *testing.T) {
 	}
 	if all := v.incidents(t, "all"); len(all) != 0 {
 		t.Fatalf("an incident without a key was stored: %+v", all)
+	}
+}
+
+func TestAWebhookIncidentIsNamedAndResolvedAsNotReported(t *testing.T) {
+	v := newEnv(t)
+	o := incident.Observation{Source: store.SourceWebhook, Key: "grafana/disk", Title: "Disk full", Severity: "warning", Class: incident.Bad,
+		Conclusion: "firing", Details: json.RawMessage(`{}`)}
+	v.observe(t, o)
+	in := v.incidents(t, "active")[0]
+	if got := v.history(t, in.ID); !slices.Equal(got, []string{"incident_opened: Incident opened: webhook alert Disk full"}) {
+		t.Fatalf("history = %q", got)
+	}
+	o.Class = incident.Green
+	v.observe(t, o)
+	got := v.history(t, in.ID)
+	if len(got) != 2 || got[1] != "incident_resolved: Incident resolved: webhook alert Disk full is no longer reported" {
+		t.Fatalf("history = %q", got)
+	}
+	if text := incident.ExpiredText(in, 24*time.Hour); text != "Incident resolved: webhook alert Disk full was not reported for 24h0m0s" {
+		t.Fatalf("ExpiredText = %q", text)
+	}
+	if incident.ReasonExpired != "expired" {
+		t.Fatal("ReasonExpired changed")
 	}
 }
