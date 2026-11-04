@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.19.2](https://github.com/Jaydee94/remedy/compare/v0.19.1...v0.19.2) (2026-11-04)
+
+### Bug Fixes
+
+* touching a signal incident no longer needs a vacuum, the index on last_seen goes ([#196](https://github.com/Jaydee94/remedy/issues/196)) ([a783660](https://github.com/Jaydee94/remedy/commit/a7836602099573d7088c015ea570d5a7e565c3e0))
+
 ## [0.19.1](https://github.com/Jaydee94/remedy/compare/v0.19.0...v0.19.1) (2026-11-04)
 
 ### Bug Fixes
