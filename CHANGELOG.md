@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.21.0](https://github.com/Jaydee94/remedy/compare/v0.20.0...v0.21.0) (2026-11-04)
+
+### Features
+
+* the webhook source (cycle 7c) ([#200](https://github.com/Jaydee94/remedy/issues/200)) ([c16b4da](https://github.com/Jaydee94/remedy/commit/c16b4daf3969924c20f6be7d3bb9a6172444e6e3))
+
 ## [0.20.0](https://github.com/Jaydee94/remedy/compare/v0.19.2...v0.20.0) (2026-11-04)
 
 ### Features
