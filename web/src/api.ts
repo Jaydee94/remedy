@@ -284,7 +284,47 @@ export type CredentialBody = { kind: 'key'; key: string; passphrase: string } | 
 
 export type IncidentState = 'open' | 'diagnosing' | 'diagnosed' | 'resolved' | 'ignored'
 
-export type IncidentSource = 'github' | 'alertmanager' | 'argocd'
+export type IncidentSource = 'github' | 'alertmanager' | 'argocd' | 'webhook'
+
+/** An endpoint of the webhook source. It carries no token: the token is in the answer of a create or a rotate and nowhere else. */
+export interface WebhookEndpoint {
+  id: number
+  name: string
+  enabled: boolean
+  autoDiagnose: boolean
+  /** 0: only an explicit "resolved" resolves. */
+  resolveAfterSeconds: number
+  ratePerMinute: number
+  newPerHour: number
+  createdAt: string
+  lastUsedAt?: string
+  previousValidUntil?: string
+  /** Counted in memory since the control plane started. */
+  accepted: number
+  rejected: number
+  lastError?: string
+  lastAt?: string
+}
+
+export interface WebhookList {
+  /** False while the control plane has no webhook listener: no route accepts an event. */
+  listening: boolean
+  endpoints: WebhookEndpoint[]
+}
+
+export interface WebhookCreated {
+  endpoint: WebhookEndpoint
+  token: string
+}
+
+export interface WebhookBody {
+  name?: string
+  enabled?: boolean
+  autoDiagnose?: boolean
+  resolveAfterSeconds?: number
+  ratePerMinute?: number
+  newPerHour?: number
+}
 
 export interface Incident {
   id: number
@@ -561,6 +601,11 @@ export const api = {
   putSetting: (key: string, value: SettingValue) => request<Setting>('PUT', `/api/settings/${key}`, { value }),
   deleteSetting: (key: string) => request<void>('DELETE', `/api/settings/${key}`),
   getRunner: () => request<RunnerStatus>('GET', '/api/runner'),
+  listWebhooks: () => request<WebhookList>('GET', '/api/webhooks'),
+  createWebhook: (body: WebhookBody) => request<WebhookCreated>('POST', '/api/webhooks', body),
+  patchWebhook: (id: number, body: WebhookBody) => request<WebhookEndpoint>('PATCH', `/api/webhooks/${id}`, body),
+  rotateWebhook: (id: number) => request<WebhookCreated>('POST', `/api/webhooks/${id}/rotate`),
+  deleteWebhook: (id: number) => request<void>('DELETE', `/api/webhooks/${id}`),
   getVersion: () => request<VersionInfo>('GET', '/api/version'),
 
   /** The login from the Setup page. A control plane without it answers 404 (`hideOnError`). */

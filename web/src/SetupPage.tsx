@@ -8,6 +8,7 @@ import GitHubSection from '@/components/setup/GitHubSection'
 import ReposSection from '@/components/setup/ReposSection'
 import RunnerSection from '@/components/setup/RunnerSection'
 import SettingsSection from '@/components/setup/SettingsSection'
+import WebhooksSection from '@/components/setup/WebhooksSection'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -53,6 +54,8 @@ export default function SetupPage() {
       )}
 
       <SettingsSection />
+
+      <WebhooksSection />
 
       <div className="flex items-center justify-between gap-3 border-t border-border pt-4 md:hidden">
         <button

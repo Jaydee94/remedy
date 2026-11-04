@@ -182,7 +182,10 @@ func (s *stack) advance(d time.Duration) {
 
 // newStack wires the real control plane over a fake GitHub. With a runner the real runner loop runs against
 // it, using a fake claude that answers with structured output.
-func newStack(t *testing.T, withRunner bool) *stack {
+func newStack(t *testing.T, withRunner bool) *stack { return newStackCfg(t, withRunner, nil) }
+
+// newStackCfg is newStack with a change to the server's configuration, for a test that needs an address set.
+func newStackCfg(t *testing.T, withRunner bool, mod func(*config.Server)) *stack {
 	t.Helper()
 	gh := &fakeGitHub{tarball: tarball(t)}
 	ghServer := httptest.NewServer(gh)
@@ -203,6 +206,9 @@ func newStack(t *testing.T, withRunner bool) *stack {
 	cfg := config.Server{
 		AdminPassword: password, RunnerToken: runnerToken, MasterKey: key, GitHubAPIURL: gh.url, PollInterval: time.Minute,
 		DiagnoseCooldown: 15 * time.Minute, DiagnoseMaxPerIncident: 3, DiagnoseMaxPerDay: 20,
+	}
+	if mod != nil {
+		mod(&cfg)
 	}
 	a := app.New(cfg, st, log, nil)
 	s := &stack{t: t, gh: gh, st: st, app: a, now: time.Now()}

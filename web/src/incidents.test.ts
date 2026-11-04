@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Incident } from './api.ts'
-import { alsoLine, hostLine } from './incidents.ts'
+import { alsoLine, hostLine, reasonText, sourceLabel } from './incidents.ts'
 
 const inc = (over: Partial<Incident> = {}): Incident => ({ id: 1, source: 'alertmanager', title: 'HighLoad', ...over }) as Incident
 
@@ -24,5 +24,12 @@ describe('alsoLine', () => {
   it('lists the other hosts', () => {
     assert.equal(alsoLine(inc({ alsoMatches: ['a'] })), 'also matches: a')
     assert.equal(alsoLine(inc({ alsoMatches: ['a', 'b'] })), 'also matches: a, b')
+  })
+})
+
+describe('the webhook source', () => {
+  it('has a label and says an expired incident was not reported, not that it was fixed', () => {
+    assert.equal(sourceLabel('webhook'), 'Webhook')
+    assert.equal(reasonText('expired'), 'the sender stopped reporting it')
   })
 })

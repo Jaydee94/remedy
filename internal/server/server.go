@@ -20,6 +20,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/signals"
 	"github.com/Jaydee94/remedy/internal/sshhost"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/webhook"
 )
 
 type Deps struct {
@@ -66,6 +67,9 @@ type Deps struct {
 	// the claim carries no run timeout.
 	Settings *settings.Settings
 
+	// WebhookLimits holds the in-memory counters of the webhook endpoints; WebhookListening says whether the listener exists.
+	WebhookLimits    *webhook.Limits
+	WebhookListening bool
 	// Facts are shown on the Setup page as read-only facts of the process (listeners, the GitHub address, whether the cluster is set up).
 	Facts []Fact
 
@@ -98,6 +102,17 @@ func NewSplit(d Deps) (public, internal http.Handler) {
 	return pub, in
 }
 
+// NewWebhook returns the handler of the third listener (REMEDY_WEBHOOK_ADDR): POST /webhook/v1/{endpoint} for h and GET /healthz,
+// and nothing else. The public and the internal mux never register the route, so without the address no route exists anywhere.
+func NewWebhook(h http.Handler) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	mux.Handle("POST /webhook/v1/{endpoint}", h)
+	return mux
+}
+
 // routes registers every route. public gets the UI and the admin API, internal the runner API and /mcp. They may be
 // the same mux: that is the single-port server.
 func (s *srv) routes(public, internal *http.ServeMux) {
@@ -127,6 +142,11 @@ func (s *srv) routes(public, internal *http.ServeMux) {
 		public.HandleFunc("POST /api/approvals/{id}/approve", s.session(s.decide(true)))
 		public.HandleFunc("POST /api/approvals/{id}/deny", s.session(s.decide(false)))
 	}
+	public.HandleFunc("GET /api/webhooks", s.session(s.listWebhooks))
+	public.HandleFunc("POST /api/webhooks", s.session(s.createWebhook))
+	public.HandleFunc("PATCH /api/webhooks/{id}", s.session(s.patchWebhook))
+	public.HandleFunc("POST /api/webhooks/{id}/rotate", s.session(s.rotateWebhook))
+	public.HandleFunc("DELETE /api/webhooks/{id}", s.session(s.deleteWebhook))
 	public.HandleFunc("GET /api/version", s.session(s.getVersion))
 	public.HandleFunc("GET /api/activity", s.session(s.listActivity))
 	public.HandleFunc("GET /api/activity/stream", s.session(s.streamActivity))

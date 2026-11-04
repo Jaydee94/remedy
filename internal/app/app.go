@@ -33,6 +33,7 @@ import (
 	"github.com/Jaydee94/remedy/internal/signals"
 	"github.com/Jaydee94/remedy/internal/sshhost"
 	"github.com/Jaydee94/remedy/internal/store"
+	"github.com/Jaydee94/remedy/internal/webhook"
 )
 
 type App struct {
@@ -40,6 +41,11 @@ type App struct {
 	Handler http.Handler
 	// InternalHandler serves /runner/v1 and /mcp and is non-nil only when REMEDY_INTERNAL_ADDR is set.
 	InternalHandler http.Handler
+	// WebhookHandler serves POST /webhook/v1/{endpoint} and /healthz and is non-nil only when REMEDY_WEBHOOK_ADDR is set: without
+	// the address no route of the webhook source exists on any listener.
+	WebhookHandler http.Handler
+	// Sweeper resolves the webhook incidents whose sender fell silent. It is always built and has nothing to do while no endpoint exists.
+	Sweeper *webhook.Sweeper
 
 	Poller     *poller.Poller
 	Reaper     *reaper.Reaper
@@ -196,6 +202,17 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		Facts:        facts(cfg, kubeReader, kubeWriter),
 		Login:        login,
 	}
+	webhookLimits := webhook.NewLimits()
+	deps.WebhookLimits, deps.WebhookListening = webhookLimits, cfg.WebhookAddr != ""
+	var webhookHandler http.Handler
+	if cfg.WebhookAddr != "" {
+		webhookHandler = server.NewWebhook(&webhook.Handler{
+			Store: st, Engine: engine, Limits: webhookLimits, Log: log,
+			Auth:       &webhook.Authenticator{Store: st},
+			AutoMaxAge: func() time.Duration { return set.Duration(settings.AlertmanagerAutoMaxAge) },
+			Hosts:      hostRules(st),
+		})
+	}
 	var handler, internalHandler http.Handler
 	if cfg.InternalAddr != "" {
 		handler, internalHandler = server.NewSplit(deps)
@@ -206,16 +223,21 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 	return &App{
 		Handler:         handler,
 		InternalHandler: internalHandler,
-		Responder:       diagnoser,
-		Learner:         learning,
-		Gatekeeper:      gate,
-		KubeReader:      kubeReader,
-		KubeWriter:      kubeWriter,
-		Settings:        set,
-		Signals:         sigs,
-		Probe:           probe,
-		Login:           login,
-		log:             log,
+		WebhookHandler:  webhookHandler,
+		Sweeper: &webhook.Sweeper{
+			Store: st, Log: log, AfterSweep: diagnoser.AutoStart,
+			Interval: func() time.Duration { return set.Duration(settings.PollInterval) },
+		},
+		Responder:  diagnoser,
+		Learner:    learning,
+		Gatekeeper: gate,
+		KubeReader: kubeReader,
+		KubeWriter: kubeWriter,
+		Settings:   set,
+		Signals:    sigs,
+		Probe:      probe,
+		Login:      login,
+		log:        log,
 		Poller: &poller.Poller{
 			Store:        st,
 			Engine:       engine,
@@ -268,17 +290,22 @@ func signalRunner(cfg config.Server, st *store.Store, engine *incident.Engine, s
 		Engine:   engine,
 		Interval: func() time.Duration { return set.Duration(settings.AlertmanagerPollInterval) },
 		Log:      log,
-		Hosts: func(ctx context.Context) ([]signals.HostRules, error) {
-			entries, err := st.ListHosts(ctx)
-			if err != nil {
-				return nil, err
-			}
-			out := make([]signals.HostRules, 0, len(entries))
-			for _, e := range entries {
-				out = append(out, signals.HostRules{ID: e.Host.ID, Name: e.Host.Name, Matchers: e.Host.Matchers})
-			}
-			return out, nil
-		},
+		Hosts:    hostRules(st),
+	}
+}
+
+// hostRules reads the alert rules of the hosts, for the signal sources and the webhook handler.
+func hostRules(st *store.Store) func(ctx context.Context) ([]signals.HostRules, error) {
+	return func(ctx context.Context) ([]signals.HostRules, error) {
+		entries, err := st.ListHosts(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]signals.HostRules, 0, len(entries))
+		for _, e := range entries {
+			out = append(out, signals.HostRules{ID: e.Host.ID, Name: e.Host.Name, Matchers: e.Host.Matchers})
+		}
+		return out, nil
 	}
 }
 
@@ -354,9 +381,14 @@ func facts(cfg config.Server, reader *kube.Reader, writer *kube.Writer) []server
 	if internal == "" {
 		internal = "none: one port serves everything"
 	}
+	hook := cfg.WebhookAddr
+	if hook == "" {
+		hook = "none: the webhook source has no route"
+	}
 	out := []server.Fact{
 		{Label: "Listener", Value: cfg.Addr},
 		{Label: "Internal listener (runner and tools)", Value: internal},
+		{Label: "Webhook listener", Value: hook},
 		{Label: "GitHub API", Value: displayURL(cfg.GitHubAPIURL)},
 		{Label: "Cluster, reading", Value: yesNo(reader != nil)},
 		{Label: "Cluster, actions", Value: yesNo(writer != nil)},

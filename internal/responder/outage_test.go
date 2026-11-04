@@ -266,3 +266,46 @@ func TestCheckRunLooksUpTheSourceOfTheRunsIncident(t *testing.T) {
 		t.Fatalf("a GitHub answer of a run without an incident = %+v", got)
 	}
 }
+
+func (e *env) openWebhook(key, title string, auto bool) store.Incident {
+	e.t.Helper()
+	in, err := e.st.OpenIncident(context.Background(), store.NewIncident{
+		Source: store.SourceWebhook, Key: key, Title: title, Severity: "critical", AutoDiagnose: auto,
+		Conclusion: "firing", Details: json.RawMessage(alertDetails),
+	}, store.NewActivity{Kind: store.KindIncidentOpened, Summary: "opened"})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return in
+}
+
+func TestAWebhookIncidentIsDiagnosedLikeAnAlertAndTheSourceIsAFact(t *testing.T) {
+	e := newEnv(t)
+	in := e.openWebhook("grafana/disk-full", "Disk full on nas", true)
+	r, err := e.r.Start(context.Background(), in.ID)
+	if err != nil {
+		t.Fatalf("Start of a webhook incident = %v", err)
+	}
+	if !r.MCP {
+		t.Error("the run has no tools")
+	}
+	if !strings.Contains(r.Prompt, "\nSource: Webhook\n") || strings.Contains(r.Prompt, "Source: Alertmanager") {
+		t.Errorf("the prompt does not name the webhook as its source:\n%s", r.Prompt)
+	}
+	if !strings.Contains(r.Prompt, "webhook_endpoint") || !strings.Contains(r.Prompt, "grafana") {
+		t.Errorf("the prompt does not name the endpoint")
+	}
+	e.finish(r, run.Outcome{ExitCode: 0, Output: json.RawMessage(goodOutage)})
+	if got := e.get(in); got.State != store.IncDiagnosed {
+		t.Fatalf("incident = %+v", got)
+	}
+}
+
+func TestTheAnswerForAWebhookIsCheckedAsAnOutage(t *testing.T) {
+	if got := responder.CheckOutcomeFor(store.SourceWebhook, run.Outcome{Output: json.RawMessage(goodOutage)}); got.FailureReason != "" {
+		t.Fatalf("a valid outage answer = %+v", got)
+	}
+	if got := responder.CheckOutcomeFor(store.SourceWebhook, run.Outcome{Output: json.RawMessage(goodDiagnosis)}); got.FailureReason != run.ReasonInvalidOutput {
+		t.Fatalf("a GitHub-shaped answer for a webhook = %+v", got)
+	}
+}

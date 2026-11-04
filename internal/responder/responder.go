@@ -133,7 +133,7 @@ func (r *Responder) start(ctx context.Context, incidentID int64, automatic bool)
 	}
 	switch in.Source {
 	case store.SourceGitHub:
-	case store.SourceAlertmanager:
+	case store.SourceAlertmanager, store.SourceWebhook:
 		return r.startOutage(ctx, in, automatic)
 	default:
 		return run.Run{}, ErrSourceNotSupported
@@ -190,6 +190,10 @@ func (r *Responder) startOutage(ctx context.Context, in store.Incident, automati
 		return run.Run{}, err
 	}
 	input := outageInput(in, cluster, len(hosts) > 0)
+	if in.Source == store.SourceWebhook {
+		endpoint, _ := store.WebhookKeyParts(in.Key)
+		input.Source, input.SourceName = "Webhook", endpoint
+	}
 	input.Skills = SkillLines(skills)
 	text := prompt.Outage(input, "")
 	how := "by a click"
@@ -428,7 +432,7 @@ func (r *Responder) CheckRun(ctx context.Context, rn run.Run, o run.Outcome) run
 
 // parseAnswer validates an answer by the shape its source asks for and returns the canonical JSON to store and the summary.
 func parseAnswer(source string, raw []byte) (canonical json.RawMessage, summary string, err error) {
-	if source == store.SourceAlertmanager {
+	if store.IsOutageSource(source) {
 		d, err := diagnosis.ParseOutage(raw)
 		if err != nil {
 			return nil, "", err

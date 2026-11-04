@@ -85,7 +85,7 @@ type activityView struct {
 
 func validSourceFilter(s string) bool {
 	switch s {
-	case "", store.SourceGitHub, store.SourceAlertmanager, store.SourceArgoCD:
+	case "", store.SourceGitHub, store.SourceAlertmanager, store.SourceArgoCD, store.SourceWebhook:
 		return true
 	}
 	return false

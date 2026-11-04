@@ -92,3 +92,18 @@ func TestTheClaimOfAGitHubRunStillCarriesTheDiagnosisSchemaAndTheSnapshot(t *tes
 		t.Fatalf("run = %+v", rn)
 	}
 }
+
+func TestTheClaimOfAWebhookRunCarriesTheOutageSchemaAndNoSnapshot(t *testing.T) {
+	e := newRespEnv(t, goodKey(t))
+	in, err := e.st.OpenIncident(context.Background(), store.NewIncident{
+		Source: store.SourceWebhook, Key: "grafana/a", Title: "t", Severity: "critical", AutoDiagnose: true,
+		Conclusion: "firing", Details: json.RawMessage(`{"labels":{"a":"b"}}`),
+	}, store.NewActivity{Kind: store.KindIncidentOpened, Summary: "opened"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := e.claim(t, in)
+	if string(c.Schema) != diagnosis.OutageSchema || c.Snapshot || c.MCPToken == "" {
+		t.Fatalf("claim = schema %s, snapshot %v, token set %v", c.Schema, c.Snapshot, c.MCPToken != "")
+	}
+}
