@@ -272,7 +272,7 @@ func (s *Store) logRunActivity(ctx context.Context, tx *txn, incidentID int64, r
 func (s *Store) ListAutoCandidates(ctx context.Context, now time.Time, l DiagnosisLimits, freshFor time.Duration) ([]Incident, error) {
 	q, args := incidentSelect(`
 		WHERE i.auto_diagnose = 1
-		  AND i.source IN ('github', 'alertmanager')
+		  AND i.source IN ('github', 'alertmanager', 'webhook')
 		  AND (i.state = 'open' OR (i.state = 'diagnosed' AND i.source = 'github' AND i.head_sha <> i.diagnosed_sha))
 		  AND i.diagnoses < ?
 		  AND (i.last_diagnosis_at IS NULL OR i.last_diagnosis_at <= ?)

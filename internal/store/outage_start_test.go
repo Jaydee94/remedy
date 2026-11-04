@@ -243,3 +243,25 @@ func TestStartDiagnosisOfAnAlertStillObeysTheLimitsAndOneRunAtATime(t *testing.T
 		t.Fatalf("an automatic start of an incident with auto_diagnose = 0: %v, want a LimitError", err)
 	}
 }
+
+// A webhook incident that was opened for automatic diagnosis is a candidate like an alert: the list of sources in the query once
+// named GitHub and Alertmanager only, and an automatic webhook incident would never have been started.
+func TestAWebhookIncidentIsAnAutomaticCandidateOnlyWhileItIsFresh(t *testing.T) {
+	s, path := openStoreAt(t)
+	ctx := context.Background()
+	open := func(key string, auto bool) store.Incident {
+		in, err := s.OpenIncident(ctx, store.NewIncident{Source: store.SourceWebhook, Key: "grafana/" + key, Title: key, Severity: "critical", Conclusion: "firing",
+			AutoDiagnose: auto, Details: []byte(`{}`)}, store.NewActivity{Kind: store.KindIncidentOpened, Summary: "opened"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return in
+	}
+	want, _ := open("auto", true), open("manual", false)
+	old := open("old", true)
+	sqlOn(t, path, `UPDATE incidents SET last_seen = ? WHERE id = ?`, time.Now().UTC().Add(-time.Hour).Format("2006-01-02T15:04:05.000000000Z"), old.ID)
+	got, err := s.ListAutoCandidates(ctx, time.Now(), store.DefaultLimits(), fresh)
+	if err != nil || len(got) != 1 || got[0].ID != want.ID {
+		t.Fatalf("candidates = %+v, %v, want only the fresh automatic webhook incident", got, err)
+	}
+}
