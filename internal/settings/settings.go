@@ -251,6 +251,8 @@ func (s *Settings) DiagnosisLimits() store.DiagnosisLimits {
 		Cooldown:       s.Duration(DiagnoseCooldown),
 		MaxPerIncident: s.Int(DiagnoseMaxPerIncident),
 		MaxPerDay:      s.Int(DiagnoseMaxPerDay),
+		// The budget is there for the caller to switch on (EnforceBudget): only the one who knows how the runner bills can.
+		DayBudgetCents: s.Int(APIBudgetPerDayCents),
 	}
 }
 

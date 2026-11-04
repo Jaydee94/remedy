@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -36,6 +37,12 @@ type DiagnosisLimits struct {
 	Cooldown       time.Duration // per incident, between two automatic diagnoses
 	MaxPerIncident int           // automatic diagnoses per incident
 	MaxPerDay      int           // automatic runs in a rolling 24 hours; 0 turns automatic diagnosis off
+
+	// EnforceBudget and DayBudgetCents are the daily budget of the API-key mode: while the runner bills a key, an automatic start
+	// is refused when the key-billed runs of the last 24 hours cost this much or more (0 refuses every automatic start). A run the
+	// maintainer starts is never refused for it. Without EnforceBudget the budget is not looked at.
+	EnforceBudget  bool
+	DayBudgetCents int
 }
 
 func DefaultLimits() DiagnosisLimits {
@@ -162,7 +169,32 @@ func checkAutomatic(ctx context.Context, tx *txn, in Incident, p StartParams) er
 	if today >= p.Limits.MaxPerDay {
 		return &LimitError{Reason: fmt.Sprintf("%d automatic runs in the last 24 hours", today)}
 	}
+	if p.Limits.EnforceBudget {
+		var spent float64
+		if err := tx.QueryRowContext(ctx, `
+			SELECT COALESCE(SUM(cost_usd), 0) FROM runs WHERE auth_source = 'api_key' AND finished_at > ?`,
+			formatTS(p.Now.Add(-24*time.Hour))).Scan(&spent); err != nil {
+			return err
+		}
+		if cents := spentCents(spent); cents >= p.Limits.DayBudgetCents {
+			return &LimitError{Reason: fmt.Sprintf("about $%.2f of the $%.2f budget for runs with your API key was spent in the last 24 hours (the CLI's estimate)",
+				float64(cents)/100, float64(p.Limits.DayBudgetCents)/100)}
+		}
+	}
 	return nil
+}
+
+// spentCents turns the CLI's estimate in dollars into whole cents.
+func spentCents(usd float64) int { return int(math.Round(usd * 100)) }
+
+// APISpendSince is what the runs billed to an API key and finished since then cost, in cents: the CLI's estimate, not a charge.
+func (s *Store) APISpendSince(ctx context.Context, since time.Time) (int, error) {
+	var spent float64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(cost_usd), 0) FROM runs WHERE auth_source = 'api_key' AND finished_at > ?`, formatTS(since)).Scan(&spent); err != nil {
+		return 0, err
+	}
+	return spentCents(spent), nil
 }
 
 // CompleteDiagnosis stores a validated diagnosis on the incident of a responder run, if the run is the

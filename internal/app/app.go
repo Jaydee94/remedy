@@ -114,11 +114,17 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		return github.New(cfg.GitHubAPIURL, token, nil, github.WithLog(log))
 	}
 
+	runnerStatus := server.NewRunnerStatus()
 	diagnoser := &responder.Responder{
-		Store:      st,
-		Key:        cfg.MasterKey,
-		NewSource:  func(token secret.Value) responder.Source { return reader(token) },
-		LimitsFunc: set.DiagnosisLimits,
+		Store:     st,
+		Key:       cfg.MasterKey,
+		NewSource: func(token secret.Value) responder.Source { return reader(token) },
+		// The daily budget of the key mode is enforced only while the runner says it bills a key.
+		LimitsFunc: func() store.DiagnosisLimits {
+			l := set.DiagnosisLimits()
+			l.EnforceBudget = runnerStatus.AuthMode() == server.AuthModeAPIKey
+			return l
+		},
 		// An alert incident must have been seen within three polls (at least ten minutes) to be diagnosed on its own.
 		AlertFresh: func() time.Duration { return max(10*time.Minute, 3*set.Duration(settings.AlertmanagerPollInterval)) },
 		Log:        log,
@@ -184,7 +190,7 @@ func New(cfg config.Server, st *store.Store, log *slog.Logger, web fs.FS) *App {
 		PollInterval: cfg.PollInterval,
 		Gatekeeper:   gate,
 		Cluster:      clusterCapabilities(cluster, kubeReader, kubeWriter),
-		RunnerStatus: server.NewRunnerStatus(),
+		RunnerStatus: runnerStatus,
 		Hosts:        hostSvc,
 		Settings:     set,
 		Facts:        facts(cfg, kubeReader, kubeWriter),
