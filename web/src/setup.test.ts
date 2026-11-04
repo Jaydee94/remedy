@@ -75,7 +75,7 @@ describe('diagnosisBar', () => {
 
 describe('validRepoName', () => {
   it('accepts owner/name', () => {
-    for (const ok of ['jaydee94/homelab', 'octo/remedy.git', 'a/b', ' octo/homelab ', 'my-org/my_repo.v2']) assert.equal(validRepoName(ok), true, ok)
+    for (const ok of ['acme/infra', 'octo/remedy.git', 'a/b', ' octo/homelab ', 'my-org/my_repo.v2']) assert.equal(validRepoName(ok), true, ok)
   })
   it('refuses everything else', () => {
     for (const bad of ['', '   ', 'homelab', 'a/b/c', 'a/', '/b', 'a b/c', 'octo/home lab', 'octo//homelab', 'octo/<b>x</b>', 'https://github.com/octo/homelab']) {

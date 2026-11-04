@@ -81,7 +81,7 @@ export default function HostForm({ host, busy, run, onSaved }: Props) {
       </Field>
       <Field
         label="Alerts of this host"
-        hint={'One rule per line, as in Alertmanager: for example instance=~"nas\\\\.local(:[0-9]+)?". All lines must match, and a dot is written with two backslashes. Empty: no alert is mapped to this host.'}
+        hint={'One rule per line, as in Alertmanager: for example instance=~"myhost\\\\.local(:[0-9]+)?". All lines must match, and a dot is written with two backslashes. Empty: no alert is mapped to this host.'}
       >
         <textarea
           value={f.matchers}

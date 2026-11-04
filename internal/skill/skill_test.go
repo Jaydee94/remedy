@@ -9,7 +9,7 @@ import (
 )
 
 func good() skill.Fields {
-	return skill.Fields{Name: "paperless", Description: "Paperless keeps its data in /volume1/docker.", Body: "The consume folder is /volume1/docker/paperless/consume.\n\n- restart is safe"}
+	return skill.Fields{Name: "nextcloud", Description: "Nextcloud keeps its data in /storage/docker.", Body: "The consume folder is /storage/docker/nextcloud/consume.\n\n- restart is safe"}
 }
 
 func fieldOf(t *testing.T, err error) string {
@@ -29,7 +29,7 @@ func TestAGoodSkillIsAccepted(t *testing.T) {
 }
 
 func TestTheNameRule(t *testing.T) {
-	for _, ok := range []string{"a", "0", "paperless", "node-exporter", "a1-b2-c3", strings.Repeat("a", 40)} {
+	for _, ok := range []string{"a", "0", "nextcloud", "node-exporter", "a1-b2-c3", strings.Repeat("a", 40)} {
 		if !skill.ValidName(ok) {
 			t.Errorf("%q should be a valid name", ok)
 		}
@@ -37,7 +37,7 @@ func TestTheNameRule(t *testing.T) {
 	if skill.ValidName("a\n") {
 		t.Error("a name with a trailing line break must not be valid as it is")
 	}
-	for _, bad := range []string{"", "-a", "A", "Paperless", "a b", "a_b", "a.b", "a/b", "\u00e9", strings.Repeat("a", 41), "(global)"} {
+	for _, bad := range []string{"", "-a", "A", "Nextcloud", "a b", "a_b", "a.b", "a/b", "\u00e9", strings.Repeat("a", 41), "(global)"} {
 		if skill.ValidName(bad) {
 			t.Errorf("%q should not be a valid name", bad)
 		}
@@ -48,8 +48,8 @@ func TestTheNameRule(t *testing.T) {
 		}
 	}
 	f := good()
-	f.Name = "  paperless  "
-	if got, err := f.Validate(); err != nil || got.Name != "paperless" {
+	f.Name = "  nextcloud  "
+	if got, err := f.Validate(); err != nil || got.Name != "nextcloud" {
 		t.Errorf("a name with spaces around it: %+v, %v", got, err)
 	}
 }

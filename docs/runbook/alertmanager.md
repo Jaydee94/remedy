@@ -71,10 +71,10 @@ Open **Hosts**, a host, and fill "Alerts of this host": **one rule per line, in 
 **All lines of a host must hold**, and a host without rules never matches. At most 10 lines of at most 200 characters; an invalid rule is
 refused with a message that names the line.
 
-On the home server's NAS the alerts carry `instance="ugreen-nas"` (the name, not the IP address), so one line is enough:
+If the alerts of a host carry `instance="myhost-nas"` (the name, not the IP address), one line is enough:
 
 ```
-instance=~"ugreen-nas(:[0-9]+)?"
+instance=~"myhost-nas(:[0-9]+)?"
 ```
 
 (the optional `:port` covers an exporter that adds one). The mapping is recomputed at every observation, so a changed rule applies within a cycle.

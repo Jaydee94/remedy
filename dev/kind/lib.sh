@@ -4,7 +4,7 @@
 
 CLUSTER=remedy-dev
 CTX=kind-$CLUSTER
-ARGOCD_VERSION=v3.5.6
+ARGOCD_VERSION=v3.6.0
 KIND_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$KIND_DIR/../.." && pwd)
 # Outside the repository on purpose: it holds credentials.
@@ -224,7 +224,7 @@ deploy_release() {
   api_ip=$(k get endpoints kubernetes -o jsonpath='{.subsets[0].addresses[0].ip}')
   [ -n "$api_ip" ] || { echo "cannot read the address of the API server from the endpoints of the kubernetes service" >&2; exit 1; }
   helm --kube-context "$CTX" upgrade --install "$RELEASE" "$REPO_ROOT/deploy/chart" -n "$NS" \
-    -f "$REPO_ROOT/deploy/cli-pin.yaml" -f "$KIND_DIR/dummy-values.yaml" \
+    -f "$KIND_DIR/dummy-values.yaml" \
     --set "image.server.tag=$TAG" --set "image.runner.tag=$TAG" \
     --set "networkPolicy.apiServer.cidrs={$api_ip/32}" \
     --wait --timeout 10m

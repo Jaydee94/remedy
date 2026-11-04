@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Jaydee94/remedy/internal/provider"
@@ -103,5 +105,40 @@ func TestARunWithoutToolsHasNoConfigAndKeepsSafeMode(t *testing.T) {
 	args := " " + rec["args"] + " "
 	if !strings.Contains(args, " --safe-mode ") || strings.Contains(args, " --mcp-config ") || rec["cfg"] != "" {
 		t.Fatalf("args = %q, cfg = %q", rec["args"], rec["cfg"])
+	}
+}
+
+// The config holds the run's token, and the token dies when the run is reported finished. The file must be gone before that
+// report is made: removing it afterwards (a deferred cleanup that ran after the report) left a window in which the run was
+// over for everyone else and the file still existed, and made TestARunWithToolsGetsItsConfigInAFileTheAgentCannotReach flaky.
+func TestTheConfigIsGoneBeforeTheRunIsReportedFinished(t *testing.T) {
+	recorded := filepath.Join(t.TempDir(), "record.txt")
+	var mu sync.Mutex
+	var leftAtFinish []string
+	st, _ := startLoopObserving(t, map[string]provider.Provider{"claude": provider.Claude{Binary: testutil.RecordingClaude(t, recorded)}}, 0,
+		func(root string, r *http.Request) {
+			if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/finish") {
+				return
+			}
+			entries, _ := os.ReadDir(root)
+			mu.Lock()
+			defer mu.Unlock()
+			for _, e := range entries {
+				if strings.Contains(e.Name(), "-mcp-") {
+					leftAtFinish = append(leftAtFinish, e.Name())
+				}
+			}
+		})
+	queued, err := st.CreateToolRun(context.Background(), "claude", "use the tools")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := waitTerminal(t, st, queued.ID); got.Status != run.Succeeded {
+		t.Fatalf("run = %+v", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(leftAtFinish) > 0 {
+		t.Fatalf("the MCP config directory %v still existed when the runner reported the run finished", leftAtFinish)
 	}
 }

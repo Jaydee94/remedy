@@ -18,7 +18,7 @@
   },
   {
     "annotations": {
-      "description": "Filesystem on /volume1 at ugreen-nas has only 4.7% available space left.",
+      "description": "Filesystem on /storage at myhost-nas has only 4.7% available space left.",
       "summary": "Filesystem has less than 5% space left."
     },
     "endsAt": "2026-10-16T09:14:12.418Z",
@@ -30,15 +30,15 @@
     "generatorURL": "http://prometheus.home.example/graph?g0.expr=node_filesystem_avail_bytes+%2F+node_filesystem_size_bytes+%3C+0.05&g0.tab=1",
     "labels": {
       "alertname": "NodeFilesystemAlmostFull",
-      "instance": "ugreen-nas",
+      "instance": "myhost-nas",
       "job": "node-exporter",
-      "mountpoint": "/volume1",
+      "mountpoint": "/storage",
       "severity": "warning"
     }
   },
   {
     "annotations": {
-      "description": "Container paperless-webserver on ugreen-nas uses 93% of its memory limit.",
+      "description": "Container nextcloud-webserver on myhost-nas uses 93% of its memory limit.",
       "summary": "Container memory usage is close to its limit."
     },
     "endsAt": "2026-10-16T09:14:12.418Z",
@@ -50,8 +50,8 @@
     "generatorURL": "http://prometheus.home.example/graph?g0.expr=container_memory_usage_bytes+%2F+container_spec_memory_limit_bytes+%3E+0.9&g0.tab=1",
     "labels": {
       "alertname": "ContainerHighMemory",
-      "instance": "ugreen-nas",
-      "name": "paperless-webserver",
+      "instance": "myhost-nas",
+      "name": "nextcloud-webserver",
       "severity": "warning"
     }
   },

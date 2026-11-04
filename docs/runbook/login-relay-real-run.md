@@ -46,7 +46,7 @@ A code without a newline (only if the newline form fails in 1) and a second line
 
 ## 5. After the run
 
-1. Write the record `docs/research/login-relay-real-run-full.md`: date, CLI version, the pin of `deploy/cli-pin.yaml`, each result as a shape, surprises, and the **decision**:
+1. Write the record `docs/research/login-relay-real-run-full.md`: date, CLI version, the pin of `runner.cli` in `deploy/chart/values.yaml`, each result as a shape, surprises, and the **decision**:
    **yes**, **yes with a PTY** (amend the spec and stop; that needs a PTY in the runner) or **no** (remove the feature, keep or withdraw the exception of `docs/design.md` 2.7.1).
 2. Only on **yes**: `CLAUDE.md` and the spec's status line say "implemented and run". `docs/research/subscription-cli-usage.md` gets a dated paragraph only after the maintainer has re-read the
    primary text of the terms of use (not done by an agent; until then write "not yet re-read" and keep the feature off the list of things offered to others).

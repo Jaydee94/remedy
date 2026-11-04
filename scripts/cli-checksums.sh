@@ -1,5 +1,5 @@
 #!/bin/sh
-# Writes, or checks, the version and the SHA-256 checksums of the pinned claude CLI in deploy/cli-pin.yaml.
+# Writes, or checks, the version and the SHA-256 checksums of the pinned claude CLI in the chart's deploy/chart/values.yaml (runner.cli).
 #
 #   scripts/cli-checksums.sh <version> [--pin FILE] [--expect ARCH=SHA]...
 #       downloads the artifact of that version for both platforms, and rewrites the version and the two sha256 fields.
@@ -15,7 +15,7 @@
 # lowercase hex characters, and the same checksum for both platforms are errors. Needs curl, sed, and sha256sum or shasum.
 set -eu
 
-pin=deploy/cli-pin.yaml
+pin=deploy/chart/values.yaml
 mode=write
 version=
 expect_amd64=

@@ -19,7 +19,7 @@ func TestValidateAcceptsGoodFields(t *testing.T) {
 		"a host name":     func(f *sshhost.Fields) { f.Address = "nas.homeserver" },
 		"upper case":      func(f *sshhost.Fields) { f.Address = "NAS.Example.com"; f.Name = "Nas-1" },
 		"an IPv6 literal": func(f *sshhost.Fields) { f.Address = "fe80::1" },
-		"notes":           func(f *sshhost.Fields) { f.Notes = "Paperless lives here.\nSecond line." },
+		"notes":           func(f *sshhost.Fields) { f.Notes = "Nextcloud lives here.\nSecond line." },
 		"docker":          func(f *sshhost.Fields) { f.DockerPattern = "remedy-*" },
 	} {
 		t.Run(name, func(t *testing.T) {

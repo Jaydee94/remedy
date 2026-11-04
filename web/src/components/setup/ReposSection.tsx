@@ -58,7 +58,7 @@ export default function ReposSection({ connected }: { connected: boolean }) {
     e.preventDefault()
     if (busy) return
     if (!validRepoName(name)) {
-      setFormError('Use owner/name, for example jaydee94/homelab.')
+      setFormError('Use owner/name, for example acme/infra.')
       return
     }
     setFormError('')

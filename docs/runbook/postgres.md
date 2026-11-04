@@ -133,8 +133,12 @@ kubectl -n "$NS" get job "$JOB"       # COMPLETIONS 1/1: done; otherwise read th
 kubectl -n "$NS" logs "job/$JOB"      # ends with "wrote remedy-....dump" and the list of /backup
 ```
 
-A job that fails is retried twice (`backoffLimit: 2`) before its condition is `Failed`; its log says `pg_dump failed: no
-new dump, no old dump deleted`.
+Inside one pod the script tries `pg_dump` up to 30 times, 20 seconds apart (about ten minutes; the environment variables
+`BACKUP_ATTEMPTS` and `BACKUP_RETRY_SECONDS` of the container change that), because a pod that has only just started may not
+reach the database yet: on the home server's k3s a new pod was refused for its first seconds, and three attempts within 30
+seconds failed on two nights. A job whose attempts all fail is retried twice more by Kubernetes (`backoffLimit: 2`, a new pod
+and another ten minutes each) before its condition is `Failed`; its log says `pg_dump failed after N attempts: no new dump, no
+old dump deleted`.
 
 **The tools pod.** No pod of the chart mounts the backup claim while no backup runs, and the policy `remedy-postgres` admits
 only the control plane and pods with the backup job's labels. A short-lived pod with those labels, the same image and the

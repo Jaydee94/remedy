@@ -11,7 +11,7 @@ import (
 
 func someSkills() []prompt.Skill {
 	return []prompt.Skill{
-		{Name: "paperless", Host: "nas", Description: "Paperless keeps its data in /volume1/docker."},
+		{Name: "nextcloud", Host: "nas", Description: "Nextcloud keeps its data in /storage/docker."},
 		{Name: "lab-notes", Description: "How the lab is laid out."},
 		{Name: "backup", Host: "alpha", Description: "Backups run at night."},
 		{Name: "profile", Host: "nas", Description: "What the NAS is."},
@@ -71,14 +71,14 @@ func TestTheListIsSortedGlobalFirstThenByHostAndName(t *testing.T) {
 	list := listOf(t, prompt.SkillsSection(someSkills(), d))
 	want := "lab-notes (global) — How the lab is laid out.\n" +
 		"backup (host: alpha) — Backups run at night.\n" +
-		"paperless (host: nas) — Paperless keeps its data in /volume1/docker.\n" +
+		"nextcloud (host: nas) — Nextcloud keeps its data in /storage/docker.\n" +
 		"profile (host: nas) — What the NAS is."
 	if list != want {
 		t.Errorf("list =\n%s\nwant\n%s", list, want)
 	}
 	input := someSkills()
 	prompt.SkillsSection(input, d)
-	if input[0].Name != "paperless" {
+	if input[0].Name != "nextcloud" {
 		t.Error("SkillsSection sorted the caller's slice")
 	}
 }

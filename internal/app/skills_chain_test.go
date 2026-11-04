@@ -262,7 +262,7 @@ func TestARunWithoutHostsListsOnlyTheGlobalSkillsAndAHostsSkillsGoWithItsDeletio
 	c.addNAS(srv)
 	for _, body := range []string{
 		`{"name":"lab-notes","description":"How the lab is laid out.","body":"The NAS is nas."}`,
-		`{"hostId":1,"name":"paperless","description":"Paperless keeps its data in /volume1/docker.","body":"Restart is safe."}`,
+		`{"hostId":1,"name":"nextcloud","description":"Nextcloud keeps its data in /storage/docker.","body":"Restart is safe."}`,
 	} {
 		if code, out := c.admin(http.MethodPost, "/api/skills", body); code != http.StatusCreated {
 			t.Fatalf("POST /api/skills = %d %s", code, out)
@@ -270,21 +270,21 @@ func TestARunWithoutHostsListsOnlyTheGlobalSkillsAndAHostsSkillsGoWithItsDeletio
 	}
 
 	_, plain := c.claim(`{"prompt":"just the incidents","tools":true}`)
-	if !strings.Contains(plain, "lab-notes (global)") || strings.Contains(plain, "paperless") {
+	if !strings.Contains(plain, "lab-notes (global)") || strings.Contains(plain, "nextcloud") {
 		t.Errorf("a run without hosts:\n%s", plain)
 	}
 	token, withHost := c.claim(`{"prompt":"look at the nas","tools":true,"hosts":[1]}`)
-	if !strings.Contains(withHost, "lab-notes (global)") || !strings.Contains(withHost, "paperless (host: nas)") {
+	if !strings.Contains(withHost, "lab-notes (global)") || !strings.Contains(withHost, "nextcloud (host: nas)") {
 		t.Errorf("a run with the nas:\n%s", withHost)
 	}
 
 	if code, out := c.admin(http.MethodDelete, "/api/hosts/1", ""); code != http.StatusNoContent {
 		t.Fatalf("delete host = %d %s", code, out)
 	}
-	if out := c.call(token, 2, "skill_get", `{"name":"paperless"}`); !strings.Contains(out, "no skill with that name") {
+	if out := c.call(token, 2, "skill_get", `{"name":"nextcloud"}`); !strings.Contains(out, "no skill with that name") {
 		t.Errorf("a deleted host's skill is still loadable: %s", out)
 	}
-	if _, body := c.admin(http.MethodGet, "/api/skills", ""); strings.Contains(body, "paperless") || !strings.Contains(body, "lab-notes") {
+	if _, body := c.admin(http.MethodGet, "/api/skills", ""); strings.Contains(body, "nextcloud") || !strings.Contains(body, "lab-notes") {
 		t.Errorf("skills after the host was deleted = %s", body)
 	}
 	if _, body := c.admin(http.MethodGet, "/api/activity?limit=20", ""); !strings.Contains(body, "Host nas removed; 1 skill removed with it") {
@@ -305,7 +305,7 @@ func TestASkillThatIsOffOrBelongsToAnotherHostIsNeitherListedNorLoadableThroughT
 		name, tag string
 		off       bool
 	}{
-		{1, "paperless", "PAPERLESS-BODY", false},
+		{1, "nextcloud", "NEXTCLOUD-BODY", false},
 		{1, "nas-off", "NAS-OFF-BODY", true},
 		{2, "alpha-only", "ALPHA-ONLY-BODY", false},
 	} {
@@ -322,10 +322,10 @@ func TestASkillThatIsOffOrBelongsToAnotherHostIsNeitherListedNorLoadableThroughT
 	}
 
 	token, prompt := c.claim(`{"prompt":"look at the nas","tools":true,"hosts":[1]}`)
-	if !strings.Contains(prompt, "paperless (host: nas)") || strings.Contains(prompt, "nas-off") || strings.Contains(prompt, "alpha-only") {
+	if !strings.Contains(prompt, "nextcloud (host: nas)") || strings.Contains(prompt, "nas-off") || strings.Contains(prompt, "alpha-only") {
 		t.Fatalf("the prompt lists the active skill of the run's host only:\n%s", prompt)
 	}
-	if out := c.call(token, 1, "skill_get", `{"name":"paperless"}`); !strings.Contains(out, "PAPERLESS-BODY") {
+	if out := c.call(token, 1, "skill_get", `{"name":"nextcloud"}`); !strings.Contains(out, "NEXTCLOUD-BODY") {
 		t.Fatalf("the listed skill does not load: %s", out)
 	}
 	for i, name := range []string{"nas-off", "alpha-only"} {

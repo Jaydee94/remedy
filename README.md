@@ -4,10 +4,10 @@
 
 # Remedy
 
-AI operator for a homelab GitOps setup. Remedy reacts to alerts, logs, failed pipelines
+Self-hosted AI operator for your infrastructure. Remedy reacts to alerts, logs, failed pipelines
 and GitOps status, analyses root causes and delivers fixes as pull requests.
-**A human always does the merge.** Agents run on the subscription logins of the official
-CLIs (Claude Code, Antigravity CLI), without API tokens.
+**A human always does the merge.** Agents run the unmodified Claude Code CLI on your own
+subscription login. Each installation belongs to one operator; Remedy is not a service and has no user accounts.
 
 > Status: phase 1 (detect and diagnose) and the gatekeeper and cluster parts of phase 2 are implemented.
 > Remedy polls GitHub (read-only token, stored encrypted) and turns failed checks of pull requests and
@@ -24,6 +24,13 @@ CLIs (Claude Code, Antigravity CLI), without API tokens.
 > review). The fixer (a branch and a pull request), the Argo CD
 > source and the learning graph come next (see [`docs/design.md`](docs/design.md), [`docs/specs/`](docs/specs/) and
 > [`docs/plans/`](docs/plans/)).
+
+## Who is this for
+
+One operator per installation: you run Remedy for your own hosts, with your own login, in your own cluster, and nothing is
+shared. It is not a service and it has no user accounts, roles or teams. One subscription login must not serve several
+people, so there is no way to give a colleague access to your runner; a second person runs a second installation with their
+own login. To install it, start with [`docs/runbook/install.md`](docs/runbook/install.md).
 
 ## The UI
 
@@ -59,6 +66,7 @@ restart ends it too; the next request then shows the login page again.
   [`2026-10-05-ui-conversation-redesign-design.md`](docs/specs/2026-10-05-ui-conversation-redesign-design.md)
 - [`docs/plans/`](docs/plans/): implementation plans per phase and per UI part
 - [`docs/research/subscription-cli-usage.md`](docs/research/subscription-cli-usage.md): research on using the CLIs with a subscription
+- [`docs/runbook/install.md`](docs/runbook/install.md): installing Remedy from a release on a cluster of your own
 - [`docs/runbook/`](docs/runbook/): real runs step by step: [a first run against a repository](docs/runbook/first-real-run.md)
   ([what it showed](docs/research/phase-1-real-run.md)), [the gatekeeper](docs/runbook/gatekeeper-real-run.md) and
   [the cluster tools](docs/runbook/cluster-real-run.md); [connecting an Alertmanager](docs/runbook/alertmanager.md); [skills](docs/runbook/skills.md)
@@ -185,7 +193,7 @@ is only its default) and, if it needs one, a bearer token. The token is sealed w
 reads only (`GET /api/v2/alerts`), turns every active alert except `Watchdog` and `InfoInhibitor` into an incident and resolves it when the
 alert is gone from a complete answer; an Alertmanager that does not answer resolves nothing. To tell Remedy which host an alert is about,
 write rules in the field "Alerts of this host" on the host's page, one per line in Alertmanager's matcher syntax; all lines must hold. For a NAS
-whose alerts carry `instance="ugreen-nas"`: `instance=~"ugreen-nas(:[0-9]+)?"`. **These incidents are diagnosed too:** on its own for a
+whose alerts carry `instance="myhost-nas"`: `instance=~"myhost-nas(:[0-9]+)?"`. **These incidents are diagnosed too:** on its own for a
 young `critical` or `warning` alert (one that started less than "Oldest alert I diagnose on my own" ago, 1 hour by default, and that Remedy saw in the last 10 minutes
 or three polls), by **Diagnose** in its thread otherwise. The run reads with the cluster tools (when the cluster is set up) and the tools of the host the alert is mapped
 to, and answers with a cause, a confidence, a category and what it read. Any change it asks for waits for you under **Needs you**; in an automatic run the approval
@@ -226,7 +234,7 @@ once with `kubectl exec`. The chart is in [`deploy/chart`](deploy/chart/README.m
 (a Secret with its password, `postgres.existingSecret`, and a nightly `pg_dump` to a second claim), or it takes a connection
 to a PostgreSQL that you provide (a Secret with the URL, `database.existingSecret`, and the egress rule
 `networkPolicy.database`). How to
-install it on k3s under Argo CD is in [`docs/runbook/homelab-deploy.md`](docs/runbook/homelab-deploy.md).
+install it on a cluster of your own is in [`docs/runbook/install.md`](docs/runbook/install.md); the maintainer's own install on k3s under Argo CD is the example in [`docs/runbook/homelab-deploy.md`](docs/runbook/homelab-deploy.md).
 
 Releases are automated: a merge to `main` with a `feat` or a `fix` publishes the images
 (`ghcr.io/jaydee94/remedy-server` and `remedy-runner`, tags `X.Y.Z`, `sha-<short>`, `edge`), the Helm chart as an OCI artifact

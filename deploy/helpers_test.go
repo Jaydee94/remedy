@@ -41,12 +41,16 @@ func baseValues() map[string]any {
 	return map[string]any{
 		"existingSecret": map[string]any{"name": "remedy-secrets"},
 		"database":       map[string]any{"existingSecret": "remedy-database"},
-		// The egress to the database is required while the policies are on; the pod form is the common one.
-		"networkPolicy": map[string]any{"database": map[string]any{
-			"namespace":   "database",
-			"podSelector": map[string]any{"app.kubernetes.io/name": "postgres"},
-			"port":        5432,
-		}},
+		// The egress to the database is required while the policies are on; the pod form is the common one. Who may reach
+		// the UI has no default either.
+		"networkPolicy": map[string]any{
+			"public": map[string]any{"from": ingressNginx()},
+			"database": map[string]any{
+				"namespace":   "database",
+				"podSelector": map[string]any{"app.kubernetes.io/name": "postgres"},
+				"port":        5432,
+			},
+		},
 		"runner": map[string]any{"cli": map[string]any{
 			"version":     "2.1.288",
 			"urlTemplate": "https://downloads.example.invalid/{version}/{platform}/claude",

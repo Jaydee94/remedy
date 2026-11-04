@@ -19,8 +19,8 @@ func rules(t *testing.T, text string) []alertmatch.Matcher {
 
 func TestParseAcceptsTheAlertmanagerSyntax(t *testing.T) {
 	for _, line := range []string{
-		`instance="ugreen-nas"`,
-		`instance=~"ugreen-nas(:[0-9]+)?"`,
+		`instance="myhost-nas"`,
+		`instance=~"myhost-nas(:[0-9]+)?"`,
 		`job!="node"`,
 		`job!~"cadvisor|kube.*"`,
 		`  instance   =   "x"  `,
@@ -46,7 +46,7 @@ func TestParseRefusesWhatIsNotARule(t *testing.T) {
 	long := `a="` + strings.Repeat("x", alertmatch.MaxLineLen) + `"`
 	eleven := strings.TrimSpace(strings.Repeat("a=\"b\"\n", alertmatch.MaxLines+1))
 	for name, text := range map[string]string{
-		"unquoted value":                        `instance=ugreen-nas`,
+		"unquoted value":                        `instance=myhost-nas`,
 		"label starts with a digit":             `1abc="x"`,
 		"no label":                              `="x"`,
 		"no operator":                           `instance "x"`,
@@ -79,7 +79,7 @@ func TestAParseErrorNamesTheLine(t *testing.T) {
 }
 
 func TestMatches(t *testing.T) {
-	labels := map[string]string{"instance": "ugreen-nas:9100", "job": "node", "severity": "critical"}
+	labels := map[string]string{"instance": "myhost-nas:9100", "job": "node", "severity": "critical"}
 	cases := []struct {
 		name, text string
 		want       bool
@@ -88,8 +88,8 @@ func TestMatches(t *testing.T) {
 		{"equal fails", `job="cadvisor"`, false},
 		{"not equal", `job!="cadvisor"`, true},
 		{"not equal fails", `job!="node"`, false},
-		{"regex is anchored: a part does not match", `instance=~"ugreen-nas"`, false},
-		{"regex matches the whole value", `instance=~"ugreen-nas(:[0-9]+)?"`, true},
+		{"regex is anchored: a part does not match", `instance=~"myhost-nas"`, false},
+		{"regex matches the whole value", `instance=~"myhost-nas(:[0-9]+)?"`, true},
 		{"regex alternative", `job=~"a|node"`, true},
 		{"negated regex", `job!~"cad.*"`, true},
 		{"negated regex fails", `job!~"no.*"`, false},
@@ -111,11 +111,11 @@ func TestMatches(t *testing.T) {
 }
 
 func TestTheHomeServerCase(t *testing.T) {
-	rs := rules(t, `instance=~"ugreen-nas(:[0-9]+)?"`)
-	if !alertmatch.Matches(rs, map[string]string{"instance": "ugreen-nas"}) || !alertmatch.Matches(rs, map[string]string{"instance": "ugreen-nas:9100"}) {
+	rs := rules(t, `instance=~"myhost-nas(:[0-9]+)?"`)
+	if !alertmatch.Matches(rs, map[string]string{"instance": "myhost-nas"}) || !alertmatch.Matches(rs, map[string]string{"instance": "myhost-nas:9100"}) {
 		t.Error("the NAS must match with and without a port")
 	}
-	if alertmatch.Matches(rs, map[string]string{"instance": "192.168.178.118:9100"}) || alertmatch.Matches(rs, map[string]string{"instance": "my-ugreen-nas"}) {
+	if alertmatch.Matches(rs, map[string]string{"instance": "192.168.178.118:9100"}) || alertmatch.Matches(rs, map[string]string{"instance": "my-myhost-nas"}) {
 		t.Error("another instance matched")
 	}
 }

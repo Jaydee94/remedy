@@ -31,7 +31,7 @@ func TestAnAlertRunListsTheActiveSkillsOfItsHostAndTheGlobalOnesAndNothingElse(t
 	ctx := context.Background()
 	nas, alpha := e.host("nas", true), e.host("alpha", true)
 	e.skill(0, "lab-notes", "b")
-	e.skill(nas.ID, "paperless", "b")
+	e.skill(nas.ID, "nextcloud", "b")
 	e.skill(alpha.ID, "alpha-only", "b")
 	off := e.skill(nas.ID, "nas-off", "b")
 	if _, err := e.st.UpdateSkill(ctx, off.ID, skill.Fields{Name: "nas-off", Description: "d", Body: "b"}, store.SkillOff); err != nil {
@@ -46,7 +46,7 @@ func TestAnAlertRunListsTheActiveSkillsOfItsHostAndTheGlobalOnesAndNothingElse(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"available_skills", "lab-notes (global) \u2014 About lab-notes.", "paperless (host: nas) \u2014 About paperless.", "skill_get"} {
+	for _, want := range []string{"available_skills", "lab-notes (global) \u2014 About lab-notes.", "nextcloud (host: nas) \u2014 About nextcloud.", "skill_get"} {
 		if !strings.Contains(r.Prompt, want) {
 			t.Errorf("the prompt lacks %q:\n%s", want, r.Prompt)
 		}
@@ -57,7 +57,7 @@ func TestAnAlertRunListsTheActiveSkillsOfItsHostAndTheGlobalOnesAndNothingElse(t
 		}
 	}
 	stored, _ := e.st.GetRun(ctx, r.ID)
-	if stored.Prompt != r.Prompt || !strings.Contains(stored.Prompt, "paperless (host: nas)") {
+	if stored.Prompt != r.Prompt || !strings.Contains(stored.Prompt, "nextcloud (host: nas)") {
 		t.Error("the list is part of what is stored")
 	}
 }
@@ -67,7 +67,7 @@ func TestAnAlertRunWithoutAUsableHostListsTheGlobalSkillsOnly(t *testing.T) {
 	ctx := context.Background()
 	disabled := e.host("nas", false)
 	e.skill(0, "lab-notes", "b")
-	e.skill(disabled.ID, "paperless", "b")
+	e.skill(disabled.ID, "nextcloud", "b")
 
 	for name, hostID := range map[string]int64{"no host": 0, "a disabled host": disabled.ID} {
 		in := e.openAlert("A/"+name, "Pod crashes "+name, hostID, true)
@@ -75,7 +75,7 @@ func TestAnAlertRunWithoutAUsableHostListsTheGlobalSkillsOnly(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		if !strings.Contains(r.Prompt, "lab-notes (global)") || strings.Contains(r.Prompt, "paperless") {
+		if !strings.Contains(r.Prompt, "lab-notes (global)") || strings.Contains(r.Prompt, "nextcloud") {
 			t.Errorf("%s: the prompt =\n%s", name, r.Prompt)
 		}
 		e.finishAlertRun(r)

@@ -14,7 +14,7 @@ import (
 func learnInput() prompt.LearnInput {
 	return prompt.LearnInput{
 		HostName: "nas", Notes: "The NAS in the basement.\nBackups run at night.", DockerPattern: "remedy-*", Units: []string{"node_exporter.service", "backup.timer"},
-		Skills: []prompt.LearnSkill{{Name: "paperless", Description: "Paperless keeps its data in /volume1/docker."}, {Name: "old-notes", Description: "Outdated.", Off: true}},
+		Skills: []prompt.LearnSkill{{Name: "nextcloud", Description: "Nextcloud keeps its data in /storage/docker."}, {Name: "old-notes", Description: "Outdated.", Off: true}},
 	}
 }
 
@@ -30,7 +30,7 @@ func TestTheLearnerPromptKeepsTheInstructionsOutsideAndTheHostInsideBlocks(t *te
 	if !strings.Contains(b["host_notes"], "The NAS in the basement.\nBackups run at night.") {
 		t.Errorf("host_notes = %q", b["host_notes"])
 	}
-	if want := "paperless — Paperless keeps its data in /volume1/docker."; b["existing_skills"] != want {
+	if want := "nextcloud — Nextcloud keeps its data in /storage/docker."; b["existing_skills"] != want {
 		t.Errorf("existing_skills = %q, want %q", b["existing_skills"], want)
 	}
 	// The instructions say what the learner may do and what no text can change; none of that is inside a block.

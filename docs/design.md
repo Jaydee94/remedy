@@ -5,13 +5,18 @@ Status as of 2026-10-02. Outcome of the planning session, corrected with the fin
 
 ## 1. Purpose
 
-Remedy is an autonomous AI operator for a homelab GitOps setup. It reacts to signals
+Remedy is an autonomous AI operator for a self-hosted GitOps and infrastructure setup (a homelab,
+a small team's servers run by one operator). It reacts to signals
 (alerts, logs, failed pipelines, GitOps status), analyses root causes, drafts fixes and
 delivers them as pull requests. **A human always does the merge.** Agents run on the
-subscription logins of the official CLIs, without API tokens.
+operator's own subscription login of the official CLI, without API tokens (an API-key mode is planned, cycle 7b).
 
 **Non-goals:** multi-user operation, third-party access to the subscriptions, auto-merge,
-running as a service for other people's homelabs.
+running Remedy as a service for other people.
+
+**Goal (2026-10-21):** anyone may run their own installation for their own hosts, with their own login.
+One installation is one operator's; nothing is shared. The series is cycle 7
+([spec](specs/2026-10-21-self-hosted-for-others-design.md)).
 
 ## 2. Decisions
 
@@ -263,7 +268,7 @@ Decided on 2026-10-09; the specification is
   Not covered: a refused or expired `host_change`, the chart's in-cluster runner with an outage, the home server and a real Prometheus.
 - **Operation on the home server (cycle 6)** is specified ([`specs/2026-10-21-operation-6-design.md`](specs/2026-10-21-operation-6-design.md), [plan](plans/operation-6-home-server.md)): Remedy is installed from a release as a wrapper chart under
   the home server's ApplicationSet, reads that lab's Alertmanager, looks at the NAS and runs the drill of the umbrella spec (section 10) end to end. Two changes come first and are implemented on the branch of the cycle-6a pull request:
-  `docker ps -a` runs with the host's container pattern as a filter (the Paperless containers stay invisible, enforced by `sudoers` as well), and the chart gets two typed egress values, `networkPolicy.hosts` and
+  `docker ps -a` runs with the host's container pattern as a filter (the containers of other applications stay invisible, enforced by `sudoers` as well), and the chart gets two typed egress values, `networkPolicy.hosts` and
   `networkPolicy.alertmanager`, instead of a free list. The install, the drill and the NAS onboarding are not made ([runbook](runbook/home-server-drill.md)).
 
 ## 3. Roadmap
@@ -274,6 +279,7 @@ Decided on 2026-10-09; the specification is
 | **1 Pipeline fixer** | GitHub (PAT), CI events, responder + fixer, bot PRs automatic, timeline, HA notify | Red CI gets repaired, the human merges |
 | **2 Gatekeeper + cluster** | MCP gatekeeper, approval inbox, cluster actions, Alertmanager/Argo signals, incident model | Reaction to outages |
 | **2.5 Hosts and skills** | Inventory and credentials, host tools in the gatekeeper, settings in the UI, the Alertmanager source and the responder for outages, skills and the learning run, operation on the home server (6 cycles, see 2.10) | Remedy knows and reaches the machines outside the cluster |
+| **2.6 Other operators (cycle 7)** | 7a a stranger can install it (generic install runbook, chart defaults without a lab, `SECURITY.md`; [plan](plans/self-hosted-7a-install.md)), 7b API-key mode, 7c the webhook source | Anyone can run their own installation |
 | **3 Learning phase + graph** | Parsers, graph in PostgreSQL, learner, review queue, drift, Loki signals | Fewer tokens, better fixes |
 | **4 Expansion** | `agy` adapter and fallback, ad-hoc chat, graph explorer, hardening | Comfort, hardening |
 

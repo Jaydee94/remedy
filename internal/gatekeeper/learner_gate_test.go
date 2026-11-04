@@ -117,7 +117,7 @@ func TestALearningRunCanReadItsHostAndLoadASkillButNotChangeAnything(t *testing.
 	fake := newFake()
 	e, hostID := learnerRig(t, fake)
 	ctx := context.Background()
-	if _, err := e.st.CreateSkill(ctx, hostID, skill.Fields{Name: "paperless", Description: "About paperless.", Body: "Paperless lives here."}); err != nil {
+	if _, err := e.st.CreateSkill(ctx, hostID, skill.Fields{Name: "nextcloud", Description: "About nextcloud.", Body: "Nextcloud lives here."}); err != nil {
 		t.Fatal(err)
 	}
 	if text, isErr := askHost(t, e, "r1", "host_list", map[string]any{}); isErr || !strings.Contains(text, "nas") {
@@ -126,7 +126,7 @@ func TestALearningRunCanReadItsHostAndLoadASkillButNotChangeAnything(t *testing.
 	if text, isErr := askHost(t, e, "r2", "host_read", map[string]any{"host": "nas", "argv": []string{"docker", "ps", "-a"}}); isErr || !strings.Contains(text, "remedy-drill") {
 		t.Errorf("host_read = %q, %v", text, isErr)
 	}
-	if text, isErr := askHost(t, e, "r3", "skill_get", map[string]any{"name": "paperless"}); isErr || !strings.Contains(text, "Paperless lives here.") {
+	if text, isErr := askHost(t, e, "r3", "skill_get", map[string]any{"name": "nextcloud"}); isErr || !strings.Contains(text, "Nextcloud lives here.") {
 		t.Errorf("skill_get = %q, %v", text, isErr)
 	}
 	// The table of reads still holds for it.

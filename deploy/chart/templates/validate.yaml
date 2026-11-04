@@ -2,7 +2,7 @@
 {{- $_ := include "remedy.secretName" . -}}
 {{- $bundled := include "remedy.bundledPostgres" . -}}
 {{- /* The keys under postgres, in both modes. A value is never echoed: a password pasted into a wrong key would show. */ -}}
-{{- $pgKeys := dict "" (list "enabled" "existingSecret" "passwordKey" "image" "persistence" "resources" "backup") "image" (list "repository" "tag") "persistence" (list "size" "storageClass") "backup" (list "enabled" "schedule" "retentionDays" "size" "storageClass" "resources") }}
+{{- $pgKeys := dict "" (list "enabled" "existingSecret" "passwordKey" "image" "persistence" "resources" "backup" "appArmorProfile") "image" (list "repository" "tag") "persistence" (list "size" "storageClass") "backup" (list "enabled" "schedule" "retentionDays" "size" "storageClass" "resources") }}
 {{- range $name, $value := .Values.postgres }}
 {{- if not (has $name (get $pgKeys "")) }}
 {{- fail (printf "postgres.%s is not a value of this chart: the password belongs in a Secret (postgres.existingSecret, key postgres.passwordKey), never in values" $name) }}
@@ -30,6 +30,9 @@
 {{- if $bundled }}
 {{- $_ := include "remedy.postgresSecret" . -}}
 {{- $_ := include "remedy.postgresSecretKey" . -}}
+{{- if not (has .Values.postgres.appArmorProfile (list "" "Unconfined")) }}
+{{- fail "postgres.appArmorProfile must be empty (the runtime's profile) or Unconfined (the value is not shown)" }}
+{{- end }}
 {{- $tag := .Values.postgres.image.tag }}
 {{- if not (and (kindIs "string" $tag) (regexMatch "^[0-9]+\\.[0-9]+$" $tag)) }}
 {{- fail (printf "postgres.image.tag must be an exact MAJOR.MINOR version of the Debian-based postgres image, such as 18.6, got %q: a moving tag (16, latest) can change the server on a restart, a new major version cannot read the old data directory, and the Alpine image (-alpine) runs postgres as another user than the chart's 999; a digest is not supported by this value" (toString $tag)) }}
@@ -148,7 +151,7 @@
 {{- fail "networkPolicy.database.podSelector is required and must not be empty: an empty selector would admit every pod of the namespace; name the database pods by their labels" }}
 {{- end }}
 {{- else }}
-{{- /* The range of an external server. A rule for everything is not a rule: an IPv4 range must be /16 to /32 (a typo of the prefix such as 192.168.178.20/8 would open a whole network) and start at its network address (no host bits: 192.168.178.20/24 is a typo too), and an IPv6 range must be /16 to /128 and lie outside ::/16, which holds ::/0, ::1 and the IPv4-mapped range ::ffff:0:0/96 (that one would reach IPv4 addresses past the IPv4 rules). */ -}}
+{{- /* The range of an external server. A rule for everything is not a rule: an IPv4 range must be /16 to /32 (a typo of the prefix such as 192.0.2.20/8 would open a whole network) and start at its network address (no host bits: 192.168.178.20/24 is a typo too), and an IPv6 range must be /16 to /128 and lie outside ::/16, which holds ::/0, ::1 and the IPv4-mapped range ::ffff:0:0/96 (that one would reach IPv4 addresses past the IPv4 rules). */ -}}
 {{- $v4 := printf "^(%s\\.){3}%s/(3[0-2]|2[0-9]|1[6-9])$" $octet $octet }}
 {{- $v6 := "^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}/(1[6-9]|[2-9][0-9]|1[01][0-9]|12[0-8])$" }}
 {{- $cidrOK := false }}

@@ -3,24 +3,19 @@ existingSecret:
   name: remedy-secrets
 database:
   existingSecret: remedy-database
-runner:
-  cli:
-    version: 2.1.288
-    urlTemplate: https://downloads.example.invalid/{version}/{platform}/claude
-    archive: none
-    platforms:
-      amd64: {name: linux-x64, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
-      arm64: {name: linux-arm64, sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
 cluster:
   enabled: true
   write:
     enabled: true
     namespaces: [demo]
 networkPolicy:
+  public:
+    from:
+      - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
   apiServer:
     cidrs: [172.18.0.2/32]
   hosts:
-    - {cidr: 192.168.178.118/32, port: 22}
+    - {cidr: 192.0.2.10/32, port: 22}
     - {cidr: "fd00::1/128", port: 22}
   alertmanager:
     namespace: monitoring

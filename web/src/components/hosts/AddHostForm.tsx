@@ -35,10 +35,10 @@ export default function AddHostForm() {
     <form onSubmit={submit} className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-5">
       <p className="font-serif text-[17px] leading-relaxed text-pretty">Tell me where a machine is. I'll ask for the login on the next page.</p>
       <Field label="Name" hint="Letters, digits, dot, dash and underscore.">
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="nas" className="h-11 text-base md:text-sm" autoComplete="off" />
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="myhost" className="h-11 text-base md:text-sm" autoComplete="off" />
       </Field>
       <Field label="Address" hint="A host name or an IP address.">
-        <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="192.168.178.118" className="h-11 text-base md:text-sm" autoComplete="off" />
+        <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="192.0.2.10" className="h-11 text-base md:text-sm" autoComplete="off" />
       </Field>
       {error && (
         <Alert variant="destructive">

@@ -1,5 +1,5 @@
 # The chart's values for the dummy setup. dummy-up.sh adds the image tags and the API server's address
-# (networkPolicy.apiServer.cidrs) with --set, and deploy/cli-pin.yaml supplies the pinned CLI.
+# (networkPolicy.apiServer.cidrs) with --set, and the chart's default supplies the pinned CLI (runner.cli).
 image:
   pullPolicy: IfNotPresent
   server: {repository: remedy-server}
