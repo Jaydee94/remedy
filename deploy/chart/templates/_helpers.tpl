@@ -95,6 +95,7 @@ persistence:
 resources:
   requests: {cpu: 50m, memory: 128Mi}
   limits: {memory: 512Mi}
+appArmorProfile: ""
 backup:
   enabled: true
   schedule: "17 3 * * *"

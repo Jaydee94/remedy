@@ -691,6 +691,7 @@ func TestPostgresValuesAreRefusedWithADatabaseOfYourOwn(t *testing.T) {
 		"postgres.backup.enabled":          false,
 		"postgres.backup.retentionDays":    30,
 		"postgres.resources.limits.memory": "1Gi",
+		"postgres.appArmorProfile":         "Unconfined",
 	} {
 		values := baseValues()
 		set(values, path, v)
@@ -704,5 +705,45 @@ func TestPostgresValuesAreRefusedWithADatabaseOfYourOwn(t *testing.T) {
 	mustRender(t, values)
 	values = baseValues()
 	set(values, "postgres.image.tag", "18.6")
+	mustRender(t, values)
+}
+
+// Kernel 7.0 with containerd's default AppArmor profile denies the signals a process sends to a process of its own container,
+// and PostgreSQL's autovacuum launcher cannot start its workers ("autovacuum worker took too long to start; canceled" every
+// minute). postgres.appArmorProfile: Unconfined is the opt-in for the server container; the default changes nothing.
+func TestThePostgresServerKeepsTheRuntimeProfileByDefault(t *testing.T) {
+	d := mustRender(t, bundledValues())
+	c := container(t, podSpec(t, postgresStatefulSet(t, d)), "postgres")
+	if sc, _ := c["securityContext"].(map[string]any); sc["appArmorProfile"] != nil {
+		t.Errorf("the default securityContext sets an appArmorProfile: %v", sc)
+	}
+}
+
+func TestThePostgresServerCanRunUnconfinedAndTheBackupDoesNot(t *testing.T) {
+	values := bundledValues()
+	set(values, "postgres.appArmorProfile", "Unconfined")
+	d := mustRender(t, values)
+	c := container(t, podSpec(t, postgresStatefulSet(t, d)), "postgres")
+	if got := dig(t, c, "securityContext", "appArmorProfile", "type"); got != "Unconfined" {
+		t.Errorf("the server container's appArmorProfile.type = %v, want Unconfined", got)
+	}
+	// the other hardening stays
+	if dig(t, c, "securityContext", "allowPrivilegeEscalation") != false || dig(t, c, "securityContext", "readOnlyRootFilesystem") != true {
+		t.Errorf("the hardening of the server container changed: %v", c["securityContext"])
+	}
+	b := container(t, backupPodSpec(t, backupCronJob(t, d)), "backup")
+	if sc, _ := b["securityContext"].(map[string]any); sc["appArmorProfile"] != nil {
+		t.Errorf("the backup container got an appArmorProfile too: %v", sc)
+	}
+}
+
+func TestThePostgresAppArmorProfileTakesUnconfinedOrNothing(t *testing.T) {
+	for _, bad := range []any{"unconfined", "Localhost", "RuntimeDefault", true, 1} {
+		values := bundledValues()
+		set(values, "postgres.appArmorProfile", bad)
+		mustFail(t, values, "postgres.appArmorProfile")
+	}
+	values := bundledValues()
+	set(values, "postgres.appArmorProfile", "")
 	mustRender(t, values)
 }
