@@ -80,6 +80,15 @@ spec:
             # runs observed, headless runs staged nothing. Whether it keeps the directory away is not yet verified.
             - {name: DISABLE_UPDATES, value: "1"}
             - {name: REMEDY_RUNNER_STATUS_ADDR, value: ":8082"}
+            {{- if eq .Values.runner.auth.mode "apiKey" }}
+            # The key reaches this container only: no other container of the chart references the Secret.
+            - {name: REMEDY_AUTH_MODE, value: api_key}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.runner.auth.apiKeySecret.name | quote }}
+                  key: {{ .Values.runner.auth.apiKeySecret.key | quote }}
+            {{- end }}
             {{- with .Values.runner.model }}
             - {name: REMEDY_CLAUDE_MODEL, value: {{ . | quote }}}
             {{- end }}

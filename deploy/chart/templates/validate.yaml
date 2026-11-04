@@ -18,6 +18,29 @@
 {{- end }}
 {{- end }}
 {{- end }}
+{{- if .Values.runner.enabled }}
+{{- /* How the runner's agent CLI is billed. A value is never echoed: a key pasted into a wrong field would show. */ -}}
+{{- $auth := .Values.runner.auth | default dict }}
+{{- if not (has $auth.mode (list "subscription" "apiKey")) }}
+{{- fail "runner.auth.mode must be subscription or apiKey (the value is not shown)" }}
+{{- end }}
+{{- $sec := $auth.apiKeySecret | default dict }}
+{{- range $k, $_ := $sec }}
+{{- if not (has $k (list "name" "key")) }}
+{{- fail (printf "runner.auth.apiKeySecret.%s is not a value of this chart: the key belongs in a Secret of your own (runner.auth.apiKeySecret takes name and key), never in values" $k) }}
+{{- end }}
+{{- end }}
+{{- if eq $auth.mode "apiKey" }}
+{{- if not (and (kindIs "string" $sec.name) $sec.name) }}
+{{- fail "runner.auth.apiKeySecret.name is required with runner.auth.mode apiKey: the Secret that holds the key" }}
+{{- end }}
+{{- if not (and (kindIs "string" $sec.key) (regexMatch "^[-._a-zA-Z0-9]+$" $sec.key)) }}
+{{- fail "runner.auth.apiKeySecret.key is required with runner.auth.mode apiKey: the key of that Secret (letters, digits, dash, underscore and dot)" }}
+{{- end }}
+{{- else if or $sec.name $sec.key }}
+{{- fail "runner.auth.apiKeySecret has no effect while runner.auth.mode is subscription: remove it, or set runner.auth.mode to apiKey" }}
+{{- end }}
+{{- end }}
 {{- if not $bundled }}
 {{- /* A database of your own: every postgres value but enabled must be the chart's default, or it would silently do nothing. */ -}}
 {{- $defaults := include "remedy.postgresDefaults" . | fromYaml }}

@@ -1,0 +1,15 @@
+# The values helm lint and kubeconform use for the API-key mode (runner.auth). Not used for an install.
+existingSecret:
+  name: remedy-secrets
+postgres:
+  existingSecret: remedy-postgres
+networkPolicy:
+  public:
+    from:
+      - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+runner:
+  auth:
+    mode: apiKey
+    apiKeySecret:
+      name: anthropic-key
+      key: api-key
