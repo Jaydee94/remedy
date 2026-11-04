@@ -18,6 +18,9 @@ import (
 	"github.com/Jaydee94/remedy/internal/testutil/pgtest"
 )
 
+// appliedMigrations is what schema_migrations holds in a schema that was just opened: every file of migrations/, in order.
+const appliedMigrations = "001_baseline.sql,002_incidents_hot_updates.sql"
+
 // The schema tests check the PostgreSQL baseline (migrations/001_baseline.sql): its tables, foreign keys, checks and unique
 // indexes behave as the 18 SQLite migrations left them (schema 018), and the migration runner copes with two starts at once.
 
@@ -76,8 +79,8 @@ func TestSchemaHasEveryTableOfSQLiteSchema018(t *testing.T) {
 func TestSchemaRecordsTheBaseline(t *testing.T) {
 	_, raw := schemaTest(t)
 	got := queryStrings(t, raw, `SELECT version FROM schema_migrations ORDER BY version`)
-	if strings.Join(got, ",") != "001_baseline.sql" {
-		t.Fatalf("schema_migrations = %v, want [001_baseline.sql]", got)
+	if strings.Join(got, ",") != appliedMigrations {
+		t.Fatalf("schema_migrations = %v, want [%s]", got, appliedMigrations)
 	}
 }
 
@@ -488,7 +491,7 @@ func TestSchemaMigrateTwiceAppliesNothing(t *testing.T) {
 	if err := s.migrate(context.Background()); err != nil {
 		t.Fatalf("second migrate: %v", err)
 	}
-	if got := queryStrings(t, db, `SELECT version FROM schema_migrations ORDER BY version`); strings.Join(got, ",") != "001_baseline.sql" {
+	if got := queryStrings(t, db, `SELECT version FROM schema_migrations ORDER BY version`); strings.Join(got, ",") != appliedMigrations {
 		t.Errorf("schema_migrations = %v", got)
 	}
 	if n := schemaCount(t, db, `SELECT count(*) FROM incidents`); n != 1 {
@@ -529,7 +532,7 @@ func TestSchemaOpensAtOnceApplyEachMigrationOnce(t *testing.T) {
 		t.FailNow()
 	}
 	got := queryStrings(t, stores[0].db.db, `SELECT version FROM schema_migrations ORDER BY version`)
-	if strings.Join(got, ",") != "001_baseline.sql" {
+	if strings.Join(got, ",") != appliedMigrations {
 		t.Errorf("schema_migrations = %v", got)
 	}
 }
@@ -612,7 +615,7 @@ func TestSchemaFailedMigrationRollsBackAndReleasesTheLock(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "003_bad.sql") {
 		t.Fatalf("migrate = %v, want an error naming 003_bad.sql", err)
 	}
-	if got := queryStrings(t, db, `SELECT version FROM schema_migrations ORDER BY version`); strings.Join(got, ",") != "001_baseline.sql,002_good.sql" {
+	if got := queryStrings(t, db, `SELECT version FROM schema_migrations ORDER BY version`); strings.Join(got, ",") != "001_baseline.sql,002_good.sql,002_incidents_hot_updates.sql" {
 		t.Errorf("schema_migrations = %v", got)
 	}
 	for table, want := range map[string]bool{"good": true, "half": false, "later": false} {
@@ -681,7 +684,7 @@ func TestSchemaLocksOfTwoSchemasDoNotWaitForEachOther(t *testing.T) {
 		t.Fatalf("Open of schema B while schema A's lock is held: %v", err)
 	}
 	t.Cleanup(func() { _ = b.Close() })
-	if got := queryStrings(t, b.db.db, `SELECT version FROM schema_migrations`); strings.Join(got, ",") != "001_baseline.sql" {
+	if got := queryStrings(t, b.db.db, `SELECT version FROM schema_migrations ORDER BY version`); strings.Join(got, ",") != appliedMigrations {
 		t.Errorf("schema B: schema_migrations = %v", got)
 	}
 
@@ -719,23 +722,24 @@ func TestSchemaMigrateRefusesAConnectionWithoutASchema(t *testing.T) {
 
 // The baseline is PostgreSQL SQL and says nothing SQLite-specific.
 func TestSchemaBaselineHasNoSQLiteIsms(t *testing.T) {
-	body, err := os.ReadFile("migrations/001_baseline.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The comments may name what was translated; the statements may not.
-	body = regexp.MustCompile(`--[^\n]*`).ReplaceAll(body, nil)
-	re := regexp.MustCompile(`(?i)autoincrement|sqlite_sequence|pragma|strftime|char\(31\)|collate\s+nocase|\bblob\b|foreign-keys-off`)
-	if m := re.FindAllString(string(body), -1); len(m) > 0 {
-		t.Errorf("SQLite-isms in the baseline: %v", m)
-	}
 	files, err := filepath.Glob("migrations/*")
 	if err != nil {
 		t.Fatal(err)
 	}
+	re := regexp.MustCompile(`(?i)autoincrement|sqlite_sequence|pragma|strftime|char\(31\)|collate\s+nocase|\bblob\b|foreign-keys-off`)
 	for _, f := range files {
-		if filepath.Base(f) != "001_baseline.sql" {
-			t.Errorf("%s: only PostgreSQL migrations belong in migrations/ (the SQLite ones are gone)", f)
+		if !regexp.MustCompile(`^[0-9]{3}_[a-z_]+\.sql$`).MatchString(filepath.Base(f)) {
+			t.Errorf("%s: only numbered PostgreSQL migrations belong in migrations/ (the SQLite ones are gone)", f)
+			continue
+		}
+		body, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The comments may name what was translated; the statements may not.
+		body = regexp.MustCompile(`--[^\n]*`).ReplaceAll(body, nil)
+		if m := re.FindAllString(string(body), -1); len(m) > 0 {
+			t.Errorf("SQLite-isms in %s: %v", f, m)
 		}
 	}
 }

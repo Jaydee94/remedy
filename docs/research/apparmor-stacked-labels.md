@@ -37,6 +37,12 @@ For `comm="postgres"` since boot: 86 × `int`, 29 × `urg`, 4 × `kill` (a `SIGU
 
 The recommendation is option 1 now, option 2 if autovacuum turns out to matter (watch `pg_stat_user_tables.n_dead_tup`), and never `Unconfined` in the `remedy` namespace.
 
+## What missing autovacuum cost, measured on 2026-11-04
+
+A read of `pg_stat_user_tables` and a `VACUUM (ANALYZE, VERBOSE)` (the first autovacuum never ran: `last_autovacuum` was `never` for every table) showed the cost in one table. `incidents` held 41 rows (2.2 KB each, `details` about 1 KB) in **2089 pages (16 MB)**, its index `incidents_state_seen` was 378 pages, and the vacuum removed 27,157 dead item identifiers; the database was 29 MB. The cause is the poller: `TouchIncidentSignal` rewrites `last_seen`, `host_id` and `details` of every open alert incident once a minute (about 25,000 versions a day), and `last_seen` was in the index `incidents_state_seen`, so no touch could be a HOT update.
+
+Migration `002_incidents_hot_updates.sql` drops that index (nothing needs it for a table of a few dozen rows). On a scratch database with 19 rows of 2 KB, 6000 touches and autovacuum off, the table is 37 pages with the index and 4 without. With HOT updates PostgreSQL clears old versions of a page by itself when the page is read, so this table no longer depends on autovacuum. The other tables are written rarely (`activity` only appends). Option 1 above (a vacuum by hand) is therefore a chore for the rest, not an urgent one. The 2089 pages already allocated stay allocated (a plain `VACUUM` does not shrink the file); they are reused.
+
 ## Not verified
 
 That the stacked label is the whole reason: no profile with a widened rule was tried. Whether any bloat has built up (the database was not queried). Whether `SIGURG`/`SIGINT` denials slow PostgreSQL's wake-ups noticeably (a crash recovery on 2026-11-04 took about six minutes, two start attempts, where a start after a clean shutdown took seconds; the cause of the first failed start, `startup process exited with exit code 1`, was not found).
