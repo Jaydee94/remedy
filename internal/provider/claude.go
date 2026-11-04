@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"strings"
 	"time"
@@ -64,6 +65,13 @@ func (c Claude) Command(ctx context.Context, spec Spec, parentEnv []string) *exe
 	// structured_output (docs/research/spike-structured-output.md). The control plane validates it again.
 	if spec.Schema != "" {
 		args = append(args, "--json-schema", spec.Schema)
+	}
+	if c.Mode == ModeAPIKey {
+		cents := spec.MaxBudgetCents
+		if cents <= 0 {
+			cents = DefaultBudgetCents
+		}
+		args = append(args, "--max-budget-usd", fmt.Sprintf("%d.%02d", cents/100, cents%100))
 	}
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = spec.Workdir

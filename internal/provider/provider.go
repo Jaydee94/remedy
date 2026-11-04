@@ -17,7 +17,13 @@ type Spec struct {
 	// OnInit, when set, is asked once, with the first init event of the CLI: it says how the run is billed, and a false
 	// answer stops the run at once (the runner uses it to refuse a run that would be billed differently than configured).
 	OnInit func(apiKeySource string, known bool) bool
+	// MaxBudgetCents is the most the run may cost, passed to the CLI as --max-budget-usd in the key mode only. Zero means the
+	// built-in DefaultBudgetCents: a key-mode run is never left without a limit.
+	MaxBudgetCents int
 }
+
+// DefaultBudgetCents is the budget of a key-mode run whose claim carries none: one dollar.
+const DefaultBudgetCents = 100
 
 // Final carries the end-of-run summary some CLIs emit as their last line.
 type Final struct {

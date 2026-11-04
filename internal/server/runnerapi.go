@@ -84,6 +84,10 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 					c.RunTimeoutSeconds = int(e.Value.Dur / time.Second)
 				}
 			}
+			// The per-run budget belongs to the key mode: only a runner that says it bills a key gets one.
+			if s.d.Settings != nil && s.d.RunnerStatus.AuthMode() == AuthModeAPIKey {
+				c.MaxBudgetCents = s.d.Settings.Int(settings.APIBudgetPerRunCents)
+			}
 			writeJSON(w, http.StatusOK, c)
 			return
 		}

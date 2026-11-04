@@ -96,7 +96,7 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 		}
 	}
 
-	spec := provider.Spec{Prompt: r.Prompt, Workdir: dir, Schema: string(c.Schema),
+	spec := provider.Spec{Prompt: r.Prompt, Workdir: dir, Schema: string(c.Schema), MaxBudgetCents: c.MaxBudgetCents,
 		OnInit: func(source string, known bool) bool { return l.Mode.Accepts(source, known) }}
 	dropMCPConfig := func() {}
 	if c.MCPToken != "" {

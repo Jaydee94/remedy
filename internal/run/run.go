@@ -110,6 +110,9 @@ type Claim struct {
 	// RunTimeoutSeconds is the longest the run may take while it does not wait for an approval, from the control plane's settings.
 	// Zero (an older control plane) means the runner's own limit.
 	RunTimeoutSeconds int `json:"run_timeout_seconds,omitempty"`
+	// MaxBudgetCents is the most the run may cost, in cents, from the control plane's settings. It is set only while the runner
+	// says it bills an API key; zero means none (a subscription run, or an older control plane).
+	MaxBudgetCents int `json:"max_budget_cents,omitempty"`
 }
 
 // NewID returns a random 128-bit identifier as 32 hex characters.

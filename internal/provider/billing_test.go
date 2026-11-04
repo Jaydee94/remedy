@@ -1,6 +1,9 @@
 package provider
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestParseLineReadsTheKeySourceOfAnInitEvent(t *testing.T) {
 	for name, c := range map[string]struct {
@@ -58,6 +61,40 @@ func TestAuthSourceOfNamesTheBilling(t *testing.T) {
 	}{{"none", true, "subscription"}, {"ANTHROPIC_API_KEY", true, "api_key"}, {"", false, ""}, {"", true, ""}} {
 		if got := AuthSourceOf(c.source, c.known); got != c.want {
 			t.Errorf("AuthSourceOf(%q, %v) = %q, want %q", c.source, c.known, got, c.want)
+		}
+	}
+}
+
+func argsOf(t *testing.T, c Claude, spec Spec) []string {
+	t.Helper()
+	cmd := c.Command(context.Background(), spec, nil)
+	return cmd.Args
+}
+
+func valueAfter(args []string, flag string) (string, bool) {
+	for i, a := range args {
+		if a == flag && i+1 < len(args) {
+			return args[i+1], true
+		}
+	}
+	return "", false
+}
+
+// --max-budget-usd belongs to the key mode only; the money is whole cents with two decimals.
+func TestTheBudgetFlagIsPassedInKeyModeOnly(t *testing.T) {
+	for cents, want := range map[int]string{100: "1.00", 5: "0.05", 2000: "20.00", 1234: "12.34"} {
+		got, ok := valueAfter(argsOf(t, Claude{Mode: ModeAPIKey}, Spec{Prompt: "p", MaxBudgetCents: cents}), "--max-budget-usd")
+		if !ok || got != want {
+			t.Errorf("%d cents: --max-budget-usd = %q (present %v), want %q", cents, got, ok, want)
+		}
+	}
+	// A key-mode runner with no value in the claim falls back to 1.00: cost fails closed.
+	if got, ok := valueAfter(argsOf(t, Claude{Mode: ModeAPIKey}, Spec{Prompt: "p"}), "--max-budget-usd"); !ok || got != "1.00" {
+		t.Errorf("no value: --max-budget-usd = %q (present %v), want the built-in 1.00", got, ok)
+	}
+	for _, m := range []Mode{ModeSubscription, ""} {
+		if _, ok := valueAfter(argsOf(t, Claude{Mode: m}, Spec{Prompt: "p", MaxBudgetCents: 100}), "--max-budget-usd"); ok {
+			t.Errorf("mode %q got --max-budget-usd", m)
 		}
 	}
 }

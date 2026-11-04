@@ -87,3 +87,47 @@ func TestTheClaimCarriesTheRunTimeoutOfTheSettings(t *testing.T) {
 		t.Fatalf("run_timeout_seconds = %d, want %d", got.Seconds, want)
 	}
 }
+
+func claimBudgetCents(t *testing.T, e *env) (int, bool) {
+	t.Helper()
+	if _, err := e.store.CreateRun(context.Background(), "claude", "hello"); err != nil {
+		t.Fatal(err)
+	}
+	resp := e.runnerDo(t, http.MethodPost, "/runner/v1/claim", "", runnerToken)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("claim = %d", resp.StatusCode)
+	}
+	v, ok := decode[map[string]any](t, resp)["max_budget_cents"]
+	if !ok {
+		return 0, false
+	}
+	return int(v.(float64)), true
+}
+
+// The budget belongs to the key mode: a subscription run is not billed by the token, and a number there would mislead.
+func TestTheClaimCarriesNoBudgetForASubscriptionRunner(t *testing.T) {
+	rs := server.NewRunnerStatus()
+	e, _ := newSettingsEnv(t, func(d *server.Deps) { d.RunnerStatus = rs })
+	if cents, ok := claimBudgetCents(t, e); ok {
+		t.Fatalf("max_budget_cents = %d for a runner that never said its mode, want the field left out", cents)
+	}
+	rs.SetAuthMode("subscription")
+	if cents, ok := claimBudgetCents(t, e); ok {
+		t.Fatalf("max_budget_cents = %d in subscription mode, want the field left out", cents)
+	}
+}
+
+func TestTheClaimCarriesThePerRunBudgetInKeyMode(t *testing.T) {
+	rs := server.NewRunnerStatus()
+	e, set := newSettingsEnv(t, func(d *server.Deps) { d.RunnerStatus = rs })
+	rs.SetAuthMode("api_key")
+	if cents, ok := claimBudgetCents(t, e); !ok || cents != 100 {
+		t.Fatalf("max_budget_cents = %d (present %v), want the default 100", cents, ok)
+	}
+	if _, err := set.Set(context.Background(), settings.APIBudgetPerRunCents, json.RawMessage(`35`)); err != nil {
+		t.Fatal(err)
+	}
+	if cents, ok := claimBudgetCents(t, e); !ok || cents != 35 {
+		t.Fatalf("max_budget_cents = %d (present %v), want 35", cents, ok)
+	}
+}
