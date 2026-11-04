@@ -85,6 +85,10 @@ spec:
             {{- toYaml .Values.postgres.resources | nindent 12 }}
           securityContext:
             {{- include "remedy.postgresContainerSecurity" . | nindent 12 }}
+            {{- if .Values.postgres.appArmorProfile }}
+            appArmorProfile:
+              type: {{ .Values.postgres.appArmorProfile }}
+            {{- end }}
           volumeMounts:
             - {name: data, mountPath: /var/lib/postgresql/data}
             # The root file system is read-only: the server's socket and lock file, and temporary files.

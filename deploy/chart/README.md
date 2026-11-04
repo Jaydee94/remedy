@@ -78,6 +78,12 @@ What it renders:
 
 - A StatefulSet `remedy-postgres` with one pod: the image `postgres.image.repository:postgres.image.tag` (default
   `postgres:18.6`), user and database `remedy`, and the data directory in `pgdata` below the claim's mount.
+  - **AppArmor:** `postgres.appArmorProfile` is empty by default (the container runtime's profile). On a kernel 7.0 or later with
+    containerd's default profile (Ubuntu 26.04, k3s) AppArmor denies the signals a process sends to another process of its
+    own container; PostgreSQL then logs `autovacuum worker took too long to start; canceled` every minute and autovacuum
+    never runs. Check with `kubectl -n <namespace> logs remedy-postgres-0 | grep autovacuum` and
+    `dmesg | grep 'apparmor="DENIED"' | grep postgres`. `Unconfined` takes this one container out of the profile and changes
+    nothing else; the backup job is not affected. The value is refused with a database of your own.
   - **The tag** must be exactly `MAJOR.MINOR` of the Debian-based image, such as `18.6`. The render refuses a moving tag
     (`16`, `latest`), `-alpine` (that image runs postgres as uid 70, the chart as 999), any other suffix, and a digest:
     this value takes a tag only.
