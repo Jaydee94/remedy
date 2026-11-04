@@ -106,6 +106,24 @@ ingress:
   tls:
     secretName: ""     # empty: no TLS block (then the cookie is not Secure, see the runbook)
 
+# The webhook source (cycle 7c): a third listener for tools that report an event over HTTP, off by default. Without it no route of the
+# webhook exists on any port. The tokens of the endpoints are made on the Setup page; this only opens the door.
+webhook:
+  enabled: false
+  port: 8082
+  # Who may reach the listener, as NetworkPolicy peers; REQUIRED while the listener and networkPolicy are on (an empty list in a
+  # NetworkPolicy would allow every source). A sender in the cluster (Alertmanager, Grafana): a namespaceSelector.
+  #   - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}
+  # A sender outside, behind your reverse proxy or Ingress controller: the controller's namespace, or the proxy's address as an ipBlock.
+  from: []
+  # An Ingress of its own for /webhook/v1/ only, so that the UI stays off the internet. Optional: a sender in the cluster needs none.
+  ingress:
+    enabled: false
+    className: ""
+    host: ""           # required when enabled
+    annotations: {}
+    tls:
+      secretName: ""   # empty: no TLS block. The token is a bearer secret: terminate TLS before it leaves your network
 runner:
   enabled: true
   model: ""            # REMEDY_CLAUDE_MODEL; the CLI runs with --restricted, which ignores user settings: pin it

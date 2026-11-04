@@ -29,6 +29,13 @@ spec:
               {{- include "remedy.selector" (dict "ctx" . "component" "runner") | nindent 14 }}
       ports:
         - {protocol: TCP, port: 8081}
+    {{- if .Values.webhook.enabled }}
+    # The webhook listener, from the peers named in webhook.from only.
+    - from:
+        {{- toYaml .Values.webhook.from | nindent 8 }}
+      ports:
+        - {protocol: TCP, port: {{ .Values.webhook.port }}}
+    {{- end }}
   egress:
     - to:
         - namespaceSelector:

@@ -1,0 +1,18 @@
+{{- if .Values.webhook.enabled }}
+# The webhook Service: POST /webhook/v1/{endpoint} and /healthz, nothing else. Always ClusterIP; the NetworkPolicy admits only webhook.from.
+apiVersion: v1
+kind: Service
+metadata:
+  name: remedy-server-webhook
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "remedy.selector" (dict "ctx" . "component" "server") | nindent 4 }}
+  ports:
+    - name: webhook
+      port: {{ .Values.webhook.port }}
+      targetPort: webhook
+{{- end }}

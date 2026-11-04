@@ -46,6 +46,24 @@
 {{- fail "runner.auth.apiKeySecret has no effect while runner.auth.mode is subscription: remove it, or set runner.auth.mode to apiKey" }}
 {{- end }}
 {{- end }}
+{{- /* The webhook listener (cycle 7c). */ -}}
+{{- $wh := .Values.webhook | default dict }}
+{{- $whIngress := $wh.ingress | default dict }}
+{{- if and $whIngress.enabled (not $wh.enabled) }}
+{{- fail "webhook.ingress.enabled has no effect while webhook.enabled is false: the Ingress would point at a Service that does not exist" }}
+{{- end }}
+{{- if $wh.enabled }}
+{{- $port := int ($wh.port | default 0) }}
+{{- if or (lt $port 1) (gt $port 65535) (eq $port 8080) (eq $port 8081) }}
+{{- fail "webhook.port must be a port from 1 to 65535 that the public (8080) and the internal (8081) listener do not use" }}
+{{- end }}
+{{- if and .Values.networkPolicy.enabled (not $wh.from) }}
+{{- fail "webhook.from must list at least one peer: it says who may reach the webhook listener, and an empty list in a NetworkPolicy allows every source. A sender in the cluster: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}}]. A sender outside, behind your reverse proxy or Ingress controller: that controller's namespace, or the proxy's address as [{ipBlock: {cidr: 192.0.2.10/32}}]." }}
+{{- end }}
+{{- if and $whIngress.enabled (not $whIngress.host) }}
+{{- fail "webhook.ingress.host is required when webhook.ingress.enabled is true" }}
+{{- end }}
+{{- end }}
 {{- if not $bundled }}
 {{- /* A database of your own: every postgres value but enabled must be the chart's default, or it would silently do nothing. */ -}}
 {{- $defaults := include "remedy.postgresDefaults" . | fromYaml }}

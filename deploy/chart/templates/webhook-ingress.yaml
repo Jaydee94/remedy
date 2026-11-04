@@ -1,0 +1,34 @@
+{{- if and .Values.webhook.enabled .Values.webhook.ingress.enabled }}
+# An Ingress for the webhook path only. The UI, /api and the other listeners are not reachable through it.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: remedy-webhook
+  labels:
+    {{- include "remedy.labels" . | nindent 4 }}
+  {{- with .Values.webhook.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.webhook.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.webhook.ingress.tls.secretName }}
+  tls:
+    - hosts:
+        - {{ .Values.webhook.ingress.host | quote }}
+      secretName: {{ .Values.webhook.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.webhook.ingress.host | quote }}
+      http:
+        paths:
+          - path: /webhook/v1/
+            pathType: Prefix
+            backend:
+              service:
+                name: remedy-server-webhook
+                port:
+                  number: {{ .Values.webhook.port }}
+{{- end }}
