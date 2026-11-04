@@ -34,6 +34,7 @@ type Loop struct {
 	RunTimeout        time.Duration // longest a run may take while it does not wait for an approval, default DefaultRunTimeout
 	HeartbeatInterval time.Duration // how often a run with tools reports to the control plane, default DefaultHeartbeatInterval
 	Status            *Status       // optional: told whether the control plane answers the claim
+	Mode              provider.Mode // how the agent CLI is billed; the zero value is the subscription
 
 	busy atomic.Bool // a run is claimed and its outcome not yet posted
 }

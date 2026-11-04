@@ -44,7 +44,16 @@ func main() {
 		log.Info("removed what an earlier runner left behind", "path", cfg.WorkspaceRoot, "directories", n)
 	}
 
-	claude := provider.Claude{Binary: cfg.ClaudeBin, Model: cfg.ClaudeModel}
+	warning, err := checkAuth(cfg.AuthMode, os.Getenv)
+	if err != nil {
+		log.Error("invalid configuration", "err", err)
+		os.Exit(2)
+	}
+	if warning != "" {
+		log.Warn(warning)
+	}
+	mode := provider.Mode(cfg.AuthMode)
+	claude := provider.Claude{Binary: cfg.ClaudeBin, Model: cfg.ClaudeModel, Mode: mode}
 	status := runner.NewStatus()
 	loop := &runner.Loop{
 		Client:        &runner.Client{BaseURL: cfg.ServerURL, Token: cfg.Token, HTTP: &http.Client{}},
@@ -54,6 +63,7 @@ func main() {
 		Env:           os.Environ(),
 		Log:           log,
 		RunTimeout:    cfg.RunTimeout,
+		Mode:          mode,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

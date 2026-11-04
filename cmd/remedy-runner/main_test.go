@@ -19,7 +19,6 @@ func TestTheLoginRelayRunsInSubscriptionModeWithoutASwitch(t *testing.T) {
 		{"an old switch set off", map[string]string{"REMEDY_LOGIN_RELAY": "off"}, true},
 		{"api_key", map[string]string{"REMEDY_AUTH_MODE": "api_key"}, false},
 		{"api_key with an old switch set on", map[string]string{"REMEDY_AUTH_MODE": "api_key", "REMEDY_LOGIN_RELAY": "on"}, false},
-		{"another word", map[string]string{"REMEDY_AUTH_MODE": "Subscription"}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -35,6 +34,14 @@ func TestTheLoginRelayRunsInSubscriptionModeWithoutASwitch(t *testing.T) {
 				t.Errorf("AuthMode %q: %v, want %v", cfg.AuthMode, got, c.want)
 			}
 		})
+	}
+}
+
+// Since cycle 7b the configuration itself refuses a mode that is neither word, so the relay never meets another one.
+func TestAnotherWordForTheModeIsRefusedByTheConfiguration(t *testing.T) {
+	env := map[string]string{"REMEDY_RUNNER_TOKEN": "0123456789abcdef0123456789abcdef", "REMEDY_AUTH_MODE": "Subscription"}
+	if _, err := config.RunnerFromEnv(func(k string) string { return env[k] }); err == nil {
+		t.Error("REMEDY_AUTH_MODE=Subscription was accepted")
 	}
 }
 

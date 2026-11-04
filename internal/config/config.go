@@ -197,7 +197,7 @@ type Runner struct {
 	ClaudeModel   string        // REMEDY_CLAUDE_MODEL, empty means the adapter's default
 	RunTimeout    time.Duration // REMEDY_RUN_TIMEOUT, a Go duration, default 10m, at least 10s
 	StatusAddr    string        // REMEDY_RUNNER_STATUS_ADDR, default empty: no status listener; set, it serves /livez and /readyz
-	AuthMode      string        // REMEDY_AUTH_MODE, default "subscription"; the login relay, which has no switch, runs only in this mode
+	AuthMode      string        // REMEDY_AUTH_MODE, "subscription" (the default) or "api_key"; the login relay, which has no switch, runs only in the first
 }
 
 func RunnerFromEnv(get func(string) string) (Runner, error) {
@@ -211,6 +211,9 @@ func RunnerFromEnv(get func(string) string) (Runner, error) {
 	}
 	if len(c.Token) < minTokenLen {
 		return Runner{}, errors.New("REMEDY_RUNNER_TOKEN must be set and at least 24 characters")
+	}
+	if c.AuthMode != "subscription" && c.AuthMode != "api_key" {
+		return Runner{}, errors.New("REMEDY_AUTH_MODE must be subscription or api_key")
 	}
 	c.StatusAddr = get("REMEDY_RUNNER_STATUS_ADDR")
 	if c.StatusAddr != "" {
