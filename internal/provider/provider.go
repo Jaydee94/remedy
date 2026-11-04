@@ -17,6 +17,9 @@ type Spec struct {
 	// OnInit, when set, is asked once, with the first init event of the CLI: it says how the run is billed, and a false
 	// answer stops the run at once (the runner uses it to refuse a run that would be billed differently than configured).
 	OnInit func(apiKeySource string, known bool) bool
+	// RequireInit makes a run without a readable init event a stop: the key mode needs proof of the billing before the CLI
+	// goes on, so a CLI that never prints one, or prints one that cannot be read, is refused like a wrong source.
+	RequireInit bool
 	// MaxBudgetCents is the most the run may cost, passed to the CLI as --max-budget-usd in the key mode only. Zero means the
 	// built-in DefaultBudgetCents: a key-mode run is never left without a limit.
 	MaxBudgetCents int

@@ -86,15 +86,24 @@ func Execute(ctx context.Context, p provider.Provider, spec provider.Spec, env [
 		if l.Final != nil {
 			final = l.Final
 		}
-		emit(l.Kind, l.Payload)
-		if l.Init != nil && !initSeen {
-			initSeen = true
-			authSource = provider.AuthSourceOf(l.Init.APIKeySource, l.Init.Known)
-			if spec.OnInit != nil && !spec.OnInit(l.Init.APIKeySource, l.Init.Known) {
+		// The guard looks at the line before it is posted: posting is a round trip to the control plane, and the CLI
+		// sends its first request right after the init event.
+		if !billingBad {
+			switch {
+			case l.Init != nil && !initSeen:
+				initSeen = true
+				authSource = provider.AuthSourceOf(l.Init.APIKeySource, l.Init.Known)
+				if spec.OnInit != nil && !spec.OnInit(l.Init.APIKeySource, l.Init.Known) {
+					billingBad = true
+					stopRun()
+				}
+			case spec.RequireInit && !initSeen && l.Kind != "system" && l.Kind != "raw":
+				// The CLI went on without saying how it is billed.
 				billingBad = true
 				stopRun()
 			}
 		}
+		emit(l.Kind, l.Payload)
 	}
 	if err := sc.Err(); err != nil {
 		emit("raw", run.JSONString(fmt.Sprintf("stdout read error: %v", err)))
@@ -110,6 +119,12 @@ func Execute(ctx context.Context, p provider.Provider, spec provider.Spec, env [
 		} else {
 			exit = -1
 		}
+	}
+
+	// A run that ended well without ever proving its billing is refused too; one that failed or was stopped for another reason
+	// keeps that reason.
+	if spec.RequireInit && !initSeen && !billingBad && exit == 0 && ctx.Err() == nil {
+		billingBad = true
 	}
 
 	out := run.Outcome{ExitCode: exit, AuthSource: authSource}

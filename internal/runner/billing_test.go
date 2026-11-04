@@ -2,7 +2,9 @@ package runner_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -93,4 +95,80 @@ func TestAMismatchedRunFailsWithItsReasonAtTheControlPlane(t *testing.T) {
 	if got.Status != run.Failed || got.FailureReason != run.ReasonBillingMismatch {
 		t.Fatalf("run = status %s, reason %q, want failed with %s", got.Status, got.FailureReason, run.ReasonBillingMismatch)
 	}
+}
+
+// keyModeSpec is the spec the loop builds in key mode: the init event must come and must name a key.
+func keyModeSpec(t *testing.T) provider.Spec {
+	return provider.Spec{Prompt: "p", Workdir: t.TempDir(), RequireInit: true,
+		OnInit: func(source string, known bool) bool { return provider.ModeAPIKey.Accepts(source, known) }}
+}
+
+func executeInKeyMode(t *testing.T, script string) (run.Outcome, time.Duration) {
+	t.Helper()
+	start := time.Now()
+	out, err := runner.Execute(context.Background(), provider.Claude{Binary: testutil.ScriptClaude(t, script), Mode: provider.ModeAPIKey}, keyModeSpec(t), os.Environ(), &recordingSink{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out, time.Since(start)
+}
+
+// The guard must not fail open: a CLI that goes on without an init event, or whose init event this runner cannot read, says
+// nothing about its billing, and in key mode that is a stop.
+func TestAKeyModeRunWithoutAnInitEventIsStoppedAtTheFirstOtherEvent(t *testing.T) {
+	out, took := executeInKeyMode(t, "cat >/dev/null\necho '{\"type\":\"assistant\",\"message\":{}}'\nexec sleep 10")
+	if out.FailureReason != run.ReasonBillingMismatch || took > 5*time.Second {
+		t.Fatalf("outcome = %+v after %s, want billing_mismatch quickly", out, took)
+	}
+}
+
+func TestAKeyModeRunThatEndsWithoutAnInitEventIsAMismatch(t *testing.T) {
+	out, _ := executeInKeyMode(t, "cat >/dev/null\necho '{\"type\":\"result\",\"result\":\"done\"}'")
+	if out.FailureReason != run.ReasonBillingMismatch || out.ExitCode == 0 {
+		t.Fatalf("outcome = %+v, want a failure with reason %s", out, run.ReasonBillingMismatch)
+	}
+}
+
+func TestAnInitEventOfTheWrongShapeStillCountsAsTheInit(t *testing.T) {
+	for name, line := range map[string]string{
+		"a number as the source":          `{"type":"system","subtype":"init","apiKeySource":123}`,
+		"another field of the wrong type": `{"type":"system","subtype":"init","apiKeySource":"none","total_cost_usd":"x"}`,
+	} {
+		out, took := executeInKeyMode(t, "cat >/dev/null\necho '"+line+"'\nexec sleep 10")
+		if out.FailureReason != run.ReasonBillingMismatch || took > 5*time.Second {
+			t.Errorf("%s: outcome = %+v after %s, want billing_mismatch quickly", name, out, took)
+		}
+	}
+}
+
+func TestAKeyModeRunWithAnInitEventNamingAKeyIsNotStopped(t *testing.T) {
+	out, _ := executeInKeyMode(t, "cat >/dev/null\necho '{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"ANTHROPIC_API_KEY\"}'\necho '{\"type\":\"result\",\"result\":\"done\",\"total_cost_usd\":0.1}'")
+	if out.FailureReason != "" || out.ExitCode != 0 || out.AuthSource != "api_key" {
+		t.Fatalf("outcome = %+v", out)
+	}
+}
+
+// Posting the init event is a round trip to the control plane, and the CLI sends its first request right after it. The
+// guard looks at the event before it is posted, so a slow control plane does not widen the window.
+func TestTheGuardStopsTheRunBeforeTheInitEventIsPosted(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "went-on")
+	script := "cat >/dev/null\necho '{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"none\"}'\nsleep 0.5\ntouch " + marker + "\nexec sleep 10"
+	sink := &slowSink{delay: 1500 * time.Millisecond}
+	if _, err := runner.Execute(context.Background(), provider.Claude{Binary: testutil.ScriptClaude(t, script), Mode: provider.ModeAPIKey}, keyModeSpec(t), os.Environ(), sink); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("the CLI went on for half a second after its init event: the guard waited for the post")
+	}
+}
+
+// slowSink takes its time with every event, like a control plane that is far away.
+type slowSink struct{ delay time.Duration }
+
+func (s *slowSink) Event(ctx context.Context, _ string, _ json.RawMessage) error {
+	select {
+	case <-time.After(s.delay):
+	case <-ctx.Done():
+	}
+	return nil
 }

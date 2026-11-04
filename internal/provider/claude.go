@@ -82,25 +82,33 @@ func (c Claude) Command(ctx context.Context, spec Spec, parentEnv []string) *exe
 }
 
 func (Claude) ParseLine(line []byte) Line {
+	// The init event is read on its own, with a decode that cannot fail on an unrelated field: a type change somewhere else
+	// in the line must not hide how the run is billed.
+	var probe struct {
+		Type         string          `json:"type"`
+		Subtype      string          `json:"subtype"`
+		APIKeySource json.RawMessage `json:"apiKeySource"`
+	}
+	var init *Init
+	if json.Unmarshal(line, &probe) == nil && probe.Type == "system" && probe.Subtype == "init" {
+		init = &Init{}
+		var src string
+		if json.Unmarshal(probe.APIKeySource, &src) == nil { // not a string (absent, null, a number): the event says nothing
+			init.APIKeySource, init.Known = src, true
+		}
+	}
 	var head struct {
 		Type             string          `json:"type"`
 		Result           string          `json:"result"`
 		SessionID        string          `json:"session_id"`
 		CostUSD          float64         `json:"total_cost_usd"`
 		StructuredOutput json.RawMessage `json:"structured_output"`
-		Subtype          string          `json:"subtype"`
-		APIKeySource     *string         `json:"apiKeySource"`
 	}
 	if err := json.Unmarshal(line, &head); err != nil || head.Type == "" {
-		return Line{Kind: "raw", Payload: run.JSONString(string(line))}
+		return Line{Kind: "raw", Payload: run.JSONString(string(line)), Init: init}
 	}
 	l := Line{Kind: head.Type, Payload: append(json.RawMessage(nil), line...)}
-	if head.Type == "system" && head.Subtype == "init" {
-		l.Init = &Init{}
-		if head.APIKeySource != nil {
-			l.Init.APIKeySource, l.Init.Known = *head.APIKeySource, true
-		}
-	}
+	l.Init = init
 	if head.Type == "result" {
 		l.Final = &Final{Result: head.Result, SessionID: head.SessionID, CostUSD: head.CostUSD}
 		if len(head.StructuredOutput) > 0 && string(head.StructuredOutput) != "null" {

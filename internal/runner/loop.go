@@ -97,7 +97,8 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 	}
 
 	spec := provider.Spec{Prompt: r.Prompt, Workdir: dir, Schema: string(c.Schema), MaxBudgetCents: c.MaxBudgetCents,
-		OnInit: func(source string, known bool) bool { return l.Mode.Accepts(source, known) }}
+		RequireInit: l.Mode == provider.ModeAPIKey,
+		OnInit:      func(source string, known bool) bool { return l.Mode.Accepts(source, known) }}
 	dropMCPConfig := func() {}
 	if c.MCPToken != "" {
 		path, cleanup, err := writeMCPConfig(l.WorkspaceRoot, r.ID, l.Client.BaseURL, c.MCPToken)
