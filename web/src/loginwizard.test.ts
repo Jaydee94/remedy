@@ -490,7 +490,7 @@ describe('the announcement of a sign-in, each message once', () => {
     assert.ok(two.text.startsWith('Step 2 of 4: Open the sign-in page'))
     assert.ok(two.text.includes(rejection), two.text)
     const one = view(session({ state: 'starting', attempt: 2 })).announcement
-    assert.ok(one && one.text.includes(rejection), one?.text)
+    assert.ok(one && one.text.includes(rejection), one?.text ?? 'no announcement')
     assert.doesNotMatch(view(awaiting({ attempt: 1 })).announcement?.text ?? '', /not accepted/)
   })
 
