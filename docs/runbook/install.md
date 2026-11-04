@@ -147,6 +147,10 @@ to watch. A failed check becomes an incident, and Remedy diagnoses it. Then, as 
   in Setup first: every young `critical` or `warning` alert would otherwise be diagnosed on its own, at the cost of
   subscription quota.
 
+- **A tool that sends webhooks.** [`webhooks.md`](webhooks.md): `webhook.enabled` and `webhook.from` open a listener of their own
+  (off by default; no route exists without it), and each endpoint gets its own token on the Setup page. Diagnosis on its own is
+  off per endpoint until you switch it on. Not tried with a real sender yet.
+
 Every change an agent wants to make waits for your approval in **Needs you**.
 
 ## 10. What to know

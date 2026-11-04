@@ -289,6 +289,17 @@ not made, so the login from the page is not proven. Until 2026-10-22 it was behi
 value is gone, and a values file that still sets it renders without an error (Helm ignores an unknown value) and has no
 effect.
 
+## The webhook listener
+
+`webhook.enabled` (default `false`) adds a third listener to the control plane (`REMEDY_WEBHOOK_ADDR=:<webhook.port>`, default 8082),
+a ClusterIP Service `remedy-server-webhook` and an ingress rule on the server's NetworkPolicy from `webhook.from` only. The listener
+serves `POST /webhook/v1/{endpoint}` and `/healthz` and nothing else; the UI and the runner's routes are not on it, and without
+`webhook.enabled` no route of the webhook exists on any port. `webhook.from` has no default and the render fails when it is empty
+while `networkPolicy.enabled` is on (an empty list in a NetworkPolicy admits every source); `webhook.port` must differ from 8080 and
+8081. `webhook.ingress.{enabled,host,className,annotations,tls.secretName}` adds an Ingress for the path `/webhook/v1/` only, so the
+UI stays off the internet; a sender inside the cluster needs none. The tokens are made on the Setup page, never in values. See
+[`docs/runbook/webhooks.md`](../../docs/runbook/webhooks.md). The render is tested; a real controller and a real sender are not.
+
 ## NetworkPolicies: what the address rules mean
 
 The rules are by address **and port**. The control plane reaches the API server through `networkPolicy.apiServer.cidrs`

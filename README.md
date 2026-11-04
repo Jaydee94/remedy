@@ -69,7 +69,7 @@ restart ends it too; the next request then shows the login page again.
 - [`docs/runbook/install.md`](docs/runbook/install.md): installing Remedy from a release on a cluster of your own
 - [`docs/runbook/`](docs/runbook/): real runs step by step: [a first run against a repository](docs/runbook/first-real-run.md)
   ([what it showed](docs/research/phase-1-real-run.md)), [the gatekeeper](docs/runbook/gatekeeper-real-run.md) and
-  [the cluster tools](docs/runbook/cluster-real-run.md); [connecting an Alertmanager](docs/runbook/alertmanager.md); [skills](docs/runbook/skills.md)
+  [the cluster tools](docs/runbook/cluster-real-run.md); [connecting an Alertmanager](docs/runbook/alertmanager.md); [the webhook source](docs/runbook/webhooks.md); [skills](docs/runbook/skills.md)
 
 ## Layout
 
