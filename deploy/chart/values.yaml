@@ -116,7 +116,7 @@ runner:
   # archive: none, or tar.gz with member the file to take out of it. platforms: the vendor's name for the platform and
   # the SHA-256 of its artifact, per architecture.
   cli:
-    version: "2.1.316"
+    version: "2.1.318"
     urlTemplate: "https://downloads.claude.ai/claude-code-releases/{version}/{platform}/claude"
     archive: none
     member: ""
