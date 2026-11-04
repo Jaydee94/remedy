@@ -15,7 +15,9 @@ export interface Run {
   role: 'adhoc' | 'responder' | 'learner'
   incidentId?: number
   /** Why a failed run failed, when it was not the agent's own exit code. */
-  failureReason?: 'timeout' | 'invalid_output' | 'cancelled' | 'runner_lost'
+  failureReason?: 'timeout' | 'invalid_output' | 'cancelled' | 'runner_lost' | 'billing_mismatch'
+  /** How the run was billed, from its own init event. Left out when it did not say. */
+  authSource?: 'subscription' | 'api_key'
   /** The run has access to the gatekeeper's tools. */
   mcp?: boolean
   /** The run has the cluster tools of the gatekeeper (it was started with the chip "Read the cluster"). */
@@ -56,6 +58,8 @@ export interface RunnerStatus {
   /** The runner's own version and short commit. Left out by a runner that is older than this field. */
   version?: string
   commit?: string
+  /** How the runner's agent CLI is billed: subscription or api_key. Empty or left out while the runner has not said. */
+  authMode?: string
 }
 
 /**
@@ -380,6 +384,9 @@ export interface Limits {
   staleRunMinutes: number
   /** Automatic diagnoses started in the last 24 hours (they count against `diagnoseMaxPerDay`). */
   diagnosesLast24h: number
+  /** Only while the runner bills an API key: what the key-billed runs of the last 24 hours cost (the CLI's estimate) and the budget, in cents. */
+  apiSpendLast24hCents?: number
+  apiBudgetPerDayCents?: number
 }
 
 export type SettingValue = string | number | string[]
