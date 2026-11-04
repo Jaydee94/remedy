@@ -150,3 +150,16 @@ func TestTheLoopTracksWhetherTheControlPlaneAnswers(t *testing.T) {
 	up.Store(true)
 	eventually(t, "connected again", status.Connected)
 }
+
+func TestTheReportCarriesTheModeOfTheRunner(t *testing.T) {
+	s := runner.NewStatus()
+	if got := s.Report().AuthMode; got != "" {
+		t.Errorf("a status that was never told its mode reports %q, want empty", got)
+	}
+	s.SetAuthMode("api_key")
+	if got := s.Report().AuthMode; got != "api_key" {
+		t.Errorf("AuthMode = %q, want api_key", got)
+	}
+	var nilStatus *runner.Status
+	nilStatus.SetAuthMode("api_key") // does nothing, like the other setters
+}

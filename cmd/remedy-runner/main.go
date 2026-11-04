@@ -55,6 +55,7 @@ func main() {
 	mode := provider.Mode(cfg.AuthMode)
 	claude := provider.Claude{Binary: cfg.ClaudeBin, Model: cfg.ClaudeModel, Mode: mode}
 	status := runner.NewStatus()
+	status.SetAuthMode(cfg.AuthMode)
 	loop := &runner.Loop{
 		Client:        &runner.Client{BaseURL: cfg.ServerURL, Token: cfg.Token, HTTP: &http.Client{}},
 		Providers:     map[string]provider.Provider{"claude": claude},

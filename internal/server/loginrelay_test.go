@@ -310,6 +310,13 @@ func TestStartRefusals(t *testing.T) {
 			le.status.SetAuthMode("api_key")
 			return ""
 		}},
+		{"api_key_mode", func(t *testing.T, le *loginEnv) string { // the same, through the report the runner really sends
+			le.online(t)
+			if resp, body := le.rpost(t, "/runner/v1/status", `{"login":"missing","authMode":"api_key"}`); resp.StatusCode != http.StatusNoContent {
+				t.Fatalf("status = %d %s", resp.StatusCode, body)
+			}
+			return ""
+		}},
 	}
 	for _, c := range cases {
 		t.Run(c.reason, func(t *testing.T) {
