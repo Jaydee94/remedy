@@ -142,6 +142,11 @@ func (s *srv) routes(public, internal *http.ServeMux) {
 		public.HandleFunc("POST /api/approvals/{id}/approve", s.session(s.decide(true)))
 		public.HandleFunc("POST /api/approvals/{id}/deny", s.session(s.decide(false)))
 	}
+	public.HandleFunc("GET /api/webhooks", s.session(s.listWebhooks))
+	public.HandleFunc("POST /api/webhooks", s.session(s.createWebhook))
+	public.HandleFunc("PATCH /api/webhooks/{id}", s.session(s.patchWebhook))
+	public.HandleFunc("POST /api/webhooks/{id}/rotate", s.session(s.rotateWebhook))
+	public.HandleFunc("DELETE /api/webhooks/{id}", s.session(s.deleteWebhook))
 	public.HandleFunc("GET /api/version", s.session(s.getVersion))
 	public.HandleFunc("GET /api/activity", s.session(s.listActivity))
 	public.HandleFunc("GET /api/activity/stream", s.session(s.streamActivity))
