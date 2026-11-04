@@ -15,6 +15,9 @@ Spec: [`docs/specs/2026-10-06-kubernetes-deployment-design.md`](../../docs/specs
   `ipBlock`). It has no default; the render fails with the presets until you set it.
 - The pinned CLI needs nothing from you: the chart ships one as the default of `runner.cli` (version, URL and the SHA-256
   per architecture; `docs/research/k8s-s4-cli-install.md` says where they come from). No image contains the CLI.
+- Optionally an Anthropic API key in a Secret of your own, instead of a subscription login: `runner.auth.mode: apiKey` with
+  `runner.auth.apiKeySecret: {name, key}`. The key goes to the runner container only and the chart never creates the Secret or takes
+  the key as a value ([`docs/runbook/api-key-mode.md`](../../docs/runbook/api-key-mode.md)).
 
 ## What it renders
 

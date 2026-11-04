@@ -117,6 +117,8 @@ network you do not trust.
 
 ## 8. The one-time login
 
+This is for the default, a subscription login. If you would rather bill an Anthropic API key, skip this section and follow [`api-key-mode.md`](api-key-mode.md): the key is a Secret and a chart value, and there is nothing to log in to.
+
 Open **Setup**. The runner card says whether the runner is connected and logged in. Press **Log in from here**: a wizard shows
 the sign-in link of the vendor, you sign in with your own account, paste the one-time code, and the runner hands it to the CLI.
 The card can take about 15 seconds to turn green. The URL and the code live in memory for that one attempt only.
