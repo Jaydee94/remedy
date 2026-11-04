@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.18.2](https://github.com/Jaydee94/remedy/compare/v0.18.1...v0.18.2) (2026-11-04)
+
+### Bug Fixes
+
+* the nightly dump waits for the database to accept the connection ([#189](https://github.com/Jaydee94/remedy/issues/189)) ([2936a53](https://github.com/Jaydee94/remedy/commit/2936a53512a36db27265f32884913eb51bf2298d))
+
 ## [0.18.1](https://github.com/Jaydee94/remedy/compare/v0.18.0...v0.18.1) (2026-11-02)
 
 ### Bug Fixes
