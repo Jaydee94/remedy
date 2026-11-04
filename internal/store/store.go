@@ -23,7 +23,7 @@ var ErrNotFound = errors.New("not found")
 const tsLayout = "2006-01-02T15:04:05.000000000Z"
 
 const runCols = `id, provider, prompt, status, exit_code, result, session_id, cost_usd, created_at, started_at, finished_at,
-	role, incident_id, output, failure_reason, head_sha, automatic, mcp, cancel_requested, cluster, host_count`
+	role, incident_id, output, failure_reason, head_sha, automatic, mcp, cancel_requested, cluster, host_count, auth_source`
 
 type Store struct{ db *pool }
 
@@ -165,7 +165,7 @@ func scanRun(sc scanner) (run.Run, error) {
 	var mcp, cancelRequested, cluster, hostCount int
 	if err := sc.Scan(&r.ID, &r.Provider, &r.Prompt, &status, &exit, &r.Result, &r.SessionID,
 		&r.CostUSD, &created, &started, &finished, &role, &incident, &output, &r.FailureReason,
-		&r.HeadSHA, &automatic, &mcp, &cancelRequested, &cluster, &hostCount); err != nil {
+		&r.HeadSHA, &automatic, &mcp, &cancelRequested, &cluster, &hostCount, &r.AuthSource); err != nil {
 		return run.Run{}, err
 	}
 	r.HostCount = hostCount
@@ -325,9 +325,9 @@ func (s *Store) FinishRun(ctx context.Context, id string, o run.Outcome) error {
 		now := time.Now()
 		res, err := tx.ExecContext(ctx, `
 			UPDATE runs SET status = ?, exit_code = ?, result = ?, session_id = ?, cost_usd = ?, output = ?,
-				failure_reason = ?, finished_at = ?
+				failure_reason = ?, auth_source = ?, finished_at = ?
 			WHERE id = ? AND status = 'running'`,
-			string(status), o.ExitCode, o.Result, o.SessionID, o.CostUSD, output, o.FailureReason, formatTS(now), id)
+			string(status), o.ExitCode, o.Result, o.SessionID, o.CostUSD, output, o.FailureReason, o.AuthSource, formatTS(now), id)
 		if err != nil {
 			return err
 		}

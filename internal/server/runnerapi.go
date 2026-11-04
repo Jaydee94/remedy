@@ -148,6 +148,10 @@ func (s *srv) finish(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "unknown failure reason")
 		return
 	}
+	if out.AuthSource != "" && out.AuthSource != "subscription" && out.AuthSource != "api_key" {
+		writeErr(w, http.StatusBadRequest, "unknown auth source")
+		return
+	}
 	// What an agent answers is never trusted: a responder run must carry a valid diagnosis, or it counts
 	// as failed.
 	responderRun := false

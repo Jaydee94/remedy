@@ -52,27 +52,29 @@ const (
 )
 
 type Run struct {
-	ID              string          `json:"id"`
-	Provider        string          `json:"provider"`
-	Prompt          string          `json:"prompt"`
-	Status          Status          `json:"status"`
-	ExitCode        *int            `json:"exitCode,omitempty"`
-	Result          string          `json:"result"`
-	SessionID       string          `json:"sessionId"`
-	CostUSD         float64         `json:"costUsd"`
-	CreatedAt       time.Time       `json:"createdAt"`
-	StartedAt       *time.Time      `json:"startedAt,omitempty"`
-	FinishedAt      *time.Time      `json:"finishedAt,omitempty"`
-	Role            Role            `json:"role"`
-	IncidentID      *int64          `json:"incidentId,omitempty"`
-	Output          json.RawMessage `json:"output,omitempty"`
-	FailureReason   string          `json:"failureReason,omitempty"`
-	HeadSHA         string          `json:"headSha,omitempty"`
-	Automatic       bool            `json:"automatic,omitempty"`
-	MCP             bool            `json:"mcp,omitempty"`             // the run has access to the gatekeeper
-	CancelRequested bool            `json:"cancelRequested,omitempty"` // the maintainer cancelled the run
-	Cluster         bool            `json:"cluster,omitempty"`         // the run has the cluster tools of the gatekeeper
-	HostCount       int             `json:"hostCount,omitempty"`       // the number of hosts the run was started with
+	ID            string          `json:"id"`
+	Provider      string          `json:"provider"`
+	Prompt        string          `json:"prompt"`
+	Status        Status          `json:"status"`
+	ExitCode      *int            `json:"exitCode,omitempty"`
+	Result        string          `json:"result"`
+	SessionID     string          `json:"sessionId"`
+	CostUSD       float64         `json:"costUsd"`
+	CreatedAt     time.Time       `json:"createdAt"`
+	StartedAt     *time.Time      `json:"startedAt,omitempty"`
+	FinishedAt    *time.Time      `json:"finishedAt,omitempty"`
+	Role          Role            `json:"role"`
+	IncidentID    *int64          `json:"incidentId,omitempty"`
+	Output        json.RawMessage `json:"output,omitempty"`
+	FailureReason string          `json:"failureReason,omitempty"`
+	// AuthSource is how the run was billed, from its own init event: "subscription", "api_key", or empty.
+	AuthSource      string `json:"authSource,omitempty"`
+	HeadSHA         string `json:"headSha,omitempty"`
+	Automatic       bool   `json:"automatic,omitempty"`
+	MCP             bool   `json:"mcp,omitempty"`             // the run has access to the gatekeeper
+	CancelRequested bool   `json:"cancelRequested,omitempty"` // the maintainer cancelled the run
+	Cluster         bool   `json:"cluster,omitempty"`         // the run has the cluster tools of the gatekeeper
+	HostCount       int    `json:"hostCount,omitempty"`       // the number of hosts the run was started with
 }
 
 type Event struct {
