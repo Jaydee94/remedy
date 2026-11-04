@@ -25,6 +25,11 @@ describe('billedTo and costLine', () => {
     assert.equal(billedTo(run()), null)
   })
 
+  it('does not call a run billed that was stopped because of its billing', () => {
+    assert.equal(billedTo(run({ authSource: 'api_key', failureReason: 'billing_mismatch' })), null)
+    assert.ok(!runMeta(run({ authSource: 'api_key', failureReason: 'billing_mismatch' }), 'now').includes('billed to'))
+  })
+
   it('shows money only for a run that was billed to a key, and as the CLI’s estimate', () => {
     assert.equal(costLine(run({ authSource: 'api_key', costUsd: 0.1234 })), 'about $0.12 (the CLI’s estimate)')
     assert.equal(costLine(run({ authSource: 'api_key', costUsd: 1.5 })), 'about $1.50 (the CLI’s estimate)')

@@ -118,6 +118,13 @@ func TestApiKeyModeNeedsTheSecretAndNothingElse(t *testing.T) {
 	v := apiKeyValues()
 	set(v, "runner.auth.apiKeySecret.value", "sk-ant-oops")
 	mustFail(t, v, "runner.auth.apiKeySecret")
+	// the most natural mistake: the key written straight under runner.auth, in either mode
+	for _, mode := range []string{"subscription", "apiKey"} {
+		v = apiKeyValues()
+		set(v, "runner.auth.mode", mode)
+		set(v, "runner.auth.apiKey", "sk-ant-oops")
+		mustFail(t, v, "runner.auth.apiKey is not a value of this chart")
+	}
 	// a Secret named while the mode is the subscription would do nothing: refused
 	v = baseValues()
 	set(v, "runner.auth.apiKeySecret.name", "anthropic-key")

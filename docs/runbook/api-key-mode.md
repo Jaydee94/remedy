@@ -42,8 +42,7 @@ answered 400 until the control plane is upgraded (it retries every 15 seconds). 
 
 ## 3. What you see
 
-On Setup, "My runner" shows **Billed to your API key (Console)** and **Key present**: the page checks that the variable is not empty, never that the key is valid. A bad key
-fails the first run with a fixed sentence. There is no "Log in from here" in this mode.
+On Setup, "My runner" shows **Billed to your API key (Console)** and **Key present**: the page does not look at the key at all: it shows "Key present" whenever the runner reports key mode. The runner itself refuses to start (exit 2) without a key of the right shape (20 or more letters, digits, `-` or `_`, with no space or line break around it; a Secret made with `--from-file` from a file that ends in a newline is refused for that), and a key that is well-formed but not valid fails the first run with a fixed sentence. There is no "Log in from here" in this mode.
 
 A run says **billed to your API key, about $0.12 (the CLI's estimate)**; the figure is the CLI's own estimate, not a charge, and your invoice decides. A subscription run shows no money
 anywhere, because for a subscription the figure means nothing. Under "My limits" you see **About $1.20 of $5.00 today**.
@@ -55,15 +54,15 @@ Two settings on the Setup page (and `REMEDY_API_BUDGET_PER_RUN_CENTS`, `REMEDY_A
 - **Most one run may cost** (5 to 2000, default 100): the runner passes it to the CLI as `--max-budget-usd`. A runner in key mode with no value from the control plane uses 1.00 itself.
   What the CLI does when a run reaches it is unverified (section 8): the run is recorded as it ends.
 - **Most automatic runs may cost per 24 hours** (0 to 100000, default 500): an automatic diagnosis is refused, with the reason in the thread, when the key-billed runs of the last 24 hours
-  cost this much or more. `0` turns automatic runs off. A run you start yourself is never refused for it. It is enforced only while the runner reports key mode.
+  cost this much or more. The sum is the CLI's estimate per finished run; a run that was killed before the CLI printed its cost (timeout, cancel, lost runner) counts at the per-run budget it was allowed. `0` turns automatic runs off. A run you start yourself is never refused for it. It is enforced unless the runner has reported subscription mode, so also during the first seconds after a restart of the control plane.
 
 The existing limits on the number of diagnoses stay. Set a spending limit on the key in the Console as well: Remedy's budgets rest on the CLI's estimate.
 
 ## 5. The guard
 
-Each run says how it will be billed in its own first event. The runner stops a run **at once** when that contradicts its mode: a key where the subscription is configured (a leftover variable, a stored
-login that wins), or the subscription where a key is configured. In key mode a run whose event says nothing is stopped too. The run fails with the reason "billing_mismatch" and the
-sentence "The run was stopped: it would have been billed differently than configured."; nothing it wrote afterwards is kept. A runner in subscription mode that finds `ANTHROPIC_API_KEY` in its environment
+Each run says how it will be billed in its own first event. The runner stops a run as soon as it has read that event, before the event is posted, when it contradicts its mode (one request may already be on its way; the window cannot be closed entirely): a key where the subscription is configured (a leftover variable, a stored
+login that wins), or the subscription where a key is configured. In key mode a run whose event says nothing is stopped too: so is a run that goes on without any init event, or whose init event cannot be read, and one that ends well without one. The run fails with the reason "billing_mismatch" and the
+sentence "The run was stopped: it would have been billed differently than configured."; nothing it wrote afterwards is kept. In subscription mode the guard accepts only the source `none`, which was measured for an interactive login; a `CLAUDE_CODE_OAUTH_TOKEN` login (`setup-token`) is untested, and if the CLI reports anything else for it every run is stopped with "billing_mismatch" (the real run in section 8 must cover it). A runner in subscription mode that finds `ANTHROPIC_API_KEY` in its environment
 ignores it and says so once in its log, without the value.
 
 ## 6. What happens to the key
@@ -80,5 +79,5 @@ Set `runner.auth.mode: subscription` (and remove `apiKeySecret`), upgrade, then 
 
 A real run with a key costs money on your key, so it is yours to start. Use a key with a low spending limit. It has to answer (spec section 5.1): which value the first event carries for a key
 (the guard accepts any value other than "none"); whether the key wins over a stored subscription login without `--bare`; what a run looks like when `--max-budget-usd` is reached; what the CLI's login
-check says with only a key (the page ignores it in this mode); the current key format (`sk-ant-`, 20 or more characters is assumed by the redaction); and whether the scrub catches what the CLI prints for a rejected key.
+check says with only a key (the page ignores it in this mode); the current key format (`sk-ant-`, 20 or more characters is assumed by the redaction); and whether the scrub catches what the CLI prints for a rejected key; which source the CLI reports for a `setup-token` login (subscription mode).
 Write the result to `docs/research/api-key-mode-real-run.md` as shapes, never a key and never a whole event, and fix the guard first if a result contradicts it.

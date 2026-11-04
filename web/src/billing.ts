@@ -20,8 +20,9 @@ export function modeChip(authMode: string | undefined): Chip {
   }
 }
 
-/** Who a run was billed to, from its own record; null when the run does not say. */
-export function billedTo(run: Pick<Run, 'authSource'>): string | null {
+/** Who a run was billed to, from its own record; null when the run does not say, or was stopped before it was billed. */
+export function billedTo(run: Pick<Run, 'authSource' | 'failureReason'>): string | null {
+  if (run.failureReason === 'billing_mismatch') return null // the source is what it would have used
   switch (run.authSource) {
     case 'subscription':
       return 'your subscription'

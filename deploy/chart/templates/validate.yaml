@@ -24,6 +24,11 @@
 {{- if not (has $auth.mode (list "subscription" "apiKey")) }}
 {{- fail "runner.auth.mode must be subscription or apiKey (the value is not shown)" }}
 {{- end }}
+{{- range $k, $_ := $auth }}
+{{- if not (has $k (list "mode" "apiKeySecret")) }}
+{{- fail (printf "runner.auth.%s is not a value of this chart: runner.auth takes mode and apiKeySecret (a key belongs in a Secret of your own, never in values; the value is not shown)" $k) }}
+{{- end }}
+{{- end }}
 {{- $sec := $auth.apiKeySecret | default dict }}
 {{- range $k, $_ := $sec }}
 {{- if not (has $k (list "name" "key")) }}
