@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.20.0](https://github.com/Jaydee94/remedy/compare/v0.19.2...v0.20.0) (2026-11-04)
+
+### Features
+
+* an API-key mode for the runner (cycle 7b) ([#198](https://github.com/Jaydee94/remedy/issues/198)) ([55d85a6](https://github.com/Jaydee94/remedy/commit/55d85a653ace7c16d72a685e9641cf08e678d49d))
+
 ## [0.19.2](https://github.com/Jaydee94/remedy/compare/v0.19.1...v0.19.2) (2026-11-04)
 
 ### Bug Fixes

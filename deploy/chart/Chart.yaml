@@ -2,8 +2,8 @@ apiVersion: v2
 name: remedy
 description: Remedy, a self-hosted AI operator for your infrastructure. The control plane and the runner.
 type: application
-version: 0.19.2
-appVersion: "0.19.2"
+version: 0.20.0
+appVersion: "0.20.0"
 home: https://github.com/Jaydee94/remedy
 sources:
   - https://github.com/Jaydee94/remedy
