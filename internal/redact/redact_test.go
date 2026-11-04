@@ -88,3 +88,28 @@ func TestRedactHandlesAHugeInputQuickly(t *testing.T) {
 		t.Fatal("a log without secrets was changed")
 	}
 }
+
+// The vendor's API keys start with sk-ant- (the prefix of the key format in the vendor's documentation; the first real run of the
+// key mode confirms the length). The runner scrubs its own key from what it posts; this covers text that reaches a prompt.
+func TestRedactRemovesAnAnthropicKey(t *testing.T) {
+	const key = "sk-ant-api03-AbCdEf0123456789xyzXYZ_-0987654321qrstuvWXYZ"
+	for name, in := range map[string]string{
+		"in a log line": "401 invalid x-api-key " + key + " for the request",
+		"in JSON":       `{"error":"bad key ` + key + `"}`,
+		"in a header":   "x-api-key: " + key,
+		"twice":         key + " and " + key,
+	} {
+		got := redact.Redact(in)
+		if strings.Contains(got, "AbCdEf0123456789") || strings.Contains(got, key) {
+			t.Errorf("%s: %q still holds the key", name, got)
+		}
+	}
+	if got := redact.Redact("401 invalid " + key); got != "401 invalid [REDACTED:anthropic-key]" {
+		t.Errorf("got %q", got)
+	}
+	for _, keep := range []string{"sk-ant-", "sk-ant-abc", "ask-ant-api03-short", "sk-antique-furniture-and-more-words-here"} {
+		if got := redact.Redact(keep); got != keep {
+			t.Errorf("Redact(%q) = %q, want it left alone", keep, got)
+		}
+	}
+}
