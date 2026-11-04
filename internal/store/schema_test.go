@@ -19,7 +19,7 @@ import (
 )
 
 // appliedMigrations is what schema_migrations holds in a schema that was just opened: every file of migrations/, in order.
-const appliedMigrations = "001_baseline.sql,002_incidents_hot_updates.sql,003_runs_auth_source.sql"
+const appliedMigrations = "001_baseline.sql,002_incidents_hot_updates.sql,003_runs_auth_source.sql,004_webhook_endpoints.sql"
 
 // The schema tests check the PostgreSQL baseline (migrations/001_baseline.sql): its tables, foreign keys, checks and unique
 // indexes behave as the 18 SQLite migrations left them (schema 018), and the migration runner copes with two starts at once.
@@ -35,7 +35,7 @@ func schemaTest(t *testing.T) (*Store, *sql.DB) {
 // and runs under their old names; sqlite_sequence is SQLite's own) plus the runner's schema_migrations.
 var schemaTables = []string{
 	"activity", "github_connections", "host_credentials", "hosts", "incident_notes", "incidents", "repos", "run_events",
-	"run_hosts", "run_tokens", "runs", "schema_migrations", "settings", "skills", "tool_calls",
+	"run_hosts", "run_tokens", "runs", "schema_migrations", "settings", "skills", "tool_calls", "webhook_endpoints",
 }
 
 // fkRule is one foreign key of SQLite schema 018, as the CREATE TABLE and ALTER TABLE statements of the old files wrote it.
@@ -615,7 +615,7 @@ func TestSchemaFailedMigrationRollsBackAndReleasesTheLock(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "003_bad.sql") {
 		t.Fatalf("migrate = %v, want an error naming 003_bad.sql", err)
 	}
-	if got := queryStrings(t, db, `SELECT version FROM schema_migrations ORDER BY version`); strings.Join(got, ",") != "001_baseline.sql,002_good.sql,002_incidents_hot_updates.sql,003_runs_auth_source.sql" {
+	if got := queryStrings(t, db, `SELECT version FROM schema_migrations ORDER BY version`); strings.Join(got, ",") != "001_baseline.sql,002_good.sql,002_incidents_hot_updates.sql,003_runs_auth_source.sql,004_webhook_endpoints.sql" {
 		t.Errorf("schema_migrations = %v", got)
 	}
 	for table, want := range map[string]bool{"good": true, "half": false, "later": false} {

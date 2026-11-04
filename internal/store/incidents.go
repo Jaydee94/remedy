@@ -43,9 +43,10 @@ const (
 	SourceGitHub       = "github"
 	SourceAlertmanager = "alertmanager"
 	SourceArgoCD       = "argocd"
+	SourceWebhook      = "webhook"
 )
 
-var sources = []string{SourceGitHub, SourceAlertmanager, SourceArgoCD}
+var sources = []string{SourceGitHub, SourceAlertmanager, SourceArgoCD, SourceWebhook}
 
 // Severities of an incident. GitHub incidents have none.
 var severities = []string{"critical", "warning", "info", "none"}
