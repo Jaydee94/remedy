@@ -122,13 +122,13 @@ runner:
   # archive: none, or tar.gz with member the file to take out of it. platforms: the vendor's name for the platform and
   # the SHA-256 of its artifact, per architecture.
   cli:
-    version: "2.1.316"
+    version: "2.1.318"
     urlTemplate: "https://downloads.claude.ai/claude-code-releases/{version}/{platform}/claude"
     archive: none
     member: ""
     platforms:
-      amd64: {name: "linux-x64", sha256: "fd13c70000fec3f2116dfbcbb6121210b4a29328bf0e46210a59dd594a67d824"}
-      arm64: {name: "linux-arm64", sha256: "55cdb8e162d190432696ea54010e0fca2e18d06fa7a7127fd563b9ffd4f22624"}
+      amd64: {name: "linux-x64", sha256: "708c77b204db30086ff6f1ed34577bda03e1be74ced80557cbf7b54249ebf0bd"}
+      arm64: {name: "linux-arm64", sha256: "53a0d7e219d7b0804ecba5dbc002745e89f786cc946d2de85a6470d5b2d1fb06"}
 
 cluster:
   enabled: false       # the control plane reads the cluster; it runs as the read account (needs networkPolicy.apiServer.cidrs)
