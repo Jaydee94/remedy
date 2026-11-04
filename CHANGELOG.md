@@ -6,12 +6,6 @@
 
 * an opt-in AppArmor profile for the bundled PostgreSQL ([#190](https://github.com/Jaydee94/remedy/issues/190)) ([53a4023](https://github.com/Jaydee94/remedy/commit/53a4023140e999a088808892ea7e7d9a81586093))
 
-## [0.19.0](https://github.com/Jaydee94/remedy/compare/v0.18.2...v0.19.0) (2026-11-04)
-
-### Features
-
-* an opt-in AppArmor profile for the bundled PostgreSQL ([#190](https://github.com/Jaydee94/remedy/issues/190)) ([53a4023](https://github.com/Jaydee94/remedy/commit/53a4023140e999a088808892ea7e7d9a81586093))
-
 ## [0.18.2](https://github.com/Jaydee94/remedy/compare/v0.18.1...v0.18.2) (2026-11-04)
 
 ### Bug Fixes
