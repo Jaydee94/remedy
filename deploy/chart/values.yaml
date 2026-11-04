@@ -66,6 +66,10 @@ postgres:
   # containerd's default profile (Ubuntu 26.04, k3s) AppArmor denies the signals a process sends to another process of
   # its own container (dmesg: apparmor="DENIED" operation="signal" comm="postgres"), and autovacuum then never runs.
   # Unconfined takes this one container out of the profile; nothing else changes. The backup job does not need it.
+  # WARNING: the Pod Security Standards "restricted" and "baseline" both forbid Unconfined. In a namespace that enforces
+  # either (the namespace of docs/runbook/install.md enforces restricted) the StatefulSet cannot create the pod
+  # ("violates PodSecurity restricted:latest: forbidden AppArmor profile") and the database stays down. Set this only in a
+  # namespace that enforces "privileged" or none, and read the namespace's labels first.
   appArmorProfile: ""
   # A CronJob that runs pg_dump into a claim of its own and keeps the dumps of about the last retentionDays days (older than
   # retentionDays * 1440 minutes when a new dump was written). The claim is in the same cluster (on a single-node cluster on
