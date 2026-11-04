@@ -123,6 +123,10 @@ type limitsView struct {
 	StaleRunMinutes         int `json:"staleRunMinutes"`
 	// DiagnosesLast24h is how many automatic diagnoses were started in the last 24 hours, counted the way the daily limit counts.
 	DiagnosesLast24h int `json:"diagnosesLast24h"`
+	// APISpendLast24hCents and APIBudgetPerDayCents are there only while the runner bills an API key: what the key-billed runs of
+	// the last 24 hours cost by the CLI's estimate, and the budget for automatic runs. Pointers, so that 0 is a value.
+	APISpendLast24hCents *int `json:"apiSpendLast24hCents,omitempty"`
+	APIBudgetPerDayCents *int `json:"apiBudgetPerDayCents,omitempty"`
 }
 
 func (s *srv) getLimits(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +151,15 @@ func (s *srv) getLimits(w http.ResponseWriter, r *http.Request) {
 		view.DiagnoseMaxPerIncident = limits.MaxPerIncident
 		view.DiagnoseMaxPerDay = limits.MaxPerDay
 		view.StaleRunMinutes = int(reaper.MaxAgeFor(set.Duration(settings.RunTimeout)).Minutes())
+		if s.d.RunnerStatus.AuthMode() == AuthModeAPIKey {
+			spent, err := s.d.Store.APISpendSince(r.Context(), time.Now().Add(-24*time.Hour), set.Int(settings.APIBudgetPerRunCents))
+			if err != nil {
+				writeErr(w, http.StatusInternalServerError, "could not add up the spend")
+				return
+			}
+			budget := set.Int(settings.APIBudgetPerDayCents)
+			view.APISpendLast24hCents, view.APIBudgetPerDayCents = &spent, &budget
+		}
 	}
 	writeJSON(w, http.StatusOK, view)
 }

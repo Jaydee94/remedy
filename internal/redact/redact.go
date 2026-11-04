@@ -21,6 +21,8 @@ var rules = []rule{
 	{regexp.MustCompile(`-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*`), "[REDACTED:private-key]"},
 	{regexp.MustCompile(`\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}`), "[REDACTED:github-token]"},
 	{regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{20,}`), "[REDACTED:github-token]"},
+	// The vendor's API keys: sk-ant- and a long run of token characters (cycle 7b; the first real run confirms the length).
+	{regexp.MustCompile(`\bsk-ant-[A-Za-z0-9_-]{20,}`), "[REDACTED:anthropic-key]"},
 	{regexp.MustCompile(`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`), "[REDACTED:aws-key]"},
 	{regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}`), "[REDACTED:jwt]"},
 	{regexp.MustCompile(`(?i)(\bbearer\s+)[A-Za-z0-9._~+/=-]{8,}`), "${1}[REDACTED]"},

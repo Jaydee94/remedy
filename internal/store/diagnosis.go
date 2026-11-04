@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -36,6 +37,15 @@ type DiagnosisLimits struct {
 	Cooldown       time.Duration // per incident, between two automatic diagnoses
 	MaxPerIncident int           // automatic diagnoses per incident
 	MaxPerDay      int           // automatic runs in a rolling 24 hours; 0 turns automatic diagnosis off
+
+	// EnforceBudget and DayBudgetCents are the daily budget of the API-key mode: while the runner bills a key, an automatic start
+	// is refused when the key-billed runs of the last 24 hours cost this much or more (0 refuses every automatic start). A run the
+	// maintainer starts is never refused for it. Without EnforceBudget the budget is not looked at.
+	EnforceBudget  bool
+	DayBudgetCents int
+	// RunBudgetCents is what a key-billed run that was killed before the CLI printed its cost counts for: the most it was
+	// allowed to spend. Zero counts such a run as free.
+	RunBudgetCents int
 }
 
 func DefaultLimits() DiagnosisLimits {
@@ -162,7 +172,41 @@ func checkAutomatic(ctx context.Context, tx *txn, in Incident, p StartParams) er
 	if today >= p.Limits.MaxPerDay {
 		return &LimitError{Reason: fmt.Sprintf("%d automatic runs in the last 24 hours", today)}
 	}
+	if p.Limits.EnforceBudget {
+		cents, err := apiSpend(ctx, tx, p.Now.Add(-24*time.Hour), p.Limits.RunBudgetCents)
+		if err != nil {
+			return err
+		}
+		if cents >= p.Limits.DayBudgetCents {
+			return &LimitError{Reason: fmt.Sprintf("about $%.2f of the $%.2f budget for runs with your API key was spent in the last 24 hours (the CLI's estimate)",
+				float64(cents)/100, float64(p.Limits.DayBudgetCents)/100)}
+		}
+	}
 	return nil
+}
+
+// spentCents turns the CLI's estimate in dollars into whole cents.
+func spentCents(usd float64) int { return int(math.Round(usd * 100)) }
+
+// APISpendSince is what the runs billed to an API key and finished since then cost, in cents: the CLI's estimate, not a charge.
+// A run that was killed (timeout, cancel, lost runner) never printed its cost; it counts as runBudgetCents, the most it was allowed to spend.
+func (s *Store) APISpendSince(ctx context.Context, since time.Time, runBudgetCents int) (int, error) {
+	return apiSpend(ctx, s.db, since, runBudgetCents)
+}
+
+// apiSpend is the query behind APISpendSince and the daily budget, on a pool or inside a transaction.
+func apiSpend(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, since time.Time, runBudgetCents int) (int, error) {
+	var spent float64
+	if err := q.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(CASE WHEN cost_usd > 0 THEN cost_usd
+		                         WHEN failure_reason IN ('timeout', 'cancelled', 'runner_lost') THEN ?::float8 / 100
+		                         ELSE 0 END), 0)
+		FROM runs WHERE auth_source = 'api_key' AND finished_at > ?`, runBudgetCents, formatTS(since)).Scan(&spent); err != nil {
+		return 0, err
+	}
+	return spentCents(spent), nil
 }
 
 // CompleteDiagnosis stores a validated diagnosis on the incident of a responder run, if the run is the

@@ -31,6 +31,8 @@ const (
 	AutoApprovalTimeout      = "auto_approval_timeout"
 	MetricsURL               = "metrics_url"
 	MetricsToken             = "metrics_token"
+	APIBudgetPerRunCents     = "api_budget_per_run_cents"
+	APIBudgetPerDayCents     = "api_budget_per_day_cents"
 )
 
 // Spec says what one setting is. problem is the sentence that follows the variable's name when a value is refused; check is the
@@ -85,6 +87,20 @@ var specs = []Spec{
 		Effect:  "Takes effect at the next automatic diagnosis.",
 		problem: "must be a whole number from 0 to 200",
 		check:   func(v Value) bool { return v.Num >= 0 && v.Num <= 200 },
+	},
+	{
+		Key: APIBudgetPerRunCents, Group: "API key", Label: "Most one run may cost, in cents", Env: "REMEDY_API_BUDGET_PER_RUN_CENTS",
+		Kind: KindNumber, Default: Value{Num: 100}, Rule: "A whole number of cents from 5 to 2000 (100 is one dollar). Only a runner that bills an API key uses it.",
+		Effect:  "Takes effect at the next run. The CLI stops a run that reaches it; the figure is the CLI's estimate.",
+		problem: "must be a whole number of cents from 5 to 2000",
+		check:   func(v Value) bool { return v.Num >= 5 && v.Num <= 2000 },
+	},
+	{
+		Key: APIBudgetPerDayCents, Group: "API key", Label: "Most automatic runs may cost per 24 hours, in cents", Env: "REMEDY_API_BUDGET_PER_DAY_CENTS",
+		Kind: KindNumber, Default: Value{Num: 500}, Rule: "A whole number of cents from 0 to 100000 (500 is five dollars). 0 turns automatic runs off while the runner bills an API key.",
+		Effect:  "Takes effect at the next automatic run. A run you start by hand is never refused for it.",
+		problem: "must be a whole number of cents from 0 to 100000",
+		check:   func(v Value) bool { return v.Num >= 0 && v.Num <= 100000 },
 	},
 	{
 		Key: K8sWriteNamespaces, Group: "Cluster actions", Label: "Namespaces where I may act", Env: "REMEDY_K8S_WRITE_NAMESPACES",

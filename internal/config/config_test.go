@@ -180,3 +180,20 @@ func TestRunnerFromEnvStatusAddr(t *testing.T) {
 		}
 	}
 }
+
+func TestRunnerAuthModeTakesTwoValuesOnly(t *testing.T) {
+	const token = "a-runner-token-of-24-chars-or-more"
+	for mode, ok := range map[string]bool{"": true, "subscription": true, "api_key": true, "Api_Key": false, "apikey": false, "bedrock": false} {
+		c, err := config.RunnerFromEnv(env(map[string]string{"REMEDY_RUNNER_TOKEN": token, "REMEDY_AUTH_MODE": mode}))
+		if (err == nil) != ok {
+			t.Errorf("REMEDY_AUTH_MODE=%q: err = %v, want ok = %v", mode, err, ok)
+			continue
+		}
+		if err != nil && !strings.Contains(err.Error(), "subscription") {
+			t.Errorf("REMEDY_AUTH_MODE=%q: the error %q does not name the allowed values", mode, err)
+		}
+		if ok && mode == "" && c.AuthMode != "subscription" {
+			t.Errorf("the default mode = %q, want subscription", c.AuthMode)
+		}
+	}
+}

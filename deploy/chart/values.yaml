@@ -117,6 +117,14 @@ runner:
     size: 1Gi
     storageClass: ""
     existingClaim: ""  # set: use this claim for the login and the CLI's state, create none
+  # How the runner's agent CLI is billed. subscription: the login of the operator (the default; log in once from the Setup page).
+  # apiKey: an Anthropic API key in a Secret of your own, given to the runner container and to no other (docs/runbook/api-key-mode.md).
+  # The mode is chosen at install time and is not switchable from the UI. The chart never creates the Secret and takes no key as a value.
+  auth:
+    mode: subscription
+    apiKeySecret:
+      name: ""   # required with apiKey: the Secret that holds the key
+      key: ""    # required with apiKey: the key of that Secret
   # The init container installs this CLI before the runner starts and checks its SHA-256. No image contains it (the
   # binary is proprietary). This is the pinned default: an install works with no value here. Override all of it to pin
   # another version. The vendor publishes the checksums in

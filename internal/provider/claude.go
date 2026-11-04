@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ const readOnlyTools = "Read,Grep,Glob"
 type Claude struct {
 	Binary string // defaults to "claude" on PATH
 	Model  string // defaults to DefaultModel
+	Mode   Mode   // how the CLI is billed; the zero value is the subscription
 }
 
 func (Claude) Name() string { return "claude" }
@@ -64,15 +66,37 @@ func (c Claude) Command(ctx context.Context, spec Spec, parentEnv []string) *exe
 	if spec.Schema != "" {
 		args = append(args, "--json-schema", spec.Schema)
 	}
+	if c.Mode == ModeAPIKey {
+		cents := spec.MaxBudgetCents
+		if cents <= 0 {
+			cents = DefaultBudgetCents
+		}
+		args = append(args, "--max-budget-usd", fmt.Sprintf("%d.%02d", cents/100, cents%100))
+	}
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = spec.Workdir
 	cmd.Stdin = strings.NewReader(spec.Prompt)
-	cmd.Env = FilterEnv(parentEnv)
+	cmd.Env = EnvFor(c.Mode, parentEnv)
 	cmd.WaitDelay = 5 * time.Second
 	return cmd
 }
 
 func (Claude) ParseLine(line []byte) Line {
+	// The init event is read on its own, with a decode that cannot fail on an unrelated field: a type change somewhere else
+	// in the line must not hide how the run is billed.
+	var probe struct {
+		Type         string          `json:"type"`
+		Subtype      string          `json:"subtype"`
+		APIKeySource json.RawMessage `json:"apiKeySource"`
+	}
+	var init *Init
+	if json.Unmarshal(line, &probe) == nil && probe.Type == "system" && probe.Subtype == "init" {
+		init = &Init{}
+		var src string
+		if json.Unmarshal(probe.APIKeySource, &src) == nil { // not a string (absent, null, a number): the event says nothing
+			init.APIKeySource, init.Known = src, true
+		}
+	}
 	var head struct {
 		Type             string          `json:"type"`
 		Result           string          `json:"result"`
@@ -81,9 +105,10 @@ func (Claude) ParseLine(line []byte) Line {
 		StructuredOutput json.RawMessage `json:"structured_output"`
 	}
 	if err := json.Unmarshal(line, &head); err != nil || head.Type == "" {
-		return Line{Kind: "raw", Payload: run.JSONString(string(line))}
+		return Line{Kind: "raw", Payload: run.JSONString(string(line)), Init: init}
 	}
 	l := Line{Kind: head.Type, Payload: append(json.RawMessage(nil), line...)}
+	l.Init = init
 	if head.Type == "result" {
 		l.Final = &Final{Result: head.Result, SessionID: head.SessionID, CostUSD: head.CostUSD}
 		if len(head.StructuredOutput) > 0 && string(head.StructuredOutput) != "null" {

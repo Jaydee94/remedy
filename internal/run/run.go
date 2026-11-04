@@ -46,30 +46,35 @@ const (
 	// ReasonRunnerLost means the control plane failed a run with gatekeeper access because its runner stopped
 	// sending heartbeats.
 	ReasonRunnerLost = "runner_lost"
+	// ReasonBillingMismatch means the runner stopped the run because its init event said it would be billed differently than
+	// the runner's mode (a key where the subscription is configured, or the reverse).
+	ReasonBillingMismatch = "billing_mismatch"
 )
 
 type Run struct {
-	ID              string          `json:"id"`
-	Provider        string          `json:"provider"`
-	Prompt          string          `json:"prompt"`
-	Status          Status          `json:"status"`
-	ExitCode        *int            `json:"exitCode,omitempty"`
-	Result          string          `json:"result"`
-	SessionID       string          `json:"sessionId"`
-	CostUSD         float64         `json:"costUsd"`
-	CreatedAt       time.Time       `json:"createdAt"`
-	StartedAt       *time.Time      `json:"startedAt,omitempty"`
-	FinishedAt      *time.Time      `json:"finishedAt,omitempty"`
-	Role            Role            `json:"role"`
-	IncidentID      *int64          `json:"incidentId,omitempty"`
-	Output          json.RawMessage `json:"output,omitempty"`
-	FailureReason   string          `json:"failureReason,omitempty"`
-	HeadSHA         string          `json:"headSha,omitempty"`
-	Automatic       bool            `json:"automatic,omitempty"`
-	MCP             bool            `json:"mcp,omitempty"`             // the run has access to the gatekeeper
-	CancelRequested bool            `json:"cancelRequested,omitempty"` // the maintainer cancelled the run
-	Cluster         bool            `json:"cluster,omitempty"`         // the run has the cluster tools of the gatekeeper
-	HostCount       int             `json:"hostCount,omitempty"`       // the number of hosts the run was started with
+	ID            string          `json:"id"`
+	Provider      string          `json:"provider"`
+	Prompt        string          `json:"prompt"`
+	Status        Status          `json:"status"`
+	ExitCode      *int            `json:"exitCode,omitempty"`
+	Result        string          `json:"result"`
+	SessionID     string          `json:"sessionId"`
+	CostUSD       float64         `json:"costUsd"`
+	CreatedAt     time.Time       `json:"createdAt"`
+	StartedAt     *time.Time      `json:"startedAt,omitempty"`
+	FinishedAt    *time.Time      `json:"finishedAt,omitempty"`
+	Role          Role            `json:"role"`
+	IncidentID    *int64          `json:"incidentId,omitempty"`
+	Output        json.RawMessage `json:"output,omitempty"`
+	FailureReason string          `json:"failureReason,omitempty"`
+	// AuthSource is how the run was billed, from its own init event: "subscription", "api_key", or empty.
+	AuthSource      string `json:"authSource,omitempty"`
+	HeadSHA         string `json:"headSha,omitempty"`
+	Automatic       bool   `json:"automatic,omitempty"`
+	MCP             bool   `json:"mcp,omitempty"`             // the run has access to the gatekeeper
+	CancelRequested bool   `json:"cancelRequested,omitempty"` // the maintainer cancelled the run
+	Cluster         bool   `json:"cluster,omitempty"`         // the run has the cluster tools of the gatekeeper
+	HostCount       int    `json:"hostCount,omitempty"`       // the number of hosts the run was started with
 }
 
 type Event struct {
@@ -87,6 +92,8 @@ type Outcome struct {
 	CostUSD       float64         `json:"costUsd"`
 	Output        json.RawMessage `json:"output,omitempty"`
 	FailureReason string          `json:"failureReason,omitempty"`
+	// AuthSource is how the run was billed according to its own init event: "subscription", "api_key", or empty.
+	AuthSource string `json:"authSource,omitempty"`
 }
 
 // Claim is what the control plane answers to a runner that claims a run: the run itself and what a
@@ -103,6 +110,9 @@ type Claim struct {
 	// RunTimeoutSeconds is the longest the run may take while it does not wait for an approval, from the control plane's settings.
 	// Zero (an older control plane) means the runner's own limit.
 	RunTimeoutSeconds int `json:"run_timeout_seconds,omitempty"`
+	// MaxBudgetCents is the most the run may cost, in cents, from the control plane's settings. It is set only while the runner
+	// says it bills an API key; zero means none (a subscription run, or an older control plane).
+	MaxBudgetCents int `json:"max_budget_cents,omitempty"`
 }
 
 // NewID returns a random 128-bit identifier as 32 hex characters.

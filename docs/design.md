@@ -9,7 +9,7 @@ Remedy is an autonomous AI operator for a self-hosted GitOps and infrastructure 
 a small team's servers run by one operator). It reacts to signals
 (alerts, logs, failed pipelines, GitOps status), analyses root causes, drafts fixes and
 delivers them as pull requests. **A human always does the merge.** Agents run on the
-operator's own subscription login of the official CLI, without API tokens (an API-key mode is planned, cycle 7b).
+operator's own subscription login of the official CLI (or, chosen once at install time, on their own API key: cycle 7b, [runbook](runbook/api-key-mode.md), not yet tried with a real key).
 
 **Non-goals:** multi-user operation, third-party access to the subscriptions, auto-merge,
 running Remedy as a service for other people.

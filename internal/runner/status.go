@@ -21,6 +21,7 @@ type Status struct {
 	checkedAt  time.Time
 	cliVersion string
 	build      version.Info // the runner's own build, as it was when the status was made
+	authMode   string       // "subscription" or "api_key"; empty until the runner has been told
 }
 
 func NewStatus() *Status { return &Status{login: provider.LoginUnknown, build: version.Get()} }
@@ -63,6 +64,16 @@ func (s *Status) SetCLIVersion(v string) {
 	s.mu.Unlock()
 }
 
+// SetAuthMode records how the runner's agent CLI is billed, so that the next report says it.
+func (s *Status) SetAuthMode(mode string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.authMode = mode
+	s.mu.Unlock()
+}
+
 // Report is what the runner tells the control plane: the body of POST /runner/v1/status. It carries a state, the CLI's
 // version line and the runner's own version and commit, never output of the CLI.
 type Report struct {
@@ -71,6 +82,7 @@ type Report struct {
 	CLIVersion     string    `json:"cliVersion,omitempty"`
 	Version        string    `json:"version,omitempty"`
 	Commit         string    `json:"commit,omitempty"`
+	AuthMode       string    `json:"authMode,omitempty"`
 }
 
 func (s *Status) Report() Report {
@@ -79,7 +91,7 @@ func (s *Status) Report() Report {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return Report{Login: string(s.login), LoginCheckedAt: s.checkedAt, CLIVersion: s.cliVersion, Version: s.build.Version, Commit: s.build.Commit}
+	return Report{Login: string(s.login), LoginCheckedAt: s.checkedAt, CLIVersion: s.cliVersion, Version: s.build.Version, Commit: s.build.Commit, AuthMode: s.authMode}
 }
 
 // StatusHandler serves the probes of the runner pod. /livez answers 200 whenever the process serves HTTP. /readyz

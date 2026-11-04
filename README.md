@@ -176,8 +176,9 @@ described in [`docs/runbook/gatekeeper-real-run.md`](docs/runbook/gatekeeper-rea
 
 `REMEDY_LOG_LEVEL=debug` (default `info`) logs every request to GitHub with its method, host,
 path and status, never a query or the token; the GitHub client refuses to send anything but `GET` and `HEAD`.
-The runner removes `ANTHROPIC_API_KEY` from the CLI's environment on purpose, so runs are
-always billed to the subscription login.
+The runner removes `ANTHROPIC_API_KEY` from the CLI's environment unless you chose the API-key mode, so by default runs are
+billed to the subscription login; in the API-key mode (`runner.auth.mode: apiKey`, chosen at install time) the key goes to the runner container only, a run that
+would be billed differently than configured is stopped, and the budgets limit the cost. See [`docs/runbook/api-key-mode.md`](docs/runbook/api-key-mode.md); it has not been tried with a real key yet.
 
 The runner starts the CLI in an isolated configuration (`--restricted`, and `--safe-mode` for a run without
 gatekeeper tools): your global skills, plugins, hooks and MCP servers are **not** loaded, the agent only gets the

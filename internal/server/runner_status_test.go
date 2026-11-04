@@ -225,3 +225,74 @@ func TestTheCheckedAtClampBoundaries(t *testing.T) {
 		}
 	}
 }
+
+type modeView struct {
+	Connected bool   `json:"connected"`
+	AuthMode  string `json:"authMode"`
+}
+
+func reportMode(t *testing.T, e *env, body string) int {
+	t.Helper()
+	return e.runnerDo(t, http.MethodPost, "/runner/v1/status", body, runnerToken).StatusCode
+}
+
+func getMode(t *testing.T, e *env) modeView {
+	t.Helper()
+	return decode[modeView](t, e.do(t, e.adminClient(t, true), http.MethodGet, "/api/runner", "", false))
+}
+
+func TestTheRunnerReportsHowItIsBilled(t *testing.T) {
+	e := newRunnerEnv(t)
+	if v := getMode(t, e); v.AuthMode != "" {
+		t.Fatalf("before any report authMode = %q, want empty (unknown)", v.AuthMode)
+	}
+	if code := reportMode(t, e, `{"login":"unknown","authMode":"api_key"}`); code != http.StatusNoContent {
+		t.Fatalf("report = %d, want 204", code)
+	}
+	if v := getMode(t, e); !v.Connected || v.AuthMode != "api_key" {
+		t.Fatalf("view = %+v, want connected and api_key", v)
+	}
+	if code := reportMode(t, e, `{"login":"ok","authMode":"subscription"}`); code != http.StatusNoContent {
+		t.Fatalf("report = %d", code)
+	}
+	if v := getMode(t, e); v.AuthMode != "subscription" {
+		t.Fatalf("authMode = %q after a runner that changed mode, want subscription", v.AuthMode)
+	}
+}
+
+func TestAnUnknownModeIsRefusedAndChangesNothing(t *testing.T) {
+	e := newRunnerEnv(t)
+	reportMode(t, e, `{"login":"ok","authMode":"api_key"}`)
+	for _, bad := range []string{`"bedrock"`, `"API_KEY"`, `" api_key"`, `1`} {
+		if code := reportMode(t, e, `{"login":"ok","authMode":`+bad+`}`); code != http.StatusBadRequest {
+			t.Errorf("authMode %s = %d, want 400", bad, code)
+		}
+	}
+	if v := getMode(t, e); v.AuthMode != "api_key" {
+		t.Errorf("authMode = %q after refused reports, want api_key", v.AuthMode)
+	}
+}
+
+// A runner that says nothing about its mode is one from before the key mode existed, and those bill a subscription. After
+// a rollback of the runner the control plane must not keep the key mode of the runner that was there before.
+func TestAReportWithoutAModeIsARunnerOfTheSubscriptionMode(t *testing.T) {
+	e := newRunnerEnv(t)
+	reportMode(t, e, `{"login":"ok","authMode":"api_key"}`)
+	if code := reportMode(t, e, `{"login":"ok"}`); code != http.StatusNoContent {
+		t.Fatalf("report = %d", code)
+	}
+	if v := getMode(t, e); v.AuthMode != "subscription" {
+		t.Errorf("authMode = %q, want subscription (an older runner says nothing)", v.AuthMode)
+	}
+}
+
+func TestTheModeIsUnknownWhenTheRunnerIsNoLongerConnected(t *testing.T) {
+	r := server.NewRunnerStatus()
+	if err := r.ReportMode("api_key"); err != nil {
+		t.Fatal(err)
+	}
+	r.Touch(time.Now().Add(-10 * time.Minute))
+	if v := r.View(time.Now()); v.Connected || v.AuthMode != "" {
+		t.Errorf("view = %+v, want not connected and no mode: a stale report must not say how the next run is billed", v)
+	}
+}

@@ -34,6 +34,7 @@ type Loop struct {
 	RunTimeout        time.Duration // longest a run may take while it does not wait for an approval, default DefaultRunTimeout
 	HeartbeatInterval time.Duration // how often a run with tools reports to the control plane, default DefaultHeartbeatInterval
 	Status            *Status       // optional: told whether the control plane answers the claim
+	Mode              provider.Mode // how the agent CLI is billed; the zero value is the subscription
 
 	busy atomic.Bool // a run is claimed and its outcome not yet posted
 }
@@ -95,7 +96,9 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 		}
 	}
 
-	spec := provider.Spec{Prompt: r.Prompt, Workdir: dir, Schema: string(c.Schema)}
+	spec := provider.Spec{Prompt: r.Prompt, Workdir: dir, Schema: string(c.Schema), MaxBudgetCents: c.MaxBudgetCents,
+		RequireInit: l.Mode == provider.ModeAPIKey,
+		OnInit:      func(source string, known bool) bool { return l.Mode.Accepts(source, known) }}
 	dropMCPConfig := func() {}
 	if c.MCPToken != "" {
 		path, cleanup, err := writeMCPConfig(l.WorkspaceRoot, r.ID, l.Client.BaseURL, c.MCPToken)
@@ -126,7 +129,9 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 	if c.MCPToken != "" {
 		go l.watch(execCtx, log, r.ID, clock, func() { stopped.Store(true); cancel() })
 	}
-	out, err := Execute(execCtx, p, spec, l.Env, clientSink{client: l.Client, runID: r.ID})
+	scrub := scrubberFor(l.Mode, l.Env)
+	out, err := Execute(execCtx, p, spec, l.Env, scrub.Sink(clientSink{client: l.Client, runID: r.ID}))
+	out = scrub.Outcome(out)
 	if err != nil {
 		log.Error("execution problem", "err", err)
 	}
@@ -134,6 +139,8 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 	// moment in which the run is over for the control plane and the file still exists.
 	dropMCPConfig()
 	switch {
+	case out.FailureReason == run.ReasonBillingMismatch:
+		log.Warn("the run was stopped: its billing contradicts the runner's mode", "mode", string(l.Mode), "authSource", out.AuthSource)
 	case stopped.Load():
 		out.FailureReason = run.ReasonCancelled
 		out.Result = "The run was cancelled."

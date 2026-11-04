@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { api, ApiError } from '@/api.ts'
 import type { RunnerStatus } from '@/api.ts'
 import { runnerPollMs } from '@/loginwizard.ts'
+import { modeChip } from '@/billing.ts'
 import { hideOnError, runnerView, type Chip } from '@/runnerstatus.ts'
 import { useControlPlaneVersion } from '@/shellContext.ts'
 import { useClock } from '@/useClock.ts'
@@ -88,6 +89,7 @@ export default function RunnerSection() {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <ChipView chip={view.connection} />
             <ChipView chip={view.login} />
+            <ChipView chip={modeChip(status.authMode)} />
           </div>
           <p aria-live="polite" className="font-serif text-[17px] leading-relaxed text-pretty">
             {view.sentence}
@@ -95,11 +97,19 @@ export default function RunnerSection() {
           {view.detail && <p className="text-[13px] leading-relaxed text-muted-foreground">{view.detail}</p>}
           {view.hint && !view.command && <p className="text-[13px] leading-relaxed text-muted-foreground">{view.hint}</p>}
           {/* The wizard, when the control plane offers it; without it the hint and the command, as before the relay. */}
-          <LoginWizard
-            terminal={view.command ? { hint: view.hint, command: view.command } : null}
-            loggedIn={status.connected && status.login === 'ok'}
-            onSessionChange={setSessionState}
-          />
+          {/* Billed to an API key there is nothing to log in to: the mode is chosen at install time and the page has no button for it. */}
+          {status.authMode !== 'api_key' && (
+            <LoginWizard
+              terminal={view.command ? { hint: view.hint, command: view.command } : null}
+              loggedIn={status.connected && status.login === 'ok'}
+              onSessionChange={setSessionState}
+            />
+          )}
+          {status.authMode === 'api_key' && (
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
+              The mode is set where Remedy is installed (the chart value <code>runner.auth.mode</code>), not here.
+            </p>
+          )}
           {notice && <p className="text-[13px] leading-relaxed text-muted-foreground">{notice}</p>}
           {(runnerVersion || view.version) && (
             <div className="flex flex-wrap gap-x-4 gap-y-1">

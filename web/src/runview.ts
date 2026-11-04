@@ -1,4 +1,5 @@
 import type { Run, RunEvent, RunStatus } from './api.ts'
+import { billedTo, costLine } from './billing.ts'
 import { argvOf, commandText } from './hostcmd.ts'
 
 /** One thing the agent did: what it did in words, the raw line, and whether it has an answer yet. */
@@ -190,6 +191,8 @@ export function runFailure(run: Run): { title: string; text: string } | undefine
       return { title: "The answer wasn't valid", text: own || 'The agent finished, but its answer did not match what I asked for.' }
     case 'cancelled':
       return { title: 'Cancelled', text: own || 'The run was cancelled. The runner stopped the agent.' }
+    case 'billing_mismatch':
+      return { title: 'It would have been billed differently', text: own || 'The agent said it would be billed differently than the runner is configured, so I stopped it before it did anything.' }
   }
   return { title: 'The run failed', text: own || 'The agent stopped with an error.' }
 }
@@ -201,7 +204,10 @@ export function runMeta(run: Run, time: string): string {
     : run.hostCount
       ? `${run.hostCount} host${run.hostCount === 1 ? '' : 's'}`
       : false
-  return [roleLabel(run), run.mcp && 'tools', run.cluster && 'cluster', hosts, time].filter(Boolean).join(' · ')
+  const who = billedTo(run)
+  const cost = costLine(run)
+  const billed = who && `billed to ${who}${cost ? `, ${cost}` : ''}`
+  return [roleLabel(run), run.mcp && 'tools', run.cluster && 'cluster', hosts, billed, time].filter(Boolean).join(' · ')
 }
 
 /** The kind of a run in a word. */

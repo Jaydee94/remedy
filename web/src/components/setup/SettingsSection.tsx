@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { api, ApiError } from '@/api.ts'
 import type { Fact, Limits, Setting, SignalSource } from '@/api.ts'
 import { groupSettings, inputText, isSecret, parseInput, replaceSetting, resetLabel, sourceBadge, unchanged, valueText } from '@/settings.ts'
+import { spendLine } from '@/billing.ts'
 import { diagnosisBar, limitsText } from '@/setup.ts'
 import { signalLine } from '@/signals.ts'
 import { useClock } from '@/useClock.ts'
@@ -127,6 +128,7 @@ export default function SettingsSection() {
       {limits && (
         <div className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-5">
           <p className="font-serif text-[17px] leading-relaxed text-pretty">{limitsText(limits)}</p>
+          {spendLine(limits) && <p className="text-[13px] leading-relaxed text-muted-foreground">{spendLine(limits)}</p>}
           {bar && (
             <div className="flex flex-col gap-2">
               <span className="text-[13px] text-muted-foreground">

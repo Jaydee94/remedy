@@ -59,6 +59,19 @@ export function runnerView(s: RunnerStatus, now: number): RunnerView {
     const silent = Math.max(0, Math.round((now - Date.parse(s.lastSeenAt)) / 1000))
     return { connection, login, sentence: 'My runner is not connected.', hint: checkPod, detail: `I last heard from it ${duration(silent)} ago.`, command: null, version }
   }
+  // Billed to an API key there is no login to check: the runner reports "missing" because the CLI has none, and that is no problem.
+  // That the key is valid is for the first run to find out.
+  if (s.authMode === 'api_key') {
+    return {
+      connection,
+      login: { label: 'Key present', ...good },
+      sentence: 'My runner is connected and bills your API key, so I can run an agent.',
+      hint: null,
+      detail: null,
+      command: null,
+      version,
+    }
+  }
   switch (s.login) {
     case 'ok':
       return { connection, login, sentence: 'My runner is connected and logged in, so I can run an agent.', hint: null, detail: null, command: null, version }

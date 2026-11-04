@@ -19,7 +19,7 @@ import (
 )
 
 // appliedMigrations is what schema_migrations holds in a schema that was just opened: every file of migrations/, in order.
-const appliedMigrations = "001_baseline.sql,002_incidents_hot_updates.sql"
+const appliedMigrations = "001_baseline.sql,002_incidents_hot_updates.sql,003_runs_auth_source.sql"
 
 // The schema tests check the PostgreSQL baseline (migrations/001_baseline.sql): its tables, foreign keys, checks and unique
 // indexes behave as the 18 SQLite migrations left them (schema 018), and the migration runner copes with two starts at once.
@@ -615,7 +615,7 @@ func TestSchemaFailedMigrationRollsBackAndReleasesTheLock(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "003_bad.sql") {
 		t.Fatalf("migrate = %v, want an error naming 003_bad.sql", err)
 	}
-	if got := queryStrings(t, db, `SELECT version FROM schema_migrations ORDER BY version`); strings.Join(got, ",") != "001_baseline.sql,002_good.sql,002_incidents_hot_updates.sql" {
+	if got := queryStrings(t, db, `SELECT version FROM schema_migrations ORDER BY version`); strings.Join(got, ",") != "001_baseline.sql,002_good.sql,002_incidents_hot_updates.sql,003_runs_auth_source.sql" {
 		t.Errorf("schema_migrations = %v", got)
 	}
 	for table, want := range map[string]bool{"good": true, "half": false, "later": false} {

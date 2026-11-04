@@ -84,6 +84,11 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 					c.RunTimeoutSeconds = int(e.Value.Dur / time.Second)
 				}
 			}
+			// The per-run budget belongs to the key mode: a runner that says it bills a subscription gets none. While the mode
+			// is unknown (right after a restart of this process) the budget goes along; a subscription runner ignores it.
+			if s.d.Settings != nil && s.d.RunnerStatus.MayBillKey() {
+				c.MaxBudgetCents = s.d.Settings.Int(settings.APIBudgetPerRunCents)
+			}
 			writeJSON(w, http.StatusOK, c)
 			return
 		}
@@ -144,8 +149,12 @@ func (s *srv) finish(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if out.FailureReason != "" && out.FailureReason != run.ReasonTimeout && out.FailureReason != run.ReasonCancelled {
+	if out.FailureReason != "" && out.FailureReason != run.ReasonTimeout && out.FailureReason != run.ReasonCancelled && out.FailureReason != run.ReasonBillingMismatch {
 		writeErr(w, http.StatusBadRequest, "unknown failure reason")
+		return
+	}
+	if out.AuthSource != "" && out.AuthSource != "subscription" && out.AuthSource != "api_key" {
+		writeErr(w, http.StatusBadRequest, "unknown auth source")
 		return
 	}
 	// What an agent answers is never trusted: a responder run must carry a valid diagnosis, or it counts

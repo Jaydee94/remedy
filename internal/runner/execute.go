@@ -29,6 +29,9 @@ type Sink interface {
 // the subprocess could not be started (ExitCode 127) or the first sink error (events may be
 // missing); in both cases the run still ended with the returned Outcome.
 func Execute(ctx context.Context, p provider.Provider, spec provider.Spec, env []string, sink Sink) (run.Outcome, error) {
+	// The run can be stopped from inside: by the billing guard, when the CLI's init event contradicts the mode.
+	ctx, stopRun := context.WithCancel(ctx)
+	defer stopRun()
 	cmd := p.Command(ctx, spec, env)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -66,7 +69,12 @@ func Execute(ctx context.Context, p provider.Provider, spec provider.Spec, env [
 		_, _ = io.Copy(io.Discard, stderr) // keep draining if a line was too long
 	}()
 
-	var final *provider.Final
+	var (
+		final      *provider.Final
+		authSource string
+		billingBad bool
+		initSeen   bool
+	)
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
 	for sc.Scan() {
@@ -77,6 +85,23 @@ func Execute(ctx context.Context, p provider.Provider, spec provider.Spec, env [
 		l := p.ParseLine(line)
 		if l.Final != nil {
 			final = l.Final
+		}
+		// The guard looks at the line before it is posted: posting is a round trip to the control plane, and the CLI
+		// sends its first request right after the init event.
+		if !billingBad {
+			switch {
+			case l.Init != nil && !initSeen:
+				initSeen = true
+				authSource = provider.AuthSourceOf(l.Init.APIKeySource, l.Init.Known)
+				if spec.OnInit != nil && !spec.OnInit(l.Init.APIKeySource, l.Init.Known) {
+					billingBad = true
+					stopRun()
+				}
+			case spec.RequireInit && !initSeen && l.Kind != "system" && l.Kind != "raw":
+				// The CLI went on without saying how it is billed.
+				billingBad = true
+				stopRun()
+			}
 		}
 		emit(l.Kind, l.Payload)
 	}
@@ -96,10 +121,24 @@ func Execute(ctx context.Context, p provider.Provider, spec provider.Spec, env [
 		}
 	}
 
-	out := run.Outcome{ExitCode: exit}
+	// A run that ended well without ever proving its billing is refused too; one that failed or was stopped for another reason
+	// keeps that reason.
+	if spec.RequireInit && !initSeen && !billingBad && exit == 0 && ctx.Err() == nil {
+		billingBad = true
+	}
+
+	out := run.Outcome{ExitCode: exit, AuthSource: authSource}
 	if final != nil {
 		out.Result, out.SessionID, out.CostUSD = final.Result, final.SessionID, final.CostUSD
 		out.Output = final.Output
+	}
+	if billingBad {
+		// Whatever the CLI wrote after the init event does not count; the sentence is fixed and carries no CLI text.
+		out = run.Outcome{ExitCode: exit, AuthSource: authSource, FailureReason: run.ReasonBillingMismatch,
+			Result: "The run was stopped: it would have been billed differently than configured."}
+		if out.ExitCode == 0 {
+			out.ExitCode = -1
+		}
 	}
 	return out, sinkErr
 }

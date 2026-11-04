@@ -27,13 +27,27 @@ type RunnerStatus struct {
 	checkedAt  time.Time
 	cliVersion string
 	build      version.Info // the runner's own version and commit; empty for a runner that does not send them
-	authMode   string       // empty is subscription; only a test sets another mode until the runner reports one (cycle 7b)
+	authMode   string       // what the runner last reported: subscription or api_key; empty until it has (an older runner never does)
 }
 
 func NewRunnerStatus() *RunnerStatus { return &RunnerStatus{login: "unknown"} }
 
-// AuthModeSubscription is the runner's only mode today: the agent CLI uses the subscription login.
-const AuthModeSubscription = "subscription"
+// The two modes a runner can report: how its agent CLI is billed.
+const (
+	AuthModeSubscription = "subscription"
+	AuthModeAPIKey       = "api_key"
+)
+
+// ReportMode records the mode the runner says it is in. Any other word is refused and changes nothing.
+func (r *RunnerStatus) ReportMode(mode string) error {
+	if mode != AuthModeSubscription && mode != AuthModeAPIKey {
+		return errors.New("authMode must be subscription or api_key")
+	}
+	r.mu.Lock()
+	r.authMode = mode
+	r.mu.Unlock()
+	return nil
+}
 
 // AuthMode is how the runner's agent CLI is billed. The login relay is offered only in subscription mode; until the runner reports its mode (cycle 7b) only a test sets another one. A nil
 // *RunnerStatus is subscription mode.
@@ -47,6 +61,19 @@ func (r *RunnerStatus) AuthMode() string {
 		return AuthModeSubscription
 	}
 	return r.authMode
+}
+
+// MayBillKey is true while the runner bills an API key or has not said yet how it bills (the control plane forgets the
+// report in a restart, and the runner reports every 15 s). The budgets of the key mode are applied then: a number too many
+// costs nothing in subscription mode, and a number too few would let a key-mode run past its budget. A nil *RunnerStatus is
+// subscription mode.
+func (r *RunnerStatus) MayBillKey() bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.authMode != AuthModeSubscription
 }
 
 // Touch notes an authenticated request of the runner. A nil *RunnerStatus does nothing.
@@ -105,6 +132,9 @@ type RunnerView struct {
 	// Version and Commit are the runner's own build. Empty when it has not said, as an older runner does not.
 	Version string `json:"version,omitempty"`
 	Commit  string `json:"commit,omitempty"`
+	// AuthMode is how the runner's CLI is billed, as the runner last said: subscription or api_key. Empty while the runner has
+	// not said, and whenever it is not connected: a stale report must not say how the next run will be billed.
+	AuthMode string `json:"authMode"`
 }
 
 // View is the status as of now. A runner that is not connected has an unknown login, whatever it said last: a stale
@@ -124,6 +154,7 @@ func (r *RunnerStatus) View(now time.Time) RunnerView {
 	}
 	if v.Connected {
 		v.Login = r.login
+		v.AuthMode = r.authMode
 	}
 	return v
 }
@@ -136,6 +167,7 @@ func (s *srv) postRunnerStatus(w http.ResponseWriter, r *http.Request) {
 		CLIVersion     string    `json:"cliVersion"`
 		Version        string    `json:"version"`
 		Commit         string    `json:"commit"`
+		AuthMode       string    `json:"authMode"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 	dec.DisallowUnknownFields()
@@ -148,11 +180,21 @@ func (s *srv) postRunnerStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid status")
 		return
 	}
+	if body.AuthMode != "" && body.AuthMode != AuthModeSubscription && body.AuthMode != AuthModeAPIKey {
+		writeErr(w, http.StatusBadRequest, "authMode must be subscription or api_key")
+		return
+	}
 	if err := s.d.RunnerStatus.Report(body.Login, body.LoginCheckedAt, body.CLIVersion, time.Now()); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	s.d.RunnerStatus.ReportBuild(body.Version, body.Commit)
+	// A runner from before the key mode says nothing about it, and those bill a subscription: a rollback of the runner must
+	// not leave the key mode of its predecessor standing.
+	if body.AuthMode == "" {
+		body.AuthMode = AuthModeSubscription
+	}
+	_ = s.d.RunnerStatus.ReportMode(body.AuthMode) // checked above
 	w.WriteHeader(http.StatusNoContent)
 }
 
