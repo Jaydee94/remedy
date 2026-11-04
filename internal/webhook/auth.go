@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -58,8 +59,15 @@ func bearer(h string) (string, bool) {
 }
 
 // Authenticate returns the endpoint when the header holds the token of the enabled endpoint, or its previous token inside the
-// rotation overlap.
+// rotation overlap. A failing store counts as a refusal here; Check tells the two apart.
 func (a *Authenticator) Authenticate(ctx context.Context, name, authorization string) (store.WebhookEndpoint, bool) {
+	ep, ok, _ := a.Check(ctx, name, authorization)
+	return ep, ok
+}
+
+// Check is Authenticate that also returns the error of the store when it fails for another reason than an unknown endpoint; the
+// handler answers that with a 500, so that a sender retries instead of dropping its event.
+func (a *Authenticator) Check(ctx context.Context, name, authorization string) (store.WebhookEndpoint, bool, error) {
 	token, present := bearer(authorization)
 	sum := sha256.Sum256([]byte(token))
 	got := sum[:]
@@ -69,7 +77,10 @@ func (a *Authenticator) Authenticate(ctx context.Context, name, authorization st
 		// Unknown endpoint (or a store that failed): do the same two comparisons anyway, then refuse.
 		a.compare(dummyHash, got)
 		a.compare(dummyHash, got)
-		return store.WebhookEndpoint{}, false
+		if errors.Is(err, store.ErrNotFound) {
+			return store.WebhookEndpoint{}, false, nil
+		}
+		return store.WebhookEndpoint{}, false, err
 	}
 	current := a.compare(ep.TokenHash, got)
 	prev := false
@@ -79,9 +90,9 @@ func (a *Authenticator) Authenticate(ctx context.Context, name, authorization st
 		a.compare(dummyHash, got)
 	}
 	if !present || !ep.Enabled || !(current || prev) {
-		return store.WebhookEndpoint{}, false
+		return store.WebhookEndpoint{}, false, nil
 	}
-	return ep.WebhookEndpoint, true
+	return ep.WebhookEndpoint, true, nil
 }
 
 // AuthenticateRequest reads the Authorization header of r. The query string is never looked at.
