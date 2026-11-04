@@ -3,10 +3,10 @@
 For the maintainer. The design and its reasons are in [`docs/specs/2026-10-09-release-automation-design.md`](../specs/2026-10-09-release-automation-design.md);
 where this runbook and the spec differ, the spec decides.
 
-**Status.** Implemented, **not yet run**. The first merge to `main` after this pipeline is the first run. What is measured is
-the configuration in a scratch git repository (`make release-test`: versions, notes, the bump files) and the chart push to a
-local registry. Everything about GitHub itself (the bump commit push by `GITHUB_TOKEN`, the GHCR packages, the GitHub release) is
-expected, not seen: section 3 lists the three things the first run proves.
+**Status.** Implemented and in use: the pipeline has run on every merge to `main` and published releases up to 0.21.0 (2026-11-04).
+`make release-test` still measures the configuration in a scratch git repository (versions, notes, the bump files) and the chart
+push to a local registry. Section 3 lists the three things the first run was to prove. One release (v0.19.0) has its tag, chart
+and images but no GitHub release, because GitHub answered 500 during semantic-release; it was created by hand afterwards.
 
 ## 1. What a merge to `main` does
 
