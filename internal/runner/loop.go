@@ -127,7 +127,9 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 	if c.MCPToken != "" {
 		go l.watch(execCtx, log, r.ID, clock, func() { stopped.Store(true); cancel() })
 	}
-	out, err := Execute(execCtx, p, spec, l.Env, clientSink{client: l.Client, runID: r.ID})
+	scrub := scrubberFor(l.Mode, l.Env)
+	out, err := Execute(execCtx, p, spec, l.Env, scrub.Sink(clientSink{client: l.Client, runID: r.ID}))
+	out = scrub.Outcome(out)
 	if err != nil {
 		log.Error("execution problem", "err", err)
 	}
