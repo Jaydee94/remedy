@@ -197,3 +197,36 @@ func TestRunnerAuthModeTakesTwoValuesOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestServerFromEnvWebhookAddr(t *testing.T) {
+	c, err := config.ServerFromEnv(serverEnv(nil))
+	if err != nil || c.WebhookAddr != "" {
+		t.Fatalf("the default is no webhook listener: %q, %v", c.WebhookAddr, err)
+	}
+	c, err = config.ServerFromEnv(serverEnv(map[string]string{"REMEDY_WEBHOOK_ADDR": ":8082", "REMEDY_INTERNAL_ADDR": ":8081"}))
+	if err != nil || c.WebhookAddr != ":8082" {
+		t.Fatalf("WebhookAddr = %q, %v", c.WebhookAddr, err)
+	}
+}
+
+func TestServerFromEnvRefusesABadWebhookAddr(t *testing.T) {
+	cases := map[string]map[string]string{
+		"no port":               {"REMEDY_WEBHOOK_ADDR": "8082"},
+		"a host without a port": {"REMEDY_WEBHOOK_ADDR": "localhost"},
+		"an empty port":         {"REMEDY_WEBHOOK_ADDR": "localhost:"},
+		"the main port":         {"REMEDY_WEBHOOK_ADDR": ":8080"},
+		"the main port, a host": {"REMEDY_WEBHOOK_ADDR": "127.0.0.1:9090", "REMEDY_ADDR": "0.0.0.0:9090"},
+		"the internal port":     {"REMEDY_WEBHOOK_ADDR": ":8081", "REMEDY_INTERNAL_ADDR": ":8081"},
+		"the internal, a host":  {"REMEDY_WEBHOOK_ADDR": "10.0.0.1:8081", "REMEDY_INTERNAL_ADDR": "0.0.0.0:8081"},
+	}
+	for name, override := range cases {
+		_, err := config.ServerFromEnv(serverEnv(override))
+		if err == nil {
+			t.Errorf("%s: expected an error", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "REMEDY_WEBHOOK_ADDR") {
+			t.Errorf("%s: the error must name the variable, got %q", name, err)
+		}
+	}
+}

@@ -28,6 +28,7 @@ const (
 
 type Server struct {
 	Addr                   string        // REMEDY_ADDR, default ":8080"
+	WebhookAddr            string        // REMEDY_WEBHOOK_ADDR, default empty: no webhook route exists anywhere. Set, a third listener serves POST /webhook/v1/{endpoint} and /healthz and nothing else
 	InternalAddr           string        // REMEDY_INTERNAL_ADDR, default empty: one port. Set, it serves /runner/v1 and /mcp and the main port does not
 	DatabaseURL            secret.Value  // REMEDY_DATABASE_URL, required: a libpq-style URL or key=value string; holds a password, so it prints as ***
 	DatabaseMaxConns       int           // REMEDY_DATABASE_MAX_CONNS, default 10, 2 to 100: the size of the connection pool
@@ -93,6 +94,19 @@ func ServerFromEnv(get func(string) string) (Server, error) {
 		}
 		if _, mainPort, err := net.SplitHostPort(c.Addr); err == nil && mainPort == port {
 			return Server{}, errors.New("REMEDY_INTERNAL_ADDR must use another port than REMEDY_ADDR")
+		}
+	}
+
+	c.WebhookAddr = get("REMEDY_WEBHOOK_ADDR")
+	if c.WebhookAddr != "" {
+		_, port, err := net.SplitHostPort(c.WebhookAddr)
+		if err != nil || port == "" {
+			return Server{}, errors.New("REMEDY_WEBHOOK_ADDR must be host:port or :port, for example :8082")
+		}
+		for name, other := range map[string]string{"REMEDY_ADDR": c.Addr, "REMEDY_INTERNAL_ADDR": c.InternalAddr} {
+			if _, otherPort, err := net.SplitHostPort(other); err == nil && otherPort == port {
+				return Server{}, errors.New("REMEDY_WEBHOOK_ADDR must use another port than " + name)
+			}
 		}
 	}
 

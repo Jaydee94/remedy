@@ -71,6 +71,7 @@ func main() {
 	background(a.Probe.Run)
 	background(a.Reaper.Run)
 	background(a.Login.Run) // the login relay has no switch: app.New always builds it
+	background(a.Sweeper.Run)
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
@@ -94,6 +95,28 @@ func main() {
 		}()
 	}
 
+	// The webhook listener takes a body from the internet, so unlike the other two it has real timeouts: a slow body must not hold
+	// a connection, and a header cannot be large.
+	var hook *http.Server
+	if a.WebhookHandler != nil {
+		hook = &http.Server{
+			Addr:              cfg.WebhookAddr,
+			Handler:           a.WebhookHandler,
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       15 * time.Second,
+			WriteTimeout:      15 * time.Second,
+			IdleTimeout:       60 * time.Second,
+			MaxHeaderBytes:    16 << 10,
+		}
+		go func() {
+			log.Info("webhook listener", "addr", cfg.WebhookAddr)
+			if err := hook.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Error("webhook listener failed", "err", err)
+				os.Exit(1)
+			}
+		}()
+	}
+
 	// ListenAndServe returns as soon as Shutdown starts, while handlers may still be draining: main waits for shutdownDone
 	// before the deferred workers.Wait and st.Close, so no handler meets a closed store.
 	shutdownDone := make(chan struct{})
@@ -105,6 +128,9 @@ func main() {
 		_ = srv.Shutdown(shutdownCtx)
 		if internal != nil {
 			_ = internal.Shutdown(shutdownCtx)
+		}
+		if hook != nil {
+			_ = hook.Shutdown(shutdownCtx)
 		}
 	}()
 
