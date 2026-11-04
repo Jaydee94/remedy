@@ -4,7 +4,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -90,7 +92,7 @@ func runBackup(t *testing.T, fail bool) (dir string, out string, err error) {
 	seedDumps(t, dir)
 	fakePgDump(t, bin, dir, fail)
 	cmd := exec.Command("sh", "-c", script)
-	cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "RETENTION_MINUTES="+retention)
+	cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "RETENTION_MINUTES="+retention, "BACKUP_RETRY_SECONDS=0")
 	raw, err := cmd.CombinedOutput()
 	seen, _ := os.ReadFile(filepath.Join(bin, "seen-during-dump"))
 	if !strings.Contains(string(seen), "remedy-20260101T000000Z.dump") {
@@ -136,5 +138,90 @@ func TestTheBackupScriptWritesTheDumpThenDeletesOnlyOldOnes(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Errorf("the new dump's mode = %v, want 0600 (umask 077)", info.Mode().Perm())
+	}
+}
+
+// fakeFlakyPgDump writes a pg_dump that refuses the connection (nothing written, exit 1) for its first `failures` calls and
+// dumps after that. It counts its calls in bin/calls.
+func fakeFlakyPgDump(t *testing.T, bin string, failures int) {
+	t.Helper()
+	script := `#!/bin/sh
+n=0; [ -f "` + bin + `/calls" ] && n=$(cat "` + bin + `/calls")
+n=$((n + 1)); echo $n > "` + bin + `/calls"
+if [ $n -le ` + strconv.Itoa(failures) + ` ]; then
+  echo 'pg_dump: error: connection to server failed: Connection refused' >&2
+  exit 1
+fi
+for a in "$@"; do
+  case "$a" in --file=*) printf 'dump' > "${a#--file=}" ;; esac
+done
+`
+	if err := os.WriteFile(filepath.Join(bin, "pg_dump"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// runFlaky runs the rendered script against a pg_dump that fails `failures` times, with `attempts` allowed and no sleep.
+func runFlaky(t *testing.T, failures, attempts int) (dir, out string, calls int, err error) {
+	t.Helper()
+	dir, bin := t.TempDir(), t.TempDir()
+	script, retention := backupScript(t, dir)
+	seedDumps(t, dir)
+	fakeFlakyPgDump(t, bin, failures)
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"RETENTION_MINUTES="+retention, "BACKUP_ATTEMPTS="+strconv.Itoa(attempts), "BACKUP_RETRY_SECONDS=0")
+	raw, err := cmd.CombinedOutput()
+	b, _ := os.ReadFile(filepath.Join(bin, "calls"))
+	calls, _ = strconv.Atoi(strings.TrimSpace(string(b)))
+	return dir, string(raw), calls, err
+}
+
+// A pod that has only just started may not reach the database yet (the home server's k3s refused the connection for the
+// first seconds of a new pod: three attempts in 30 s failed on two nights). The script tries again before it gives up.
+func TestTheBackupScriptWaitsUntilTheDatabaseAcceptsTheConnection(t *testing.T) {
+	dir, out, calls, err := runFlaky(t, 2, 5)
+	if err != nil {
+		t.Fatalf("the script failed although the third attempt works: %v\n%s", err, out)
+	}
+	if calls != 3 {
+		t.Errorf("pg_dump was called %d times, want 3 (two refused, one dump)", calls)
+	}
+	got := files(t, dir)
+	if len(got) != 2 || got[0] != "remedy-20260110T000000Z.dump" {
+		t.Errorf("the directory holds %v, want the young dump and one new dump", got)
+	}
+}
+
+func TestTheBackupScriptGivesUpAfterItsAttemptsAndKeepsEverything(t *testing.T) {
+	dir, out, calls, err := runFlaky(t, 100, 3)
+	if err == nil {
+		t.Fatalf("the script exited 0 although every attempt failed:\n%s", out)
+	}
+	if calls != 3 {
+		t.Errorf("pg_dump was called %d times, want exactly the 3 attempts allowed", calls)
+	}
+	want := []string{"remedy-20260101T000000Z.dump", "remedy-20260105T000000Z.dump.part", "remedy-20260110T000000Z.dump"}
+	if got := files(t, dir); !equalStrings(got, want) {
+		t.Errorf("after the last failed attempt the directory holds %v, want exactly the old files %v", got, want)
+	}
+	if !strings.Contains(out, "pg_dump failed") {
+		t.Errorf("the output does not say that pg_dump failed:\n%s", out)
+	}
+}
+
+// The defaults cover more than the five minutes after which kube-router (the network policy engine of k3s) has learned a new
+// pod: 30 attempts, 20 seconds apart.
+func TestTheBackupScriptDefaultsWaitLongerThanFiveMinutes(t *testing.T) {
+	script, _ := backupScript(t, t.TempDir())
+	re := regexp.MustCompile(`BACKUP_ATTEMPTS:-(\d+)\}.*\n?(?s:.*)BACKUP_RETRY_SECONDS:-(\d+)\}`)
+	m := re.FindStringSubmatch(script)
+	if m == nil {
+		t.Fatalf("the script has no BACKUP_ATTEMPTS and BACKUP_RETRY_SECONDS defaults:\n%s", script)
+	}
+	attempts, _ := strconv.Atoi(m[1])
+	seconds, _ := strconv.Atoi(m[2])
+	if attempts*seconds < 600 {
+		t.Errorf("the script waits %d s in total, want at least 600", attempts*seconds)
 	}
 }

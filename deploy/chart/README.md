@@ -107,7 +107,9 @@ What it renders:
   - **The claim:** `postgres.backup.size`, default `2Gi`; `postgres.backup.storageClass`, empty: the data's class.
   - **The CronJob:** `postgres.backup.schedule`, default `17 3 * * *`; `startingDeadlineSeconds: 86400`, so a run missed by
     less than a day still runs. It runs `pg_dump --format=custom --no-owner` with the same image into
-    `/backup/remedy-<UTC timestamp>.dump`.
+    `/backup/remedy-<UTC timestamp>.dump`. It tries `pg_dump` up to 30 times, 20 seconds apart, before it gives up: a pod that
+    has only just started may not reach the database for its first minutes (k3s's network policy engine learns a new pod at its
+    next sync).
   - **Safety:** the dump is written as `.part` and renamed only when `pg_dump` succeeded. Old dumps are deleted only after a
     new dump was written. A dump is deleted once it is older than `postgres.backup.retentionDays` (default 7) times 1440
     minutes when a run ends, so the claim holds the dumps of about the last N days.

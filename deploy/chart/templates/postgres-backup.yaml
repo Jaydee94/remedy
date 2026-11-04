@@ -64,6 +64,9 @@ spec:
                       name: {{ include "remedy.postgresSecret" . }}
                       key: {{ include "remedy.postgresSecretKey" . }}
                 - {name: RETENTION_MINUTES, value: {{ mul (int64 .Values.postgres.backup.retentionDays) 1440 | quote }}}
+              # A pod that has only just started may not reach the database yet (k3s's kube-router learns a new pod only at its
+              # next sync, five minutes by default, and refuses its connections until then), so pg_dump is tried up to 30 times,
+              # 20 seconds apart, about ten minutes. BACKUP_ATTEMPTS and BACKUP_RETRY_SECONDS override that.
               # The dump is written as .part and renamed only when pg_dump succeeded, so a remedy-*.dump is always complete.
               # Old dumps are deleted only after a new one was written. The script has no "$(": Kubernetes would read it as
               # a variable reference, so the date comes from backticks.
@@ -75,11 +78,17 @@ spec:
                   umask 077
                   stamp=`date -u +%Y%m%dT%H%M%SZ`
                   part="/backup/remedy-${stamp}.dump.part"
-                  if ! pg_dump --format=custom --no-owner --file="${part}"; then
+                  attempt=1
+                  until pg_dump --format=custom --no-owner --file="${part}"; do
                     rm -f "${part}"
-                    echo "pg_dump failed: no new dump, no old dump deleted" >&2
-                    exit 1
-                  fi
+                    if [ "${attempt}" -ge "${BACKUP_ATTEMPTS:-30}" ]; then
+                      echo "pg_dump failed after ${attempt} attempts: no new dump, no old dump deleted" >&2
+                      exit 1
+                    fi
+                    echo "pg_dump failed (attempt ${attempt}), trying again in ${BACKUP_RETRY_SECONDS:-20} s" >&2
+                    attempt=`expr "${attempt}" + 1`
+                    sleep "${BACKUP_RETRY_SECONDS:-20}"
+                  done
                   mv "${part}" "/backup/remedy-${stamp}.dump"
                   echo "wrote remedy-${stamp}.dump"
                   find /backup -maxdepth 1 -type f -name 'remedy-*.dump' -mmin "+${RETENTION_MINUTES}" -print -delete
