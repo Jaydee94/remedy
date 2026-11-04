@@ -84,6 +84,10 @@ What it renders:
     never runs. Check with `kubectl -n <namespace> logs remedy-postgres-0 | grep autovacuum` and
     `dmesg | grep 'apparmor="DENIED"' | grep postgres`. `Unconfined` takes this one container out of the profile and changes
     nothing else; the backup job is not affected. The value is refused with a database of your own.
+    **It does not work in the namespace of the install runbook:** the Pod Security Standards `restricted` and `baseline`
+    both forbid the `Unconfined` profile, so with `pod-security.kubernetes.io/enforce=restricted` the StatefulSet cannot create
+    `remedy-postgres-0` (`FailedCreate … forbidden AppArmor profile … must not set AppArmor profile type to "Unconfined"`)
+    and the database is down until the value is removed. Use it only in a namespace that enforces `privileged` or nothing.
   - **The tag** must be exactly `MAJOR.MINOR` of the Debian-based image, such as `18.6`. The render refuses a moving tag
     (`16`, `latest`), `-alpine` (that image runs postgres as uid 70, the chart as 999), any other suffix, and a digest:
     this value takes a tag only.
