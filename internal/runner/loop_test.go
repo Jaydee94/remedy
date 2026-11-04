@@ -30,15 +30,29 @@ func startLoop(t *testing.T, providers map[string]provider.Provider) (*store.Sto
 // startLoopWithTimeout is startLoop with a run timeout; zero means the default.
 func startLoopWithTimeout(t *testing.T, providers map[string]provider.Provider, timeout time.Duration) (*store.Store, *httptest.Server) {
 	t.Helper()
-	st := testutil.Store(t)
+	return startLoopObserving(t, providers, timeout, nil)
+}
 
-	ts := httptest.NewServer(server.New(server.Deps{Store: st, Auth: auth.New("correct horse battery"), RunnerToken: token}))
+// startLoopObserving is startLoopWithTimeout with a function that sees every request the control plane receives, before the
+// control plane does, together with the runner's workspace root.
+func startLoopObserving(t *testing.T, providers map[string]provider.Provider, timeout time.Duration, observe func(root string, r *http.Request)) (*store.Store, *httptest.Server) {
+	t.Helper()
+	st := testutil.Store(t)
+	root := t.TempDir()
+
+	handler := server.New(server.Deps{Store: st, Auth: auth.New("correct horse battery"), RunnerToken: token})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if observe != nil {
+			observe(root, r)
+		}
+		handler.ServeHTTP(w, r)
+	}))
 	t.Cleanup(ts.Close)
 
 	loop := &runner.Loop{
 		Client:        &runner.Client{BaseURL: ts.URL, Token: token, HTTP: ts.Client()},
 		Providers:     providers,
-		WorkspaceRoot: t.TempDir(),
+		WorkspaceRoot: root,
 		Env:           os.Environ(),
 		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Backoff:       50 * time.Millisecond,

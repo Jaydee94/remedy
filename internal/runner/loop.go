@@ -96,6 +96,7 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 	}
 
 	spec := provider.Spec{Prompt: r.Prompt, Workdir: dir, Schema: string(c.Schema)}
+	dropMCPConfig := func() {}
 	if c.MCPToken != "" {
 		path, cleanup, err := writeMCPConfig(l.WorkspaceRoot, r.ID, l.Client.BaseURL, c.MCPToken)
 		if err != nil {
@@ -103,7 +104,8 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 			l.finish(log, r.ID, run.Outcome{ExitCode: 127, Result: "The tools of the run could not be prepared."})
 			return
 		}
-		defer cleanup()
+		defer cleanup() // also on a panic; the normal path drops the file before the run is reported finished (below)
+		dropMCPConfig = cleanup
 		spec.MCPConfig = path
 	}
 
@@ -128,6 +130,9 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 	if err != nil {
 		log.Error("execution problem", "err", err)
 	}
+	// The config holds the run's token, which dies when the run is reported finished: the file goes first, so there is no
+	// moment in which the run is over for the control plane and the file still exists.
+	dropMCPConfig()
 	switch {
 	case stopped.Load():
 		out.FailureReason = run.ReasonCancelled
