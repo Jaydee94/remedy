@@ -41,4 +41,13 @@ export function curlExample(name: string, base: string): string {
   ].join('\n')
 }
 
+/** What the page says while the old token of a rotation still works; empty when it does not. */
+export function previousTokenText(e: WebhookEndpoint, now: number): string {
+  if (!e.previousValidUntil) return ''
+  const left = Date.parse(e.previousValidUntil) - now
+  if (!(left > 0)) return ''
+  const hours = Math.max(1, Math.ceil(left / 3_600_000))
+  return `The previous token still works for about ${hours} more ${hours === 1 ? 'hour' : 'hours'}. Switching the endpoint off ends that.`
+}
+
 export const tokenNotice = 'Copy the token now. It is shown only once and cannot be shown again; if you lose it, rotate it.'

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, ApiError } from '@/api.ts'
 import type { WebhookList } from '@/api.ts'
-import { curlExample, endpointLine, lastUsedText, listeningNote, tokenNotice, validWebhookName } from '@/webhooks.ts'
+import { curlExample, endpointLine, lastUsedText, listeningNote, previousTokenText, tokenNotice, validWebhookName } from '@/webhooks.ts'
 import ConfirmButton from '@/components/ConfirmButton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { useClock } from '@/useClock.ts'
+import { useFocusRestore } from '@/useFocusRestore.ts'
 
 /** A token that was just made. It lives in this component's memory only and is dropped when the person says they copied it. */
 function TokenCard({ name, token, onDone }: { name: string; token: string; onDone: () => void }) {
@@ -51,6 +52,7 @@ export default function WebhooksSection() {
   const now = useClock()
   const formErrorId = useId()
   const nameRef = useRef<HTMLInputElement>(null)
+  const { target: headingRef, restore } = useFocusRestore<HTMLHeadingElement>()
 
   const reload = useCallback(
     () =>
@@ -102,7 +104,12 @@ export default function WebhooksSection() {
 
   return (
     <section className="flex flex-col gap-3.5">
-      <h2 className="text-xs font-semibold text-muted-foreground">Webhooks</h2>
+      <h2 ref={headingRef} tabIndex={-1} className="text-xs font-semibold text-muted-foreground outline-none">
+        Webhooks
+      </h2>
+      <div role="status" className="sr-only">
+        {fresh ? `A token for ${fresh.name} was made. It is shown only once.` : ''}
+      </div>
       <div className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-5">
         <p className="text-[13px] text-muted-foreground">
           A tool that can send an HTTP request can report an incident to an endpoint. Each endpoint has a token of its own.
@@ -140,7 +147,16 @@ export default function WebhooksSection() {
           )}
         </form>
 
-        {fresh && <TokenCard name={fresh.name} token={fresh.token} onDone={() => setFresh(null)} />}
+        {fresh && (
+          <TokenCard
+            name={fresh.name}
+            token={fresh.token}
+            onDone={() => {
+              void restore() // the button that is clicked goes away with the card: the focus returns to the heading
+              setFresh(null)
+            }}
+          />
+        )}
 
         {data === null ? (
           loadError ? null : <Skeleton className="h-16" />
@@ -155,9 +171,7 @@ export default function WebhooksSection() {
                     <span className="font-mono text-[13px] break-all">{e.name}</span>
                     <span className="text-xs text-muted-foreground">{endpointLine(e)}</span>
                     <span className="text-xs text-muted-foreground">{lastUsedText(e, now)}</span>
-                    {e.previousValidUntil && new Date(e.previousValidUntil).getTime() > now && (
-                      <span className="text-xs text-muted-foreground">The previous token still works for a while after the rotation.</span>
-                    )}
+                    {previousTokenText(e, now) && <span className="text-xs text-muted-foreground">{previousTokenText(e, now)}</span>}
                   </div>
                   <Switch
                     checked={e.enabled}
@@ -201,7 +215,10 @@ export default function WebhooksSection() {
                     confirmLabel="Confirm remove"
                     className="h-10"
                     disabled={busy}
-                    onConfirm={() => void act(() => api.deleteWebhook(e.id))}
+                    onConfirm={() => {
+                      void restore() // the row goes away with the button
+                      void act(() => api.deleteWebhook(e.id))
+                    }}
                   />
                 </div>
               </li>

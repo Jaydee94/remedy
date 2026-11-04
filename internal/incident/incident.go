@@ -147,9 +147,11 @@ func (e *Engine) ObserveSignal(ctx context.Context, o Observation) (bool, error)
 			Summary: resolvedText(cur),
 			Data:    payload(o),
 		})
-	case cur.State == store.IncIgnored:
+	case cur.State == store.IncIgnored && cur.Source != store.SourceWebhook:
 		return false, nil
 	case cur.Source != store.SourceGitHub:
+		// An ignored webhook incident is still reported: its last_seen moves (the sweeper resolves by silence and reads it), its
+		// state and its thread do not change. An ignored alert is left alone: the Alertmanager source resolves by absence.
 		change = e.Store.TouchIncidentSignal(ctx, cur.ID, o.HostID, o.Details)
 	case cur.HeadSHA == o.HeadSHA:
 		change = e.Store.TouchIncident(ctx, cur.ID)
@@ -361,7 +363,27 @@ func resolvedText(cur store.Incident) string {
 
 // ExpiredText is the thread's sentence for a webhook incident that was resolved because it was not reported any more: not "fixed".
 func ExpiredText(cur store.Incident, silent time.Duration) string {
-	return fmt.Sprintf("Incident resolved: %s was not reported for %s", what(cur.Source, cur.Title), silent)
+	return fmt.Sprintf("Incident resolved: %s was not reported for %s", what(cur.Source, cur.Title), humanDuration(silent))
+}
+
+// humanDuration says "24 hours", "5 minutes" or "1 hour 30 minutes", for a thread that people read.
+func humanDuration(d time.Duration) string {
+	unit := func(n int, name string) string {
+		if n == 1 {
+			return "1 " + name
+		}
+		return strconv.Itoa(n) + " " + name + "s"
+	}
+	mins := int(d / time.Minute)
+	switch h, m := mins/60, mins%60; {
+	case h > 0 && m > 0:
+		return unit(h, "hour") + " " + unit(m, "minute")
+	case h > 0:
+		return unit(h, "hour")
+	case mins > 0:
+		return unit(mins, "minute")
+	}
+	return unit(int(d/time.Second), "second")
 }
 
 func ignoredText(cur store.Incident) string {

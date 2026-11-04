@@ -154,3 +154,42 @@ func TestMoreThanThirtyLabelsAreCutToThirty(t *testing.T) {
 		t.Errorf("stored labels %d, truncated %v, labels for the host rules %d", len(d.Labels), d.Truncated, len(e.Labels))
 	}
 }
+
+func TestInvisibleCharactersAreRefusedInAKeyAndStrippedFromATitle(t *testing.T) {
+	for name, key := range map[string]string{
+		"variation selector": "k\ufe0f", "hangul filler": "\u3164", "combining grapheme joiner": "a\u034fb", "zero width joiner": "a\u200db",
+		"tag character": "a\U000e0041b", "private use": "a\ue000b", "line separator": "a\u2028b",
+	} {
+		_, err := decode(`{"version":1,"key":"` + key + `","status":"resolved"}`)
+		var fe *webhook.FieldError
+		if !errors.As(err, &fe) || fe.Field != "key" {
+			t.Errorf("%s: error = %v, want a FieldError for key", name, err)
+		}
+	}
+	e, err := decode(`{"version":1,"key":"k","status":"firing","title":"Disk\u202e full\u200b on\ufe0f nas\u034f"}`)
+	if err != nil || e.Title != "Disk full on nas" {
+		t.Fatalf("title = %q, %v", e.Title, err)
+	}
+}
+
+func TestADuplicateMemberIsRefused(t *testing.T) {
+	for name, body := range map[string]string{
+		"status twice": `{"version":1,"key":"k","status":"resolved","status":"firing","title":"t"}`,
+		"key twice":    `{"version":1,"key":"a","key":"b","status":"resolved"}`,
+		"label twice":  `{"version":1,"key":"k","status":"resolved","labels":{"a":"1","a":"2"}}`,
+	} {
+		_, err := decode(body)
+		var fe *webhook.FieldError
+		if !errors.As(err, &fe) {
+			t.Errorf("%s: error = %v, want a FieldError", name, err)
+		}
+	}
+}
+
+func TestAnUnknownMemberNameIsRedactedAndBounded(t *testing.T) {
+	_, err := decode(`{"version":1,"key":"k","status":"resolved","AKIAIOSFODNN7EXAMPLE":1}`)
+	var fe *webhook.FieldError
+	if !errors.As(err, &fe) || strings.Contains(fe.Field, "AKIA") {
+		t.Fatalf("error = %v", err)
+	}
+}

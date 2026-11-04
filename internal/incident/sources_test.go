@@ -208,7 +208,7 @@ func TestAWebhookIncidentIsNamedAndResolvedAsNotReported(t *testing.T) {
 	if len(got) != 2 || got[1] != "incident_resolved: Incident resolved: webhook alert Disk full is no longer reported" {
 		t.Fatalf("history = %q", got)
 	}
-	if text := incident.ExpiredText(in, 24*time.Hour); text != "Incident resolved: webhook alert Disk full was not reported for 24h0m0s" {
+	if text := incident.ExpiredText(in, 24*time.Hour); text != "Incident resolved: webhook alert Disk full was not reported for 24 hours" {
 		t.Fatalf("ExpiredText = %q", text)
 	}
 	if incident.ReasonExpired != "expired" {

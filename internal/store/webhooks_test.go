@@ -206,3 +206,44 @@ func TestTouchWebhookWritesAtMostOncePerMinute(t *testing.T) {
 		t.Fatalf("LastUsedAt = %v", list[0].LastUsedAt)
 	}
 }
+
+// Switching an endpoint off must end the rotation overlap: otherwise a token that leaked, rotated away and then "switched off" works
+// again as soon as the endpoint is switched back on within the day.
+func TestSwitchingAnEndpointOffEndsTheOverlapOfThePreviousToken(t *testing.T) {
+	s := openStore(t)
+	ctx := context.Background()
+	e, old, _ := s.CreateWebhook(ctx, "grafana", webhookFields())
+	if _, _, err := s.RotateWebhookToken(ctx, e.ID, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	f := webhookFields()
+	f.Enabled = false
+	if _, err := s.UpdateWebhook(ctx, e.ID, f); err != nil {
+		t.Fatal(err)
+	}
+	f.Enabled = true
+	u, err := s.UpdateWebhook(ctx, e.ID, f)
+	if err != nil || u.PreviousValidUntil != nil {
+		t.Fatalf("after off and on: %+v, %v", u, err)
+	}
+	auth, _ := s.WebhookByName(ctx, "grafana")
+	if len(auth.PreviousTokenHash) != 0 || store.TokenMatches(auth.PreviousTokenHash, old) {
+		t.Fatal("the previous token works again after the endpoint was switched back on")
+	}
+}
+
+func TestChangingOtherFieldsKeepsTheOverlap(t *testing.T) {
+	s := openStore(t)
+	ctx := context.Background()
+	e, old, _ := s.CreateWebhook(ctx, "grafana", webhookFields())
+	s.RotateWebhookToken(ctx, e.ID, time.Now())
+	f := webhookFields()
+	f.AutoDiagnose = true
+	if _, err := s.UpdateWebhook(ctx, e.ID, f); err != nil {
+		t.Fatal(err)
+	}
+	auth, _ := s.WebhookByName(ctx, "grafana")
+	if !store.TokenMatches(auth.PreviousTokenHash, old) {
+		t.Fatal("an unrelated change ended the overlap")
+	}
+}

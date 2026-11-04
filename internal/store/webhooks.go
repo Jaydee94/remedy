@@ -192,10 +192,15 @@ func (s *Store) UpdateWebhook(ctx context.Context, id int64, f WebhookFields) (W
 	}
 	var e WebhookEndpoint
 	err := s.inTx(ctx, func(tx *txn) error {
+		// Switching an endpoint off ends the rotation overlap: a token that leaked and was rotated away must not come back to life
+		// when the endpoint is switched on again within the day.
 		row := tx.QueryRowContext(ctx, `
-			UPDATE webhook_endpoints SET enabled = ?, auto_diagnose = ?, resolve_after_seconds = ?, rate_per_minute = ?, new_per_hour = ?
+			UPDATE webhook_endpoints SET enabled = ?, auto_diagnose = ?, resolve_after_seconds = ?, rate_per_minute = ?, new_per_hour = ?,
+				previous_token_hash = CASE WHEN ? = 0 THEN NULL ELSE previous_token_hash END,
+				previous_valid_until = CASE WHEN ? = 0 THEN NULL ELSE previous_valid_until END
 			WHERE id = ? RETURNING `+webhookCols,
-			flagInt(f.Enabled), flagInt(f.AutoDiagnose), int(f.ResolveAfter/time.Second), f.RatePerMinute, f.NewPerHour, id)
+			flagInt(f.Enabled), flagInt(f.AutoDiagnose), int(f.ResolveAfter/time.Second), f.RatePerMinute, f.NewPerHour,
+			flagInt(f.Enabled), flagInt(f.Enabled), id)
 		var err error
 		e, err = scanWebhook(row)
 		if errors.Is(err, sql.ErrNoRows) {

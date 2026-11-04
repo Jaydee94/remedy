@@ -27,11 +27,12 @@ type hEnv struct {
 	token  string
 	clock  time.Time
 	limits *webhook.Limits
+	dsn    string
 }
 
 func newHEnv(t *testing.T, mod func(*store.WebhookFields)) *hEnv {
 	t.Helper()
-	st := testutil.Store(t)
+	st, dsn := testutil.StoreDSN(t)
 	f := store.WebhookFields{Enabled: true, ResolveAfter: 24 * time.Hour, RatePerMinute: 6000, NewPerHour: 30}
 	if mod != nil {
 		mod(&f)
@@ -40,7 +41,7 @@ func newHEnv(t *testing.T, mod func(*store.WebhookFields)) *hEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &hEnv{t: t, st: st, ep: ep, token: token, clock: time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC), limits: webhook.NewLimits()}
+	e := &hEnv{t: t, st: st, ep: ep, token: token, clock: time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC), limits: webhook.NewLimits(), dsn: dsn}
 	e.h = &webhook.Handler{
 		Store: st, Engine: &incident.Engine{Store: st}, Limits: e.limits,
 		Auth:       &webhook.Authenticator{Store: st, Now: func() time.Time { return e.clock }},
@@ -350,5 +351,32 @@ func TestOneEndpointsFloodLeavesAnotherUntouched(t *testing.T) {
 	}
 	if code, out, _ := e.post("uptime", otherToken, "application/json", event("u", "firing", "")); code != http.StatusOK {
 		t.Fatalf("the other endpoint: %d %s", code, out)
+	}
+}
+
+// An ignored incident whose sender keeps firing is still reported: its last_seen must move, or the sweeper would resolve it as
+// "not reported", and the next firing would reopen it and write activity again and again.
+func TestAnIgnoredIncidentThatKeepsFiringIsNotSweptAndWritesNothing(t *testing.T) {
+	e := newHEnv(t, func(f *store.WebhookFields) { f.ResolveAfter = 5 * time.Minute })
+	e.send(event("k", "firing", ""))
+	in, _ := e.st.FindActiveIncidentByKey(context.Background(), store.SourceWebhook, "grafana/k")
+	if _, err := (&incident.Engine{Store: e.st}).Ignore(context.Background(), in.ID); err != nil {
+		t.Fatal(err)
+	}
+	testutil.SQL(t, e.dsn, `UPDATE incidents SET last_seen = ? WHERE id = ?`, testutil.TS(time.Now().Add(-10*time.Minute)), in.ID)
+	_, a0 := e.counts()
+	if code, out := e.send(event("k", "firing", "")); result(t, code, out) != "ignored" {
+		t.Fatalf("firing on an ignored incident: %d %s", code, out)
+	}
+	sw := &webhook.Sweeper{Store: e.st}
+	if n, err := sw.SweepOnce(context.Background()); err != nil || n != 0 {
+		t.Fatalf("SweepOnce = %d, %v: an ignored incident that is still reported was resolved", n, err)
+	}
+	got, _ := e.st.GetIncident(context.Background(), in.ID)
+	if got.State != store.IncIgnored || got.Occurrences != 1 {
+		t.Fatalf("incident = %s, %d occurrences", got.State, got.Occurrences)
+	}
+	if _, a1 := e.counts(); a1 != a0 {
+		t.Fatalf("the repeat wrote %d activity entries", a1-a0)
 	}
 }

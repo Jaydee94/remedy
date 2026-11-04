@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { WebhookEndpoint } from './api.ts'
-import { curlExample, endpointLine, lastUsedText, listeningNote, tokenNotice, validWebhookName } from './webhooks.ts'
+import { curlExample, endpointLine, lastUsedText, listeningNote, previousTokenText, tokenNotice, validWebhookName } from './webhooks.ts'
 
 const ep = (over: Partial<WebhookEndpoint> = {}): WebhookEndpoint => ({
   id: 1, name: 'grafana', enabled: true, autoDiagnose: false, resolveAfterSeconds: 86400, ratePerMinute: 60, newPerHour: 30,
@@ -62,5 +62,20 @@ describe('curlExample', () => {
 describe('tokenNotice', () => {
   it('warns that the token is shown once', () => {
     assert.match(tokenNotice, /only once|cannot be shown again/i)
+  })
+})
+
+describe('previousTokenText', () => {
+  const now = Date.parse('2026-11-04T12:00:00Z')
+  it('says nothing without an overlap or after it ended', () => {
+    assert.equal(previousTokenText(ep(), now), '')
+    assert.equal(previousTokenText(ep({ previousValidUntil: '2026-11-04T11:00:00Z' }), now), '')
+  })
+  it('says how long the old token still works and how to end it', () => {
+    assert.equal(
+      previousTokenText(ep({ previousValidUntil: '2026-11-05T11:30:00Z' }), now),
+      'The previous token still works for about 24 more hours. Switching the endpoint off ends that.',
+    )
+    assert.match(previousTokenText(ep({ previousValidUntil: '2026-11-04T12:20:00Z' }), now), /about 1 more hour\./)
   })
 })

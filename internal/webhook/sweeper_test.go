@@ -77,7 +77,7 @@ func TestASilentIncidentIsResolvedAsExpiredAndTheThreadSaysNotReported(t *testin
 		t.Fatal("an incident inside the limit was resolved")
 	}
 	log, _ := e.st.ListActivity(context.Background(), store.ActivityQuery{IncidentID: silent.ID, Limit: 5})
-	if log[0].Summary != "Incident resolved: webhook alert Disk full was not reported for 24h0m0s" {
+	if log[0].Summary != "Incident resolved: webhook alert Disk full was not reported for 24 hours" {
 		t.Fatalf("activity = %q", log[0].Summary)
 	}
 }

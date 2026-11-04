@@ -2,7 +2,7 @@
 
 A webhook lets a tool that is not polled report an incident to Remedy: it sends one HTTP request per event, and the event opens, updates or resolves an incident of the source "Webhook". The incident is diagnosed like an alert (the outage responder: the same tools, the same approvals). Spec: [`../specs/2026-10-21-self-hosted-for-others-design.md`](../specs/2026-10-21-self-hosted-for-others-design.md) section 6; plan: [`../plans/self-hosted-7c-webhook-source.md`](../plans/self-hosted-7c-webhook-source.md).
 
-**State: implemented and tested with fakes and with `curl` against a throwaway server. It has not been tried with a real sender (Grafana, Uptime Kuma, an Alertmanager webhook receiver): section 9.**
+**State: implemented and tested with fakes, and checked once with `curl` and a browser against a throwaway server ([`../research/webhook-browser-check.md`](../research/webhook-browser-check.md)). It has not been tried with a real sender (Grafana, Uptime Kuma, an Alertmanager webhook receiver): section 9.**
 
 ## 1. When to use it
 
@@ -22,7 +22,7 @@ The listener has real timeouts (header 10 s, read and write 15 s, idle 60 s, hea
 
 Setup, block "Webhooks": give a name (1 to 40 lower-case letters, digits or dashes) and press Add. The token is shown **once**; copy it into the sender's configuration. Remedy keeps only its hash and cannot show it again. If it is lost, rotate it.
 
-Each endpoint has: a switch (off: every request is refused as if the endpoint did not exist), "Diagnose on my own" (**off by default**: a leaked token must not be able to spend your quota or money; a click diagnoses; when it is on the ordinary daily limits and, in key mode, the budget apply), the silence limit (default 24 hours, 0 = only an explicit "resolved" resolves, otherwise at least 5 minutes) and the limits of section 6. The admin API is `/api/webhooks` (session and CSRF header, like hosts).
+Each endpoint has: a switch (off: every request is refused as if the endpoint did not exist), "Diagnose on my own" (**off by default**: a leaked token must not be able to spend your quota or money; a click diagnoses; when it is on the ordinary daily limits and, in key mode, the budget apply), the silence limit (default 24 hours, 0 = only an explicit "resolved" resolves, otherwise at least 5 minutes) and the limits of section 6. The page has the switches (accept events, diagnose on my own), Rotate and Remove; the silence limit and the two rate limits are changed through the admin API only, `PATCH /api/webhooks/{id}` with `resolveAfterSeconds`, `ratePerMinute` or `newPerHour` (session and CSRF header, like hosts).
 
 ## 4. The request
 
@@ -47,7 +47,7 @@ The token goes in the `Authorization` header only. It is never accepted in the U
 | `url` | `http` or `https` only |
 | `startsAt` | RFC 3339; an event older than the "oldest alert I diagnose on my own" setting is not diagnosed on its own |
 
-The body is at most 64 KiB, strictly decoded: an unknown member, a wrong type, a second JSON value or a `null` where a string belongs is a `400` that names the member (never repeats a value). The answer is `200 {"result": "opened" | "updated" | "resolved" | "ignored"}`. A repeat of the same body is a touch and writes nothing; `resolved` for an unknown or already resolved key is `200 ignored`; a `firing` after a resolve reopens the incident (it is not diagnosed again on its own).
+The body is at most 64 KiB, strictly decoded: an unknown member, a wrong type, a second JSON value or a `null` where a string belongs is a `400` that names the member (never repeats a value). The answer is `200 {"result": "opened" | "updated" | "resolved" | "ignored"}`. A repeat of the same body is a touch: it refreshes the incident's last-seen time and details and writes no activity entry; `resolved` for an unknown or already resolved key is `200 ignored`; a `firing` after a resolve reopens the incident (it is not diagnosed again on its own).
 
 Statuses: `401` (unknown endpoint, a disabled one and a wrong token are the same answer), `415`, `413`, `400`, `429` with `Retry-After`, `503` (too many requests at once), `500` (the database failed: the sender should retry; the key makes a retry safe).
 
@@ -62,19 +62,19 @@ A sender that **repeats** while the problem lasts (Alertmanager's `repeat_interv
 All per endpoint, never per IP (Remedy does not trust `X-Forwarded-For`, so behind a proxy every request has the proxy's address and a limit per address would let one sender lock out the others):
 
 - 60 requests per minute with a burst of 120 (`429`);
-- 30 new incidents per hour (`429` for a new key only; an update and a `resolved` always pass, so a flood cannot stop a resolve);
-- at most 8 requests at once on the listener (`503`, answered before anything is read from the database).
+- 30 new incidents per hour (`429` for a new key only; an update and a `resolved` always pass **this** limit, so a flood of new keys cannot stop a resolve). A key that comes back after a resolve counts as new, so a sender that flaps more than 30 times an hour is limited on its `firing` events. The rate limit above is one bucket per endpoint: a flood made with a leaked token drains the bucket that the real sender's `resolved` events need too;
+- at most 8 requests at once on the listener (`503`, answered before anything is read from the database). A request without a valid token still costs one small database lookup before it is refused, so up to 8 such lookups can run at once next to the control plane's other work (the pool has 10 connections by default); put a rate limit at the reverse proxy if the listener is on the internet.
 
 The first two are fields of the endpoint (1 to 6000 a minute, 1 to 1000 an hour). The counters on Setup ("2 accepted, 1 rejected since the last start", and the last rejection) are in memory and reset when the control plane restarts. A rejected request writes nothing to the database or to the activity log.
 
 ## 7. Silence
 
-A sweeper (about once a minute) resolves the unresolved webhook incidents whose `last_seen` is older than the silence limit of their endpoint, with the reason "expired"; the thread says "was not reported for 24h0m0s", not "fixed". An incident that is being diagnosed is left until its run has ended. An incident whose endpoint was deleted uses 24 hours.
+A sweeper (about once a minute) resolves the unresolved webhook incidents whose `last_seen` is older than the silence limit of their endpoint, with the reason "expired"; the thread says "was not reported for 24 hours", not "fixed". An incident you ignored is kept alive as long as the sender still reports it (an ignored alert of the Alertmanager source is left alone for another reason: it resolves by absence). An incident that is being diagnosed is left until its run has ended. An incident whose endpoint was deleted uses 24 hours.
 
 ## 8. Behind a reverse proxy, and a leaked token
 
 - Terminate TLS at the proxy (the token is a bearer secret; without TLS it crosses the network in clear, acceptable only inside a cluster), restrict the path to `/webhook/v1/`, set a body limit as a second line, and filter by source address if the sender's addresses are known. A body logged by the proxy holds titles and labels; the token is in a header: do not log headers.
-- A **leaked token** lets a stranger open incidents (bounded by the limits above) and, with a host rule matching a label they choose, aim a **read-only** diagnosis at that host. It cannot change anything: every change still needs your approval. Revoke it by rotating the token (the old one stays valid for 24 hours, so a sender can be changed without a gap: to cut it off at once, switch the endpoint off, or remove it). A removed endpoint keeps its incidents.
+- A **leaked token** lets a stranger open incidents (bounded by the limits above) and, with a host rule matching a label they choose, aim a **read-only** diagnosis at that host. It cannot change anything: every change still needs your approval. Revoke it by rotating the token, but note that the old one stays valid for 24 hours (so a sender can be changed without a gap): to end that overlap at once, switch the endpoint off (this clears the previous token for good; switching it on again does not bring it back), or remove the endpoint. A removed endpoint keeps its incidents.
 
 ## 9. Not verified
 

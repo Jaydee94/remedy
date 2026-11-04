@@ -76,6 +76,9 @@ func Decode(r io.Reader) (Event, error) {
 	if len(raw) > MaxBody {
 		return Event{}, ErrTooLarge
 	}
+	if err := noDuplicates(raw); err != nil {
+		return Event{}, err
+	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	var b body
@@ -108,7 +111,7 @@ func Decode(r io.Reader) (Event, error) {
 		}
 	}
 	if b.Title != nil {
-		t, _ := signals.Cut(redact.Redact(signals.OneLine(*b.Title)), signals.MaxTitle)
+		t, _ := signals.Cut(redact.Redact(signals.OneLine(stripInvisible(*b.Title))), signals.MaxTitle)
 		e.Title = t
 	}
 	if e.Firing() && e.Title == "" {
@@ -159,7 +162,7 @@ func checkKey(k *string) (string, error) {
 		return "", bad("key", "must be 1 to 200 characters")
 	}
 	for _, r := range *k {
-		if !unicode.IsPrint(r) {
+		if !unicode.IsPrint(r) || invisible(r) {
 			return "", bad("key", "must hold printable characters only")
 		}
 	}
@@ -189,8 +192,89 @@ func decodeError(err error) error {
 		return bad(field, "has the wrong type")
 	}
 	if name, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
-		field, _ := signals.Cut(signals.OneLine(strings.Trim(name, `"`)), 40) // the name is the sender's: bounded, not echoed whole
+		field, _ := signals.Cut(redact.Redact(signals.OneLine(strings.Trim(name, `"`))), 40) // the name is the sender's: bounded, not echoed whole
 		return bad(field, "is not a member of version 1")
 	}
 	return bad("", "the body is not valid JSON")
+}
+
+// invisible says whether r draws nothing, or changes how its neighbours are drawn: a format, private-use or separator character, a
+// variation selector, the combining grapheme joiner and the Hangul and half-width fillers. Two keys that differ only by such a
+// character look the same and are different incidents; a title with one can be made to display misleadingly.
+func invisible(r rune) bool {
+	switch {
+	case unicode.Is(unicode.Cf, r), unicode.In(r, unicode.Co, unicode.Zl, unicode.Zp, unicode.Variation_Selector):
+		return true
+	case r == 0x034F, r == 0x115F, r == 0x1160, r == 0x3164, r == 0xFFA0:
+		return true
+	}
+	return false
+}
+
+func stripInvisible(s string) string {
+	return strings.Map(func(r rune) rune {
+		if invisible(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// noDuplicates refuses a member that appears twice in any object of the body. encoding/json keeps the last value, and a proxy that
+// reads the first sees another event.
+func noDuplicates(raw []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if err := walk(dec, ""); err != nil {
+		var fe *FieldError
+		if errors.As(err, &fe) {
+			return err
+		}
+		return nil // not valid JSON: the decode that follows says so
+	}
+	return nil
+}
+
+func walk(dec *json.Decoder, path string) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	d, ok := tok.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch d {
+	case '{':
+		seen := map[string]bool{}
+		for dec.More() {
+			kt, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			key, _ := kt.(string)
+			field := path
+			if path == "" {
+				field = key
+			}
+			if seen[key] {
+				f, _ := signals.Cut(redact.Redact(signals.OneLine(field)), 40)
+				return bad(f, "appears twice")
+			}
+			seen[key] = true
+			if err := walk(dec, field); err != nil {
+				return err
+			}
+		}
+		_, err = dec.Token() // the closing brace
+		return err
+	case '[':
+		for dec.More() {
+			if err := walk(dec, path); err != nil {
+				return err
+			}
+		}
+		_, err = dec.Token()
+		return err
+	}
+	return nil
 }
