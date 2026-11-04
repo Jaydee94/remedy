@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.19.1](https://github.com/Jaydee94/remedy/compare/v0.19.0...v0.19.1) (2026-11-04)
+
+### Bug Fixes
+
+* the runner removes the run's MCP config before it reports the run finished ([#193](https://github.com/Jaydee94/remedy/issues/193)) ([eb7c89f](https://github.com/Jaydee94/remedy/commit/eb7c89fd4d4bafbf6ebc781dd82860806ed788aa))
+
 ## [0.19.0](https://github.com/Jaydee94/remedy/compare/v0.18.2...v0.19.0) (2026-11-04)
 
 ### Features
