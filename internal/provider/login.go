@@ -63,7 +63,7 @@ func (b *capBuffer) Write(p []byte) (int, error) {
 // timeout, never output. The caller sets the time limit with ctx.
 func (c Claude) LoginCheck(ctx context.Context, parentEnv []string) (LoginState, string) {
 	cmd := exec.CommandContext(ctx, c.binary(), loginCheckArgs...)
-	cmd.Env = FilterEnv(parentEnv)
+	cmd.Env = EnvFor(c.Mode, parentEnv)
 	cmd.Dir = os.TempDir()
 	cmd.WaitDelay = 2 * time.Second
 	var out capBuffer
@@ -107,7 +107,7 @@ func loginExited(code int, out *capBuffer) (LoginState, string) {
 // say. It is shown to the maintainer as text.
 func (c Claude) Version(ctx context.Context, parentEnv []string) string {
 	cmd := exec.CommandContext(ctx, c.binary(), "--version")
-	cmd.Env = FilterEnv(parentEnv)
+	cmd.Env = EnvFor(c.Mode, parentEnv)
 	cmd.Dir = os.TempDir()
 	cmd.WaitDelay = 2 * time.Second
 	var out capBuffer
@@ -131,7 +131,7 @@ func (c Claude) Version(ctx context.Context, parentEnv []string) string {
 // them before Start; they may carry the sign-in URL and the code and must never be logged.
 func (c Claude) LoginCommand(ctx context.Context, parentEnv []string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, c.binary(), "auth", "login", "--claudeai")
-	cmd.Env = append(FilterEnv(parentEnv), "DISABLE_UPDATES=1")
+	cmd.Env = append(EnvFor(ModeSubscription, parentEnv), "DISABLE_UPDATES=1")
 	cmd.Dir = os.TempDir()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return SignalGroup(cmd, syscall.SIGTERM) }

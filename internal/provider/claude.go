@@ -25,6 +25,7 @@ const readOnlyTools = "Read,Grep,Glob"
 type Claude struct {
 	Binary string // defaults to "claude" on PATH
 	Model  string // defaults to DefaultModel
+	Mode   Mode   // how the CLI is billed; the zero value is the subscription
 }
 
 func (Claude) Name() string { return "claude" }
@@ -67,7 +68,7 @@ func (c Claude) Command(ctx context.Context, spec Spec, parentEnv []string) *exe
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = spec.Workdir
 	cmd.Stdin = strings.NewReader(spec.Prompt)
-	cmd.Env = FilterEnv(parentEnv)
+	cmd.Env = EnvFor(c.Mode, parentEnv)
 	cmd.WaitDelay = 5 * time.Second
 	return cmd
 }

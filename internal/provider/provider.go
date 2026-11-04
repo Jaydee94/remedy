@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"os/exec"
-	"strings"
 )
 
 // Spec describes one agent invocation.
@@ -41,25 +40,17 @@ type Provider interface {
 	ParseLine(line []byte) Line
 }
 
-// envAllowlist names the only variables a CLI subprocess may inherit.
-// ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are deliberately absent: with them set the CLI
-// would bill the API instead of the subscription login.
+// envAllowlist names the variables a CLI subprocess may inherit in every mode. EnvFor adds the one variable of the mode:
+// CLAUDE_CODE_OAUTH_TOKEN for the subscription, ANTHROPIC_API_KEY for the key. ANTHROPIC_API_KEY is absent here on purpose:
+// in the subscription mode a key in the environment would make the CLI bill the API instead of the login.
+// ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL are never allowed.
 // USER is required on macOS: the CLI looks up its login in the keychain by user name, and
 // without it reports "Not logged in" even though the login exists.
 var envAllowlist = map[string]bool{
 	"PATH": true, "HOME": true, "USER": true, "LANG": true, "LC_ALL": true, "TMPDIR": true,
 	"XDG_CONFIG_HOME": true, "HTTPS_PROXY": true, "HTTP_PROXY": true, "NO_PROXY": true,
-	"CLAUDE_CONFIG_DIR": true, "CLAUDE_CODE_OAUTH_TOKEN": true,
+	"CLAUDE_CONFIG_DIR": true,
 }
 
-// FilterEnv keeps only allowlisted KEY=value entries, preserving order.
-func FilterEnv(env []string) []string {
-	out := make([]string, 0, len(env))
-	for _, kv := range env {
-		key, _, ok := strings.Cut(kv, "=")
-		if ok && envAllowlist[key] {
-			out = append(out, kv)
-		}
-	}
-	return out
-}
+// FilterEnv is EnvFor for the subscription mode.
+func FilterEnv(env []string) []string { return EnvFor(ModeSubscription, env) }
