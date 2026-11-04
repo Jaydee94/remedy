@@ -29,6 +29,9 @@ type Sink interface {
 // the subprocess could not be started (ExitCode 127) or the first sink error (events may be
 // missing); in both cases the run still ended with the returned Outcome.
 func Execute(ctx context.Context, p provider.Provider, spec provider.Spec, env []string, sink Sink) (run.Outcome, error) {
+	// The run can be stopped from inside: by the billing guard, when the CLI's init event contradicts the mode.
+	ctx, stopRun := context.WithCancel(ctx)
+	defer stopRun()
 	cmd := p.Command(ctx, spec, env)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -66,7 +69,12 @@ func Execute(ctx context.Context, p provider.Provider, spec provider.Spec, env [
 		_, _ = io.Copy(io.Discard, stderr) // keep draining if a line was too long
 	}()
 
-	var final *provider.Final
+	var (
+		final      *provider.Final
+		authSource string
+		billingBad bool
+		initSeen   bool
+	)
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
 	for sc.Scan() {
@@ -79,6 +87,14 @@ func Execute(ctx context.Context, p provider.Provider, spec provider.Spec, env [
 			final = l.Final
 		}
 		emit(l.Kind, l.Payload)
+		if l.Init != nil && !initSeen {
+			initSeen = true
+			authSource = provider.AuthSourceOf(l.Init.APIKeySource, l.Init.Known)
+			if spec.OnInit != nil && !spec.OnInit(l.Init.APIKeySource, l.Init.Known) {
+				billingBad = true
+				stopRun()
+			}
+		}
 	}
 	if err := sc.Err(); err != nil {
 		emit("raw", run.JSONString(fmt.Sprintf("stdout read error: %v", err)))
@@ -96,10 +112,18 @@ func Execute(ctx context.Context, p provider.Provider, spec provider.Spec, env [
 		}
 	}
 
-	out := run.Outcome{ExitCode: exit}
+	out := run.Outcome{ExitCode: exit, AuthSource: authSource}
 	if final != nil {
 		out.Result, out.SessionID, out.CostUSD = final.Result, final.SessionID, final.CostUSD
 		out.Output = final.Output
+	}
+	if billingBad {
+		// Whatever the CLI wrote after the init event does not count; the sentence is fixed and carries no CLI text.
+		out = run.Outcome{ExitCode: exit, AuthSource: authSource, FailureReason: run.ReasonBillingMismatch,
+			Result: "The run was stopped: it would have been billed differently than configured."}
+		if out.ExitCode == 0 {
+			out.ExitCode = -1
+		}
 	}
 	return out, sinkErr
 }

@@ -14,6 +14,9 @@ type Spec struct {
 	Workdir   string
 	Schema    string // JSON schema of the answer; empty means free text
 	MCPConfig string // MCP config file of a run with gatekeeper access; empty means no tools
+	// OnInit, when set, is asked once, with the first init event of the CLI: it says how the run is billed, and a false
+	// answer stops the run at once (the runner uses it to refuse a run that would be billed differently than configured).
+	OnInit func(apiKeySource string, known bool) bool
 }
 
 // Final carries the end-of-run summary some CLIs emit as their last line.
@@ -24,11 +27,18 @@ type Final struct {
 	Output    json.RawMessage // the structured answer, when the run had a schema and the CLI delivered one
 }
 
+// Init is what the CLI's init event says about how the run is billed.
+type Init struct {
+	APIKeySource string // "none" with a subscription login, else where the key came from
+	Known        bool   // the event had the field at all
+}
+
 // Line is one parsed line of CLI output.
 type Line struct {
 	Kind    string          // event type, or "raw" for anything unparseable
 	Payload json.RawMessage // always valid JSON
 	Final   *Final          // set only on the end-of-run summary line
+	Init    *Init           // set only on the init event
 }
 
 type Provider interface {

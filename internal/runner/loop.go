@@ -96,7 +96,8 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 		}
 	}
 
-	spec := provider.Spec{Prompt: r.Prompt, Workdir: dir, Schema: string(c.Schema)}
+	spec := provider.Spec{Prompt: r.Prompt, Workdir: dir, Schema: string(c.Schema),
+		OnInit: func(source string, known bool) bool { return l.Mode.Accepts(source, known) }}
 	dropMCPConfig := func() {}
 	if c.MCPToken != "" {
 		path, cleanup, err := writeMCPConfig(l.WorkspaceRoot, r.ID, l.Client.BaseURL, c.MCPToken)
@@ -137,6 +138,8 @@ func (l *Loop) handle(ctx context.Context, c run.Claim) {
 	// moment in which the run is over for the control plane and the file still exists.
 	dropMCPConfig()
 	switch {
+	case out.FailureReason == run.ReasonBillingMismatch:
+		log.Warn("the run was stopped: its billing contradicts the runner's mode", "mode", string(l.Mode), "authSource", out.AuthSource)
 	case stopped.Load():
 		out.FailureReason = run.ReasonCancelled
 		out.Result = "The run was cancelled."

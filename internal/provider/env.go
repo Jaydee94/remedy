@@ -39,3 +39,26 @@ func EnvFor(mode Mode, parent []string) []string {
 	}
 	return out
 }
+
+// Accepts says whether a run whose init event reported apiKeySource may go on in this mode. The subscription mode requires
+// "none" (observed with a subscription login) and lets an init without the field pass; the key mode requires a source that is
+// neither "none" nor empty, and fails closed on an init without the field: billing cannot be shown to be the key's. The value
+// of a key source is not known beyond that (the first real run settles it), so the test is "not none".
+func (m Mode) Accepts(apiKeySource string, known bool) bool {
+	if m == ModeAPIKey {
+		return known && apiKeySource != "" && apiKeySource != "none"
+	}
+	return !known || apiKeySource == "none"
+}
+
+// AuthSourceOf names the billing a run reported: "subscription" for "none", "api_key" for any other value, empty when the
+// init event did not say. It is what the control plane records as runs.auth_source.
+func AuthSourceOf(apiKeySource string, known bool) string {
+	switch {
+	case !known || apiKeySource == "":
+		return ""
+	case apiKeySource == "none":
+		return "subscription"
+	}
+	return "api_key"
+}

@@ -46,6 +46,9 @@ const (
 	// ReasonRunnerLost means the control plane failed a run with gatekeeper access because its runner stopped
 	// sending heartbeats.
 	ReasonRunnerLost = "runner_lost"
+	// ReasonBillingMismatch means the runner stopped the run because its init event said it would be billed differently than
+	// the runner's mode (a key where the subscription is configured, or the reverse).
+	ReasonBillingMismatch = "billing_mismatch"
 )
 
 type Run struct {
@@ -87,6 +90,8 @@ type Outcome struct {
 	CostUSD       float64         `json:"costUsd"`
 	Output        json.RawMessage `json:"output,omitempty"`
 	FailureReason string          `json:"failureReason,omitempty"`
+	// AuthSource is how the run was billed according to its own init event: "subscription", "api_key", or empty.
+	AuthSource string `json:"authSource,omitempty"`
 }
 
 // Claim is what the control plane answers to a runner that claims a run: the run itself and what a

@@ -144,7 +144,7 @@ func (s *srv) finish(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if out.FailureReason != "" && out.FailureReason != run.ReasonTimeout && out.FailureReason != run.ReasonCancelled {
+	if out.FailureReason != "" && out.FailureReason != run.ReasonTimeout && out.FailureReason != run.ReasonCancelled && out.FailureReason != run.ReasonBillingMismatch {
 		writeErr(w, http.StatusBadRequest, "unknown failure reason")
 		return
 	}
