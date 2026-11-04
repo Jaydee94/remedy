@@ -43,6 +43,9 @@ type DiagnosisLimits struct {
 	// maintainer starts is never refused for it. Without EnforceBudget the budget is not looked at.
 	EnforceBudget  bool
 	DayBudgetCents int
+	// RunBudgetCents is what a key-billed run that was killed before the CLI printed its cost counts for: the most it was
+	// allowed to spend. Zero counts such a run as free.
+	RunBudgetCents int
 }
 
 func DefaultLimits() DiagnosisLimits {
@@ -170,13 +173,11 @@ func checkAutomatic(ctx context.Context, tx *txn, in Incident, p StartParams) er
 		return &LimitError{Reason: fmt.Sprintf("%d automatic runs in the last 24 hours", today)}
 	}
 	if p.Limits.EnforceBudget {
-		var spent float64
-		if err := tx.QueryRowContext(ctx, `
-			SELECT COALESCE(SUM(cost_usd), 0) FROM runs WHERE auth_source = 'api_key' AND finished_at > ?`,
-			formatTS(p.Now.Add(-24*time.Hour))).Scan(&spent); err != nil {
+		cents, err := apiSpend(ctx, tx, p.Now.Add(-24*time.Hour), p.Limits.RunBudgetCents)
+		if err != nil {
 			return err
 		}
-		if cents := spentCents(spent); cents >= p.Limits.DayBudgetCents {
+		if cents >= p.Limits.DayBudgetCents {
 			return &LimitError{Reason: fmt.Sprintf("about $%.2f of the $%.2f budget for runs with your API key was spent in the last 24 hours (the CLI's estimate)",
 				float64(cents)/100, float64(p.Limits.DayBudgetCents)/100)}
 		}
@@ -188,10 +189,21 @@ func checkAutomatic(ctx context.Context, tx *txn, in Incident, p StartParams) er
 func spentCents(usd float64) int { return int(math.Round(usd * 100)) }
 
 // APISpendSince is what the runs billed to an API key and finished since then cost, in cents: the CLI's estimate, not a charge.
-func (s *Store) APISpendSince(ctx context.Context, since time.Time) (int, error) {
+// A run that was killed (timeout, cancel, lost runner) never printed its cost; it counts as runBudgetCents, the most it was allowed to spend.
+func (s *Store) APISpendSince(ctx context.Context, since time.Time, runBudgetCents int) (int, error) {
+	return apiSpend(ctx, s.db, since, runBudgetCents)
+}
+
+// apiSpend is the query behind APISpendSince and the daily budget, on a pool or inside a transaction.
+func apiSpend(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, since time.Time, runBudgetCents int) (int, error) {
 	var spent float64
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(cost_usd), 0) FROM runs WHERE auth_source = 'api_key' AND finished_at > ?`, formatTS(since)).Scan(&spent); err != nil {
+	if err := q.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(CASE WHEN cost_usd > 0 THEN cost_usd
+		                         WHEN failure_reason IN ('timeout', 'cancelled', 'runner_lost') THEN ?::float8 / 100
+		                         ELSE 0 END), 0)
+		FROM runs WHERE auth_source = 'api_key' AND finished_at > ?`, runBudgetCents, formatTS(since)).Scan(&spent); err != nil {
 		return 0, err
 	}
 	return spentCents(spent), nil

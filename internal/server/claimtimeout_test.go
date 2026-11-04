@@ -108,9 +108,6 @@ func claimBudgetCents(t *testing.T, e *env) (int, bool) {
 func TestTheClaimCarriesNoBudgetForASubscriptionRunner(t *testing.T) {
 	rs := server.NewRunnerStatus()
 	e, _ := newSettingsEnv(t, func(d *server.Deps) { d.RunnerStatus = rs })
-	if cents, ok := claimBudgetCents(t, e); ok {
-		t.Fatalf("max_budget_cents = %d for a runner that never said its mode, want the field left out", cents)
-	}
 	rs.SetAuthMode("subscription")
 	if cents, ok := claimBudgetCents(t, e); ok {
 		t.Fatalf("max_budget_cents = %d in subscription mode, want the field left out", cents)
@@ -129,5 +126,17 @@ func TestTheClaimCarriesThePerRunBudgetInKeyMode(t *testing.T) {
 	}
 	if cents, ok := claimBudgetCents(t, e); !ok || cents != 35 {
 		t.Fatalf("max_budget_cents = %d (present %v), want 35", cents, ok)
+	}
+}
+
+// After a restart of the control plane the runner's mode is unknown for up to one report interval; a key-mode runner that
+// claims then must still get the configured budget instead of falling back to its built-in one.
+func TestTheClaimCarriesTheBudgetWhileTheRunnerModeIsUnknown(t *testing.T) {
+	e, set := newSettingsEnv(t, func(d *server.Deps) { d.RunnerStatus = server.NewRunnerStatus() })
+	if _, err := set.Set(context.Background(), settings.APIBudgetPerRunCents, json.RawMessage(`35`)); err != nil {
+		t.Fatal(err)
+	}
+	if cents, ok := claimBudgetCents(t, e); !ok || cents != 35 {
+		t.Fatalf("max_budget_cents = %d (present %v) for a runner that never said its mode, want 35", cents, ok)
 	}
 }

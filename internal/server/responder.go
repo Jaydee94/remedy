@@ -152,7 +152,7 @@ func (s *srv) getLimits(w http.ResponseWriter, r *http.Request) {
 		view.DiagnoseMaxPerDay = limits.MaxPerDay
 		view.StaleRunMinutes = int(reaper.MaxAgeFor(set.Duration(settings.RunTimeout)).Minutes())
 		if s.d.RunnerStatus.AuthMode() == AuthModeAPIKey {
-			spent, err := s.d.Store.APISpendSince(r.Context(), time.Now().Add(-24*time.Hour))
+			spent, err := s.d.Store.APISpendSince(r.Context(), time.Now().Add(-24*time.Hour), set.Int(settings.APIBudgetPerRunCents))
 			if err != nil {
 				writeErr(w, http.StatusInternalServerError, "could not add up the spend")
 				return

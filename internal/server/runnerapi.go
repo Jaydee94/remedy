@@ -84,8 +84,9 @@ func (s *srv) claim(w http.ResponseWriter, r *http.Request) {
 					c.RunTimeoutSeconds = int(e.Value.Dur / time.Second)
 				}
 			}
-			// The per-run budget belongs to the key mode: only a runner that says it bills a key gets one.
-			if s.d.Settings != nil && s.d.RunnerStatus.AuthMode() == AuthModeAPIKey {
+			// The per-run budget belongs to the key mode: a runner that says it bills a subscription gets none. While the mode
+			// is unknown (right after a restart of this process) the budget goes along; a subscription runner ignores it.
+			if s.d.Settings != nil && s.d.RunnerStatus.MayBillKey() {
 				c.MaxBudgetCents = s.d.Settings.Int(settings.APIBudgetPerRunCents)
 			}
 			writeJSON(w, http.StatusOK, c)

@@ -26,7 +26,47 @@ func spend(t *testing.T, s *store.Store, repo store.Repo, name string, usd float
 }
 
 func budgeted(day int) store.DiagnosisLimits {
-	return store.DiagnosisLimits{Cooldown: 0, MaxPerIncident: 10, MaxPerDay: 100, EnforceBudget: true, DayBudgetCents: day}
+	return store.DiagnosisLimits{Cooldown: 0, MaxPerIncident: 10, MaxPerDay: 100, EnforceBudget: true, DayBudgetCents: day, RunBudgetCents: 50}
+}
+
+// spendKilled finishes a key-billed run that was killed before the CLI printed its cost: it records no cost at all.
+func spendKilled(t *testing.T, s *store.Store, repo store.Repo, name, reason string) {
+	t.Helper()
+	in := open(t, s, repo, "pr:"+name, name, "aaa", "failure")
+	r, err := start(s, in, false, limits, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishRun(t, s, r.ID, run.Outcome{ExitCode: -1, FailureReason: reason, AuthSource: "api_key"})
+	if err := s.FailDiagnosis(context.Background(), r.ID, store.NewActivity{Kind: store.KindDiagnosisFailed, Summary: "failed"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAKilledKeyRunCountsAtTheBudgetOfOneRun(t *testing.T) {
+	s := openStore(t)
+	repo := seedRepo(t, s)
+	spendKilled(t, s, repo, "timed-out", run.ReasonTimeout)
+	spendKilled(t, s, repo, "cancelled", run.ReasonCancelled)
+	spendKilled(t, s, repo, "lost", run.ReasonRunnerLost)
+	got, err := s.APISpendSince(context.Background(), time.Now().Add(-24*time.Hour), 50)
+	if err != nil || got != 150 {
+		t.Fatalf("APISpendSince = %d, %v, want 150 cents (three killed runs at 50)", got, err)
+	}
+	next := open(t, s, repo, "pr:next", "next", "aaa", "failure")
+	if _, err := start(s, next, true, budgeted(150), time.Now()); !errors.Is(err, store.ErrLimit) {
+		t.Fatalf("killed runs did not count against the daily budget: %v", err)
+	}
+}
+
+func TestAStoppedBillingMismatchIsNotMoneyEvenWithoutACost(t *testing.T) {
+	s := openStore(t)
+	repo := seedRepo(t, s)
+	spendKilled(t, s, repo, "mismatch", run.ReasonBillingMismatch)
+	got, err := s.APISpendSince(context.Background(), time.Now().Add(-24*time.Hour), 50)
+	if err != nil || got != 0 {
+		t.Fatalf("APISpendSince = %d, %v, want 0", got, err)
+	}
 }
 
 func TestAnAutomaticRunIsRefusedAtOrOverTheDailyBudget(t *testing.T) {
@@ -105,7 +145,7 @@ func TestTheSpendOfTheLastDayIsInCents(t *testing.T) {
 	spend(t, s, repo, "a", 1.234, "api_key")
 	spend(t, s, repo, "b", 0.5, "api_key")
 	spend(t, s, repo, "c", 7, "subscription")
-	got, err := s.APISpendSince(context.Background(), time.Now().Add(-24*time.Hour))
+	got, err := s.APISpendSince(context.Background(), time.Now().Add(-24*time.Hour), 50)
 	if err != nil || got != 173 {
 		t.Fatalf("APISpendSince = %d, %v, want 173 cents", got, err)
 	}

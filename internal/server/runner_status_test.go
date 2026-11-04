@@ -263,8 +263,8 @@ func TestTheRunnerReportsHowItIsBilled(t *testing.T) {
 func TestAnUnknownModeIsRefusedAndChangesNothing(t *testing.T) {
 	e := newRunnerEnv(t)
 	reportMode(t, e, `{"login":"ok","authMode":"api_key"}`)
-	for _, bad := range []string{`"bedrock"`, `"API_KEY"`, `" api_key"`, `1`, `null`} {
-		if code := reportMode(t, e, `{"login":"ok","authMode":`+bad+`}`); code != http.StatusBadRequest && bad != "null" {
+	for _, bad := range []string{`"bedrock"`, `"API_KEY"`, `" api_key"`, `1`} {
+		if code := reportMode(t, e, `{"login":"ok","authMode":`+bad+`}`); code != http.StatusBadRequest {
 			t.Errorf("authMode %s = %d, want 400", bad, code)
 		}
 	}
@@ -273,14 +273,16 @@ func TestAnUnknownModeIsRefusedAndChangesNothing(t *testing.T) {
 	}
 }
 
-func TestAReportWithoutAModeKeepsWhatWasReported(t *testing.T) {
+// A runner that says nothing about its mode is one from before the key mode existed, and those bill a subscription. After
+// a rollback of the runner the control plane must not keep the key mode of the runner that was there before.
+func TestAReportWithoutAModeIsARunnerOfTheSubscriptionMode(t *testing.T) {
 	e := newRunnerEnv(t)
 	reportMode(t, e, `{"login":"ok","authMode":"api_key"}`)
 	if code := reportMode(t, e, `{"login":"ok"}`); code != http.StatusNoContent {
 		t.Fatalf("report = %d", code)
 	}
-	if v := getMode(t, e); v.AuthMode != "api_key" {
-		t.Errorf("authMode = %q, want api_key (an older runner says nothing, it does not reset)", v.AuthMode)
+	if v := getMode(t, e); v.AuthMode != "subscription" {
+		t.Errorf("authMode = %q, want subscription (an older runner says nothing)", v.AuthMode)
 	}
 }
 

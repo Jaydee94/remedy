@@ -172,3 +172,24 @@ func appWithEnv(t *testing.T, extra map[string]string) *app.App {
 	st := testutil.Store(t)
 	return app.New(cfg, st, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 }
+
+// Until the runner has said its mode (after a restart of the control plane it needs up to one report interval), the daily
+// budget is enforced: the runner may be in key mode, and a start in that window must not slip past the budget.
+func TestTheDailyBudgetIsEnforcedUntilTheRunnerSaysItBillsASubscription(t *testing.T) {
+	s := newStack(t, false)
+	if !s.app.Responder.LimitsFunc().EnforceBudget {
+		t.Fatal("before the runner reported its mode the budget was not enforced")
+	}
+	if code, body := s.runnerCall(http.MethodPost, "/runner/v1/status", `{"login":"ok","authMode":"api_key"}`); code != http.StatusNoContent && code != http.StatusOK {
+		t.Fatalf("status = %d %s", code, body)
+	}
+	if !s.app.Responder.LimitsFunc().EnforceBudget {
+		t.Fatal("in key mode the budget was not enforced")
+	}
+	if code, body := s.runnerCall(http.MethodPost, "/runner/v1/status", `{"login":"ok","authMode":"subscription"}`); code != http.StatusNoContent && code != http.StatusOK {
+		t.Fatalf("status = %d %s", code, body)
+	}
+	if s.app.Responder.LimitsFunc().EnforceBudget {
+		t.Fatal("in subscription mode the budget was enforced")
+	}
+}

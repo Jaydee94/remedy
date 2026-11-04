@@ -63,6 +63,19 @@ func (r *RunnerStatus) AuthMode() string {
 	return r.authMode
 }
 
+// MayBillKey is true while the runner bills an API key or has not said yet how it bills (the control plane forgets the
+// report in a restart, and the runner reports every 15 s). The budgets of the key mode are applied then: a number too many
+// costs nothing in subscription mode, and a number too few would let a key-mode run past its budget. A nil *RunnerStatus is
+// subscription mode.
+func (r *RunnerStatus) MayBillKey() bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.authMode != AuthModeSubscription
+}
+
 // Touch notes an authenticated request of the runner. A nil *RunnerStatus does nothing.
 func (r *RunnerStatus) Touch(now time.Time) {
 	if r == nil {
@@ -176,9 +189,12 @@ func (s *srv) postRunnerStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.d.RunnerStatus.ReportBuild(body.Version, body.Commit)
-	if body.AuthMode != "" {
-		_ = s.d.RunnerStatus.ReportMode(body.AuthMode) // checked above
+	// A runner from before the key mode says nothing about it, and those bill a subscription: a rollback of the runner must
+	// not leave the key mode of its predecessor standing.
+	if body.AuthMode == "" {
+		body.AuthMode = AuthModeSubscription
 	}
+	_ = s.d.RunnerStatus.ReportMode(body.AuthMode) // checked above
 	w.WriteHeader(http.StatusNoContent)
 }
 
