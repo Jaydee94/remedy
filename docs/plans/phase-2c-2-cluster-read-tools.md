@@ -1,4 +1,4 @@
-# Phase 2c-2: The Cluster Read Tools and the Testbed Implementation Plan
+# Phase 2c-2: The cluster read tools and the testbed implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -26,7 +26,7 @@ These refine the spec after trying the testbed and the real API server.
 | Errors | "tool failed" for cluster problems | An object that is not there and an argument that cannot be used are the agent's to fix (`ArgumentError`); a 403, a timeout or an answer that cannot be read is "the tool failed" with the details in the control plane's log only. |
 | Keeping the recordings honest | the real run | Go tests with the build tag `kind` run the same methods and tools against the real testbed (`go test -tags kind -run Live`). They are not part of CI. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, code, identifiers, comments, UI copy, commit messages.
 - No new Go dependencies, no `client-go`, no `kubectl` in the Go code.
@@ -42,7 +42,7 @@ These refine the spec after trying the testbed and the real API server.
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file. Go code uses tabs.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|
@@ -4926,7 +4926,7 @@ crashy: cannot open /etc/crashy/config.yaml: no such file or directory
 crashy: starting
 ```
 
-Two things in them are worth knowing. The log of `crashy` has its two lines in the order the container runtime merged its standard error and its standard output, which is not the order the script wrote them. And the testbed's `crashy` is a pod that exits at once: when the data was recorded, its previous log was sometimes not there at all (the API server then answers 200 with a text, see the decisions table), so the tests below do not depend on it.
+The log of `crashy` has its two lines in the order the container runtime merged its standard error and its standard output, which is not the order the script wrote them. The testbed's `crashy` is a pod that exits at once: when the data was recorded, its previous log was sometimes not there at all (the API server then answers 200 with a text, see the decisions table), so the tests below do not depend on it.
 
 - [ ] **Step 2: Write the failing tests**
 

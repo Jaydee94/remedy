@@ -1,4 +1,4 @@
-# PostgreSQL as the only database: Implementation Plan
+# PostgreSQL as the only database: implementation plan
 
 > **Note:** Tasks 7 (importer) and 11 (cutover) were dropped on 2026-10-22: the maintainer decided on a reinstall with an empty database; see the spec.
 
@@ -12,7 +12,7 @@
 
 **Spec:** `docs/specs/2026-10-22-postgres-only-design.md` (read it first; the plan only decides what it leaves open and orders the work). The repository's `CLAUDE.md` binds every task.
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English. Go stdlib-first; the only new dependency is `github.com/jackc/pgx/v5` (spec decision 1); `modernc.org/sqlite` leaves the server's imports in task 8 and `go.mod` one release later.
 - `internal/store` is the only package that issues SQL (the importer is the one exception: it reads SQLite and writes through the store's schema; it lives in `cmd/remedy-import-sqlite`).
@@ -25,7 +25,7 @@
 - Conventional commits; the release is triggered by `feat`/`fix` on merge: the final merge title is `feat!: use PostgreSQL as the only database` (minor bump at 0.x; BREAKING CHANGE paragraph names the importer).
 - Nothing outside the worktree changes without the maintainer's go: no push, no PR, no change to the home-server repository, no deletion of the old PVC.
 
-## Review Focus
+## Review focus
 
 1. Two callers start an automatic diagnosis at once: the daily limit and "one run at a time" still hold (Task 6).
 2. Two runners claim at once: one run is claimed once (Task 6).

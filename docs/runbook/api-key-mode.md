@@ -4,16 +4,16 @@
 [`docs/specs/2026-10-21-self-hosted-for-others-design.md`](../specs/2026-10-21-self-hosted-for-others-design.md)). Tested with a fake CLI only: **no real run with
 a key has been made**, so what the CLI really reports with a key is unverified (section 8). Do not call it proven.
 
-By default the agent CLI bills your **subscription login** (you log in once, from the Setup page). In this mode it bills an **Anthropic API key** instead,
+By default the agent CLI bills your subscription login (you log in once, from the Setup page). In this mode it bills an Anthropic API key instead,
 by the token, on the account of the key. Pick it if you are unsure whether a subscription login may drive a tool like this, if you run Remedy around the
 clock, or if you would rather have a spending limit that is a number than a quota. Read the vendor's current terms before you decide
 (`docs/research/subscription-cli-usage.md` is the maintainer's reading of 2026-10-02, not legal advice).
 
-The mode is chosen **once, at install time**, by the chart. It is not a switch on the Setup page: a click must not change who is billed.
+The mode is chosen once, at install time, by the chart. It is not a switch on the Setup page: a click must not change who is billed.
 
 ## 1. The Secret
 
-Create the key in the Anthropic Console, ideally with a **spending limit** of its own, and put it in a Secret in the Remedy namespace. Never write it on a command
+Create the key in the Anthropic Console, ideally with a spending limit of its own, and put it in a Secret in the Remedy namespace. Never write it on a command
 line or into a values file; read it silently:
 
 ```sh
@@ -33,7 +33,7 @@ runner:
       key: api-key          # its key
 ```
 
-Then `helm upgrade` (or sync). The chart gives the key to the **runner container only** (as `ANTHROPIC_API_KEY`, with `REMEDY_AUTH_MODE=api_key`); no other
+Then `helm upgrade` (or sync). The chart gives the key to the runner container only (as `ANTHROPIC_API_KEY`, with `REMEDY_AUTH_MODE=api_key`); no other
 container and no other template references the Secret, and the control plane never receives the key. The chart refuses a mode other than `subscription` or
 `apiKey`, a missing Secret name or key, and a key given as a value.
 

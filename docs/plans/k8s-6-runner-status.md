@@ -1,4 +1,4 @@
-# K-6: The Runner's Status Implementation Plan
+# K-6: The runner's status implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -27,7 +27,7 @@
 | Time limit of one check | 30 s | 10 s (`loginCheckTimeout`). The measured time is 0.06 to 0.10 s, so 10 s is a wide margin and far below a hang. A timeout is `unknown`, never `missing`: the runner reports "could not tell", checks again within the minute, and never asks the UI to show a login hint because of a slow or hung check. |
 | Does the check need the network? | not mentioned | Unknown: S2 measured 0.06 to 0.10 s, consistent with a purely local read, but did not cut the network. Task 6 step 5a runs the check once with an unreachable proxy, in a throwaway pod built like the runner pod; until it has, the plan relies on neither answer (a failing check is `unknown`, which the page already says plainly). A login that has expired on the server side probably still reads as logged in; a failed run, not this check, is the real test of a login. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, code, identifiers, comments, UI copy, commit messages.
 - The login check starts the unmodified CLI with the allowlisted environment (`provider.FilterEnv`) and nothing else. It never reads, copies, logs or stores a credential or the CLI's output; only the state it concludes goes anywhere.
@@ -37,7 +37,7 @@
 - The UI's copy is in the first person ("my runner"), a sentence is a template filled with values, and nothing the runner sends decides a sentence's structure.
 - Every UI change is checked in a real browser before it is called done. `go test ./... -race -count=1` and `make check` pass at the end of every task. Every commit message ends with the trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Shell in tests runs on macOS and on Linux.
 
-## Review Focus
+## Review focus
 
 - A login check that hangs, exits oddly, or prints an account name: the state is `unknown` or `missing`, the reason names the exit code or the timeout and never the output (task 1).
 - A runner report with a login word the server does not know, a version line with control characters or 5 000 characters, a time in the year 2040: refused or clamped, and the page is unchanged (task 4).
@@ -49,7 +49,7 @@
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file. Go code uses tabs.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|
@@ -2084,7 +2084,7 @@ Open `http://127.0.0.1:18080`, sign in (password in `~/remedy-kind/dummy.env`), 
 
 - [ ] **Step 5a: The check without a network (the follow-up of the S2 record)**
 
-S2 did not measure whether `claude auth status --text` needs the network, and its record asks for one run in the real runner pod's setting with a proxy that cannot be reached, and the same with an empty `CLAUDE_CONFIG_DIR`, with the exit codes and the times. The runner image has no shell and no `env`, and `kubectl exec` cannot set a variable for one command, so the variable has to be in a pod spec. The way is a throwaway pod in `remedy-system` that is built like the runner pod, only with a different command and environment. This is a throwaway step, not part of the product, and it is **not verified here**: it has not been run, so if it does not run, write that in the record instead of guessing a result.
+S2 did not measure whether `claude auth status --text` needs the network, and its record asks for one run in the real runner pod's setting with a proxy that cannot be reached, and the same with an empty `CLAUDE_CONFIG_DIR`, with the exit codes and the times. The runner image has no shell and no `env`, and `kubectl exec` cannot set a variable for one command, so the variable has to be in a pod spec. Use a throwaway pod in `remedy-system` that is built like the runner pod, only with a different command and environment. This is a throwaway step, not part of the product, and it is **not verified here**: it has not been run, so if it does not run, write that in the record and give no result.
 
 The throwaway pod uses the runner's own image (a distroless base that has the loader the CLI needs). It cannot mount the runner pod's `claude-bin` volume (an `emptyDir` belongs to one pod), so it installs the CLI itself the same way, with an init container that runs `install-cli` with the arguments of the runner pod's init container, so the pinned version and checksums come from one place. It mounts the runner's state claim `claude-state`, because the login is there. The claim is `ReadWriteOnce` and the runner pod uses it: on the testbed's single-node cluster a second pod on the same node can mount it. If the pod stays `Pending` on the claim (another node), run `kubectl --context kind-remedy-dev -n remedy-system scale statefulset remedy-runner --replicas=0` first, wait for the pod to go, and scale back to `1` at the end. The pod has the same hardening as the runner (the namespace enforces the `restricted` standard). Its environment is `HTTPS_PROXY=http://127.0.0.1:1`, `HOME=/state`, `CLAUDE_CONFIG_DIR` and `TMPDIR=/tmp`, and its command is `/opt/claude/claude auth status --text`.
 

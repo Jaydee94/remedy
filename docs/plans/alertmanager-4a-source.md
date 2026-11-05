@@ -10,7 +10,7 @@
 
 **Spec:** `docs/specs/2026-10-16-alertmanager-4-design.md` (sections 1 to 6, 9, 10 and 11 items 2 to 7; sections 7 and 8, the responder and the approval expiry, are plan 4b). Parents: the settings spec `docs/specs/2026-10-14-settings-3-design.md`, the signals spec `docs/specs/2026-10-05-phase-2d-signals-design.md`.
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: code, comments, docs, commit messages, UI copy. Go is stdlib-first; **no new dependency**.
 - Run `gofmt -w` on every Go file you write before you commit (`make check` fails on an unformatted file).
@@ -28,7 +28,7 @@
 - UI: a button that starts a request keeps the keyboard focus (`aria-disabled` plus a guard, not `disabled`); `web/tsconfig.app.json` has `erasableSyntaxOnly` and `verbatimModuleSyntax` (no enums, `import type`); modules in `web/src/*.ts` import relatively with `.ts` extensions.
 - Commit messages end with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Pull request title: `feat: Alertmanager source and host rules (cycle 4a)`.
 
-## Review Focus
+## Review focus
 
 1. **Alert text as an attack surface:** control characters, newlines, huge values, many labels, a value that looks like a secret must come out bounded, one-line (titles) and redacted (Task 7 tests).
 2. **A partial or failed answer must never resolve incidents** (not-an-array, truncated, 500, unreachable, size limit) (Tasks 5 and 7 tests).
@@ -38,7 +38,7 @@
 
 ---
 
-## File Structure
+## File structure
 
 | File | Responsibility |
 |---|---|
@@ -1421,7 +1421,7 @@ func Alert(fingerprint, name string, labels map[string]string, startsAt time.Tim
 }
 ```
 
-`testdata/home-server.json`: an array of **four** alerts of the v2 format (the fields above, `updatedAt`, `receivers: [{"name":"blackhole"}]`): `Watchdog` (severity `none`), `NodeFilesystemAlmostFull` with `instance="ugreen-nas"`, `job="node-exporter"`, `severity="warning"`, `mountpoint="/volume1"`, `ContainerHighMemory` with `instance="ugreen-nas"`, `name="paperless-webserver"`, `severity="warning"`, and `KubePodCrashLooping` with `namespace="demo"`, `pod="web-5d9c-abc12"`, `severity="critical"`. Realistic fingerprints (16 hex characters), `startsAt` values in 2026. `testdata/README.md` says in two sentences that this file is **modelled on the v2 API's documentation and the home server's labels, not recorded from it**, and that recording the real answer is a step of the real run (plan 4b).
+`testdata/home-server.json`: an array of four alerts of the v2 format (the fields above, `updatedAt`, `receivers: [{"name":"blackhole"}]`): `Watchdog` (severity `none`), `NodeFilesystemAlmostFull` with `instance="ugreen-nas"`, `job="node-exporter"`, `severity="warning"`, `mountpoint="/volume1"`, `ContainerHighMemory` with `instance="ugreen-nas"`, `name="paperless-webserver"`, `severity="warning"`, and `KubePodCrashLooping` with `namespace="demo"`, `pod="web-5d9c-abc12"`, `severity="critical"`. Realistic fingerprints (16 hex characters), `startsAt` values in 2026. `testdata/README.md` says in two sentences that this file is modelled on the v2 API's documentation and the home server's labels, not recorded from it, and that recording the real answer is a step of the real run (plan 4b).
 
 - [ ] **Step 3: Write the failing client tests**
 

@@ -10,7 +10,7 @@
 
 **Spec:** `docs/specs/2026-10-16-alertmanager-4-design.md` (sections 7 to 10), the findings in `docs/research/phase-2d-real-run.md`.
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English. Stdlib only. `gofmt -w` every Go file before the commit. Test first (see it fail). Inside `Store.inTx` use only the `tx`. Timestamps in SQLite have nine fractional digits (`formatTS`/`parseTS`).
 - **Agents get no raw shell and no credentials**; read tools are free, every change waits for an approval; an approval of an automatic run expires (`auto_approval_timeout`). Nothing here may weaken that.
@@ -18,7 +18,7 @@
 - Automatic diagnosis keeps its limits (3 per incident, 20 a day, the cooldown, one run at a time) and GitHub behaviour does not change.
 - Commit messages end with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Pull request title: `fix: follow-ups of the real run (approval incident, outage prompt, re-fired alerts)`.
 
-## Review Focus
+## Review focus
 
 1. A call whose run has an incident must get that incident only when the call names none; an incident that does not exist (deleted) must not break the call (the existing check in `BeginToolCall` already turns an unknown incident into none: keep it for the fallback too).
 2. The re-fire rule must never suppress a diagnosis of an incident that is still open, never apply to GitHub, and never touch a manual start ("Diagnose" always works).
@@ -40,7 +40,7 @@
   1. `TestACallWithoutAnIncidentTakesTheOneOfItsRun`: an automatic responder run (`automaticRun`) has an incident; `BeginToolCall` with `IncidentID: 0` gives a call whose `IncidentID` equals the run's incident (read the run's `IncidentID` with `GetRun`); the activity entry `approval_requested` of a mutating call carries that incident (`ListActivity`, entry of kind `store.KindApprovalRequested` has `IncidentID` set).
   2. `TestACallThatNamesAnIncidentKeepsIt`: a second incident is opened (`OpenIncident`, an `alertmanager` incident with another key); a call with `IncidentID` of that second incident keeps it, not the run's.
   3. `TestACallOfARunWithoutAnIncidentHasNone`: `manualRun` (ad hoc, no incident): `IncidentID == 0` after `BeginToolCall` with 0.
-  4. `TestAnIncidentThatWasDeletedIsNotAnError`: the run's incident row is removed with a raw SQL `DELETE` through a second connection of the same file (see how `migrate013_test.go` opens one; use `?_pragma=busy_timeout(5000)`) — the run's `incident_id` becomes NULL through `ON DELETE SET NULL`, so the call has none and no error. If the foreign key already nulls it, the test documents that.
+  4. `TestAnIncidentThatWasDeletedIsNotAnError`: the run's incident row is removed with a raw SQL `DELETE` through a second connection of the same file (see how `migrate013_test.go` opens one; use `?_pragma=busy_timeout(5000)`). The run's `incident_id` becomes NULL through `ON DELETE SET NULL`, so the call has none and no error. If the foreign key already nulls it, the test documents that.
 - [ ] **Step 2: Implement.** In `BeginToolCall`, after `incident := n.IncidentID` and before the existence check, add:
 
 ```go
@@ -86,7 +86,7 @@ Read what you need to be sure. When what you found has one clear fix and one of 
 - Create: `internal/store/recently_diagnosed_test.go`; tests in `internal/incident/` (find the file with the existing `ObserveSignal` tests)
 
 **Interfaces:**
-- Produces: `func (s *Store) RecentlyDiagnosed(ctx context.Context, source, key string, since time.Time) (bool, error)` — true when a **resolved** incident of that source and key has `diagnosed_at >= since`; `const incident.ReopenQuiet = time.Hour`.
+- Produces: `func (s *Store) RecentlyDiagnosed(ctx context.Context, source, key string, since time.Time) (bool, error)`: true when a **resolved** incident of that source and key has `diagnosed_at >= since`; `const incident.ReopenQuiet = time.Hour`.
 - Behaviour: when `ObserveSignal` opens an incident of a source other than GitHub with `AutoDiagnose` true and `RecentlyDiagnosed(source, key, now-ReopenQuiet)` is true, it opens it with `AutoDiagnose` false (the incident is shown, "Diagnose" works, the activity text says why).
 
 - [ ] **Step 1: The failing store tests.** `TestRecentlyDiagnosedIsTrueForAResolvedIncidentDiagnosedInTheWindow`: open an alert incident, `CompleteDiagnosis`-style helper of the store tests (look at how `TestCompleteDiagnosis…` makes a diagnosed incident) to set `diagnosed_at`, resolve it (`ResolveIncident`), then `RecentlyDiagnosed(..., since)` is true for a `since` before `diagnosed_at` and false for one after; false for another key, false for another source, false for an incident that is still open or diagnosed (not resolved), false for one that was resolved without ever being diagnosed.

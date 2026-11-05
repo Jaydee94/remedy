@@ -1,4 +1,4 @@
-# Phase 2b: Runner, Heartbeat, Approvals UI and the Real Run Implementation Plan
+# Phase 2b: runner, heartbeat, Approvals UI and the real run implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -28,7 +28,7 @@ These refine the spec after reading the runner and the web code, and after tryin
 | Showing arguments | "escaped, in full" | As a list of names and values (a string value in its own block that keeps line breaks), so that a long note stays readable; React escapes everything. |
 | The real run | the maintainer approves after more than 10 minutes | Done by the assistant against a database with a seeded incident (no GitHub needed). The leak check of plan 1d is reused for the run token. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, code, identifiers, comments, UI copy, commit messages.
 - No new Go dependencies and no new web dependencies.
@@ -44,7 +44,7 @@ These refine the spec after reading the runner and the web code, and after tryin
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file. Go code uses tabs.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|

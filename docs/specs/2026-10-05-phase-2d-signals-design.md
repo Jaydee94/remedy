@@ -8,11 +8,11 @@ Parent documents: [`../design.md`](../design.md) (sections 2.3, 2.4 and the road
 
 ## 1. Goal and scope
 
-Remedy notices outages by itself. Two new sources feed the incident engine next to GitHub: **Alertmanager** (firing alerts) and **Argo CD** (applications that are
+Remedy notices outages by itself. Two new sources feed the incident engine next to GitHub: Alertmanager (firing alerts) and Argo CD (applications that are
 degraded, missing or failed to sync). An incident from either source is diagnosed automatically by an agent that has the cluster read tools, and that may ask for
 one of the four cluster actions of part C; every such action still waits for the maintainer's approval.
 
-The part is proven on the kind testbed of part C, extended by an Alertmanager. Pointing Remedy at the homelab is configuration afterwards, not code.
+The part is proven on the kind testbed of part C, extended by an Alertmanager. Afterwards, pointing Remedy at the homelab needs configuration only.
 
 | Part | Content | Status |
 |---|---|---|
@@ -20,7 +20,7 @@ The part is proven on the kind testbed of part C, extended by an Alertmanager. P
 | C | Cluster: read tools, approved mutating actions | implemented |
 | D | Signals: Alertmanager and Argo CD, a general incident model, the responder for outages | incident model, Alertmanager source and responder implemented (cycle 4); Argo CD postponed; the real run made on 2026-10-19 |
 
-Status of part D (2026-10-16): the incident model is built (plan 2d-1). The Alertmanager source is built by **cycle 4a** of the hosts and skills series ([`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md)): the client, the runner, the host mapping and `GET /api/signals`. The token is a sealed setting there, not `REMEDY_ALERTMANAGER_TOKEN_FILE` (which was never built); `REMEDY_ALERTMANAGER_URL` is the default of a setting and `REMEDY_ALERTMANAGER_CA_FILE` is read at start-up. The responder for outages is built by **cycle 4b** (2026-10-19; [plan](../plans/alertmanager-4b-responder.md)): an Alertmanager incident is diagnosed on its own when it is young and `critical` or `warning`, by a click otherwise, and the approvals of automatic runs expire. **Cycle 4 is built, and its real run with the real CLI was made on 2026-10-19** ([runbook](../runbook/outage-real-run.md), [record](../research/phase-2d-real-run.md)). The Argo CD source stays postponed.
+Status of part D (2026-10-16): the incident model is built (plan 2d-1). The Alertmanager source is built by cycle 4a of the hosts and skills series ([`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md)): the client, the runner, the host mapping and `GET /api/signals`. The token is a sealed setting there, not `REMEDY_ALERTMANAGER_TOKEN_FILE` (which was never built); `REMEDY_ALERTMANAGER_URL` is the default of a setting and `REMEDY_ALERTMANAGER_CA_FILE` is read at start-up. The responder for outages is built by cycle 4b (2026-10-19; [plan](../plans/alertmanager-4b-responder.md)): an Alertmanager incident is diagnosed on its own when it is young and `critical` or `warning`, by a click otherwise, and the approvals of automatic runs expire. Cycle 4 is built, and its real run with the real CLI was made on 2026-10-19 ([runbook](../runbook/outage-real-run.md), [record](../research/phase-2d-real-run.md)). The Argo CD source stays postponed.
 
 ### Non-goals
 
@@ -68,10 +68,10 @@ type Source interface {
 
 A `Signal` is `{Key, Title, Severity, Auto bool, Details, URL, SeenAt}`: normalised, bounded, and the only thing the engine knows about a source.
 
-The **runner** of `signals` calls every configured source once per poll interval and gives the engine, for each source:
+The runner of `signals` calls every configured source once per poll interval and gives the engine, for each source:
 
 1. an observation `Bad` for every signal (the engine opens the incident or touches it),
-2. after a **complete and successful** fetch, `Resolve` for every active incident of that source whose key is not in the answer.
+2. after a complete and successful fetch, `Resolve` for every active incident of that source whose key is not in the answer.
 
 A fetch that failed, timed out, was cut off or was cut short by a size limit resolves nothing. An unreachable Alertmanager is therefore never read as "all clear";
 the failure is logged once per cycle and shown in the UI as the state of the source (like a failing repo in phase 1).

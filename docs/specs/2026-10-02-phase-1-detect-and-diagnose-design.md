@@ -150,7 +150,7 @@ Diagnosis schema (fields): `summary`, `cause`, `confidence` (`high`, `medium`, `
 
 - Untrusted text is placed in blocks delimited by a **random token per run**, with an instruction that it is
   data and not instructions.
-- The agent **can only read**. The worst outcome of a crafted log is a wrong diagnosis, not an action.
+- The agent can only read. The worst outcome of a crafted log is a wrong diagnosis, not an action.
 - The UI shows the diagnosis as escaped text, never as HTML.
 - **Redaction** before anything is sent to the CLI: GitHub tokens (`ghp_`, `github_pat_`, `ghs_`), AWS keys,
   private key blocks, `Bearer ...` and `password=...`. GitHub already masks secrets in logs with `***`.

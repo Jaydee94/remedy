@@ -10,7 +10,7 @@
 
 **Spec:** [`docs/specs/2026-10-05-ui-conversation-redesign-design.md`](../specs/2026-10-05-ui-conversation-redesign-design.md), section 6 (and 2, 3.1, 3.2, 9, 10). The backend it needs (un-ignore, the question run, `?incident=`) is merged (part 0). Earlier plans: `ui-1-foundation.md`, `ui-2-today-and-conversations.md`.
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: code, comments, UI copy, docs, commit messages.
 - `web/tsconfig.app.json` sets `erasableSyntaxOnly` and `verbatimModuleSyntax`: no enums or constructor parameter properties, `import type` for types.
@@ -26,10 +26,10 @@
 - In a worktree-isolated session the Bash tool refuses commands that name git in a compound or variable form: use plain separate commands or a script file with literal paths (see `CLAUDE.md`); run npm with `--prefix web`. A fresh worktree has no `web/node_modules`: run `npm ci --prefix web` first. Use `command ls`. `npm run lint` must print no warnings.
 - Work on a branch `feat/ui-3-thread-and-run`, never on `main`.
 
-## Review Focus
+## Review focus
 
 1. A thread of an incident from another source (no repository, no ref, no diagnosis support): the header, the panel and the message "I can't diagnose incidents from <source> yet." must work; no "Diagnose" button then. (Task 1 tests, Task 4.)
-2. A waiting approval of a **question run** carries no incident id (the tool call's `incident_id` comes from the tool's arguments): the thread must still show it, matched by the run id of the incident's question runs. (Task 1 test.)
+2. A waiting approval of a question run carries no incident id (the tool call's `incident_id` comes from the tool's arguments): the thread must still show it, matched by the run id of the incident's question runs. (Task 1 test.)
 3. A diagnosis about another commit than the failing one is marked as such; a diagnosis in the state `diagnosed` with `diagnosedSha` empty is not. (Task 1 test.)
 4. `runSteps` on odd events: a `tool_use` without a result yet, a `tool_result` whose content is a string or a list of text blocks, an error result, the synthetic `StructuredOutput` call (hidden), payloads that are not objects. It never throws and never prints "undefined". (Task 1 tests.)
 5. Ignore with Undo: Ignore acts at once, the toast offers Undo, Undo calls un-ignore, both reload the thread; an error shows inline and never leaves the page in a half state. (Task 4.)
@@ -40,7 +40,7 @@
 
 ---
 
-## File Structure
+## File structure
 
 | File | Change | Responsibility |
 |---|---|---|
@@ -2032,7 +2032,7 @@ No code changes unless a defect is found (a defect goes to a fix dispatch). Noth
 
 ---
 
-## Self-Review
+## Self-review
 
 **Spec coverage (spec 6):** 6.1 the thread: header and panel (Task 4), `buildThread` with pills from the activity and without `diagnosis_started`/`diagnosis_finished` (Task 1), working message with "Follow along", the diagnosis message with confidence bars, category, "Small mechanical fix", the card, the closing sentence, "See my work" and "Diagnose again", the soft note for another commit, "Diagnose now" and the source sentence, the waiting approval inline, the question and the answer, the composer with `{prompt, tools: true, incidentId}` staying in the thread, polling every 5 s and 2 s, the panel with Ignore and Undo and "Stop ignoring" and the signal. **Deviation, recorded:** the answer of a question run in the thread shows the text, the working state or the failure, and "Follow along" / "See my work"; its steps are on the run page (loading the events of each question run into the thread would need one stream per run). The spec's 6.1 line is updated accordingly in Task 5. 6.2 the run: status chip, meta, incident link, Cancel with `ConfirmButton`, collapsed responder prompt, steps from the events, the answer or the fixed sentence, the ask, the failure card per reason, "Start it again", "Show raw output" and "Tool calls". 6.3 the ask with both variants and the table `askText` (built in part 2). The carry-forward items of parts 0 to 2 for this part: persistent live region, pause on hover and focus, wrapping in the toast; the static ring of the working avatar; one `h1` per page; the 409 on diagnose shown in the thread; approvals of question runs matched by run; `StateBadge`/`SourceBadge` removed.
 
@@ -2040,4 +2040,4 @@ No code changes unless a defect is found (a defect goes to a fix dispatch). Noth
 
 **Type consistency:** `buildThread` (Task 1) returns `ThreadItem` with the `type` values handled by `renderItem` (Task 4). `runSteps` returns `Step` used by `StepCard` (Task 2) and `RunPage` (Task 5). `phaseView`, `runPhase` (Task 1) are used by `RunPage`. `ApprovalAsk` takes `call: ToolCall`, `onChanged`; both pages pass them. `Composer.onSend(text) => Promise<void>` matches `ask` in the thread. `api.createRun` has the new fourth parameter used by the thread (`id`) and the run page (`run.incidentId`).
 
-**Review Focus coverage:** 1 (Task 1 test of the source reason; Task 4 code: no button for `source`), 2 (Task 1 test), 3 (Task 1 tests), 4 (Task 1 tests), 5 (Task 4 code; Task 6), 6 (Task 4 code shows the API's message; Task 6), 7 (Task 2; Task 6), 8 and 9 (Tasks 2 to 5; Task 6).
+**Review focus coverage:** 1 (Task 1 test of the source reason; Task 4 code: no button for `source`), 2 (Task 1 test), 3 (Task 1 tests), 4 (Task 1 tests), 5 (Task 4 code; Task 6), 6 (Task 4 code shows the API's message; Task 6), 7 (Task 2; Task 6), 8 and 9 (Tasks 2 to 5; Task 6).

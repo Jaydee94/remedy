@@ -1,4 +1,4 @@
-# K-0: Four Spikes for the Kubernetes Deployment Implementation Plan
+# K-0: Four spikes for the Kubernetes deployment implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -38,7 +38,7 @@ The rows below are the feedback of task 5 (2026-10-07), one per record and assum
 | S2, K-6 task 6: does the check need the network? | not mentioned | Added step 5a, the record's follow-up (an unreachable `HTTPS_PROXY`, and an empty config directory). The runner image has no shell and `kubectl exec` cannot set a variable, so the step is a throwaway pod in `remedy-system`, built like the runner pod (the same image, an init container that installs the pinned CLI, the claim `claude-state`, the variables in its spec), marked not verified; a decisions-table row says the plan relies on neither answer. Files: `docs/plans/k8s-6-runner-status.md`. |
 | S5, the login from the web UI | not planned | Informational: feasible without a TTY, conditional on the valid-code path. It is a new feature that needs a decision in `docs/design.md` first. The spec has the section 10.1 "Follow-up under discussion: the login from the web UI"; no plan K-7 and no change to `docs/design.md`. Files: the spec. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, scripts, comments, commit messages.
 - A spike never reads, copies, logs or stores the CLI's credentials. It starts the unmodified binary and looks at its exit code and its output. The login directory is never opened by a script; the record says "the login exists" only because the CLI says so.
@@ -47,7 +47,7 @@ The rows below are the feedback of task 5 (2026-10-07), one per record and assum
 - Shell in scripts runs on macOS and on Linux: no BSD-only flags (`sed -i ''`, `stat -f`, `date -j`).
 - Every commit message ends with the trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 
-## Review Focus
+## Review focus
 
 - A spike that cannot fail: every script step prints what it saw and the record states the decision in a sentence that a failing result would have changed.
 - An arm64 answer given for amd64: S4 checks both architectures' checksums and artifact names, even if only one runs here.
@@ -55,7 +55,7 @@ The rows below are the feedback of task 5 (2026-10-07), one per record and assum
 - Quota burnt by a spike: S2 limits itself to the commands listed and records the cost of each.
 - A leftover cluster or directory: each spike ends with a cleanup step and a check that it worked.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|

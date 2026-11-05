@@ -9,7 +9,7 @@ throwaway kind cluster. No login was made (it costs subscription quota and needs
 |---|---|
 | Cluster | kind v0.33.0, Kubernetes v1.37.0, one node (`remedy-walk`), default storage class `standard` (local-path), kindnet |
 | Tools | helm v4.3.1, kubectl v1.37.2, on an arm64 Mac |
-| Chart | the **local** `deploy/chart` at commit `8ed49d6` of the 7a branch, not the published chart: the published 0.17.1 still has the old defaults (the pin as a required value, `networkPolicy.public.from` defaulting to `kube-system`), so the OCI install of the new text can be walked only after the release that carries this change |
+| Chart | the local `deploy/chart` at commit `8ed49d6` of the 7a branch, not the published chart: the published 0.17.1 still has the old defaults (the pin as a required value, `networkPolicy.public.from` defaulting to `kube-system`), so the OCI install of the new text can be walked only after the release that carries this change |
 | Images | `ghcr.io/jaydee94/remedy-server` and `remedy-runner` 0.17.1 (anonymous pull worked). They do not contain the UI copy of the same branch |
 | Values | exactly the YAML of section 5 (extracted from the runbook by `awk`, not retyped) |
 
@@ -18,7 +18,7 @@ throwaway kind cluster. No login was made (it costs subscription quota and needs
 - **3, the namespace:** both commands work.
 - **4, the two Secrets:** `printf ... | kubectl create secret generic ... --from-env-file=/dev/stdin` works without `--dry-run`. The keys
   `admin-password` (24 characters), `runner-token` and `master-key` (44 characters) exist.
-- **5 and 6, values and install:** `helm install remedy deploy/chart -n remedy -f values.yaml` ran with **no pin and no second file**. Pods
+- **5 and 6, values and install:** `helm install remedy deploy/chart -n remedy -f values.yaml` ran with no pin and no second file. Pods
   `remedy-postgres-0`, `remedy-runner-0` and `remedy-server-…` were `Ready` 30 seconds after the install. The init container
   `install-cli` installed `2.1.316` for `arm64` from the chart's default pin and checked its SHA-256. The claim `remedy-postgres-backup` stays
   `Pending` until the first nightly dump (the storage class binds on first use); `install.md` now says so.

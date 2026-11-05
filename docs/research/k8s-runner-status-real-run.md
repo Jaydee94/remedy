@@ -22,7 +22,7 @@ Not run, on purpose:
 - Step 5 item 2 and item 3 (`make dummy-logout`, then `make dummy-login`): both need the maintainer (a confirmation and an
   interactive login). The transition from `login missing` to `login ok` was seen earlier in the same task, after the maintainer's
   login: `make dummy-status` changed from `runner: connected, login missing` to `runner: connected, login ok` (observed once, by
-  `dummy-status`, not on the page). The `Logged in` to `Not logged in` transition on the page was therefore **not** seen live.
+  `dummy-status`, not on the page). The `Logged in` to `Not logged in` transition on the page was therefore not seen live.
 - Step 5 item 6, `make dummy-smoke`: it costs subscription quota, and it had already run with the code in place in the earlier
   rounds (`docs/research/k8s-dummy-real-run.md`). It was not run in this round, so there is no `all ok` in this record.
 
@@ -64,8 +64,8 @@ the way another CNI does; the homelab runbook says what to do if it does.
 Item 1, the runner is logged in. Measured: the section showed `Connected`, `Logged in`, the sentence `My runner is connected and
 logged in, so I can run an agent.` and `Agent CLI: 2.1.292 (Claude Code)`.
 
-Item 4, `kubectl -n remedy-system delete pod remedy-runner-0` at 08:27:56. Observed (n=1): the section **never showed `Not
-connected`**. Its states, with the time the script saw them:
+Item 4, `kubectl -n remedy-system delete pod remedy-runner-0` at 08:27:56. Observed (n=1): the section never showed `Not
+connected`. Its states, with the time the script saw them:
 
 ```
 08:27:44  Connected, Logged in
@@ -104,7 +104,7 @@ Item 5, `kubectl -n remedy-system rollout restart deployment/remedy-server`, don
 9 to 10 s after the restart the page's next poll answered 401 and the script saw the login page (the sessions are in memory);
 after signing in again (within 0.1 s of that) the section already said `Connected`, `Logged in`. Neither time did the page say
 `Not connected` or `Never seen`. The new control plane pod had been up for those few seconds and the runner had already reported to it: the page showed a login state, which only a report carries. Inferred, not looked at in the runner's log: it reconnects after the old connection ends and reports again (the report interval is 15 s, so a report within about 9 s is not guaranteed, and this was 2 of 2). So the "forgets the runner" window is shorter than the time it takes to see the login page and sign in again: it was
-**not observed**, only that the state is correct about 10 s after a control plane restart. The first of the two runs of the script
+not observed, only that the state is correct about 10 s after a control plane restart. The first of the two runs of the script
 printed only changes and so could not have shown a repeat of the same text after the new sign-in; the second one reset that
 and printed the first text after sign-in.
 

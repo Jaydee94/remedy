@@ -1,4 +1,4 @@
-# UI redesign, part 5: Setup Implementation Plan
+# UI redesign, part 5: Setup implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -10,7 +10,7 @@
 
 **Spec:** [`docs/specs/2026-10-05-ui-conversation-redesign-design.md`](../specs/2026-10-05-ui-conversation-redesign-design.md), section 8 (and 2, 3.1, 3.2, 9, 10). Earlier plans: `ui-1-foundation.md` to `ui-4-needs-you-and-ask.md`. The backend it needs (`diagnosesLast24h` on `GET /api/limits`) is merged (part 0).
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: code, comments, UI copy, docs, commit messages.
 - `web/tsconfig.app.json` sets `erasableSyntaxOnly` and `verbatimModuleSyntax`: no enums or constructor parameter properties, `import type` for types.
@@ -24,7 +24,7 @@
 - In a worktree-isolated session the Bash tool refuses commands that name git in a compound or variable form: use plain separate commands or a script file with literal paths (see `CLAUDE.md`); run npm with `--prefix web`. A fresh worktree has no `web/node_modules`: run `npm ci --prefix web` first. Use `command ls`. `npm run lint` must print no warnings: a `setState` inside an effect body and `Date.now()` in render are lint warnings in this project.
 - Work on a branch `feat/ui-5-setup`, never on `main`.
 
-## Review Focus
+## Review focus
 
 1. The token never appears: not in the DOM after a request, not in an error message, not in `title`/`aria` attributes; Connect and Replace token are disabled for an empty or whitespace token; a refusal of the server shows in place and the page is not left half changed. (Tasks 3, 4.)
 2. A connection with an error status or `undecryptable` shows the chip in colour and `statusDetail` as an error card, and the actions still work (Check connection, Replace token, Disconnect). (Task 3.)
@@ -37,7 +37,7 @@
 
 ---
 
-## File Structure
+## File structure
 
 | File | Change | Responsibility |
 |---|---|---|
@@ -812,10 +812,10 @@ No code changes unless a defect is found (a defect goes to a fix dispatch). Noth
 
 ---
 
-## Self-Review
+## Self-review
 
 **Spec coverage (spec 8):** GitHub: the status chip (Connected, Error, Cannot decrypt) with "checked N min ago", the sentence with `@login` and the token hint, `statusDetail` as an error card, "Check connection" with "Checking…", "Replace token", "Disconnect" with `ConfirmButton`, not connected: "I can't see GitHub yet. Paste a fine-grained token and I'll start watching." with the field, Connect and the hint on the read-only permissions, the token write-only (Tasks 1, 3). Repositories: the name, "<default branch>, polled N min ago" or "never polled", `lastError` in red, a `Switch` with "paused", "Remove" with `ConfirmButton`, add by `owner/name` with the browser's check and its fixed sentence, "Connect GitHub first." (Tasks 1, 2). Limits: the Literata paragraph from `GET /api/limits` (`limitsText`), the off sentence, the bar with `diagnosesLast24h` of N, the note on the environment (Tasks 1, 2). On a phone "Sign out" is the last element (Task 3). **Deviations, recorded:** the bar is labelled "in the last 24 hours" (the spec says "today"; the number is a rolling 24 hours); "Remove" uses the existing `ConfirmButton` style (outline), not a special quiet variant; `LegacyPage` is deleted because Setup is its last page (the catch-all gets its own container). **Placeholder scan:** none.
 
 **Type consistency:** `limitsText`, `diagnosisBar`, `validRepoName`, `repoSubline`, `connectionView` (Task 1) are used by the sections (Tasks 2, 3). `GitHubSection({ connection, onChange })` takes what `SetupPage` passes. `useSignOut()` reads the new `signOut` of the shell context that `AppLayout` provides.
 
-**Review Focus coverage:** 1 (Task 3 code; Task 4), 2 (Task 3 code; Task 4), 3 (Task 2 code; Task 4), 4 (Task 1 tests; Task 2), 5 (Task 1 tests; Task 2), 6 (Task 3 code; Task 4), 7 (Tasks 2 to 4), 8 (Task 2 code).
+**Review focus coverage:** 1 (Task 3 code; Task 4), 2 (Task 3 code; Task 4), 3 (Task 2 code; Task 4), 4 (Task 1 tests; Task 2), 5 (Task 1 tests; Task 2), 6 (Task 3 code; Task 4), 7 (Tasks 2 to 4), 8 (Task 2 code).

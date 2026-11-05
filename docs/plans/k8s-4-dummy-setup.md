@@ -1,4 +1,4 @@
-# K-4: The Dummy Setup Implementation Plan
+# K-4: The dummy setup implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -31,7 +31,7 @@
 | The CLI pin (spike S4) | values from the record | `deploy/cli-pin.yaml` shows the record's values: version `2.1.292`, `archive: none`, `linux-x64` and `linux-arm64`, and the two SHA-256 values. The vendor publishes them in a signed `manifest.json`, so step 2 of task 2 checks that each of the six values (version, URL template, both platform names, both checksums) is present in the file: the block prints `MISSING: <value>`, skips the render and exits non-zero if one is not, instead of only checking that no marker is left. It compares the file with the record, not with the vendor. |
 | Does an update write under `$HOME/.local/share/claude`? (spike S4) | not mentioned | S4 could not measure it: with `HOME=/state` the native installer's directory would be on the writable state volume, so the read-only `/opt/claude` does not by itself keep an update out. Task 6 step 4a checks after the login and the smoke test that `/state/.local/share/claude` is absent. The runner image has no shell, so the check looks at the host side of the volume, by name only. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, scripts, comments, commit messages.
 - No script opens a file in the login directory. They create it (`mkdir`, `chmod`), delete its contents on `dummy-logout` (`find … -delete`), and substitute its path into the kind configuration. `scripts/check-login-dir-untouched.sh` enforces that and runs in `make check`.
@@ -42,7 +42,7 @@
 - Shell runs on macOS and on Linux: no BSD-only flags (`sed -i ''`, `stat -f`, `date -j`).
 - `make check` passes at the end of every task. Every commit message ends with the trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 
-## Review Focus
+## Review focus
 
 - `make dummy-down` followed by `make dummy-up`: the login directory and its content survive; `dummy.env` and the cluster are new (task 3 and the real run of task 6).
 - A cluster that was created by `up.sh` or before the mount existed: `dummy-up` stops with a message that names the fix instead of failing inside Helm (task 3).
@@ -54,7 +54,7 @@
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file. Shell uses two-space indentation.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|
@@ -1203,7 +1203,7 @@ awk '
 - [ ] **Step 4: Run the test and the check on the real scripts**
 
 Run: `sh scripts/check-login-dir-untouched_test.sh && sh scripts/check-login-dir-untouched.sh`
-Expected: every test line `ok`, `all passed`, then `no script reads the login directory`. If the real run flags a line of `lib.sh` or one of the `dummy-*.sh`, it is a real finding: either the script does more with the directory than the rule allows (change the script), or the rule is too narrow for a harmless line (add that exact form to the `gsub` list **and** a case to the test, never loosen a pattern).
+Expected: every test line `ok`, `all passed`, then `no script reads the login directory`. If the real run flags a line of `lib.sh` or one of the `dummy-*.sh`, it is a real finding: either the script does more with the directory than the rule allows (change the script), or the rule is too narrow for a harmless line (add that exact form to the `gsub` list and a case to the test, never loosen a pattern).
 
 - [ ] **Step 5: Put it into `make shell-test`**
 
@@ -1281,7 +1281,7 @@ Spike S4 could not tell whether the CLI, started as `/opt/claude/claude` (not in
 command ls -d ~/remedy-kind/claude/.local/share/claude
 ```
 
-Expected: `No such file or directory` (the directory is absent after the login of step 3 and the two runs of step 4). Put the answer in the record of step 8. If the directory exists, that is a finding, not a failure of this task: the options are `DISABLE_UPDATES=1` in the runner pod's environment together with an entry in `provider.FilterEnv`'s allowlist (a spec change: the spec says nothing is added to it), or mounting nothing writable under `$HOME/.local`. Record it, stop, and ask the maintainer.
+Expected: `No such file or directory` (the directory is absent after the login of step 3 and the two runs of step 4). Put the answer in the record of step 8. If the directory exists, that is a finding for the record. The options are `DISABLE_UPDATES=1` in the runner pod's environment together with an entry in `provider.FilterEnv`'s allowlist (a spec change: the spec says nothing is added to it), or mounting nothing writable under `$HOME/.local`. Record it, stop, and ask the maintainer.
 
 - [ ] **Step 5: The login survives, and the other targets work**
 
@@ -1293,7 +1293,7 @@ make dummy-up
 make dummy-smoke; echo "exit=$?"
 ```
 
-Expected: `dummy-redeploy` ends `redeployed with the tag dev-…`; `dummy-reset` ends `the database is empty again`; after `dummy-down` and `dummy-up` the smoke test passes **without** another `make dummy-login`: that is the proof of D2. If it asks to log in again, the host directory did not survive: that contradicts the S1 record, so stop and report it.
+Expected: `dummy-redeploy` ends `redeployed with the tag dev-…`; `dummy-reset` ends `the database is empty again`; after `dummy-down` and `dummy-up` the smoke test passes without another `make dummy-login`: that is the proof of D2. If it asks to log in again, the host directory did not survive: that contradicts the S1 record, so stop and report it.
 
 - [ ] **Step 6: Verify the secrets are nowhere they should not be**
 

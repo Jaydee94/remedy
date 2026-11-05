@@ -20,9 +20,9 @@ The listener has real timeouts (header 10 s, read and write 15 s, idle 60 s, hea
 
 ## 3. Make an endpoint
 
-Setup, block "Webhooks": give a name (1 to 40 lower-case letters, digits or dashes) and press Add. The token is shown **once**; copy it into the sender's configuration. Remedy keeps only its hash and cannot show it again. If it is lost, rotate it.
+Setup, block "Webhooks": give a name (1 to 40 lower-case letters, digits or dashes) and press Add. The token is shown once; copy it into the sender's configuration. Remedy keeps only its hash and cannot show it again. If it is lost, rotate it.
 
-Each endpoint has: a switch (off: every request is refused as if the endpoint did not exist), "Diagnose on my own" (**off by default**: a leaked token must not be able to spend your quota or money; a click diagnoses; when it is on the ordinary daily limits and, in key mode, the budget apply), the silence limit (default 24 hours, 0 = only an explicit "resolved" resolves, otherwise at least 5 minutes) and the limits of section 6. The page has the switches (accept events, diagnose on my own), Rotate and Remove; the silence limit and the two rate limits are changed through the admin API only, `PATCH /api/webhooks/{id}` with `resolveAfterSeconds`, `ratePerMinute` or `newPerHour` (session and CSRF header, like hosts).
+Each endpoint has: a switch (off: every request is refused as if the endpoint did not exist), "Diagnose on my own" (off by default: a leaked token must not be able to spend your quota or money; a click diagnoses; when it is on the ordinary daily limits and, in key mode, the budget apply), the silence limit (default 24 hours, 0 = only an explicit "resolved" resolves, otherwise at least 5 minutes) and the limits of section 6. The page has the switches (accept events, diagnose on my own), Rotate and Remove; the silence limit and the two rate limits are changed through the admin API only, `PATCH /api/webhooks/{id}` with `resolveAfterSeconds`, `ratePerMinute` or `newPerHour` (session and CSRF header, like hosts).
 
 ## 4. The request
 
@@ -55,14 +55,14 @@ Statuses: `401` (unknown endpoint, a disabled one and a wrong token are the same
 
 The body is fixed on purpose: there is no mapping language, because a mapping decides what becomes an incident. The sender builds the body. Whatever your tool calls it (a custom payload, a body template, a script) it must produce the JSON above, with a stable `key` and `status` `firing` while the problem exists. `curl` is the one recipe that has been run. **Not tried against the real tool:** Grafana (a contact point of type webhook with a custom payload), Uptime Kuma (a webhook notification with a custom body), an Alertmanager `webhook_configs` receiver (its body is a different shape and needs a small translator in between).
 
-A sender that **repeats** while the problem lasts (Alertmanager's `repeat_interval`, Grafana's repeat) keeps the incident alive. A sender that fires **once** needs a long silence limit, or 0 and an explicit `resolved`.
+A sender that repeats while the problem lasts (Alertmanager's `repeat_interval`, Grafana's repeat) keeps the incident alive. A sender that fires once needs a long silence limit, or 0 and an explicit `resolved`.
 
 ## 6. Limits
 
 All per endpoint, never per IP (Remedy does not trust `X-Forwarded-For`, so behind a proxy every request has the proxy's address and a limit per address would let one sender lock out the others):
 
 - 60 requests per minute with a burst of 120 (`429`);
-- 30 new incidents per hour (`429` for a new key only; an update and a `resolved` always pass **this** limit, so a flood of new keys cannot stop a resolve). A key that comes back after a resolve counts as new, so a sender that flaps more than 30 times an hour is limited on its `firing` events. The rate limit above is one bucket per endpoint: a flood made with a leaked token drains the bucket that the real sender's `resolved` events need too;
+- 30 new incidents per hour (`429` for a new key only; an update and a `resolved` always pass this limit, so a flood of new keys cannot stop a resolve). A key that comes back after a resolve counts as new, so a sender that flaps more than 30 times an hour is limited on its `firing` events. The rate limit above is one bucket per endpoint: a flood made with a leaked token drains the bucket that the real sender's `resolved` events need too;
 - at most 8 requests at once on the listener (`503`, answered before anything is read from the database). A request without a valid token still costs one small database lookup before it is refused, so up to 8 such lookups can run at once next to the control plane's other work (the pool has 10 connections by default); put a rate limit at the reverse proxy if the listener is on the internet.
 
 The first two are fields of the endpoint (1 to 6000 a minute, 1 to 1000 an hour). The counters on Setup ("2 accepted, 1 rejected since the last start", and the last rejection) are in memory and reset when the control plane restarts. A rejected request writes nothing to the database or to the activity log.
@@ -74,7 +74,7 @@ A sweeper (about once a minute) resolves the unresolved webhook incidents whose 
 ## 8. Behind a reverse proxy, and a leaked token
 
 - Terminate TLS at the proxy (the token is a bearer secret; without TLS it crosses the network in clear, acceptable only inside a cluster), restrict the path to `/webhook/v1/`, set a body limit as a second line, and filter by source address if the sender's addresses are known. A body logged by the proxy holds titles and labels; the token is in a header: do not log headers.
-- A **leaked token** lets a stranger open incidents (bounded by the limits above) and, with a host rule matching a label they choose, aim a **read-only** diagnosis at that host. It cannot change anything: every change still needs your approval. Revoke it by rotating the token, but note that the old one stays valid for 24 hours (so a sender can be changed without a gap): to end that overlap at once, switch the endpoint off (this clears the previous token for good; switching it on again does not bring it back), or remove the endpoint. A removed endpoint keeps its incidents.
+- A leaked token lets a stranger open incidents (bounded by the limits above) and, with a host rule matching a label they choose, aim a read-only diagnosis at that host. It cannot change anything: every change still needs your approval. Revoke it by rotating the token, but note that the old one stays valid for 24 hours (so a sender can be changed without a gap): to end that overlap at once, switch the endpoint off (this clears the previous token for good; switching it on again does not bring it back), or remove the endpoint. A removed endpoint keeps its incidents.
 
 ## 9. Not verified
 

@@ -1,4 +1,4 @@
-# UI redesign, part 0: backend Implementation Plan
+# UI redesign, part 0: backend implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -10,7 +10,7 @@
 
 **Spec:** [`docs/specs/2026-10-05-ui-conversation-redesign-design.md`](../specs/2026-10-05-ui-conversation-redesign-design.md), section 3 (and 10 for testing). Open points 1 and 2 of its section 11 are settled here: the prompt reaches the runner through `claimFor` in `internal/server/responder.go`, and `CompleteDiagnosis` and `FailDiagnosis` leave an `ignored` incident `ignored` (their SQL changes `diagnosing` only), which Task 1 pins with tests.
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: code, comments, test names, docs, commit messages.
 - Go, stdlib-first. No new dependency. No migration (spec 3: "none needs a migration").
@@ -24,7 +24,7 @@
 - In a worktree-isolated Claude Code session the Bash tool refuses commands whose text mentions git: write such commands into a script file with the Write tool (literal paths, scratchpad) and run `sh /literal/path/script.sh` as its own command (see `CLAUDE.md`). A fresh worktree has no `web/node_modules`: run `make web-install` before `make check`.
 - Work on a branch `feat/ui-0-backend` (a worktree from `main` after the spec branch is merged, or from `docs/ui-conversation-redesign-spec`), never on `main`.
 
-## Review Focus
+## Review focus
 
 Inputs and conditions the spec implies but that are easy to get wrong. Each has a test in the task named.
 
@@ -38,7 +38,7 @@ Inputs and conditions the spec implies but that are easy to get wrong. Each has 
 
 ---
 
-## File Structure
+## File structure
 
 | File | Change | Responsibility |
 |---|---|---|
@@ -1438,7 +1438,7 @@ git commit -m "docs: note that the backend of the conversation UI is implemented
 
 ---
 
-## Self-Review
+## Self-review
 
 **Spec coverage (spec section 3):**
 - 3.1 un-ignore: route, engine, store, one transaction with the activity entry, `404`/`409`, derived target state, poller unchanged, "a finishing diagnosis does not lift an ignored incident" pinned (Tasks 1 and 2).
@@ -1452,4 +1452,4 @@ git commit -m "docs: note that the backend of the conversation UI is implemented
 
 **Type consistency:** `UnignoreIncident(ctx, id, act)` (Task 1) is what `Engine.Unignore` calls; `ErrNotIgnored` is what the handler (Task 2) maps to `409`. `CreateQuestionRun(ctx, provider, prompt, incidentID, cluster)` and `ListIncidentRuns(ctx, incidentID, limit)` (Task 3) are called with those argument orders in Tasks 4, 5 and 6. `prompt.Question(incidentID int64, question string)` (Task 4) is called with `*r.IncidentID` (an `int64`). `limitsView.DiagnosesLast24h` is read as `diagnosesLast24h` in the test.
 
-**Review Focus coverage:** 1 (Task 1, two tests), 2 (Task 1 race test), 3 (Task 1 alert test, Task 5 alert test), 4 (Task 5 refusal table), 5 (Task 5 list test), 6 (Task 4 second test), 7 (Task 6 question-run line and Task 3 `AutoRunsSince` test).
+**Review focus coverage:** 1 (Task 1, two tests), 2 (Task 1 race test), 3 (Task 1 alert test, Task 5 alert test), 4 (Task 5 refusal table), 5 (Task 5 list test), 6 (Task 4 second test), 7 (Task 6 question-run line and Task 3 `AutoRunsSince` test).

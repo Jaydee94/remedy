@@ -28,7 +28,7 @@ These refine the spec after reading the code of plans 1a to 1d and the spike. Ta
 | The job-log tool | uses the existing client | `responder.JobLog(ctx, incidentID)` is added next to the code that already finds the check run and its log, and the tool uses it through a one-method interface. |
 | Split | steps 1 to 6 | This plan is steps 1 to 3 plus the server-side parts of the claim, the run form and finishing. Heartbeat, runner, reaper, UI and the real run are plan 2b. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, code, identifiers, comments, UI copy, commit messages.
 - No new Go dependencies and no web changes in this plan.
@@ -44,7 +44,7 @@ These refine the spec after reading the code of plans 1a to 1d and the spike. Ta
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file. Go code uses tabs.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|
@@ -70,7 +70,7 @@ A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file.
 - Produces:
   - `run.Run.MCP bool` (the run has gatekeeper access) and `run.Run.CancelRequested bool`.
   - `(*Store).CreateToolRun(ctx, provider, prompt string) (run.Run, error)`: a queued ad-hoc run with `MCP` set.
-  - `(*Store).MintRunToken(ctx, runID string) (string, error)`: for a **running** run with `MCP` set that has no token yet; returns the token (43 URL-safe Base64 characters); `ErrNotFound` for any other run, `ErrExists` when the run has a token already.
+  - `(*Store).MintRunToken(ctx, runID string) (string, error)`: for a running run with `MCP` set that has no token yet; returns the token (43 URL-safe Base64 characters); `ErrNotFound` for any other run, `ErrExists` when the run has a token already.
   - `(*Store).RunForToken(ctx, token string) (run.Run, error)`: the run of a token that is not revoked, if the run is `running`; `ErrNotFound` otherwise.
   - `closeRunTx(ctx, tx, runID, now) error`: what ends a run in the database. For now it revokes the run's token. `FinishRun` and `FailStaleRuns` call it in their transaction.
 
@@ -3473,9 +3473,9 @@ git commit -m "feat(gatekeeper): read tools for incidents, the activity log and 
 **Interfaces:**
 - Consumes: Task 2's `BeginToolCall`, `DecideApproval`, `BeginExecution`, `FinishToolCall`, `AbandonCall`, `GetToolCall`, `AddNote`, `GetIncident`; Task 3's `Gatekeeper`, `Tool`, `sanitize`, `toolErrorMessage`, `answerKnown`.
 - Produces:
-  - `Tool.Check func(ctx context.Context, args json.RawMessage) error`: an optional precondition of a mutating tool, run on the decoded arguments **before** an approval is asked for. Its error is shown to the agent like an argument error.
+  - `Tool.Check func(ctx context.Context, args json.RawMessage) error`: an optional precondition of a mutating tool, run on the decoded arguments before an approval is asked for. Its error is shown to the agent like an argument error.
   - A mutating tool is no longer refused by `New`. A call to one is recorded as a `mutating` call and answered with `text/event-stream`: an MCP progress notification (`notifications/progress`, with the `progressToken` of the request, a `progress` that grows, and the message "waiting for approval") every `ProgressInterval`, then the result as the last event.
-  - A call of a mutating tool **waits** until it is decided. The handler that waits is a **waiter** of the call. `(*Gatekeeper).Decide(ctx, id, approve, reason) (store.ToolCall, error)` refuses with `ErrNoWaiter` when nobody waits for the call, and otherwise records the decision (`store.ErrNotFound`, `store.ErrNotPending` as in the store) and wakes the waiters.
+  - A call of a mutating tool waits until it is decided. The handler that waits is a waiter of the call. `(*Gatekeeper).Decide(ctx, id, approve, reason) (store.ToolCall, error)` refuses with `ErrNoWaiter` when nobody waits for the call, and otherwise records the decision (`store.ErrNotFound`, `store.ErrNotPending` as in the store) and wakes the waiters.
   - The waiter that wins `store.BeginExecution` executes the tool once with the stored arguments, even if its client has gone away by then, and every waiter of the call answers with the result.
   - `(*Gatekeeper).Waiting(id int64) bool`: whether a handler waits for the call (read-only).
   - A call that loses its last waiter is abandoned after `Config.Grace` (30 seconds by default) unless a replay of it attaches in time. A call whose run ended or was cancelled is noticed at the next progress tick: its waiters answer with an error and the call is abandoned.

@@ -1,4 +1,4 @@
-# Phase 2c-1: The Cluster Foundation Implementation Plan
+# Phase 2c-1: The cluster foundation implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -27,7 +27,7 @@ These refine the spec after reading the code.
 | `cluster` in `POST /api/runs` | 409 when no cluster is configured | 400 when `tools` is not set (the cluster tools are a part of the gatekeeper's tools), 409 when the read side is not configured. |
 | UI | a second switch | Turning the cluster switch on turns the tools switch on; turning the tools switch off turns the cluster switch off. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, code, identifiers, comments, UI copy, commit messages.
 - No new Go dependencies and no new web dependencies. No `client-go`, no kubeconfig parsing, no `kubectl`.
@@ -45,7 +45,7 @@ These refine the spec after reading the code.
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file. Go code uses tabs.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|

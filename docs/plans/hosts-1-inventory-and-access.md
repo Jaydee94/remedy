@@ -1,4 +1,4 @@
-# Hosts, cycle 1: inventory and access — Implementation Plan
+# Hosts, cycle 1: inventory and access, Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -10,7 +10,7 @@
 
 **Spec:** [`docs/specs/2026-10-09-hosts-1-inventory-design.md`](../specs/2026-10-09-hosts-1-inventory-design.md); umbrella [`docs/specs/2026-10-09-hosts-and-skills-design.md`](../specs/2026-10-09-hosts-and-skills-design.md) (sections 2, 4 and 11).
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: code, comments, docs, commit messages, UI copy.
 - Go: stdlib first. **No new module**: `golang.org/x/crypto/ssh` is part of `golang.org/x/crypto v0.57.0`, which `go.mod` already requires. `go 1.27.1`.
@@ -24,7 +24,7 @@
 - Shell in tests runs on macOS and Linux: no BSD-only flags.
 - Work in the worktree; run `make check` before the pull request. A fresh worktree needs `make web-install` once.
 
-## Review Focus
+## Review focus
 
 The spec implies these, and no task's main tests would otherwise exercise them. Each has a test in the task named in brackets.
 
@@ -5021,7 +5021,7 @@ Stop both servers (`pkill -f -- 'sshhost.test'` and `pkill -f -- 'remedy-server'
 
 - [ ] **Step 4: Document it in `CLAUDE.md`**
 
-In the bullet "Hosts and skills" under "Current state", change "specified, nothing built" to say that **cycle 1 is implemented** (tables `hosts` and `host_credentials`, `internal/sshhost`, the Hosts pages) and that cycles 2 to 6 are not. Add to the "Trust boundaries" list:
+In the bullet "Hosts and skills" under "Current state", change "specified, nothing built" to say that cycle 1 is implemented (tables `hosts` and `host_credentials`, `internal/sshhost`, the Hosts pages) and that cycles 2 to 6 are not. Add to the "Trust boundaries" list:
 
 ```
 - **Host credentials** (`internal/sshhost`, tables `hosts` and `host_credentials`) belong to the control plane alone: a private key, its passphrase or a password is sealed like the GitHub token (`store.HostCredentialAAD`, bound to the host id; its value never changes), shown only as a hint, and never in a log, an error, an API answer or an activity entry. `sshhost.Dial` talks only to a host that presents exactly the pinned key; `Probe` stops at the key exchange and sends no login; pinning is a separate call that names the fingerprint the maintainer compared. Only the four constant test commands run in cycle 1 (`host_exec` is cycle 2). The onboarding snippet validates every value it writes into a `sudoers` file (`sshhost.Snippet`). `sshtest` is an SSH server for tests; `REMEDY_BROWSER_SSH=1 go test ./internal/sshhost -run TestServeForBrowser -v -timeout 0` serves one for a look at the UI.

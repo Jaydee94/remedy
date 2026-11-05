@@ -103,7 +103,7 @@ The migration changes no existing table, so it needs no migration test on an old
 
 **UI.** `SettingsSection` replaces `LimitsSection` on the Setup page, in four groups: *Polling*, *Diagnosis limits*, *Cluster actions* and *Runs*. Each row shows the label, the
 value, the source as a badge and a field to change it; "Reset to environment" (or "Reset to default") shows while the value is set here. The use of the last 24 hours stays as the
-bar under the diagnosis limits. The bootstrap facts follow as a calm list without fields. The page follows the conventions of the UI: a busy button keeps its focus
+bar under the diagnosis limits. The bootstrap facts follow as a list without fields. The page follows the conventions of the UI: a busy button keeps its focus
 (`aria-disabled`), the focus returns to the heading when a control unmounts, the live region announces by key. The logic (the text of a row, the badge, the pre-check of an input)
 is in `web/src/settings.ts` and is tested with `node --test`.
 

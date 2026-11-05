@@ -29,7 +29,7 @@ the prototype shows that the server cannot answer yet.
 
 - A chat that is not about an incident or a task. "Ask about this incident" is one run with the gatekeeper tools; it is not the ad-hoc chat of phase 4.
 - A light theme, a theme switch, and any setting for the look.
-- New navigation targets for the "Coming later" chips (pull requests, knowledge, graph). They are labels, nothing more.
+- New navigation targets for the "Coming later" chips (pull requests, knowledge, graph). They are labels only.
 - A digest written by an agent. The digest is computed from counts (see 5).
 - Changing what the gatekeeper, the poller or the responder do, except as listed in 3.
 - A web test runner. Pure logic is tested with `node --test` (see 10).
@@ -74,11 +74,11 @@ Three additions. Each is additive, none needs a migration, and each is recorded 
 `POST /api/runs` takes an optional `incidentId`.
 
 - It needs `tools: true` (the agent reads the incident with `incident_get`); otherwise `400`. An unknown incident is `404`. `cluster` may be set as before.
-- The run is an **ad-hoc** run with `runs.incident_id` set. It is not a responder run: the daily limit does not count it, `CheckOutcome` does not look for a
+- The run is an ad-hoc run with `runs.incident_id` set. It is not a responder run: the daily limit does not count it, `CheckOutcome` does not look for a
   diagnosis in its answer, and nothing in the responder reacts to it.
 - `runs.prompt` holds only the question. The frame around it is added where the prompt is handed to the runner, for a run that is ad-hoc and has an
   `incident_id`, and is built in `internal/prompt`, the only place that builds prompts: the operator asks about incident N, read it first with
-  `incident_get`, then answer. The incident's own text (GitHub's and an alert's) is **not** in the prompt; the agent gets it through the gatekeeper, as data.
+  `incident_get`, then answer. The incident's own text (GitHub's and an alert's) is not in the prompt; the agent gets it through the gatekeeper, as data.
 - The question is the operator's own text and is trusted like any ad-hoc prompt.
 - `GET /api/runs` takes `?incident=ID` and returns the runs of that incident, newest first, with the same limit. The run's JSON already has `incidentId`. For a responder run the list leaves out `prompt`, `result` and `output` (the prompt holds the cleaned GitHub data, the output the whole diagnosis, and the thread needs neither); `GET /api/runs/{id}` has everything.
 - A question run is a run: the runner is sequential, so a diagnosis of any incident waits while a question run is queued, running or waiting for an approval, and `POST /api/incidents/{id}/diagnose` answers 409 until it has ended; the thread must handle that answer.
@@ -226,7 +226,7 @@ The exact argument names are read from the tools when the plan is written. The a
 
 ### 7.1 Needs you (replaces `ApprovalsPage` and `ApprovalCard`)
 
-- Waiting questions, **oldest first** (the call that was asked first is decided first): the "ask" avatar, "Remedy, asked N min ago, Incident #N, the run", the
+- Waiting questions, oldest first (the call that was asked first is decided first): the "ask" avatar, "Remedy, asked N min ago, Incident #N, the run", the
   question in Literata, then the highlighted card: the tool in mono, "exactly this runs if you approve", the arguments, "Add a reason (optional)" (at most 500
   characters) and Yes and No at full width. It is the large variant of the shared ask.
 - A toast confirms ("Approved. Running...", "Denied. I told the agent."). The state comes from the 1 s poll; nothing is shown optimistically.

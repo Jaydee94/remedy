@@ -95,7 +95,7 @@ copy the new snippet and apply it again on that host (`visudo -f`, replace the o
 
 Home-server pull request 2: `argocd/apps/monitoring/templates/vmrule-remedy-drill.yaml`, a `VMRule` named `remedy-drill` in `monitoring`, one rule, severity `critical`, `for: 1m`, labels `instance: ugreen-nas` and `name: remedy-drill` (so the host rule matches),
 with a `summary` and a `description`. The expression is built from what section 2 measured, for example `absent(container_last_seen{instance="ugreen-nas",name="remedy-drill"})`; **do not open the pull request before you tried the expression in VictoriaMetrics**,
-including what `docker stop` does to the series. After the merge and a reload of vmalert, the alert must **not** be firing while the container runs. If it fires, or the labels differ from what the host rule expects, the drill stops here: correct the rule or the host rule. No run has been spent.
+including what `docker stop` does to the series. After the merge and a reload of vmalert, the alert must not be firing while the container runs. If it fires, or the labels differ from what the host rule expects, the drill stops here: correct the rule or the host rule. No run has been spent.
 
 ## 7. The drill
 
@@ -112,17 +112,17 @@ including what `docker stop` does to the series. After the merge and a reload of
    - the responder starts on its own;
    - it reads `docker ps -a` and `docker logs` of `remedy-drill` without an approval;
    - it asks for `docker start remedy-drill`, and **Needs you** shows the exact command word for word;
-   - **you approve** (changes the NAS: the container starts again);
+   - you approve (changes the NAS: the container starts again);
    - the container runs, the alert resolves, the incident closes.
 4. **The checks of the record**, from the run's own prompt, tool results and answer (in the UI's run view, the database and the control plane's log):
    - no Paperless container name, no credential and no `192.168.178.118` appears in them;
    - `psql` over the `host_credentials` table shows only the sealed column and the hint, never the key;
    - the control plane's log holds no plain secret of the host.
-5. If the run asks for something other than `docker start remedy-drill`: **deny it**. That is a finding for the record, not a failure of the drill's safety; the barriers are the approval and the `sudoers` file.
+5. If the run asks for something other than `docker start remedy-drill`: **deny it**. That is a finding for the record. The barriers are the approval and the `sudoers` file.
 
 ### The second pass (optional, one more run)
 
-Stop the container again (changes the NAS) and **deny** the approval; once more, let it expire (15 minutes, `auto_approval_timeout`). Both must leave the container stopped and the incident open with a clear account. This is the refused or expired
+Stop the container again (changes the NAS) and deny the approval; once more, let it expire (15 minutes, `auto_approval_timeout`). Both must leave the container stopped and the incident open with a clear account. This is the refused or expired
 `host_change` that cycles 2 and 4 left open. Afterwards start the container yourself (`docker start remedy-drill`; changes the NAS) if you want it running for the next step.
 
 ## 8. The learning run

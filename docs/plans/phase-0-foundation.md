@@ -10,7 +10,7 @@
 
 **Spec:** [`docs/design.md`](../design.md), sections 2.1, 2.6, 2.8 and roadmap phase 0. Research constraints: [`docs/research/subscription-cli-usage.md`](../research/subscription-cli-usage.md).
 
-## Global Constraints
+## Global constraints
 
 - Everything committed to the repo is English: docs, code, identifiers, comments, commit messages, UI copy.
 - Go version is whatever `go.mod` says (`go 1.27.1`). New Go dependencies are limited to `modernc.org/sqlite` and `golang.org/x/crypto`. No new web dependencies in this phase (no router, no component library).
@@ -23,7 +23,7 @@
 - Every commit message ends with the trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 - `make check` must pass at the end of every task.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|

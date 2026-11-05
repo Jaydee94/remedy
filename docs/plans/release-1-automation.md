@@ -10,7 +10,7 @@
 
 **Spec:** [`docs/specs/2026-10-09-release-automation-design.md`](../specs/2026-10-09-release-automation-design.md). It supersedes section 8 of `docs/specs/2026-10-06-kubernetes-deployment-design.md` and plan K-5 task 6 for the release.
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, workflows, scripts, comments, commit messages.
 - The release uses `GITHUB_TOKEN` only. Workflow permissions: top level `contents: read`; `plan` and `publish` `contents: write`; `images` and `chart` `contents: read` and `packages: write`. No PAT, no `issues: write`, no `pull-requests: write`.
@@ -22,7 +22,7 @@
 - Shell runs on macOS and on Linux: no BSD-only flags (`sed -i ''`, `stat -f`, `date -j`), no `local`.
 - `make check` passes at the end of every task. Every commit message ends with the trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 
-## Review Focus
+## Review focus
 
 - A merge that only has `docs`, `chore` or `ci` commits, or a title that is not conventional (like `Kubernetes deployment: ...`): no release, and no failure (task 2 tests, task 1 title check).
 - A breaking change on 0.x must give the next **minor**, never `1.0.0`; a `BREAKING CHANGE` footer on a `fix` too (task 2).
@@ -30,7 +30,7 @@
 - The bump commit `chore(release): X.Y.Z [skip ci]` must not start a second release; a push from the bot is not a release (task 2 and 4).
 - Permissions and untrusted text: the workflow files against the constraints above (task 4).
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|
@@ -210,7 +210,7 @@ if PR_TITLE="nonsense" sh "$SCRIPT" > /dev/null 2>&1; then echo "FAIL  PR_TITLE 
 
 - [ ] **Step 6: Run it to see it fail, then write the script**
 
-Run: `sh scripts/check-pr-title_test.sh 2>&1 | tail -4` — Expected: FAIL lines.
+Run: `sh scripts/check-pr-title_test.sh 2>&1 | tail -4`. Expected: FAIL lines.
 
 Create `scripts/check-pr-title.sh`:
 
@@ -241,7 +241,7 @@ echo "the title is a conventional commit"
 
 - [ ] **Step 7: Run both tests, put them in `make shell-test`, add the CI assertion**
 
-Run: `sh scripts/check-pr-title_test.sh && sh scripts/set-chart-version_test.sh` — Expected: `all passed` twice.
+Run: `sh scripts/check-pr-title_test.sh && sh scripts/set-chart-version_test.sh`. Expected: `all passed` twice.
 
 In `Makefile`, replace (the line occurs once):
 
@@ -267,7 +267,7 @@ In `.github/workflows/ci.yml`, in the `chart` job, after its existing steps, add
 
 (A block scalar: a plain scalar with `: ` inside would make the whole workflow file invalid YAML.) After every edit of a workflow file, parse all of them: `ruby -ryaml -e 'ARGV.each{|f| YAML.load_file(f); puts "ok #{f}"}' .github/workflows/*.yml` (or python3 with PyYAML), because `make check` does not.
 
-Run: `sh scripts/check-release.sh "v$(sed -n 's/^version: *//p' deploy/chart/Chart.yaml)"` — Expected: `the tag v0.1.0 matches the chart`. Run `make check`; Expected: PASS.
+Run: `sh scripts/check-release.sh "v$(sed -n 's/^version: *//p' deploy/chart/Chart.yaml)"`. Expected: `the tag v0.1.0 matches the chart`. Run `make check`; Expected: PASS.
 
 - [ ] **Step 8: Commit**
 
@@ -604,7 +604,7 @@ has "the manifest names the source repository" "org.opencontainers.image.source"
 
 - [ ] **Step 2: Run it to see it fail**
 
-Run: `sh scripts/chart-oci_test.sh 2>&1 | tail -4` — Expected: it stops because `scripts/package-chart.sh` does not exist (or, without docker, `skip: docker is not available`: then start Docker Desktop first).
+Run: `sh scripts/chart-oci_test.sh 2>&1 | tail -4`. Expected: it stops because `scripts/package-chart.sh` does not exist (or, without docker, `skip: docker is not available`: then start Docker Desktop first).
 
 - [ ] **Step 3: The two scripts**
 
@@ -927,7 +927,7 @@ jobs:
 - [ ] **Step 5: Validate and read against the constraints**
 
 Run: `ruby -ryaml -e 'ARGV.each{|f| d = YAML.load_file(f); puts "#{f}: #{d.keys.inspect}"}' .github/workflows/release.yml .github/workflows/images.yml .github/workflows/pr-title.yml .github/workflows/ci.yml` (or python3 with PyYAML; `actionlint` if it is installed).
-Expected: all four parse. Then read the three new files against the Global Constraints and say so in the report: permissions per job (top level `contents: read`; `plan` and `publish` `contents: write`; `images` and `chart` `packages: write`), no action outside `actions/*` and `docker/*`, no `${{ }}` inside a `run:` (every value goes through `env:`), `persist-credentials: false` on every checkout, `if:` expressions use contexts valid at that level (`needs.plan.outputs.version` in a job `if` and in a step `with`). One thing to check against the action's own
+Expected: all four parse. Then read the three new files against the Global constraints and say so in the report: permissions per job (top level `contents: read`; `plan` and `publish` `contents: write`; `images` and `chart` `packages: write`), no action outside `actions/*` and `docker/*`, no `${{ }}` inside a `run:` (every value goes through `env:`), `persist-credentials: false` on every checkout, `if:` expressions use contexts valid at that level (`needs.plan.outputs.version` in a job `if` and in a step `with`). One thing to check against the action's own
 documentation: `docker/metadata-action`'s `type=raw,value=,enable=false` with an empty `value` (no release); if the action rejects an empty value even when
 disabled, make the tag list conditional another way (two steps with an `if:`, or a `tags` input built in a prior step through `$GITHUB_OUTPUT`), and say so in the report.
 
@@ -948,7 +948,7 @@ The workflows run for the first time on the pull request that carries them (`pr-
 
 **Files:**
 - Modify: `docs/design.md` (the release paragraph, if there is one), `docs/specs/2026-10-06-kubernetes-deployment-design.md` (section 8 pointer, section 11), `docs/runbook/homelab-deploy.md`, `docs/plans/k8s-followups.md`, `deploy/chart/README.md`, `README.md`, `CLAUDE.md`, `docs/plans/k8s-5-release-pipeline.md` (a note at the top of task 6 that it is replaced)
-- Create: `docs/research/release-first-run.md` is **not** created here (task 6 writes it from the real run)
+- Create: `docs/research/release-first-run.md` is not created here (task 6 writes it from the real run)
 
 - [ ] **Step 1: Make the edits of spec section 9**
 

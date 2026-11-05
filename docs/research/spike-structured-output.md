@@ -9,13 +9,13 @@ All runs used the Remedy runner's isolation flags: `--safe-mode --restricted --s
 
 ## Observations
 
-1. `--output-format stream-json --verbose --json-schema ...`: the `result` event **contains
-   `structured_output`**, and it **matches the schema** (`summary` string, `confidence` one of the enum
+1. `--output-format stream-json --verbose --json-schema ...`: the `result` event contains
+   `structured_output`, and it matches the schema (`summary` string, `confidence` one of the enum
    values, and in the second run an `affected_files` array). The event's `result` field holds the same JSON
    as a string.
 2. `--output-format json --json-schema ...`: the result object contains `structured_output` as well, with the
    same shape.
-3. The structured answer is **also carried by a synthetic tool call**. The CLI offers a tool named
+3. The structured answer is also carried by a synthetic tool call. The CLI offers a tool named
    `StructuredOutput`, and the model answers by calling it (an `assistant` event with a `tool_use` block named
    `StructuredOutput` whose `input` is the answer, followed by a `user` event with its `tool_result`). This
    tool was not in the `--tools` list and caused no permission denial (`permission_denials` was empty).

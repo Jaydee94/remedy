@@ -8,9 +8,9 @@ run model this builds on).
 
 ## 1. Goal and scope
 
-Agents get their first **tools**. Until now an agent only read a local copy of a repository. In this part the control plane runs an **MCP
-gatekeeper**: the agent calls tools, **read tools run at once, mutating tools wait until the maintainer approves in the UI**, and **every call
-is audited**. The mechanism is proven with tools on Remedy's own data, so it needs no cluster.
+Agents get their first tools. Until now an agent only read a local copy of a repository. In this part the control plane runs an MCP
+gatekeeper: the agent calls tools, read tools run at once, mutating tools wait until the maintainer approves in the UI, and every call
+is audited. The mechanism is proven with tools on Remedy's own data, so it needs no cluster.
 
 Phase 2 of the roadmap ("Gatekeeper and cluster") is split into four parts. This spec covers parts A and B; the others are separate cycles that
 reuse this mechanism:
@@ -35,7 +35,7 @@ reuse this mechanism:
 
 | Topic | Decision |
 |---|---|
-| Transport | The CLI talks **MCP over Streamable HTTP** to the control plane (`POST /mcp`). Measured in the spike: a blocking call survives when the answer is an SSE stream with **MCP progress notifications** every 15 seconds. A plain JSON answer is cut off after 60 seconds, SSE comment lines after 300. |
+| Transport | The CLI talks MCP over Streamable HTTP to the control plane (`POST /mcp`). Measured in the spike: a blocking call survives when the answer is an SSE stream with MCP progress notifications every 15 seconds. A plain JSON answer is cut off after 60 seconds, SSE comment lines after 300. |
 | CLI invocation | The current invocation **without `--safe-mode`**: `--safe-mode` turns MCP off completely, even for an explicit `--mcp-config`. `--restricted --strict-mcp-config` keeps the isolation (builtin plugins and the one server only). Runs without gatekeeper access keep `--safe-mode`. |
 | Which runs | Only **ad-hoc runs** (started by hand on the Runs page). The responder is unchanged. |
 | First tools | Read tools on Remedy's own data and one mutating tool, "add a note to an incident", which writes only to Remedy's database. |

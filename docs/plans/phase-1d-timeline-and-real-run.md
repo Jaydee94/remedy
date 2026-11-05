@@ -24,7 +24,7 @@ These refine the spec after looking at the code of plans 1a to 1c. Task 5 record
 | "Remedy never makes a write call to GitHub" | a client without write methods | additionally **enforced at the transport**: `github.New` wraps the HTTP transport so that any method except `GET` and `HEAD` is refused before it leaves the process. With `REMEDY_LOG_LEVEL=debug` every request is logged (method, host, path without query, status, duration), so the real run can show the proof. |
 | Real run | the Remedy repository itself | two cases: the open Renovate pull request (a real red check that already exists) and one deliberately red pull request that is then fixed, which exercises detection, diagnosis and resolution. The maintainer creates the token; the deliberate pull request is only opened after the maintainer confirms. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, code, identifiers, comments, UI copy, commit messages.
 - No new Go dependencies and no new web dependencies.
@@ -40,7 +40,7 @@ These refine the spec after looking at the code of plans 1a to 1c. Task 5 record
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file. Go code uses tabs.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|
@@ -2184,7 +2184,7 @@ Follow sections 1 to 3 of the runbook. The assistant may run the build and start
 
 Watch `~/remedy-real-run/server.log` and, with the Playwright tools, the Timeline and the incident page. Check section 4 of the runbook: an incident for pull request 20, an automatic diagnosis, the diagnosis card (cause, confidence, affected files, proposed fix), the live status on the Timeline, and that the Timeline order matches the log. Take screenshots into the workspace root, keep the ones worth keeping out of the repository (they may show repository data), and delete the files afterwards.
 
-Look at the facts, not at the happy path: how long it took from the check going red to the incident, from the incident to the diagnosis, the cost the run reports, whether the diagnosis is right. Write them down for Step 6.
+Look at the facts: how long it took from the check going red to the incident, from the incident to the diagnosis, the cost the run reports, whether the diagnosis is right. Write them down for Step 6.
 
 - [ ] **Step 5: (maintainer) Confirm the deliberate failure, then (assistant) run section 5**
 

@@ -56,13 +56,13 @@ Run started 20:14:25.5, request 20:14:30.7. `kill -9` of the runner at 20:14:33;
 
 Section 12 of the [spec](../specs/2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md):
 
-1. **An ad-hoc run with tools lists the five tools and reads an incident through them:** met (init event, `incident_get` in every run).
-2. **A call to `incident_add_note` appears in the inbox within two seconds and the run waits for longer than ten minutes without being stopped:** the wait is met (13 min 4 s, the limit of 10 minutes passed with the run still `running`). The two seconds are met for the approvals endpoint (every run's request was seen at the first one-second poll) and **not measured in the browser**: by design the Approvals page refreshes every 3 seconds and the sidebar count every 5, so the UI can take longer than two seconds. Open, see below.
-3. **Approving adds the note and the agent receives the result; denying leaves no note and the agent receives the denial:** met (scenarios A and B).
-4. **Cancelling a waiting run ends it and frees the runner:** met (scenario C).
-5. **A `SIGTERM` to the CLI during a wait does not create a second approval:** met for what this run can show (one approval); the replay itself was not observed, see scenario D.
-6. **Every call is in the audit log, and the run token appears in no API response, no log and no database column except as a hash:** met (audit above).
-7. **`make check` and CI are green:** met for every pull request of plan 2b (#75 to #79) and for this one.
+1. An ad-hoc run with tools lists the five tools and reads an incident through them: met (init event, `incident_get` in every run).
+2. A call to `incident_add_note` appears in the inbox within two seconds and the run waits for longer than ten minutes without being stopped: the wait is met (13 min 4 s, the limit of 10 minutes passed with the run still `running`). The two seconds are met for the approvals endpoint (every run's request was seen at the first one-second poll) and **not measured in the browser**: by design the Approvals page refreshes every 3 seconds and the sidebar count every 5, so the UI can take longer than two seconds. Open, see below.
+3. Approving adds the note and the agent receives the result; denying leaves no note and the agent receives the denial: met (scenarios A and B).
+4. Cancelling a waiting run ends it and frees the runner: met (scenario C).
+5. A `SIGTERM` to the CLI during a wait does not create a second approval: met for what this run can show (one approval); the replay itself was not observed, see scenario D.
+6. Every call is in the audit log, and the run token appears in no API response, no log and no database column except as a hash: met (audit above).
+7. `make check` and CI are green: met for every pull request of plan 2b (#75 to #79) and for this one.
 
 ## Problems found
 

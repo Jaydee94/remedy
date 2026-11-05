@@ -10,7 +10,7 @@
 
 **Sources:** the "Left out" list of PR #119 and the memory note `project_ui-conversation-redesign.md` (open items). **Not in this plan** (they need a backend change or a decision): the digest counting a failed re-diagnosis for up to 24 hours (a "diagnosed at" field), `listIncidentRuns` carrying full responder prompts and its cap of 50, `runSteps` recomputed on every event (no evidence of a problem), the Undo button being last in the tab order (the same action, "Stop ignoring", is a button in the panel).
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: code, comments, UI copy, docs, commit messages.
 - `web/tsconfig.app.json` sets `erasableSyntaxOnly` and `verbatimModuleSyntax`. Pure logic modules import only with relative paths and `.ts` extensions; components may use the `@/` alias.
@@ -20,7 +20,7 @@
 - In a worktree-isolated session the Bash tool refuses commands that name git in a compound or variable form: plain separate commands or a script file with literal paths; npm with `--prefix web`. Use `command ls`.
 - Work on a branch `feat/ui-7-a11y`, never on `main`.
 
-## Review Focus
+## Review focus
 
 1. The live region is in the page from the first render and its text changes only when a NEW announce-worthy message arrives; loading the page does not announce the whole history as new, a question that is still running announces nothing, the same kind of message twice in a row is told apart (the text carries a cut of the question or the summary). (Task 1 tests.)
 2. After "Diagnose now"/"Diagnose again" and after an answered ask the focus goes to the page heading only when it was lost (never steals it from a field the user is typing in). (Task 2.)
@@ -29,7 +29,7 @@
 
 ---
 
-## File Structure
+## File structure
 
 | File | Change | Responsibility |
 |---|---|---|
@@ -166,7 +166,7 @@ No code changes unless a defect is found. Nothing here is committed.
 
 ---
 
-## Self-Review
+## Self-review
 
 **Coverage:** announcing new thread messages (Tasks 1, 2), focus after "Diagnose now" and after an answered ask in the thread (Task 2), the same on the run page (Task 2). Not covered, with the reason, at the top.
 
@@ -174,4 +174,4 @@ No code changes unless a defect is found. Nothing here is committed.
 
 **Type consistency:** `latestAnnouncement(items)` (Task 1) takes the `ThreadItem[]` that `buildThread` returns and is used by `IncidentThreadPage` (Task 2); `useFocusRestore<T>()` returns `{ target, restore }` as the three pages use it.
 
-**Review Focus coverage:** 1 (Task 1 tests; Task 3), 2 and 3 (Task 2; Task 3), 4 (Task 2; Task 3).
+**Review focus coverage:** 1 (Task 1 tests; Task 3), 2 and 3 (Task 2; Task 3), 4 (Task 2; Task 3).

@@ -1,4 +1,4 @@
-# K-1: Images, the Internal Listener, the Token Refresher and the CLI Installer Implementation Plan
+# K-1: Images, the internal listener, the token refresher and the CLI installer implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -23,7 +23,7 @@
 | Build context | not mentioned | A `.dockerignore` is added: there is none, and `COPY . .` would send `web/node_modules` and `.git` into every build. |
 | Cross-compilation | images for amd64 and arm64 | The Dockerfiles compile on the build platform (`--platform=$BUILDPLATFORM`, `GOOS`/`GOARCH` from `TARGETOS`/`TARGETARCH`), so the arm64 build under QEMU does not run the Go compiler emulated. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, code, identifiers, comments, commit messages.
 - No new Go dependencies. `remedy-tokenrefresh` and `install-cli` use the standard library only; no `client-go`, no `kubectl`.
@@ -35,7 +35,7 @@
 - Go tests: `go test ./... -race -count=1` and `make check` pass at the end of every task. Shell in tests runs on macOS and on Linux.
 - Every commit message ends with the trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 
-## Review Focus
+## Review focus
 
 - A request to the public port for a runner or gatekeeper route, with any method: must be 404 JSON, never the SPA's index and never a handler (task 3 pins `POST /runner/v1/claim`, `POST /mcp` and `GET /runner/v1/runs/x/snapshot`).
 - `REMEDY_INTERNAL_ADDR` equal to the main port, without a port, or with a host and no port: refused at start with a message that names the variable (task 2).
@@ -47,7 +47,7 @@
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file. Go code uses tabs.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|
