@@ -56,7 +56,7 @@ The Argo CD source of part 2D is **not** in this series. It is postponed, not dr
 
 ## 3. How a host command is judged
 
-This is the one place where a mistake means an action without an approval, so it is spelled out.
+A mistake here means an action without an approval.
 
 1. The agent calls `host_read` (a command of the table, no approval) or `host_change` (anything else, an approval each; decided in cycle 2, which split the single `host_exec` of this document in two because the gatekeeper decides read or mutating per tool) with `host` and `argv`. `argv` is an array of strings. There is no field for a shell string and no way to say "through a shell".
 2. The tool's strict `Decode` rejects a program name that contains a path separator or a space, an empty argv, an argument with a newline or a NUL byte, and an argv over a fixed length.
@@ -105,7 +105,7 @@ The tool group `host`, offered only to runs that have hosts assigned (`runs.host
 
 The runner needs no change: the tools are served by the same MCP server, and the claim already carries what a run may use. A **testbed** (`dev/ssh/`): a container with `sshd`, an unprivileged user, a `sudoers` file and a fake `docker`, started by a script like `dev/kind/up.sh`, so that the whole chain is tested without the maintainer's machines. Its login keys are generated on start and removed with it.
 
-The tests of this cycle are the heart of the series and are written first: a table-driven test of the classification with every attack the session named (`; rm`, `$(...)`, backticks, redirects, `find -exec`, `docker run -v /:/h`, `journalctl --output`, an argument that looks like a flag, a program given with a path), the quoting function against a real shell, the "never" list, and the replay rule (a repeated tool call is never a second approval or a second execution).
+The tests of this cycle are written first: a table-driven test of the classification with every attack the session named (`; rm`, `$(...)`, backticks, redirects, `find -exec`, `docker run -v /:/h`, `journalctl --output`, an argument that looks like a flag, a program given with a path), the quoting function against a real shell, the "never" list, and the replay rule (a repeated tool call is never a second approval or a second execution).
 
 ## 6. Cycle 3: settings in the database
 
@@ -123,11 +123,11 @@ This is the part of 2D that the series needs: `internal/alertmanager` (a read-on
 [`2026-10-05-phase-2d-signals-design.md`](2026-10-05-phase-2d-signals-design.md), with these changes:
 
 - The Alertmanager URL, token and severities come from the settings of cycle 3, not from environment variables only.
-- An incident gets a nullable `host_id`, set when an alert's labels match a host's matchers. The first matching host wins and a tie is shown, not guessed.
+- An incident gets a nullable `host_id`, set when an alert's labels match a host's matchers. The first matching host wins and a tie is shown.
 - The responder run gets the host's tools (cycle 2) next to the cluster tools, for the host the alert maps to.
 - The Argo CD source and its tests are **not** built. The `Source` interface stays so that it can be.
 
-**Status (2026-10-16):** cycle 4 is split in two plans ([`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md)). **4a is built** (the source, the settings, the host rules and the host of an incident); **4b is built (2026-10-19)** (the responder for outages, the approval expiry of automatic runs); **the real run with the real CLI was made on 2026-10-19** ([runbook](../runbook/outage-real-run.md), [record](../research/phase-2d-real-run.md)); it did not cover `host_change` or the home server.
+**Status (2026-10-16):** cycle 4 is split in two plans ([`2026-10-16-alertmanager-4-design.md`](2026-10-16-alertmanager-4-design.md)). 4a is built (the source, the settings, the host rules and the host of an incident); 4b is built (2026-10-19) (the responder for outages, the approval expiry of automatic runs); the real run with the real CLI was made on 2026-10-19 ([runbook](../runbook/outage-real-run.md), [record](../research/phase-2d-real-run.md)); it did not cover `host_change` or the home server.
 
 On this lab, Alertmanager has a single receiver `blackhole`. It still holds the firing alerts, and Remedy only reads them, so nothing in the home-server repository has to change for the source. What does have to change is one rule (section 10).
 

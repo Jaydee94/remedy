@@ -10,7 +10,7 @@
 
 **Spec:** `docs/specs/2026-10-22-alert-recurrence-and-signal-tools-design.md` (read it first; the plan only decides what it leaves open). One pull request; every task ends with a commit that passes `make check` (run it before each commit; in a fresh worktree `make web-install` first).
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English (docs, code, comments, commit messages, UI copy). Conversation with the maintainer is German.
 - Go stdlib-first; no new dependency. `web/tsconfig.app.json`: no enums, `import type` for types.
@@ -23,7 +23,7 @@
 - Settings keys: `alertmanager_poll_interval` (group "Polling", env `REMEDY_ALERTMANAGER_POLL_INTERVAL`, minimum 10 s, default 1 m), `metrics_url` (group "Metrics", env `REMEDY_METRICS_URL`), `metrics_token` (sealed secret). Bootstrap env `REMEDY_METRICS_CA_FILE`.
 - Next migrations are `017_alertmanager_poll_interval.sql` and `018_incident_reopen.sql`.
 
-## Review Focus
+## Review focus
 
 1. An Alertmanager restart delivers every alert again: all of them reopen, none is diagnosed again on its own if it has a diagnosis (Task 3).
 2. An ignored incident that resolved by absence and fires again stays ignored (Tasks 2, 3).

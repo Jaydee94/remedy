@@ -1,4 +1,4 @@
-# Diagnosed-at Implementation Plan
+# Diagnosed-at implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -10,7 +10,7 @@
 
 **Sources:** the "Notes for review" of PR #115 (digest limitation), the memory note `project_ui-conversation-redesign.md` (open items). Spec: `docs/specs/2026-10-05-ui-conversation-redesign-design.md`, section 5.1 (the digest) and `docs/specs/2026-10-02-phase-1-detect-and-diagnose-design.md` (incident fields), `CLAUDE.md` (persistence and incidents).
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: code, comments, docs, UI copy, commit messages.
 - Go: stdlib-first; the store has ONE connection (`SetMaxOpenConns(1)`): inside `Store.inTx` use only the `tx`. Every state change writes its `activity` entry in the same transaction (unchanged here). Test first for logic with behaviour.
@@ -21,7 +21,7 @@
 - In a worktree-isolated session the Bash tool refuses commands that name git in a compound or variable form: plain separate commands or a script file with literal paths; npm with `--prefix web`. Use `command ls`.
 - Work on a branch `feat/ui-8-diagnosed-at`, never on `main`.
 
-## Review Focus
+## Review focus
 
 1. The backfill: an incident that has a stored diagnosis gets `diagnosed_at = last_diagnosis_at` (the best value the old data has; for an incident that was diagnosed once it is the start of that run, the same value the digest used before); an incident without a diagnosis stays NULL; running the migration twice is impossible (it is applied once) and a database with no incidents migrates. (Task 1 test.)
 2. `CompleteDiagnosis` sets `diagnosed_at` to the time the diagnosis was stored, in the same statement that stores it; `FailDiagnosis` and `StartDiagnosis` never touch it, so a failed re-diagnosis keeps the old `diagnosed_at`. (Task 1 tests.)
@@ -31,13 +31,13 @@
 
 ---
 
-## File Structure
+## File structure
 
 | File | Change | Responsibility |
 |---|---|---|
 | `internal/store/migrations/009_diagnosed_at.sql` | create | the column and its backfill |
 | `internal/store/diagnosis.go`, `incidents.go` | modify | `CompleteDiagnosis` sets it; `Incident.DiagnosedAt` is selected and scanned |
-| `internal/store/*_test.go` | modify/create | the tests of Review Focus 1 to 3 |
+| `internal/store/*_test.go` | modify/create | the tests of Review focus 1 to 3 |
 | `internal/server/incidents.go` + test | modify | `diagnosedAt` in the JSON |
 | `web/src/api.ts`, `web/src/conversation.ts` + test | modify | the type; `digestText` and `lastDiagnosed` |
 | `docs/specs/2026-10-05-ui-conversation-redesign-design.md`, `docs/specs/2026-10-02-phase-1-detect-and-diagnose-design.md` | modify | the digest definition; the incident field (only where they describe these) |
@@ -124,7 +124,7 @@ No code changes unless a defect is found. Nothing here is committed.
 
 ---
 
-## Self-Review
+## Self-review
 
 **Coverage:** the digest limitation of PR #115 (Tasks 1, 2). Not covered: the payload of `listIncidentRuns` and `runSteps` (no decision/evidence), the a11y leftovers of PR #120 (small, listed there).
 
@@ -132,4 +132,4 @@ No code changes unless a defect is found. Nothing here is committed.
 
 **Type consistency:** `store.Incident.DiagnosedAt` (Task 1) is what the server view reads; the JSON `diagnosedAt` is what `Incident.diagnosedAt` (Task 2) reads.
 
-**Review Focus coverage:** 1, 2, 3 (Task 1 tests), 4 (Task 2 tests; Task 3), 5 (greps in Tasks 1 and 2).
+**Review focus coverage:** 1, 2, 3 (Task 1 tests), 4 (Task 2 tests; Task 3), 5 (greps in Tasks 1 and 2).

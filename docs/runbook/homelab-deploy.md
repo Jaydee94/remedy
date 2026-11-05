@@ -60,7 +60,7 @@ The three-source Application sets the same label through `managedNamespaceMetada
 
 ## 4. The secret
 
-Three values, generated once and kept: the master key seals the GitHub token **and the SSH credentials of every host**; losing it loses them all (you enter the logins again, nothing else
+Three values, generated once and kept: the master key seals the GitHub token and the SSH credentials of every host; losing it loses them all (you enter the logins again, nothing else
 is lost). Keep a copy of the master key in a password manager.
 
 ```sh
@@ -123,7 +123,7 @@ dependencies:
     repository: oci://ghcr.io/jaydee94/charts
 ```
 
-(`0.8.0` is the release at the time of writing: use the latest one when you install.) The values, **everything under the key `remedy:`** (the name of the dependency). The CLI pin is the chart's default and needs no value:
+(`0.8.0` is the release at the time of writing: use the latest one when you install.) The values, everything under the key `remedy:` (the name of the dependency). The CLI pin is the chart's default and needs no value:
 
 ```yaml
 # values.yaml

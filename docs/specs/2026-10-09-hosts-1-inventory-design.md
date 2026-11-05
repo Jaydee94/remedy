@@ -125,7 +125,7 @@ Comments in the snippet tell the maintainer what to check: the path of `docker` 
 **What is put into the snippet is validated first**, because it ends up in a file that grants rights:
 
 - `account`: `^[a-z_][a-z0-9_-]{0,31}$`.
-- `dockerPattern`: `^[A-Za-z0-9][A-Za-z0-9_.-]*\*?$` — a name, optionally ending in one `*`. No other wildcard, no comma, no space, no newline.
+- `dockerPattern`: `^[A-Za-z0-9][A-Za-z0-9_.-]*\*?$`: a name, optionally ending in one `*`. No other wildcard, no comma, no space, no newline.
 - `systemdUnits`: each `^[A-Za-z0-9][A-Za-z0-9_.@-]*$` with a suffix that must be one of `.service`, `.timer`, `.socket` or none (then `.service` is written). At most 20. `:` is excluded because sudoers needs it escaped, and `visudo` rejects an unescaped one.
 - Everything is validated again when the snippet is generated, not only when the host is saved, and a value that fails makes the generator return an error instead of text.
 

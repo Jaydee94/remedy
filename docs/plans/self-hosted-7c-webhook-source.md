@@ -10,7 +10,7 @@
 
 **Spec:** `docs/specs/2026-10-21-self-hosted-for-others-design.md`, section 6 (and 8, 9, 11, 13 where they touch the webhook). 7a and 7b are merged (release 0.20.0).
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English. The pull request of this cycle is `feat:` (a new source, nothing existing changes); the plan's own is `docs:`.
 - **No route exists unless `REMEDY_WEBHOOK_ADDR` is set.** The webhook route is registered on the third mux only; the public and the internal mux never serve it (a test asserts 404 on both). The address must differ from `REMEDY_ADDR` and `REMEDY_INTERNAL_ADDR`.
@@ -23,7 +23,7 @@
 - The migration number is **004** (the spec's "018" is the SQLite numbering; `003_runs_auth_source.sql` is the last). Widening the `source` CHECK is `DROP CONSTRAINT` and `ADD CONSTRAINT` in PostgreSQL, not a table rebuild. Existing tests list the applied migrations in one constant, `appliedMigrations` in `internal/store/schema_test.go`; update it.
 - Do not add a dependency. Tests: Go tests need PostgreSQL (`make test` starts one); chart tests need `helm`; `make check` is the authority before the pull request.
 
-## Review Focus
+## Review focus
 
 1. **A request flood and a retry storm.** A sender that repeats every second keeps one incident alive and writes no activity; a flood of distinct keys stops at 30 new incidents per hour per endpoint while `resolved` bodies still get through; more than 8 requests in flight answer `503` without touching the database. (Tasks 6, 7.)
 2. **Auth timing and sameness.** The three failure cases (unknown name, disabled endpoint, wrong token) must be byte-identical in status, headers and body; a request with no `Authorization` header, a `Basic` scheme or an oversized header is the same `401`. During the 24 h overlap after a rotation both tokens work, afterwards only the new one. (Task 5.)
@@ -236,6 +236,6 @@ Order inside `ServeHTTP`: acquire the in-flight slot (`503`), method check (`405
 
 ### Task 14: Final review and the real use
 
-- [ ] **Step 1:** Dispatch one fresh reviewer (opus) over the whole branch with the Review Focus above; fix Critical and Important findings test-first; deal with the rest as in 7b.
+- [ ] **Step 1:** Dispatch one fresh reviewer (opus) over the whole branch with the Review focus above; fix Critical and Important findings test-first; deal with the rest as in 7b.
 - [ ] **Step 2:** Open the pull request (`feat:`), wait for CI, merge on green.
 - [ ] **Step 3 (the maintainer's, not part of the merge):** enable `webhook.enabled` on the home server only with `webhook.from` set deliberately; send one real event from a real tool and write `docs/research/webhook-real-run.md`. Until then the documents say the source is implemented and not tried against a real sender.

@@ -1,7 +1,7 @@
 # Runbook: connect Remedy to an Alertmanager
 
 This is cycle 4 of the hosts and skills series ([spec](../specs/2026-10-16-alertmanager-4-design.md)). It makes alerts that fire in
-Alertmanager into incidents, maps them to hosts and **diagnoses them**: on its own for a young `critical` or `warning` alert, by a click on
+Alertmanager into incidents, maps them to hosts and diagnoses them: on its own for a young `critical` or `warning` alert, by a click on
 **Diagnose** in the incident's thread otherwise (section 5). The run may read the cluster (when the cluster is set up) and use the tools of the host
 the alert is mapped to; any change it asks for waits for you under **Needs you**, and in an automatic run that approval expires (section 5). The diagnosis
 of an alert was run with the real CLI and a real Alertmanager on 2026-10-19 ([`outage-real-run.md`](outage-real-run.md) is its runbook, the record is
@@ -14,7 +14,7 @@ silences or acknowledges anything. Section 8 describes the metrics address and t
 Open **Setup** and find the block "Alertmanager".
 
 - **Alertmanager address**: the address your cluster gives Alertmanager, `http` or `https`, with a host, without a user name, a query or a
-  fragment (for example `http://alertmanager:9093` in a plain setup without the chart's NetworkPolicy; use the service name of your installation, not a guess;
+  fragment (for example `http://alertmanager:9093` in a plain setup without the chart's NetworkPolicy; use the service name of your installation;
   see "Reaching Alertmanager from the chart" below). **Use `https` for an Alertmanager outside this machine:** the bearer token travels in clear over plain `http`. A trailing
   slash is removed. Empty means Remedy does not ask. `REMEDY_ALERTMANAGER_URL` is only the default of this setting; what you save here wins.
 - **Alertmanager token** (optional): a bearer token, sent as `Authorization: Bearer` when set. It is written once, sealed with the master key,
@@ -36,7 +36,7 @@ With the chart's default `networkPolicy.enabled: true`, the control plane's pod 
 cluster (`http://alertmanager:9093`) or on a private address **cannot be reached** by default, and the state line shows a connection error or a timeout. The options:
 
 - **for an Alertmanager inside the cluster, set the chart value `networkPolicy.alertmanager`** (cycle 6): `namespace`, `podSelector` (the labels of the Alertmanager's pods; an empty selector is refused) and `port` (default 9093). It opens one
-  egress rule from the control plane to those pods and nothing else. Read the namespace, labels and port from the cluster, do not guess. The Alertmanager's own namespace may have an ingress policy that must admit the Remedy namespace too
+  egress rule from the control plane to those pods and nothing else. Read the namespace, labels and port from the cluster. The Alertmanager's own namespace may have an ingress policy that must admit the Remedy namespace too
   (on the home server, the monitoring app's `monitoring-namespace-isolation`). This value is implemented on the branch of the cycle-6a pull request and has not been run on a cluster;
 - for a private address outside the cluster, the chart has no value (`networkPolicy.hosts` is for SSH to hosts, not for Alertmanager): put Alertmanager behind a public HTTPS address on port 443 (an Ingress with a certificate) and enter that address;
 - turn `networkPolicy.enabled` off (this opens all egress of the control plane: weigh it).
@@ -78,7 +78,7 @@ instance=~"myhost-nas(:[0-9]+)?"
 ```
 
 (the optional `:port` covers an exporter that adds one). The mapping is recomputed at every observation, so a changed rule applies within a cycle.
-When several hosts match, the host with the lowest id wins and the thread adds "also matches: ..." with the others; Remedy does not guess.
+When several hosts match, the host with the lowest id wins and the thread adds "also matches: ..." with the others.
 **Careful with rules that are only negative** (`job!="x"`) **or can match the empty value** (`=~".*"`): a label the alert lacks counts as empty, so such a host is
 named by every alert, and the host with the lowest id then takes them all. Give a host at least one rule that needs a value (`instance=~"nas.*"`).
 The details of a mapped incident's thread have a Host row that links to the host. A rule is only compared with the alert's labels: it is never run or put into a command.

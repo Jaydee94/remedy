@@ -10,7 +10,7 @@ values. It needs the first release after 0.17.1 (the release that moved the CLI 
 Plan on half an hour. The install under Argo CD, with sealed secrets, is the maintainer's example,
 [`homelab-deploy.md`](homelab-deploy.md).
 
-**One installation belongs to one operator.** Remedy has a single admin password and no user accounts. The runner holds *your*
+One installation belongs to one operator. Remedy has a single admin password and no user accounts. The runner holds *your*
 Claude login; do not share it, and do not point a colleague at your installation: a second person runs a second one.
 
 ## 1. What this installs

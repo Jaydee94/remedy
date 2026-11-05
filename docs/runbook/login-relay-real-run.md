@@ -2,7 +2,7 @@
 
 **This run has not been made.** What exists is one field use on the home server, recorded in `docs/research/login-relay-real-run.md`. Make this run with the maintainer at the
 keyboard: he types the codes and signs in with his own account, and he alone touches the CLI's login directory. It costs no quota (a login is not a run) but it
-**logs the dummy runner out**, so plan on about 45 minutes. The record goes next to the field use as `docs/research/login-relay-real-run-full.md`, and it carries the
+logs the dummy runner out, so plan on about 45 minutes. The record goes next to the field use as `docs/research/login-relay-real-run-full.md`, and it carries the
 decision of plan task 12.
 
 ## 1. Why

@@ -1,4 +1,4 @@
-# Phase 1c: The Responder Implementation Plan
+# Phase 1c: the responder implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -28,13 +28,13 @@ These refine the spec after looking at real GitHub data (the failed `web` job of
 | Symlinks in the snapshot | reject symlinks pointing outside | a symlink is only extracted when its target is relative and contains no `..` component. Resolving `..` lexically is not safe: `a -> b/..` with `b -> .` leaves the directory. Anything else is skipped and reported. |
 | Run list payload | not mentioned | the list endpoint returns only the first 300 characters of a prompt, because a responder prompt can be 200 KB. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, code, identifiers, comments, UI copy, commit messages.
 - No new Go dependencies and no new web dependencies.
-- The GitHub client is **read-only**: every exported method name starts with `Get` or `List`, and it only sends `GET`. The existing reflection test keeps enforcing this.
+- The GitHub client is read-only: every exported method name starts with `Get` or `List`, and it only sends `GET`. The existing reflection test keeps enforcing this.
 - The GitHub token never appears in an API response, a log line, an error message, an activity entry, a prompt or the database in plaintext. The runner never receives it; the snapshot passes through the control plane.
-- Logs, PR text, check names and file contents from GitHub are **untrusted**. They reach the agent only inside delimited data blocks, after redaction, and the agent's answer is validated by the control plane and shown as escaped text.
+- Logs, PR text, check names and file contents from GitHub are untrusted. They reach the agent only inside delimited data blocks, after redaction, and the agent's answer is validated by the control plane and shown as escaped text.
 - The agent has `Read`, `Grep` and `Glob` only and never sees a credential. The prompt goes to the CLI through stdin.
 - Automatic diagnosis never exceeds the limits: cooldown 15 minutes, at most 3 per incident, at most 20 per rolling 24 hours, one active run at a time.
 - `web/tsconfig.app.json` keeps `erasableSyntaxOnly` and `verbatimModuleSyntax`: no enums, no constructor parameter properties, `import type` for types.
@@ -46,7 +46,7 @@ These refine the spec after looking at real GitHub data (the failed `web` job of
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file. Go code uses tabs.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|
@@ -247,7 +247,7 @@ git commit -m "feat(redact): remove secrets from text before it reaches an agent
 
 ### Task 2: The `diagnosis` package
 
-The responder returns a structured diagnosis (spec section 6). This package owns the **schema** that goes to the CLI and the **strict validation** the control plane applies to whatever comes back: the spike could not tell what the CLI does with an answer that violates the schema, so nothing may rely on the CLI having checked it.
+The responder returns a structured diagnosis (spec section 6). This package owns the schema that goes to the CLI and the strict validation the control plane applies to whatever comes back: the spike could not tell what the CLI does with an answer that violates the schema, so nothing may rely on the CLI having checked it.
 
 The schema that goes to the CLI is deliberately minimal (types, enums, required fields, no extra fields). The length limits are enforced only by `Parse`.
 
@@ -592,7 +592,7 @@ git commit -m "feat(diagnosis): add the diagnosis schema and its strict validati
 ---
 ### Task 11: The diagnosis card and the limits card
 
-The incident detail gets the **diagnosis card** (spec section 9): the summary, the cause, a confidence badge, the category, the affected files, the proposed fix and whether the fix looks automatable, a button to start or repeat the diagnosis, and a link to the run (live while it runs, the run view streams its events). A diagnosis that is about an older commit than the failing one says so. **Settings** gets a read-only card with the limits. The run view shows what is special about a responder run: its prompt is collapsed (it can be 200 KB and contains data from GitHub), and a run whose answer was rejected says so.
+The incident detail gets the diagnosis card (spec section 9): the summary, the cause, a confidence badge, the category, the affected files, the proposed fix and whether the fix looks automatable, a button to start or repeat the diagnosis, and a link to the run (live while it runs, the run view streams its events). A diagnosis that is about an older commit than the failing one says so. **Settings** gets a read-only card with the limits. The run view shows what is special about a responder run: its prompt is collapsed (it can be 200 KB and contains data from GitHub), and a run whose answer was rejected says so.
 
 Everything the agent wrote is rendered as text. React escapes it, and nothing here uses `dangerouslySetInnerHTML`; the browser check below includes a diagnosis full of HTML.
 
@@ -1447,7 +1447,7 @@ git commit -m "docs: document the responder and record the dry run against the r
 
 The responder needs what a human would look at: the pull request (title, description), the files it changes, the log of the failed job and the repository at the failing commit. Four read calls are added to the client; the check runs the poller already lists gain their `output` (other apps than GitHub Actions put their message there, an Actions job has none).
 
-Two real-world facts shape the code. Job logs are served from a **different host** by a redirect (`302` to a signed blob URL), so the client must not send the token to the second hop and must keep the signed URL out of error messages. The log of a real failed job was 26 KB; logs can be much larger, so the download is bounded. The fixtures are real answers of the Remedy repository (pull request 20, 2026-10-02), trimmed to the fields Remedy reads and to 700 characters of the description.
+Two real-world facts shape the code. Job logs are served from a different host by a redirect (`302` to a signed blob URL), so the client must not send the token to the second hop and must keep the signed URL out of error messages. The log of a real failed job was 26 KB; logs can be much larger, so the download is bounded. The fixtures are real answers of the Remedy repository (pull request 20, 2026-10-02), trimmed to the fields Remedy reads and to 700 characters of the description.
 
 **Files:**
 - Create: `internal/github/context.go`, `internal/github/context_test.go`
@@ -2054,7 +2054,7 @@ git commit -m "feat(github): read pull requests, their files, job logs and the r
 ---
 ### Task 4: The `prompt` package
 
-Builds the text the responder agent receives (spec section 6): fixed instructions, a few facts Remedy knows for sure, and the **untrusted data** from GitHub in blocks delimited by a random token. It cleans and cuts the job log, redacts everything, and bounds every section. It is a pure function of its input; the GitHub reads happen elsewhere (Task 8).
+Builds the text the responder agent receives (spec section 6): fixed instructions, a few facts Remedy knows for sure, and the untrusted data from GitHub in blocks delimited by a random token. It cleans and cuts the job log, redacts everything, and bounds every section. It is a pure function of its input; the GitHub reads happen elsewhere (Task 8).
 
 The log cleaning follows a real log (the failed `web` job of Remedy PR 20): a byte order mark, an ISO timestamp in front of every line, ANSI escapes, and the actual error (`npm error ...`, then `##[error]Process completed with exit code 1.`) followed by about 25 lines of runner cleanup. Keeping "the end of the log" would have kept only the cleanup, so the excerpt ends at the last `##[error]` line.
 
@@ -2648,7 +2648,7 @@ git commit -m "feat(prompt): build the responder prompt from cleaned, redacted a
 ---
 ### Task 5: The `snapshot` package
 
-The agent reads a copy of the repository at the failing commit (spec section 6). The control plane downloads GitHub's tarball and **filters** it while streaming it to the runner: secret-looking files never leave the control plane. The runner **unpacks** it into the run's workspace and trusts nothing: it rejects path traversal, extracts only symlinks that cannot lead out of the workspace, and enforces the size limits again.
+The agent reads a copy of the repository at the failing commit (spec section 6). The control plane downloads GitHub's tarball and filters it while streaming it to the runner: secret-looking files never leave the control plane. The runner unpacks it into the run's workspace and trusts nothing: it rejects path traversal, extracts only symlinks that cannot lead out of the workspace, and enforces the size limits again.
 
 Real facts from the tarball of the Remedy repository: it is a gzipped tar whose first entry is a pax global header (type `g`, carrying the commit SHA), followed by one top-level directory `Owner-repo-sha7/` that contains everything.
 
@@ -2667,7 +2667,7 @@ Real facts from the tarball of the Remedy repository: it is a gzipped tar whose 
   - `type Result struct { Files int; Bytes int64; Skipped []string }`
   - `func Unpack(dir string, src io.Reader, lim Limits) (Result, error)`: strips the top-level directory; `dir` must exist; after an error the caller deletes `dir`
 
-A symlink is extracted only if its target is relative and has **no `..` component**. Resolving `..` lexically is not safe: `l -> d/..` with `d -> .` points outside the directory although the cleaned path looks harmless. A target without `..` can only lead downwards, so no chain of such links can leave the directory. Every other symlink is skipped and reported in `Skipped`.
+A symlink is extracted only if its target is relative and has no `..` component. Resolving `..` lexically is not safe: `l -> d/..` with `d -> .` points outside the directory although the cleaned path looks harmless. A target without `..` can only lead downwards, so no chain of such links can leave the directory. Every other symlink is skipped and reported in `Skipped`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -4175,7 +4175,7 @@ git commit -m "feat(runner): answer with structured output and prepare the repos
 ---
 ### Task 7: Migration 005 and the diagnosis store
 
-Starting a diagnosis must be one decision that cannot race: the poller may want to start one while the maintainer clicks "Diagnose". `StartDiagnosis` checks the incident, the "one run at a time" rule and (for an automatic start) the limits of spec section 5, and creates the run and marks the incident in **one transaction**. `CompleteDiagnosis` and `FailDiagnosis` close it again; `ListAutoCandidates` says which incidents an automatic start may pick.
+Starting a diagnosis must be one decision that cannot race: the poller may want to start one while the maintainer clicks "Diagnose". `StartDiagnosis` checks the incident, the "one run at a time" rule and (for an automatic start) the limits of spec section 5, and creates the run and marks the incident in one transaction. `CompleteDiagnosis` and `FailDiagnosis` close it again; `ListAutoCandidates` says which incidents an automatic start may pick.
 
 Migration 005 adds `incidents.diagnosed_sha` (the commit a diagnosis is about, so a new commit makes the incident eligible again), `runs.head_sha` (the commit the snapshot and the prompt are for, fixed when the run is created) and `runs.automatic` (what the daily limit counts). The columns for the diagnosis itself (`diagnoses`, `last_diagnosis_at`, `diagnosis`, `run_id`) exist since migration 003.
 
@@ -5193,7 +5193,7 @@ git commit -m "feat(store): start, complete and fail a diagnosis under the limit
 
 Ties the pieces together without any HTTP (spec sections 5 and 6): it reads what a human would read from GitHub, builds the prompt (Task 4), starts the run under the limits (Task 7), opens the repository snapshot for the runner, judges the answer when the run is finished, and decides on automatic starts. The server (Task 9) and the poller and reaper (Task 10) call it.
 
-A diagnosis is only started when the **whole context** could be read: a failed read of the pull request, its files, the check runs or the log (other than "this check has no log" or "the log expired") stops the start with `ErrGitHub`, and the incident stays as it was. An automatic start that fails this way is not retried before the cooldown has passed, so a missing token permission does not turn into a request storm.
+A diagnosis is only started when the whole context could be read: a failed read of the pull request, its files, the check runs or the log (other than "this check has no log" or "the log expired") stops the start with `ErrGitHub`, and the incident stays as it was. An automatic start that fails this way is not retried before the cooldown has passed, so a missing token permission does not turn into a request storm.
 
 **Files:**
 - Create: `internal/responder/responder.go`
@@ -6394,9 +6394,9 @@ git commit -m "feat(responder): start, judge and close diagnoses, and start them
 ---
 ### Task 9: The server side of a diagnosis
 
-Makes the responder reachable (spec section 8): the maintainer starts a diagnosis with `POST /api/incidents/{id}/diagnose`; the runner gets the schema and the snapshot flag with its claim, downloads the **filtered** snapshot from `GET /runner/v1/runs/{id}/snapshot` and reports its answer to `finish`, where the control plane validates it; the incident views carry the diagnosis. The limits of automatic diagnosis become configuration, and a read-only `GET /api/limits` shows them (spec section 9, settings).
+Makes the responder reachable (spec section 8): the maintainer starts a diagnosis with `POST /api/incidents/{id}/diagnose`; the runner gets the schema and the snapshot flag with its claim, downloads the filtered snapshot from `GET /runner/v1/runs/{id}/snapshot` and reports its answer to `finish`, where the control plane validates it; the incident views carry the diagnosis. The limits of automatic diagnosis become configuration, and a read-only `GET /api/limits` shows them (spec section 9, settings).
 
-Two security properties are tested here. The snapshot passes through the control plane, so the **runner never holds a GitHub credential**, and a run that is not a running responder run cannot fetch one. And **the answer of an agent is never trusted**: `finish` runs `responder.CheckOutcome`, and a runner can still only report the failure reasons `""` and `timeout`.
+Two security properties are tested here. The snapshot passes through the control plane, so the runner never holds a GitHub credential, and a run that is not a running responder run cannot fetch one. And the answer of an agent is never trusted: `finish` runs `responder.CheckOutcome`, and a runner can still only report the failure reasons `""` and `timeout`.
 
 **Files:**
 - Create: `internal/server/responder.go`
@@ -7552,9 +7552,9 @@ git commit -m "feat(server): diagnose incidents, serve the snapshot and judge th
 ---
 ### Task 10: Automatic diagnosis, the reaper hook, and the whole chain
 
-Connects the last pieces. After every polling cycle that reached GitHub the poller asks the responder to start an automatic diagnosis (spec section 5). When the reaper fails a run, the responder closes the diagnosis of a responder run, so that its incident does not stay `diagnosing` forever. The wiring that `cmd/remedy-server` had grown (engine, responder, poller, reaper, routes) moves into a small `app` package, so that the **same wiring** is used by the server binary and by the test that runs the whole chain.
+Connects the last pieces. After every polling cycle that reached GitHub the poller asks the responder to start an automatic diagnosis (spec section 5). When the reaper fails a run, the responder closes the diagnosis of a responder run, so that its incident does not stay `diagnosing` forever. The wiring that `cmd/remedy-server` had grown (engine, responder, poller, reaper, routes) moves into a small `app` package, so that the same wiring is used by the server binary and by the test that runs the whole chain.
 
-That test is the most important one of the plan. It runs the real control plane (server, poller, responder, reaper), the real runner loop, the real GitHub client against a fake GitHub that speaks HTTP (with the redirects of the real one), and a fake `claude` that answers with structured output. It follows one failure from the poll to the stored diagnosis, and checks what must never happen: a second run while one is active, a repeat inside the cooldown, a token or a secret file reaching the runner, a write call to GitHub.
+That test runs the real control plane (server, poller, responder, reaper), the real runner loop, the real GitHub client against a fake GitHub that speaks HTTP (with the redirects of the real one), and a fake `claude` that answers with structured output. It follows one failure from the poll to the stored diagnosis, and checks what must never happen: a second run while one is active, a repeat inside the cooldown, a token or a secret file reaching the runner, a write call to GitHub.
 
 **Files:**
 - Create: `internal/app/app.go`

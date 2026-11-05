@@ -84,10 +84,10 @@ start "Restart the deployment web in the namespace demo of the Kubernetes cluste
 ```
 
 Within seconds the run waits: the run page shows the status chip "Waiting for you" and the question inside the run, **Needs you** in the sidebar shows 1, and the run shows
-`cluster_rollout_restart` with the arguments `kind deployment`, `namespace demo`, `name web`. Check that **nothing has changed yet**: the two pod names
+`cluster_rollout_restart` with the arguments `kind deployment`, `namespace demo`, `name web`. Check that nothing has changed yet: the two pod names
 are the same. In the browser, type a reason and click **Yes, restart it**.
 
-Expected: the run `succeeded` within a few seconds with an answer that the pods are back up; the pod names are **new**; the deployment's template has
+Expected: the run `succeeded` within a few seconds with an answer that the pods are back up; the pod names are new; the deployment's template has
 the annotation `kubectl.kubernetes.io/restartedAt`
 (`kubectl --context kind-remedy-dev -n demo get deployment web -o jsonpath='{.spec.template.metadata.annotations}'`); Today has the entries
 `approval_requested`, `approval_decided` and **"Restarted deployment demo/web"** (a violet dot); the tool call is `mutating`, `approved`.
@@ -105,7 +105,7 @@ start "Restart the deployment web in the namespace other of the Kubernetes clust
 ```
 
 Expected within seconds: the run `succeeded`, the answer says that the restart did not happen because actions are only allowed in `demo`, the call
-is `failed` with the text `actions are not allowed in the namespace "other"; they are allowed in: demo`, **no approval was created**
+is `failed` with the text `actions are not allowed in the namespace "other"; they are allowed in: demo`, no approval was created
 (`curl -s -b cookies $B/api/approvals | jq length` prints 0) and `kubectl --context kind-remedy-dev -n other get pods` shows the pod unchanged.
 
 ## 7. Scenario 6: deleting a pod

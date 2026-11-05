@@ -1,4 +1,4 @@
-# Hosts, cycle 2: host tools in the gatekeeper — Implementation Plan
+# Hosts, cycle 2: host tools in the gatekeeper (implementation plan)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -12,31 +12,31 @@
 
 > **Status:** executed. The code blocks below are the plan as it was executed; review fixes changed some of them afterwards (the never-list, `ChangeCheck` with absolute program paths, the `docker inspect` filter, the timeout phases in `sshhost.Exec`, `HostAccess`, the snippet's `secure_path` note). The code and the spec are the authority; the plan is kept as the record of how the work was cut.
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: code, comments, docs, commit messages, UI copy. Commit messages end with the line `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`; pull request titles are conventional commits.
-- Go: stdlib first, **no new module**. `go 1.27.1`. `internal/hostexec` does **no I/O** and imports neither `store`, `gatekeeper` nor `sshhost` (its tests may import `sshhost`). `internal/gatekeeper` imports `hostexec` but holds **no credential and no crypto**.
+- Go: stdlib first, no new module. `go 1.27.1`. `internal/hostexec` does no I/O and imports neither `store`, `gatekeeper` nor `sshhost` (its tests may import `sshhost`). `internal/gatekeeper` imports `hostexec` but holds no credential and no crypto.
 - The store has one connection: inside `Store.inTx` use only the `tx`. Timestamps are written with `formatTS` (nine fractional digits).
 - The argument rules (spec 5): `argv` is 1 to 64 words, each 1 to 1024 bytes of valid UTF-8, no control character, no NUL; 4096 bytes in all. The first word of a `host_change` is a program name (letters, digits, `._+-`, not starting with `-`, no `=`) or an absolute path of such names.
-- `host_read` runs only a form of the table of reads **exactly**; nothing else, in any order or with any extra word. `host_change` refuses the never-list **before an approval is asked for and again in `Run`**.
-- The argv travels as single-quoted words in one command line; a change is `sudo -n -- <words>`; docker reads are `sudo -n -- docker ...`, all other reads run as the account. A **canary** runs first in every connection; a shell that fails it makes the tool answer "the account's shell is not supported" and **nothing else is sent**.
+- `host_read` runs only a form of the table of reads exactly; nothing else, in any order or with any extra word. `host_change` refuses the never-list before an approval is asked for and again in `Run`.
+- The argv travels as single-quoted words in one command line; a change is `sudo -n -- <words>`; docker reads are `sudo -n -- docker ...`, all other reads run as the account. A canary runs first in every connection; a shell that fails it makes the tool answer "the account's shell is not supported" and nothing else is sent.
 - Limits: 24 KB per stream (`stdout`, `stderr`), 30 seconds per command, 10 seconds to connect, one connection per host at a time. The whole result goes through `sanitize` (redaction, 32 KB) and opens with a line that says it is data from the host.
-- A secret (private key, passphrase, password) is never in a result, a row, an activity entry, a log or an error. Every failure of a connection reaches the agent as a **fixed sentence**.
+- A secret (private key, passphrase, password) is never in a result, a row, an activity entry, a log or an error. Every failure of a connection reaches the agent as a fixed sentence.
 - A tool that is not offered to a run is answered like a tool that does not exist. A run is offered the group `host` only when it has hosts (`runs.host_count > 0`).
 - The UI: `erasableSyntaxOnly` and `verbatimModuleSyntax` (no enums, `import type`); words come from pure modules with `node --test`; a button that starts a request keeps focus (`aria-disabled` plus a guard).
 - Shell in tests runs on macOS and Linux: no BSD-only flags. Work in the worktree; run `make check` before the pull request.
 
-## Review Focus
+## Review focus
 
 The spec implies these; no task's main tests would otherwise exercise them. Each has a test in the task named in brackets.
 
-1. **A word with a newline, a control character, invalid UTF-8, a NUL or an empty word** must be refused before anything is sent. [Task 2 `TestValidateArgv`, Task 7 `TestHostReadRefusesBadWordsAndSendsNothing`]
-2. **A login shell that is not POSIX** (fish, csh) must fail the canary and receive no command. [Task 5 `TestExecRefusesAShellThatFailsTheCanary`, Task 11 live test]
-3. **The host changes between the question and the run** (address, pin, login) must refuse the approved call. [Task 7 `TestAnApprovedChangeIsNotRunWhenTheHostChangedMeanwhile`]
-4. **`docker inspect` output that is cut or is not JSON** must not be shown, and its environment values never. [Task 4 `TestFilterInspect`, Task 7 `TestDockerInspectNeverShowsEnvironmentValues`]
-5. **A host deleted while a run has it** (`host_count` stays, the binding is gone) must give "no usable host" instead of an error or another host. [Task 7 `TestAHostDeletedMeanwhileIsNotUsable`, Task 6 `TestDeletingAHostRemovesItsBindings`]
+1. A word with a newline, a control character, invalid UTF-8, a NUL or an empty word must be refused before anything is sent. [Task 2 `TestValidateArgv`, Task 7 `TestHostReadRefusesBadWordsAndSendsNothing`]
+2. A login shell that is not POSIX (fish, csh) must fail the canary and receive no command. [Task 5 `TestExecRefusesAShellThatFailsTheCanary`, Task 11 live test]
+3. The host changes between the question and the run (address, pin, login) must refuse the approved call. [Task 7 `TestAnApprovedChangeIsNotRunWhenTheHostChangedMeanwhile`]
+4. `docker inspect` output that is cut or is not JSON must not be shown, and its environment values never. [Task 4 `TestFilterInspect`, Task 7 `TestDockerInspectNeverShowsEnvironmentValues`]
+5. A host deleted while a run has it (`host_count` stays, the binding is gone) must give "no usable host" instead of an error or another host. [Task 7 `TestAHostDeletedMeanwhileIsNotUsable`, Task 6 `TestDeletingAHostRemovesItsBindings`]
 
-Accepted and pinned, not hidden: a container or unit **named like a dangerous program** (`sh`, `run`) is refused by the never-list as a false positive (safe direction); see `TestNeverListFalsePositivesAreKnown`.
+Accepted and pinned, not hidden: a container or unit named like a dangerous program (`sh`, `run`) is refused by the never-list as a false positive (safe direction); see `TestNeverListFalsePositivesAreKnown`.
 
 ---
 
@@ -1550,7 +1550,7 @@ func ChangeCheck(argv []string, r Rules) error {
 - [ ] **Step 4: Run the tests**
 
 Run: `gofmt -l internal/hostexec; go vet ./internal/hostexec && go test ./internal/hostexec -count=1 -race`
-Expected: no gofmt output (`gofmt -w` if the aligned literals are listed), vet clean, PASS. `hostexec`'s tests import `sshhost` (allowed for tests only); if that creates an import cycle, `sshhost` must not import `hostexec` — it does not.
+Expected: no gofmt output (`gofmt -w` if the aligned literals are listed), vet clean, PASS. `hostexec`'s tests import `sshhost` (allowed for tests only); if that creates an import cycle, `sshhost` must not import `hostexec`, and it does not.
 
 - [ ] **Step 5: Commit**
 
@@ -2298,7 +2298,7 @@ git commit -m "feat(sshhost): run a command with two streams apart, behind a she
 
 **Interfaces:**
 - Produces: `run.Run.HostCount int` (`json:"hostCount,omitempty"`); `store.RunOptions{Provider, Prompt string; Tools, Cluster bool; IncidentID int64; HostIDs []int64}`; `(*Store).CreateRunWith(ctx, RunOptions) (run.Run, error)`; `(*Store).RunHosts(ctx, runID string) ([]HostEntry, error)`; `store.ErrNoSuchHost`; `store.KindHostAction = "host_action"`; `(*Store).FinishToolCallWithActivityKind(ctx, id int64, result, summary, kind string) error`.
-- A deviation from the spec, with the reason: `runs.host_count` is a **column** (a copy of the number of bindings at creation), not a subquery of the run columns, because `ClaimNext` reads the run back with `UPDATE ... RETURNING runCols`, and a column keeps that statement and every other select of runs unchanged. Deleting a host removes its binding but not the count; the host tools then find no usable host (review focus 5).
+- A deviation from the spec, with the reason: `runs.host_count` is a column (a copy of the number of bindings at creation), not a subquery of the run columns, because `ClaimNext` reads the run back with `UPDATE ... RETURNING runCols`, and a column keeps that statement and every other select of runs unchanged. Deleting a host removes its binding but not the count; the host tools then find no usable host (review focus 5).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2706,7 +2706,7 @@ func touchHost(ctx context.Context, tx *sql.Tx, id int64) error {
 }
 ```
 
-and call `touchHost(ctx, tx, <host id>)` inside the transaction of `PinHostKey`, `UnpinHostKey`, `SaveHostCredential` and `DeleteHostCredential`, after their other statements and before the activity entry. `SaveHostTest` is **not** touched: a test result must not invalidate an approval.
+and call `touchHost(ctx, tx, <host id>)` inside the transaction of `PinHostKey`, `UnpinHostKey`, `SaveHostCredential` and `DeleteHostCredential`, after their other statements and before the activity entry. `SaveHostTest` is not touched: a test result must not invalidate an approval.
 
 In `internal/store/toolcalls.go` next to `KindClusterAction` add `KindHostAction = "host_action"` with a comment ("an approved command on a host that was run"); rename the body of `FinishToolCallWithActivity` into `FinishToolCallWithActivityKind(ctx, id int64, result, summary, kind string) error` (the last argument replaces `KindClusterAction` in the `callActivity` call) and keep the old name as a one-line wrapper that passes `KindClusterAction`.
 
@@ -5015,7 +5015,7 @@ git commit -m "feat(web): a chip per host on the Ask page, the approval sentence
 - The testbed is a container with a real `sshd`, a real `sudo` and fakes for `docker` and `systemctl`: the account `remedy` (bash, key login) with the `sudoers` file that the onboarding snippet writes for the container pattern `remedy-*` and the unit `node_exporter.service`, and the account `fishy` (fish, not POSIX) for the canary.
 - `up.sh` writes `~/remedy-ssh/env.sh` (`REMEDY_SSH_HOST`, `REMEDY_SSH_PORT`, `REMEDY_SSH_KEY_FILE`); the live tests (`-tags sshlive`) skip without it. `dev/kind/` is the model for the scripts and the README.
 
-- [ ] **Step 1: The sudoers file must be the snippet — a test that runs without Docker**
+- [ ] **Step 1: The sudoers file must be the snippet: a test that runs without Docker**
 
 `internal/sshhost/testbed_test.go`:
 
@@ -5394,7 +5394,7 @@ Run: `go test ./internal/store ./internal/sshhost/... ./internal/hostexec/... ./
 Expected: PASS. (A full `-race` run of `./internal/server` takes about 25 minutes because of argon2 under the race detector: `make check`'s plain run covers the whole package.)
 If the testbed is up: `. ~/remedy-ssh/env.sh && go test -tags sshlive ./internal/sshhost -run Live -count=1`.
 
-- [ ] **Step 6: Commit, push, open the pull request — and do not merge**
+- [ ] **Step 6: Commit, push, open the pull request, and do not merge**
 
 ```sh
 git add -A internal web dev CLAUDE.md docs

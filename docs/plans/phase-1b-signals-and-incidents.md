@@ -12,7 +12,7 @@
 
 **Scope note:** Plan 1a landed the connection, the repos and the read-only client. This plan stops before the responder: no run is created for an incident yet, `incidents.diagnosis` stays empty, and nothing writes `diagnosing` or `diagnosed`. Plan 1c adds the context package, the automatic start rules and the diagnosis card; plan 1d the timeline and the real run against GitHub. The activity table is written here and read per incident only; the global feed and its stream come with the timeline.
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, code, identifiers, comments, UI copy, commit messages.
 - No new Go dependencies and no new web dependencies. The incident views use the shadcn components that exist in `web/src/components/ui` and native `<select>` elements.
@@ -29,7 +29,7 @@
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file. Go code uses tabs.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|

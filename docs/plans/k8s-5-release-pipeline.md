@@ -1,4 +1,4 @@
-# K-5: The Release Pipeline and the Homelab Runbook Implementation Plan
+# K-5: the release pipeline and the homelab runbook implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -25,7 +25,7 @@
 | Argo CD hooks | PostSync | The chart's Helm hook annotations are `post-install,post-upgrade`, which Argo CD runs as `PostSync`; the Application example in the runbook does not set anything for that. |
 | Action versions | not mentioned | Task 3 looks up the latest major of each action with `gh` and uses it. Renovate keeps them current afterwards. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, workflows, scripts, comments, commit messages.
 - The image workflow has `contents: read` everywhere and `packages: write` on the one job that pushes, and nothing else. It logs in to GHCR with `GITHUB_TOKEN`; no personal token and no other secret.
@@ -36,7 +36,7 @@
 - Shell runs on macOS and on Linux: no BSD-only flags (`sed -i ''`, `stat -f`, `date -j`).
 - `make check` passes at the end of every task. Every commit message ends with the trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 
-## Review Focus
+## Review focus
 
 - A tag `v0.2.0` on a chart that says `0.1.0`, a tag `v0.1.0-rc1`, a tag without the `v`: each refuses to publish (task 1).
 - A checksum recomputed after the artifact changed on the vendor's side, or a published checksum that differs from what was downloaded: `--check` and `--expect` fail and the pin file is untouched (task 2).
@@ -48,7 +48,7 @@
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|

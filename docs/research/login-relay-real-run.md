@@ -2,7 +2,7 @@
 
 Date: 2026-10-22. This is **not** the run that `docs/runbook/login-relay-real-run.md` describes. It records the one thing that is known about the wizard and the
 real CLI so far: the maintainer logged the home server's runner in from the Setup page, and it worked. The ten measurements of spec section 13 were not made, and the
-decision of plan task 12 (yes, yes with a PTY, no) is **not taken**. Nothing in this record is a measurement of the relay; it is a report of one use plus what the
+decision of plan task 12 (yes, yes with a PTY, no) is **not taken**. Nothing in this record is a measurement of the relay. It reports one use plus what the
 logs of the running instance show afterwards.
 
 ## What is known

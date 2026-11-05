@@ -13,12 +13,11 @@ boundary of section 9 stays as strong as it was.
 
 ## 2. Decision and why
 
-Markdown in agent prose **is** rendered, but only by our own restricted renderer: `web/src/agenttext.ts` parses a small CommonMark subset into a tree of plain
+Markdown in agent prose is rendered, but only by our own restricted renderer: `web/src/agenttext.ts` parses a small CommonMark subset into a tree of plain
 nodes, and `web/src/components/AgentText.tsx` turns that tree into React elements. No HTML is ever produced or parsed, and no Markdown library is added: a
 library that can emit HTML, follow links or be configured into either would be a second place to audit, and the subset needed is small enough to own and test.
 
-Until 2026-10-22 the rule was "never Markdown". It is changed because the raw markers made long answers hard to read, not because the data became more
-trusted: agent text is still data, and every rule below is there so that rendering it cannot give it more power than a string had.
+Until 2026-10-22 the rule was "never Markdown". It is changed because the raw markers made long answers hard to read. Agent text is as untrusted as before: it is still data, and every rule below is there so that rendering it cannot give it more power than a string had.
 
 ## 3. Security rules
 
@@ -57,7 +56,7 @@ ASCII punctuation; a backslash at the end of a line is a line break. An unbalanc
 `AgentText` (`variant: 'body' | 'compact'`) uses the app's tokens only: serif, 16 px for `body` (an answer, under Remedy's larger one-line sentences) and
 15.5 px for `compact` (a section of a diagnosis card), `leading-relaxed`, `text-foreground/90`; bold `font-semibold`; inline code as a chip, `bg-background`
 inside a card (the file names' chip) and `bg-secondary` on the page itself, where `bg-background` would not show; unordered items with a small accent dot;
-**ordered lists as steps**, each with a round `bg-secondary` badge whose number is in the accent colour, the confidence chip's family; headings as
+ordered lists as steps, each with a round `bg-secondary` badge whose number is in the accent colour, the confidence chip's family; headings as
 `text-[13px] font-semibold text-foreground/80` labels, unlike the card's `text-xs text-muted-foreground` section titles; code blocks in a rounded bordered
 block (`bg-background`, mono 12.5 px, no wrapping, horizontal scroll inside the block); blockquotes with a muted left border. Every container has `min-w-0`
 and breaks long words, so a page at 390 px never scrolls sideways. `compact` tightens the spacing for the diagnosis card's sections. `AgentInline` renders the

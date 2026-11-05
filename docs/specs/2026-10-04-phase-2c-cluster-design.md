@@ -10,8 +10,8 @@ model this builds on) and [`../research/phase-2ab-real-run.md`](../research/phas
 Agents get tools for the Kubernetes cluster. **Read tools run at once, mutating tools wait for the maintainer's approval in the UI**, exactly as the note
 tool of parts A and B does, and every call is audited. The control plane holds the cluster credentials; agents, the runner and the UI never see them.
 
-The part is built and proven against a **throwaway kind cluster** with a real Argo CD in it. Pointing Remedy at the homelab cluster is a matter of
-configuration and RBAC afterwards, not of code.
+The part is built and proven against a **throwaway kind cluster** with a real Argo CD in it. Pointing Remedy at the homelab cluster needs only
+configuration and RBAC afterwards, and no code.
 
 | Part | Content | Status |
 |---|---|---|

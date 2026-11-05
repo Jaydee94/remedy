@@ -1,4 +1,4 @@
-# Phase 2d-1: The Incident Model Implementation Plan
+# Phase 2d-1: The incident model implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -27,7 +27,7 @@ These refine the spec after reading the code and trying the migration.
 | The note of the incident tools | "data from GitHub and from earlier agent runs" | "from GitHub, from the monitoring and from earlier agent runs": an alert's labels are data too. |
 | Checks in the database and in the code | not mentioned | `CHECK` constraints in the table (a known source, a known severity, a repository exactly for GitHub) back `OpenIncident`; the code checks what the table cannot (an empty key or title, details that are not an object). Two mutations that remove only the code check are not caught, because the constraint catches them, so the plan does not list them. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, code, identifiers, comments, UI copy, commit messages.
 - No new Go dependencies and no new web dependencies.
@@ -44,7 +44,7 @@ These refine the spec after reading the code and trying the migration.
 
 A line `Create `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file at that point. Go code uses tabs. Run `gofmt -w` on a file after editing it by hand if a struct changed its alignment.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|

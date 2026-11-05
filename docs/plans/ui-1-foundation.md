@@ -1,4 +1,4 @@
-# UI redesign, part 1: foundation Implementation Plan
+# UI redesign, part 1: foundation implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -10,7 +10,7 @@
 
 **Spec:** [`docs/specs/2026-10-05-ui-conversation-redesign-design.md`](../specs/2026-10-05-ui-conversation-redesign-design.md), section 4 (and 2, 9, 10).
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: code, comments, UI copy, docs, commit messages.
 - `web/tsconfig.app.json` sets `erasableSyntaxOnly` and `verbatimModuleSyntax`: no enums or constructor parameter properties, and `import type` for types.
@@ -25,7 +25,7 @@
 - In a worktree-isolated session the Bash tool refuses commands that name git in a compound or variable form: write such logic into a script file with the Write tool (literal paths) and run it as its own command (see `CLAUDE.md`). A fresh worktree has no `web/node_modules`: run `make web-install` first. Use `command ls`.
 - Work on a branch `feat/ui-1-foundation`, never on `main`.
 
-## Review Focus
+## Review focus
 
 1. A server without the gatekeeper or the incident routes answers `404` to `/api/approvals` or `/api/incidents`: the shell must stay online ("awake"), not show the offline banner. Only a failure that is not an HTTP answer (the server cannot be reached) means offline. (Task 1 tests `nextShell`; Task 5 checks it in the browser.)
 2. The first poll has not answered yet: the sidebar must not say "No open incidents" before it knows. (Task 1 `loaded`; Task 3.)
@@ -37,7 +37,7 @@
 
 ---
 
-## File Structure
+## File structure
 
 | File | Change | Responsibility |
 |---|---|---|
@@ -655,7 +655,7 @@ export const incidentStateColor: Record<IncidentState, string> = {
 
 Run: `cd web && npm run lint && npm run build && npm test`
 Expected: all pass. Run `grep -n "Geist\|geist" web/src web/package.json`: no output.
-Start `make dev-web` is not needed here; the visual check is Task 5.
+Starting `make dev-web` is not needed here; the visual check is Task 5.
 
 - [ ] **Step 7: Commit**
 
@@ -1329,7 +1329,7 @@ This task changes no code unless it finds a defect; a defect goes to a fix dispa
 
 ---
 
-## Self-Review
+## Self-review
 
 **Spec coverage (spec 4):** 4.1 theme: tokens, fonts, keyframes, reduced motion, pill shapes (Task 2). 4.2 shell: `h-dvh` with a scrolling content area, 300 px sidebar from `md`, 56 px top bar, tab bar with 44 px targets and the safe-area inset, five items with badge and active rules, sidebar with logo, awake/dozing, open conversations (dot, title, age; no preview line yet), Coming later, Sign out; shell hook, offline banner, `useShellHeader`, `LegacyPage`, mark and avatar, toast (Tasks 1 and 3). 4.3 login: greeting by hour, neutral line, 401 sentence, API message otherwise (Tasks 1 and 4). Sign out on a phone moves to Setup in part 5, as the spec says. Spec 10: `node --test` for pure logic, `make check`, browser checks (Tasks 1 and 5).
 
@@ -1337,4 +1337,4 @@ This task changes no code unless it finds a defect; a defect goes to a fix dispa
 
 **Type consistency:** `nextShell(prev, approvals, incidents, isHttpError)` (Task 1) is called with `Promise.allSettled` results in `useShell` (Task 3): `PromiseSettledResult<readonly unknown[]>` accepts `ToolCall[]` and `PromiseSettledResult<Incident[]>` accepts the incident list. `ShellState` has `pending`, `incidents`, `online`, `loaded` everywhere (`Sidebar`, `AppLayout`, tests). `Section`, `navItems`, `sectionOf`, `defaultHeader`, `Header` are imported with the same names in `AppLayout`, `Sidebar`, `TabBar`, `MobileBar`, `shellContext`. `RemedyMark` props `size`, `cutout`, `className`; used with `size` and `cutout`.
 
-**Review Focus coverage:** 1, 3 and 2 (`nextShell` tests: HTTP error stays online, unreachable keeps data, `loaded`), 7 (`greeting` tests, Login code), 4, 5 and 6 (Task 3 code and the Task 5 browser steps).
+**Review focus coverage:** 1, 3 and 2 (`nextShell` tests: HTTP error stays online, unreachable keeps data, `loaded`), 7 (`greeting` tests, Login code), 4, 5 and 6 (Task 3 code and the Task 5 browser steps).

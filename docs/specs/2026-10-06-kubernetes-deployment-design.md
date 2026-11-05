@@ -178,7 +178,7 @@ in the pod and an allowlist entry) before any code.
 
 Decision of 2026-10-09 (K-4's first real run): after an interactive login the maintainer measured one file of 249528 KiB under
 `.local` on the host side of the state volume; the headless runs created nothing in the runs observed. The maintainer decided to set
-`DISABLE_UPDATES=1` in the runner pod's environment only, with **no** entry in `provider.FilterEnv`'s allowlist (the headless runs
+`DISABLE_UPDATES=1` in the runner pod's environment only, with no entry in `provider.FilterEnv`'s allowlist (the headless runs
 did not stage anything, and the interactive login session started with `kubectl exec` is expected to inherit the pod environment).
 That the variable keeps the directory away is not yet verified; the maintainer will check it.
 
@@ -288,7 +288,7 @@ cluster) and writes the Secret from it again on every run; `dummy-down` removes 
 `dummy-smoke` (`sh`, `curl`, `jq`): signs in with the password of `dummy.env` and the CSRF header; waits until `capabilities`
 shows the cluster tools; starts an ad-hoc run with cluster tools asking why `demo/crashy` crashes; waits for the run to end
 (`REMEDY_RUN_TIMEOUT` applies) and asserts: status `succeeded`, at least one `cluster_*` read tool call succeeded, no denied call. It
-then starts a second run asking for a restart of `demo/web`, waits for the approval, approves **only** a restart of
+then starts a second run asking for a restart of `demo/web`, waits for the approval, approves only a restart of
 `demo/web` (any other approval is denied and fails the test), and asserts that the deployment's `restartedAt` annotation is
 at or after the approval and that the rollout completed. A run that ends with "Not logged in" prints "run `make dummy-login`" and exits non-zero. The script reads no
 credentials and sends the password only to the dummy URL.

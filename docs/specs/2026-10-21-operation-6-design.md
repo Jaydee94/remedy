@@ -110,7 +110,7 @@ Each step names who acts. A step that changes the server or the NAS waits for th
 - **Take the NAS access away:** delete the host in the UI (the sealed credential goes with it), then on the NAS remove `/etc/sudoers.d/remedy`, the key line and the account. Either half alone is enough to stop SSH use; both is clean.
 - **The control plane never becomes Ready** (the probes of port 8080 under kube-router, unverified): the runbook's workaround is to add the node range to `networkPolicy.public.from`; as a last resort `networkPolicy.enabled: false` for the time of the check, with the exposure that means said in the record.
 - **The alert does not appear in Alertmanager or has other labels than expected:** the drill stops at step 7 and the rule or the host rule is corrected; no run has been spent.
-- **The run asks for something other than `docker start remedy-drill`:** deny it. That is a finding for the record, not a failure of the drill's safety; the barriers are the approval and the sudoers file.
+- **The run asks for something other than `docker start remedy-drill`:** deny it. That is a finding for the record. The drill's safety rests on the approval and the sudoers file.
 - **A quota surprise:** the guard in section 2 keeps automatic diagnosis off until the drill; the limits (3 per incident, `diagnose_max_per_day`) bound the rest.
 
 ## 8. Tests

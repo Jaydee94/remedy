@@ -1,4 +1,4 @@
-# K-2: The Helm Chart's Core Implementation Plan
+# K-2: The Helm chart's core implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -26,7 +26,7 @@
 | `kubeconform` | in `make check` | `make chart-check` runs it when it is installed and says it skipped it otherwise; CI installs it. |
 | What the API server rule can and cannot protect (spike S3, kind half) | `apiServer.cidrs` and `port: 6443` | Kept as planned: kind enforces policies, and a rule by endpoint address and port (`172.18.0.2/32:6443` in the record) lets the server reach the API, also through the service address `kubernetes.default.svc`. The record adds two consequences that the values comment and the chart's README now state. (1) The runner's rule is by address **and port**: with the API on 6443 (k3s and kind), a runner rule that allows only 443 to the public range blocks the API by port whatever the address; an API on 443 with a public address is **not** protected by the `except` list (inferred from the record's control run, not measured), while the usual homelab node ranges (`192.168.0.0/16`, `10.0.0.0/8`) are in the excepted ranges and are blocked by address. (2) Cluster pods have addresses in `10.0.0.0/8`, which the runner rule excepts, so traffic to a pod needs a pod or namespace selector rule, never an address. The k3s half of S3 is a maintainer step; nothing here assumes its result. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, templates, comments, commit messages.
 - The chart never creates the admin password, the runner token or the master key: they come from `existingSecret`, and the render fails without `existingSecret.name`. No default value of any kind carries a secret.
@@ -37,7 +37,7 @@
 - The image tag defaults to the chart's `appVersion`; no `latest`.
 - `go test ./... -race -count=1` and `make check` pass at the end of every task. Every commit message ends with the trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 
-## Review Focus
+## Review focus
 
 - A render without `existingSecret.name`, without `runner.cli.version`, with an Ingress and no host, or with the cluster on and no API server address: each must fail with a message that names the value (the tests below).
 - A `server.env` entry that is a secret in disguise (`MY_API_TOKEN`): the render fails.
@@ -49,7 +49,7 @@
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file. Go code uses tabs; YAML uses two spaces.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|

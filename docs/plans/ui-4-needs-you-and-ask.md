@@ -10,7 +10,7 @@
 
 **Spec:** [`docs/specs/2026-10-05-ui-conversation-redesign-design.md`](../specs/2026-10-05-ui-conversation-redesign-design.md), section 7 (and 2, 3.1, 3.2, 6.3, 9, 10). Earlier plans: `ui-1-foundation.md` to `ui-3-thread-and-run.md`; the building blocks of part 3 (`RemedyMessage`, `ApprovalAsk`, `EmptyState`) exist.
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: code, comments, UI copy, docs, commit messages.
 - `web/tsconfig.app.json` sets `erasableSyntaxOnly` and `verbatimModuleSyntax`: no enums or constructor parameter properties, `import type` for types.
@@ -24,7 +24,7 @@
 - In a worktree-isolated session the Bash tool refuses commands that name git in a compound or variable form: use plain separate commands or a script file with literal paths (see `CLAUDE.md`); run npm with `--prefix web`. A fresh worktree has no `web/node_modules`: run `npm ci --prefix web` first. Use `command ls`. `npm run lint` must print no warnings.
 - Work on a branch `feat/ui-4-needs-you-and-ask`, never on `main`.
 
-## Review Focus
+## Review focus
 
 1. Two calls waiting at once: the older one is shown first (it is decided first); deciding one leaves the other untouched and the page never shows a decided call as waiting. (Task 1 test, Task 2.)
 2. A call whose agent no longer waits (`waiting === false`, not yet marked abandoned): no buttons, the ask says so. (`ApprovalAsk`, Task 2.)
@@ -38,7 +38,7 @@
 
 ---
 
-## File Structure
+## File structure
 
 | File | Change | Responsibility |
 |---|---|---|
@@ -785,10 +785,10 @@ No code changes unless a defect is found (a defect goes to a fix dispatch). Noth
 
 ---
 
-## Self-Review
+## Self-review
 
 **Spec coverage (spec 7):** 7.1 Needs you: oldest first, the ask avatar, "Remedy, asked N min ago, Incident #N, the run", the question in Literata, the card with the tool in mono and "exactly this runs if you approve", the arguments, the reason (500 characters) and Yes/No at full width (the large `ApprovalAsk`), the toast (inside `ApprovalAsk`), nothing optimistic (the poll), "Nothing waits for you.", "Already answered" with the tool, the decision in colour ("approved, failed"), the age, the outcome and both links (Tasks 1, 2). 7.2 Ask Remedy: "What should I look into?", the large card with a Literata textarea, the chips, the round send button, the cluster rules, Cmd/Ctrl+Enter, navigation to `/runs/:id`, the error in place, the hint from real data, "Earlier conversations" with "Waiting for you" matched by `runId` and "Diagnosis of incident #N", `statusColor` replaced by the phase view (Tasks 1, 3). **Deviation, recorded:** the spec's "the state comes from the 1 s poll" is the page's own hook `useApprovals` (the shell polls the pending approvals every 2 s and carries no history). **Placeholder scan:** none. The notes about import conventions are mechanical (the compiler decides).
 
 **Type consistency:** `splitApprovals`, `decisionView`, `answeredAt` (Task 1) are used by `NeedsYouPage` and `AnsweredRow` (Task 2). `AskSwitches`, `toggleTools`, `toggleCluster`, `askHint`, `recentRun`, `RecentRun` (Task 1) are used by `AskPage` and `RecentRunRow` (Task 3). `ApprovalAsk` takes `call`, `variant`, `onChanged` as in part 3; `onChanged` reloads the approvals, as `ApprovalAsk` stays disabled after a decision until the call changes.
 
-**Review Focus coverage:** 1 (Task 1 test; Task 2), 2 (part 3's `ApprovalAsk`; Task 4), 3 (Task 1 tests), 4 (Task 2 code; Task 4), 5 (Task 1 tests), 6 (Task 1 tests; Task 3), 7 (Task 3 code; Task 4), 8 and 9 (Tasks 2 to 4).
+**Review focus coverage:** 1 (Task 1 test; Task 2), 2 (part 3's `ApprovalAsk`; Task 4), 3 (Task 1 tests), 4 (Task 2 code; Task 4), 5 (Task 1 tests), 6 (Task 1 tests; Task 3), 7 (Task 3 code; Task 4), 8 and 9 (Tasks 2 to 4).

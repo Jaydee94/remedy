@@ -25,7 +25,7 @@ A dry run of everything the responder hands to the agent, with real data and wit
   cache-read, 986 output tokens). Billed to the subscription.
 - Events: `system`, three `assistant` (two `Grep` calls in the workspace, then the `StructuredOutput` call),
   three `user` (tool results), one `rate_limit_event`, one `result`.
-- The schema with an array of strings, a boolean and two enums was **accepted**, with `description` members and
+- The schema with an array of strings, a boolean and two enums was accepted, with `description` members and
   without any length keyword. The `result` event carried `structured_output` (1,284 bytes), and
   `diagnosis.Parse` accepted it without changes.
 - The answer, shortened: the web job fails at `npm ci` because `web/package-lock.json` was not updated after the
@@ -33,7 +33,7 @@ A dry run of everything the responder hands to the agent, with real data and wit
   `dependency_update`; affected files `web/package.json` and `web/package-lock.json`; the fix is `npm install` in
   `web/` and committing the lock file, then checking that the build and the linter work with TypeScript 7, with a
   fallback to keep `~6.0.x`; `fix_looks_automatable` true. The cause cites a line of the lock file that the agent
-  found with `Grep` in the snapshot, so the snapshot was used and not only the log.
+  found with `Grep` in the snapshot, so the agent used the snapshot as well as the log.
 
 ## What this does and does not show
 

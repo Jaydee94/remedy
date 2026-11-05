@@ -1,4 +1,4 @@
-# Phase 2c-3: The Cluster Actions and the Real Run Implementation Plan
+# Phase 2c-3: the cluster actions and the real run implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -10,7 +10,7 @@
 
 **Spec:** [`docs/specs/2026-10-04-phase-2c-cluster-design.md`](../specs/2026-10-04-phase-2c-cluster-design.md), sections 6, 9 to 11 and the third step of section 10. The foundation and the read tools are [plan 2c-1](phase-2c-1-cluster-foundation.md) and [plan 2c-2](phase-2c-2-cluster-read-tools.md), implemented.
 
-**Scope note:** No scaling, no `apply`, no pruning sync. The automatic responder gets no cluster tools. What a `Writer` request must look like for a real Argo CD was **tried against the real testbed while this plan was written**, and so were the three prompts of the runbook with the real CLI; the tasks below repeat that as tests and as the recorded run.
+**Scope note:** No scaling, no `apply`, no pruning sync. The automatic responder gets no cluster tools. What a `Writer` request must look like for a real Argo CD was tried against the real testbed while this plan was written, and so were the three prompts of the runbook with the real CLI; the tasks below repeat that as tests and as the recorded run.
 
 ## Decisions made while planning
 
@@ -26,7 +26,7 @@ These refine the spec after trying the testbed and the real CLI.
 | Live tests that change the cluster | the real run | Go tests with the build tag `kindwrite` restart, delete and sync on the real testbed and show that RBAC stops a `Writer` the code would allow. They are not part of CI, and not of `-tags kind` (they change what those expect). |
 | Argo CD example on arm64 | not mentioned | The `guestbook` example of Argo CD syncs and becomes `Healthy` within 20 seconds on an arm64 laptop; the testbed needs no other source. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, code, identifiers, comments, UI copy, commit messages.
 - No new Go dependencies and no new web dependencies.
@@ -43,7 +43,7 @@ These refine the spec after trying the testbed and the real CLI.
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file. Go code uses tabs.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|

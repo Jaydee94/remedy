@@ -148,7 +148,7 @@ Not part of these criteria and not measured again here: the latency of the Appro
   session (a compound command) while the click on Approve ran in parallel. The check was repeated properly in scenario 4 (deny) and scenario 6 (the pod is
   still there while the approval waits), and the annotation of scenario 3 equals the second of the decision. No change in Remedy.
 - **Playwright console.** One error line in the browser console at the sign-in page (the 401 of the check whether a session exists), the same as in earlier
-  runs. Not a fault.
+  runs and not a fault.
 - **Carried over, unchanged by this run:** the leftover directory of the MCP configuration after a `kill -9` of the runner, the UI that polls for approvals
   (the 2 s criterion of part B), and that there is no log line per MCP call. Nothing new in the cluster part.
 - Earlier in plan 2c-3 the live tests found three things that were fixed before this run: the Argo CD `operation` field sits at the top level of the

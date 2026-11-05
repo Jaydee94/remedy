@@ -72,9 +72,9 @@ Pointing Remedy at the real Alertmanager of the home server is cycle 6.
 | `auto_approval_timeout` | duration | `REMEDY_AUTO_APPROVAL_TIMEOUT` (15 m) | `0` (off) or at least 1 m | when a call starts waiting (registered in plan 4b, with its consumer) |
 
 **The secret kind.** The stored value is JSON `{"sealed": "<base64>", "hint": "…abcd"}`; the sealing is `secret.Key.Seal` with the additional data `settings/<key>`, the same AES-256-GCM as the host
-credentials. The reader needs the master key and keeps the sealed bytes and the hint in the snapshot, **never the plaintext**; `Secret(key)` opens it on demand and returns a `secret.Value`
+credentials. The reader needs the master key and keeps the sealed bytes and the hint in the snapshot, never the plaintext; `Secret(key)` opens it on demand and returns a `secret.Value`
 (its text form is `***`, so it cannot reach a log or an error). `GET /api/settings` shows a secret with `kind: "secret"`, `value: null` and a `hint`. `PUT` takes `{"value": "<text>"}` once;
-`DELETE` removes it. The **activity entry of a secret change names the key only**, never a value or a hint. A sealed value that cannot be opened (a changed master key) is a `problem` on the row,
+`DELETE` removes it. The activity entry of a secret change names the key only, never a value or a hint. A sealed value that cannot be opened (a changed master key) is a `problem` on the row,
 as in Setup for the GitHub token, and the source reports `error`.
 
 The URL carries no credential by design: the token is the only secret, so the Setup page can show the URL.
@@ -103,11 +103,11 @@ An empty URL means `off` and nothing runs.
 **Data** (migration 013): `hosts.matchers TEXT NOT NULL DEFAULT ''` and `incidents.host_id INTEGER REFERENCES hosts (id) ON DELETE SET NULL` (a deleted host leaves the incident without a host).
 
 **The rules.** One matcher per line in the Alertmanager syntax: `label="value"`, `label!="value"`, `label=~"regex"`, `label!~"regex"`; the value is quoted, a regex is RE2 and anchored to the whole value, a missing label counts as the empty
-string (as in Alertmanager). **All lines of a host must hold**; a host with no lines never matches. The server checks on `PATCH /api/hosts/{id}`: at most 10 lines, at most 200 characters per line, the regex compiles,
+string (as in Alertmanager). All lines of a host must hold; a host with no lines never matches. The server checks on `PATCH /api/hosts/{id}`: at most 10 lines, at most 200 characters per line, the regex compiles,
 label names follow the Prometheus rule; an error is a 400 with a readable text. For the NAS one line is enough: `instance=~"ugreen-nas(:[0-9]+)?"`.
 
 **The mapping** looks at the hosts in the order of their ids; the first host whose rules all hold becomes `host_id`. When more than one matches, the names of the others are in `details.alsoMatches` and the UI shows
-"also matches: …". Nothing is guessed. It runs at **every** observation, so a changed rule applies in the next cycle. The labels are only compared: never executed, never put into a command.
+"also matches: …". Nothing is guessed. It runs at every observation, so a changed rule applies in the next cycle. The labels are only compared: never executed, never put into a command.
 
 ## 7. The responder for outages
 
@@ -210,5 +210,5 @@ Two plans, each ending with `make check` and a green CI; the second builds on th
 - 4a (answered when it was built): the wire form of the secret setting is `kind: "secret"`, `value: null` and a `hint` (section 4); the state of the source lives in memory in `internal/signals` (`Runner.States`, which `GET /api/signals` answers; a restart forgets it and the next cycle fills it in; before the first attempt the state is `pending`); the runner's loop (`Runner.Run`) is started by `cmd/remedy-server` with the process context and ends with it.
 - 4b (answered by the rulings of [the plan](../plans/alertmanager-4b-responder.md), "Rulings of the planning", when it was built):
   - A host deleted between the mapping and the start is skipped: `StartDiagnosis` binds only hosts that still exist, and `startOutage` also leaves out a host that was disabled; the prompt then says the run has no host tools. The wording of the outage prompt is `prompt.Outage`. The fake Alertmanager for real runs is a small Go server, `dev/fakealertmanager`.
-  - Found in the final review of 4a: (a) incidents of a source that is switched off, or whose address changed, stay open and keep `auto_diagnose`: answered by **fresh candidates only**, a non-GitHub incident is an automatic candidate only if its `last_seen` is at most `max(10 minutes, 3 x poll interval)` old, so such an incident is never diagnosed on its own; (b) a touch still refreshes the host and the details only, **not the title, the severity or the URL** (no change); (c) a host whose rules are only negative or can match the empty value maps every alert to the lowest host id: a documented property (runbook), not changed.
+  - Found in the final review of 4a: (a) incidents of a source that is switched off, or whose address changed, stay open and keep `auto_diagnose`: answered by fresh candidates only: a non-GitHub incident is an automatic candidate only if its `last_seen` is at most `max(10 minutes, 3 x poll interval)` old, so such an incident is never diagnosed on its own; (b) a touch still refreshes the host and the details only, not the title, the severity or the URL (no change); (c) a host whose rules are only negative or can match the empty value maps every alert to the lowest host id: a documented property (runbook), not changed.
   - **Structured output together with MCP tools: proven on 2026-10-19, yes.** The GitHub responder uses `--json-schema` without tools; the outage run needs both. The unit tests use the fake CLI; the real run (CLI 2.1.303, [record](../research/phase-2d-real-run.md)) is the proof: all nine runs ended `succeeded` with an answer that `diagnosis.ParseOutage` accepted, after 3 to 5 tool calls each. Its findings (the agent proposed a change instead of requesting it unless the alert carried a runbook hint; the approval of an automatic run had no incident; a re-fired alert opened a new automatic run) were fixed afterwards, see `docs/plans/outage-followups.md` and the control run in the record.

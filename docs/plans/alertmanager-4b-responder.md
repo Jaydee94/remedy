@@ -10,7 +10,7 @@
 
 **Spec:** `docs/specs/2026-10-16-alertmanager-4-design.md` (sections 2, 7, 8, 9, 10 and 11 items 1 and 8 to 10; its section 15 notes for 4b are decided in the rulings below). Parents: `docs/plans/alertmanager-4a-source.md` (built), the settings spec `docs/specs/2026-10-14-settings-3-design.md`, the gatekeeper spec `docs/specs/2026-10-04-phase-2ab-gatekeeper-and-approvals-design.md`, the host tools spec `docs/specs/2026-10-11-hosts-2-tools-design.md`.
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English. Go is stdlib-first; **no new dependency**. Run `gofmt -w` on every Go file you write before you commit. A new file name must be free before you create it (`command ls <path>` first). `Store.inTx` bodies use only the `tx`. Timestamps in SQLite have nine fractional digits (`formatTS`/`parseTS`); every state change writes its `activity` entry in the same transaction.
 - **Agents get no raw shell and no credentials.** An outage run acts only through the gatekeeper: read tools are free, every change waits for an approval. The agent edits nothing; the answer is a diagnosis that the maintainer reads.
@@ -30,7 +30,7 @@
 5. **Structured output together with MCP tools is not proven.** The GitHub responder uses `--json-schema` without tools; the outage run needs both. The unit tests use the fake CLI; the real run (Task 9) is the proof. If the real CLI cannot combine them, the run stops there and the maintainer decides; nothing in this plan works around it.
 6. **The real run costs subscription quota and needs the maintainer** (Task 9 prepares everything and does not start it).
 
-## Review Focus
+## Review focus
 
 1. **An approval that expires must never lead to an executed action:** the compare-and-set against `Decide` (exactly one winner), an approved-but-not-yet-running call is not expired, a late `Decide` is refused (Task 3 and 4 tests).
 2. **The outage prompt as an injection target:** a label or annotation that imitates the delimiter or says "ignore previous instructions", a secret in an annotation, huge values, control characters (Task 2 tests).
@@ -40,7 +40,7 @@
 
 ---
 
-## File Structure
+## File structure
 
 | File | Responsibility |
 |---|---|
@@ -924,7 +924,7 @@ func ms(n int) func() time.Duration { return func() time.Duration { return time.
 ```
 (If `FinishRun` has another signature or `CreateToolRun`'s run must be finished differently, adapt; the point is: a running automatic responder run and its token in `e.run`/`e.token`.)
 
-Tests (write each in full; the mutating tool is `note_add` of `gatekeeper.NoteTool` — check its name and arguments in `tools_incident.go`, with the incident id from `seedIncident` or the alert incident):
+Tests (write each in full; the mutating tool is `note_add` of `gatekeeper.NoteTool`; check its name and arguments in `tools_incident.go`, with the incident id from `seedIncident` or the alert incident):
 1. `TestAnApprovalOfAnAutomaticRunExpiresAndTheAgentIsTold`: timeout 150 ms; `s := e.open(t, "toolu_1", "note_add", args)`; `s.result()` returns within about 2 s with `isErr == true` and text containing `no decision within`; the call is `abandoned`/`abandoned` in the store; `e.st.ListApprovals(ctx, store.ApprovalFilter{PendingOnly: true})` is empty; the activity has one `approval_expired` entry; the run is still `running`.
 2. `TestAfterTheExpiryTheRunGoesOn`: after the first call expired, a second call (another tool use id, a read tool such as `incident_get`) works and a second mutating call gets a new deadline and expires too (the run is not poisoned).
 3. `TestARunThatAClickStartedNeverExpires`: `approvalEnv(t)` variant with `c.ApprovalTimeout = ms(100)` (the env's run is not automatic): the approval is still pending after 600 ms (`e.pending(t)` returns it) and can then be approved and executes.

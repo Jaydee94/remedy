@@ -1,4 +1,4 @@
-# K-3: The Cluster Identities Implementation Plan
+# K-3: the cluster identities implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -26,7 +26,7 @@
 | Hook mapping under Argo CD | PostSync | The chart's hook annotations are `post-install,post-upgrade`; Argo CD maps those to `PostSync`. The runbook of plan K-5 says so. |
 | Fail-closed proof | "actions fail closed" | A unit test of the `Writer` (task 1) pins it. A live check would need a whole agent run; the real proof does not repeat it. |
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, templates, scripts, comments, commit messages.
 - The write identity never reads and the read identity never changes: the read ClusterRole has only `get` and `list`, the write Roles only `patch` (workloads, Argo CD applications) and `delete` (pods), and no rule of any role names `secrets` or `configmaps`, except the refresher's, which names one Secret.
@@ -35,7 +35,7 @@
 - A token never appears in a log line, a template, a test's output or a record. The real proof prints hashes or lengths, never a token.
 - No new Go or web dependencies. `go test ./... -race -count=1` and `make check` pass at the end of every task. Every commit message ends with the trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 
-## Review Focus
+## Review focus
 
 - A start with a write token file that is missing, empty or filled later: starts, warns, fails each action closed, and works when the file fills, without a restart (task 1).
 - A write token file that holds two lines or nothing readable at all (a directory): still refused at start; only "missing" and "empty" are tolerated (task 1).
@@ -47,7 +47,7 @@
 
 A line `Create `path`:` or `Overwrite `path`:` is followed by the complete file. A line `In `path`, replace:` is followed by a block with the exact old text, a line `with:` and a block with the new text; the old text occurs exactly once in the file. Go code uses tabs; YAML uses two spaces.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|

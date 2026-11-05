@@ -1,4 +1,4 @@
-# Settings in the database (cycle 3) Implementation Plan
+# Settings in the database (cycle 3) implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -10,14 +10,14 @@
 
 **Spec:** `docs/specs/2026-10-14-settings-3-design.md` (umbrella: `docs/specs/2026-10-09-hosts-and-skills-design.md`, section 6).
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: code, comments, docs, commit messages, UI copy.
-- Go is stdlib-first; **no new dependency**.
+- Go is stdlib-first; no new dependency.
 - `Store.inTx` bodies use only the `tx`; a call on `s.db` inside deadlocks (one connection).
 - Timestamps in SQLite have nine fractional digits (`formatTS`/`parseTS`).
-- Every state change writes its `activity` entry **in the same transaction**.
-- The environment is read at start-up and parsed with the **same bounds and the same error text** as today (`REMEDY_POLL_INTERVAL must be a duration of at least 10s, for example 60s or 2m`); the existing tests in `internal/config` must pass unchanged.
+- Every state change writes its `activity` entry in the same transaction.
+- The environment is read at start-up and parsed with the same bounds and the same error text as today (`REMEDY_POLL_INTERVAL must be a duration of at least 10s, for example 60s or 2m`); the existing tests in `internal/config` must pass unchanged.
 - Bounds (verbatim from the spec): `poll_interval` at least 10 s; `diagnose_cooldown` at least 1 m; `diagnose_max_per_incident` 0 to 20; `diagnose_max_per_day` 0 to 200 (0 turns automatic diagnosis off); `k8s_write_namespaces` checked by `kube.ParseNamespaces`; `run_timeout` at least 10 s. Defaults: 60 s, 15 m, 3, 20, empty, 10 m.
 - Reaper threshold: `max(15 min, run_timeout + 5 min)`.
 - Secrets never appear in `GET /api/settings`: not the admin password, not the runner token, not the master key, not even as "set".
@@ -27,7 +27,7 @@
 - A new test file name must be free before creating it (`command ls <path>` first).
 - Commit messages end with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Pull request title: `feat: settings in the database (cycle 3)`.
 
-## Review Focus
+## Review focus
 
 1. **An allowlist changed between the question and the action.** A namespace removed after the approval was asked for must be refused when the action runs (Task 5 test), and an empty list refuses everything.
 2. **An invalid stored row after a downgrade or a hand edit.** It must not stop the start, must not shadow the environment's value, and must show up as a `problem` (Task 3 tests).
@@ -37,7 +37,7 @@
 
 ---
 
-## File Structure
+## File structure
 
 | File | Responsibility |
 |---|---|
@@ -1845,7 +1845,7 @@ func (r *Responder) limits() store.DiagnosisLimits {
 	return r.Limits
 }
 ```
-Replace the four uses of `r.Limits` (`Limits: r.Limits` in the `StartParams` literal near line 142, `r.Limits.MaxPerDay` and `r.Limits` near 240–243, `r.Limits.Cooldown` near 263) by `r.limits()` — in `AutoStart` call it **once** into a local (`limits := r.limits()`) so one cycle uses one set of numbers. Keep the exported field `Limits` (tests and `server.limits` read it).
+Replace the four uses of `r.Limits` (`Limits: r.Limits` in the `StartParams` literal near line 142, `r.Limits.MaxPerDay` and `r.Limits` near 240–243, `r.Limits.Cooldown` near 263) by `r.limits()`. In `AutoStart` call it once into a local (`limits := r.limits()`) so one cycle uses one set of numbers. Keep the exported field `Limits` (tests and `server.limits` read it).
 
 Run: `go test ./internal/responder -race`
 Expected: PASS.
@@ -3280,7 +3280,7 @@ and delete `web/src/components/setup/LimitsSection.tsx`.
 Run: `cd web && npm run lint && npm test && npm run build`
 Expected: PASS (the build type-checks the component).
 
-Run: `command grep -rn LimitsSection web/src` — Expected: no match.
+Run: `command grep -rn LimitsSection web/src`. Expected: no match.
 
 ```bash
 git add web
@@ -3383,7 +3383,7 @@ Run it only with the testbed up:
 Run: `. ~/remedy-kind/env.sh && go test -tags kindwrite -run 'LiveAllowlist' ./internal/gatekeeper`
 Expected: PASS. If the testbed is not up (`dev/kind/up.sh`), say so in the final report instead of skipping silently.
 
-Run also: `go vet -tags kind,kindwrite,sshlive ./...` — Expected: no output.
+Run also: `go vet -tags kind,kindwrite,sshlive ./...`. Expected: no output.
 
 - [ ] **Step 3: The whole check**
 

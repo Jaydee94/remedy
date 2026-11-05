@@ -1,4 +1,4 @@
-# Phase 1a: GitHub Foundation Implementation Plan
+# Phase 1a: GitHub foundation implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -12,19 +12,19 @@
 
 **Scope note:** The spec covers four independent plans. This is the first. The poller and incidents (spec steps 5 and 6), the responder (step 7) and the timeline plus the real run against GitHub (steps 8 and 9) each get their own plan after this one lands, because they depend on what the spike and the real GitHub responses show.
 
-## Global Constraints
+## Global constraints
 
 - Everything committed is English: docs, code, identifiers, comments, UI copy, commit messages.
 - No new Go dependencies. New web dependencies are only `react-router` and what the shadcn CLI installs (`radix-ui`, `lucide-react`, `class-variance-authority`, `cn`, `tw-animate-css`, `@fontsource-variable/geist`, `shadcn`).
-- The GitHub token is **write-only**: it never appears in an API response, a log line, an error message or the database in plaintext. Its text form is always `***`.
-- The GitHub client is **read-only**: every exported method name starts with `Get` or `List`, and it only sends `GET`.
+- The GitHub token is write-only: it never appears in an API response, a log line, an error message or the database in plaintext. Its text form is always `***`.
+- The GitHub client is read-only: every exported method name starts with `Get` or `List`, and it only sends `GET`.
 - `web/tsconfig*.json` must not use `baseUrl` (deprecated in TypeScript 6, removed in 7). Use `paths` only.
 - `web/tsconfig.app.json` keeps `erasableSyntaxOnly` and `verbatimModuleSyntax`: no enums, no constructor parameter properties, `import type` for types.
 - Every UI change is checked in a real browser (Playwright) before it is called done.
 - Every commit message ends with the trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 - `make check` and `go test ./... -race -count=1` must pass at the end of every task.
 
-## File Structure
+## File structure
 
 | Path | Responsibility |
 |---|---|
@@ -40,7 +40,7 @@
 
 ### Task 1: Spike: structured output in `stream-json` mode
 
-The responder needs a structured diagnosis (spec section 6). The CLI documents `--json-schema` for `--output-format json`. Whether `--output-format stream-json` delivers it too is **unverified**, and Plan 3 builds on the answer. The other tasks do not depend on it and may proceed in parallel.
+The responder needs a structured diagnosis (spec section 6). The CLI documents `--json-schema` for `--output-format json`. Whether `--output-format stream-json` delivers it too is unverified, and Plan 3 builds on the answer. The other tasks do not depend on it and may proceed in parallel.
 
 **Files:**
 - Create: `scripts/spike/structured-output.sh`

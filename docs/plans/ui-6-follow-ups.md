@@ -1,4 +1,4 @@
-# UI redesign, follow-ups Implementation Plan
+# UI redesign, follow-ups implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -12,7 +12,7 @@
 
 **Not in this plan (they need a backend change or a decision, or have no evidence of a problem):** the digest that can count a failed re-diagnosis for up to 24 hours (needs a "diagnosed at" field), `GET /api/runs?incident=` carrying full responder prompts and the cap of 50, `runSteps` recomputed on every event, announcing new thread messages to screen readers, the Undo button being last in the tab order, focus returning after "Diagnose now" and after an answered ask in the thread.
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: code, comments, UI copy, docs, commit messages.
 - `web/tsconfig.app.json` sets `erasableSyntaxOnly` and `verbatimModuleSyntax`: no enums or constructor parameter properties, `import type` for types.
@@ -24,7 +24,7 @@
 - In a worktree-isolated session the Bash tool refuses commands that name git in a compound or variable form: use plain separate commands or a script file with literal paths (see `CLAUDE.md`); run npm with `--prefix web`. Use `command ls`.
 - Work on a branch `feat/ui-6-follow-ups`, never on `main`.
 
-## Review Focus
+## Review focus
 
 1. A 401 from any request while signed in ends the session in the UI exactly once and shows a notice on the login page; a wrong password (401 from `/api/login`) and the first `GET /api/me` (401 when nobody is signed in) must NOT count as an expired session; polling stops because the pages unmount. (Task 2.)
 2. Signing out when the request fails keeps the user signed in and says so in a toast; it never leaves an unhandled rejection. (Task 2.)
@@ -38,7 +38,7 @@
 
 ---
 
-## File Structure
+## File structure
 
 | File | Change | Responsibility |
 |---|---|---|
@@ -325,7 +325,7 @@ No code changes unless a defect is found (a defect goes to a fix dispatch). Noth
 
 ---
 
-## Self-Review
+## Self-review
 
 **Coverage of the follow-ups:** preview after a failed diagnosis (Task 1), 401 and polling after a 401 (Task 2), `signOut` error handling (Task 2), `text-subtle`, input border and the ignored chip contrast (Task 3), `sm` buttons (Task 3), the aside width (Task 3), `timeAgo` in render (Task 4), dates on thread times (Task 4), the token in the `value` attribute (Task 5), blur on disabled-while-busy (Task 5), 500 bytes versus characters (Tasks 1, 5), section titles as headings, the raw line of a step, the duplicate "Tool calls" title (Task 5). **Left out, with the reason, at the top.**
 
@@ -333,4 +333,4 @@ No code changes unless a defect is found (a defect goes to a fix dispatch). Noth
 
 **Type consistency:** `incidentPreview`, `dayTimeLabel`, `limitBytes` (Task 1) are used by Tasks 4 and 5. `useSignOut` (Task 2) is used by `Sidebar` and `SetupPage`. `useClock` (Task 4) replaces the default clock of `timeAgo`/`repoSubline`.
 
-**Review Focus coverage:** 1 and 2 (Task 2; Task 6), 3 (Task 3 test), 4 and 5 (Task 4; Task 6), 6 and 7 (Task 5; Task 6), 8 (Task 1 tests; Task 5), 9 (Task 3; Task 6).
+**Review focus coverage:** 1 and 2 (Task 2; Task 6), 3 (Task 3 test), 4 and 5 (Task 4; Task 6), 6 and 7 (Task 5; Task 6), 8 (Task 1 tests; Task 5), 9 (Task 3; Task 6).

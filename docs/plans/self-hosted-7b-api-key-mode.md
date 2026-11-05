@@ -10,18 +10,18 @@
 
 **Spec:** `docs/specs/2026-10-21-self-hosted-for-others-design.md`, sections 4, 5, 8, 9, 11 and 13 (points 1 and 3 to 4). 7a is merged (release 0.19.x). 7c (the webhook) is not part of this plan.
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English. Pull request titles are conventional commits; the pull request of this cycle is `feat:` (a new mode, nothing existing changes), the plan's own is `docs:`.
-- **The key lives in the runner's environment only.** It never reaches the control plane, a database column, a log, an event, an API answer, an error, argv or a file Remedy writes. `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL` stay banned in both modes; `--bare` is not used (spec 5.5).
+- The key lives in the runner's environment only. It never reaches the control plane, a database column, a log, an event, an API answer, an error, argv or a file Remedy writes. `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL` stay banned in both modes; `--bare` is not used (spec 5.5).
 - In `subscription` mode a key in the runner's environment is dropped as today, and now reported once at start (a warning in the log).
-- **Money is shown only for key-billed runs, and always as the CLI's estimate** (`total_cost_usd` is not a charge; for a subscription it means nothing).
-- The migration number is **003** (the spec's "017" is the SQLite numbering; `002_incidents_hot_updates.sql` is the last). Existing tests list the applied migrations in one constant, `appliedMigrations` in `internal/store/schema_test.go`; update it.
-- Money settings are **cents** (integers), a call that departs from the spec's USD decimals: `settings.Value` has `Num int` and no decimal kind, and a new kind would touch the registry, the API and the Setup page for two values. The UI shows dollars.
+- Money is shown only for key-billed runs, and always as the CLI's estimate (`total_cost_usd` is not a charge; for a subscription it means nothing).
+- The migration number is 003 (the spec's "017" is the SQLite numbering; `002_incidents_hot_updates.sql` is the last). Existing tests list the applied migrations in one constant, `appliedMigrations` in `internal/store/schema_test.go`; update it.
+- Money settings are cents (integers), a call that departs from the spec's USD decimals: `settings.Value` has `Num int` and no decimal kind, and a new kind would touch the registry, the API and the Setup page for two values. The UI shows dollars.
 - Do not run the real CLI with a key in a test or in CI. The only run with a key is Task 12, started by the maintainer, who pays for it.
 - Tests: Go tests need PostgreSQL (`make test` starts one); chart tests need `helm`; `make check` is the authority before the pull request.
 
-## Review Focus
+## Review focus
 
 1. **A subscription runner with `ANTHROPIC_API_KEY` in its environment** (a leftover from a shell, a mis-set Secret) must still bill the subscription: the key is dropped, a warning is logged, and a run whose `init` says a key was used is cancelled. (Tasks 1, 2, 4.)
 2. **The key inside what the CLI prints:** in a stdout JSON string (escaped context), in a stderr line, as a substring of a longer token, and in `Result`. The scrub must keep every posted line valid JSON. (Task 3.)
@@ -217,7 +217,7 @@
 
 - [ ] **Step 1: Write the failing tests:** the default renders no `REMEDY_AUTH_MODE` change and no `ANTHROPIC_*`; `apiKey` renders the two variables on the `runner` container only (not on `install-cli`, not on the server, not on the hook or the CronJobs: walk every container of every workload); the Secret appears exactly once in the whole render; `mode: apikey`, a missing `name` and a missing `key` fail; the Secret value is never a chart value (a `value` next to `name` is refused like the other secret-like values); `runner.enabled=false` with `mode: apiKey` renders without error and without the variable.
 - [ ] **Step 2: Run them.** Run: `REMEDY_REQUIRE_HELM=1 go test ./deploy -run 'RunnerAuth' -v`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Add `runner.auth` to `lint-values.yaml` is **not** done (the lint values stay the stock ones); a second values file `ci/apikey-values.yaml` is rendered by `chart-check`.
+- [ ] **Step 3: Implement.** Add `runner.auth` to `lint-values.yaml` is not done (the lint values stay the stock ones); a second values file `ci/apikey-values.yaml` is rendered by `chart-check`.
 - [ ] **Step 4: Run** `make chart-check`. Expected: PASS.
 - [ ] **Step 5: Commit.** `feat: the chart can give the runner an API key from a Secret`
 
@@ -230,7 +230,7 @@
 **Interfaces:**
 - Consumes: everything above.
 
-- [ ] **Step 1: The runbook** `api-key-mode.md`: when to choose key mode (unsure about the terms, 24/7, the README's recommendation), creating the Secret (`kubectl create secret generic` from `read -rs`, never on a command line), the values, switching modes (a chart value and a restart, never from the UI), what Setup shows, the budgets and what they do, the rollout order of Review Focus 5, and what a leaked key means (revoke it in the Console; it is readable by anyone with `kubectl exec` on the runner pod, as is the subscription login).
+- [ ] **Step 1: The runbook** `api-key-mode.md`: when to choose key mode (unsure about the terms, 24/7, the README's recommendation), creating the Secret (`kubectl create secret generic` from `read -rs`, never on a command line), the values, switching modes (a chart value and a restart, never from the UI), what Setup shows, the budgets and what they do, the rollout order of Review focus 5, and what a leaked key means (revoke it in the Console; it is readable by anyone with `kubectl exec` on the runner pod, as is the subscription login).
 - [ ] **Step 2: The other documents,** worded so that nothing claims more than the code does; the sentence about the terms of use in the README waits for the maintainer's reading of the primary text (spec open point 1).
 - [ ] **Step 3: Gate: ask the maintainer** whether to run the real CLI with a key now (it costs money on their key). The run settles spec section 5.1: which value `apiKeySource` has with a key; whether a stored subscription login or the key wins without `--bare`; what a run looks like when `--max-budget-usd` is hit; what `claude auth status` says with only a key; the current key format; whether the scrub catches what the CLI prints on a rejected key. Use a key with a low spending limit, one trivial run, one run with a budget of 0.05 that is made to exceed it, one run with a deliberately wrong key.
 - [ ] **Step 4: The record** `docs/research/api-key-mode-real-run.md` with the date, the CLI version, each result as a shape (never a key, never a full event), what differs from the spec, and the changes to Tasks 4, 7 and 10 that follow. If a result contradicts a guard (for example `apiKeySource` is `none` with a key), fix the guard in a follow-up pull request before key mode is called done; until then the README says key mode is implemented and its real run is pending.
@@ -241,7 +241,7 @@
 
 ## Self-review
 
-- **Spec coverage (section 5):** 5.2 (Tasks 1, 2, 3, 10, 11); 5.3 (Tasks 4, 5, 6, 9); 5.4 (Tasks 7, 8, 9); 5.5 `--bare` (Global Constraints, Task 12 reword); 5.6 (`EnvFor` takes a mode; nothing offered). Section 8's failure rows: no key (Task 2), invalid key and `apiKeySource` mismatch (Tasks 4, 12), budget reached (Tasks 7, 8, 12). Section 9's tests: the `EnvFor` table, the fake CLI's `apiKeySource` values, the scrub inside JSON, the render test that only the runner references the Secret, the budget under concurrency, "no money in the view of a subscription run". Section 12: Task 12. Section 13 points 3 and 4: Task 12 (verified items) and Task 9 (the "billed to" line sits next to the run and in the thread; Today's digest and the activity feed are not changed).
+- **Spec coverage (section 5):** 5.2 (Tasks 1, 2, 3, 10, 11); 5.3 (Tasks 4, 5, 6, 9); 5.4 (Tasks 7, 8, 9); 5.5 `--bare` (Global constraints, Task 12 reword); 5.6 (`EnvFor` takes a mode; nothing offered). Section 8's failure rows: no key (Task 2), invalid key and `apiKeySource` mismatch (Tasks 4, 12), budget reached (Tasks 7, 8, 12). Section 9's tests: the `EnvFor` table, the fake CLI's `apiKeySource` values, the scrub inside JSON, the render test that only the runner references the Secret, the budget under concurrency, "no money in the view of a subscription run". Section 12: Task 12. Section 13 points 3 and 4: Task 12 (verified items) and Task 9 (the "billed to" line sits next to the run and in the thread; Today's digest and the activity feed are not changed).
 - **Calls made here, open to change:** cents instead of USD decimals; `ReasonBillingMismatch` as a new failure reason; an `init` without the field is accepted in subscription mode and refused in key mode; the budget is read at the moment of the start from the runner's reported mode.
 - **Not planned on purpose:** a UI switch for the mode (spec decision), the quota display, other providers, `--bare`.
 - **Names across tasks:** `Mode`/`ModeSubscription`/`ModeAPIKey`, `EnvFor`, `Loop.Mode`, `Outcome.AuthSource`, `Run.AuthSource`, `ReasonBillingMismatch`, `Claim.MaxBudgetCents`, `Spec.MaxBudgetCents`, `Spec.OnInit`, `StartParams.EnforceBudget`, `StartParams.DayBudgetCents`, `ErrOverBudget`, `appliedMigrations` are used with these spellings in every task that names them.

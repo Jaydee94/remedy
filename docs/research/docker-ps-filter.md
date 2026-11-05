@@ -85,7 +85,7 @@ Line B4, a star at the end (`... name\=^remedy-*`), as a contrast: `visudo` acce
 - Sudoers spelling, one line per host, no star, full path of `docker`, the backslash before the `=`:
   - prefix: `remedy ALL=(root) NOPASSWD: /usr/bin/docker ps -a --filter name\=^remedy-`
   - exact: `remedy ALL=(root) NOPASSWD: /usr/bin/docker ps -a --filter name\=^remedy-drill$`
-- sudo then refuses the plain `docker ps -a`, a different filter, an extra flag and a second `--filter`, so the filter is enforced by sudo and not only by Remedy.
+- sudo then refuses the plain `docker ps -a`, a different filter, an extra flag and a second `--filter`, so sudo enforces the filter as well as Remedy.
 - Not measured: another sudo version, a pattern with a dot, and the NAS's own `docker` path (`command -v docker`, plan task 8 and the spec's section 12).
 
 Comparison with spec section 5: it agrees. The filter strings, the leading slash worry (no problem, `^remedy-` works and `^/remedy-` works too) and the `\=` line are as the spec has them; the only addition is that the backslash is optional with sudo 1.9.13 and kept for safety.

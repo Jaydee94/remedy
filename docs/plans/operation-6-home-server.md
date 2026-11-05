@@ -1,16 +1,16 @@
-# Operation on the home server (cycle 6) Implementation Plan
+# Operation on the home server (cycle 6) implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Remedy runs on the maintainer's k3s home server, reaches its Alertmanager and the NAS, and the drill of umbrella section 10 runs end to end and is recorded.
 
-**Architecture:** Tasks 1 to 7 are code and documents in this repository: a measured filter for `docker ps -a`, two typed egress values in the chart, and the runbooks. They end in one `feat:` pull request whose merge makes the release the install uses. Tasks 8 to 13 are operations: facts from the server, pull requests in the `home-server` repository, the NAS onboarding, the drill and the clean-up. Every one of them changes a real machine or needs the maintainer's "go", so each is a checklist with a stop at its gate, not code.
+**Architecture:** Tasks 1 to 7 are code and documents in this repository: a measured filter for `docker ps -a`, two typed egress values in the chart, and the runbooks. They end in one `feat:` pull request whose merge makes the release the install uses. Tasks 8 to 13 are operations: facts from the server, pull requests in the `home-server` repository, the NAS onboarding, the drill and the clean-up. Every one of them changes a real machine or needs the maintainer's "go", so each is a checklist with a stop at its gate.
 
 **Tech Stack:** Go (stdlib), Helm templates and the Go render tests in `deploy/`, POSIX shell, the SSH testbed `dev/ssh/` (a container with real `sshd` and `sudo`), a real `docker` for the measurement.
 
 **Spec:** [`docs/specs/2026-10-21-operation-6-design.md`](../specs/2026-10-21-operation-6-design.md) (PR #156). Parents: the umbrella, hosts-2, alertmanager-4, skills-5, kubernetes-deployment (listed in the spec).
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: docs, code, comments, commit messages, UI copy. Conversation with the maintainer may be German.
 - Pull request titles are conventional commits. Task 7's is `feat: ...` (the squash title decides the release); the spec and plan PRs are `docs:`.
@@ -23,7 +23,7 @@
 - Never spell a chart or image version in a test: read `Chart.yaml` (the release commits change `appVersion`).
 - Values copied from the spec: container pattern `remedy-*`; account `remedy`; host name `ugreen-nas`; NAS address `192.168.178.118/32`, port `22`; drill container `remedy-drill`; alert labels `instance="ugreen-nas"`, `name="remedy-drill"`, severity `critical`, `for: 1m`; `diagnose_max_per_day` 0, then 5; `alertmanager_auto_max_age` 10 minutes for the drill; namespace `remedy`; host name `remedy.homeserver`; `cluster.write.enabled: false`.
 
-## Review Focus
+## Review focus
 
 Failure modes the spec implies that no task would test unless named here. Each has its test in the task that owns the code.
 
@@ -202,4 +202,4 @@ Prepared by the author as a branch in `~/git/home-server` (outward-facing: the p
 - **Types:** `PsFilter` and `Expand` are defined in Task 2 and used with those names in Tasks 3 and 4; `Result.Note` is defined in Task 2 and set in Task 4; `psFilterWord` is private to `sshhost` and pinned against `PsFilter` by Task 3's test.
 - **Review focus:** items 1 and 2 have their strings in Task 2, item 3 in Task 4 test (c), item 4 in Task 2 and Task 4 test (d), item 5 in Task 5.
 - **Known weak step:** the `!ok` branch of `Expand` in the gatekeeper is unreachable through the real classifier; Task 2's unit test covers it, and no seam is added only for it.
-- **Proportion:** the spec is about 150 lines of dense text; the plan is longer because Tasks 8 to 13 are checklists of operations on real machines, not code.
+- **Proportion:** the spec is about 150 lines of dense text; the plan is longer because Tasks 8 to 13 are checklists of operations on real machines.

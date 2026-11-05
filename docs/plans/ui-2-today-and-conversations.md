@@ -10,7 +10,7 @@
 
 **Spec:** [`docs/specs/2026-10-05-ui-conversation-redesign-design.md`](../specs/2026-10-05-ui-conversation-redesign-design.md), section 5 (and 2, 9, 10). Plan part 1 is [`ui-1-foundation.md`](ui-1-foundation.md), implemented.
 
-## Global Constraints
+## Global constraints
 
 - Everything in the repo is English: code, comments, UI copy, docs, commit messages.
 - `web/tsconfig.app.json` sets `erasableSyntaxOnly` and `verbatimModuleSyntax`: no enums or constructor parameter properties, and `import type` for types.
@@ -23,7 +23,7 @@
 - In a worktree-isolated session the Bash tool refuses commands that name git in a compound or variable form: write such logic into a script file with the Write tool (literal paths) and run it as its own command (see `CLAUDE.md`). A fresh worktree has no `web/node_modules`: run `npm ci` in `web/` first. Use `command ls`.
 - Work on a branch `feat/ui-2-today-conversations`, never on `main`.
 
-## Review Focus
+## Review focus
 
 1. A waiting approval for an incident that is already resolved or ignored: the preview says it is ignored or resolved (those rules come first), and the "asks you" chip still shows only while the incident is active. (Task 1 tests the preview order; Task 3.)
 2. An incident of another source (no repository, no ref): the card shows the source's label instead of "repository, ref"; a GitHub incident shows "repository · ref". (Task 3, Task 5.)
@@ -36,7 +36,7 @@
 
 ---
 
-## File Structure
+## File structure
 
 | File | Change | Responsibility |
 |---|---|---|
@@ -1314,7 +1314,7 @@ No code changes unless a defect is found (a defect goes to a fix dispatch). Noth
 
 ---
 
-## Self-Review
+## Self-review
 
 **Spec coverage (spec 5):** 5.1 Today: digest in the first person with avatar and time, deterministic sentence over 24 hours with the clause rules (Task 1 `digestText`, tested), actions only with pending approvals and a diagnosed incident (Task 4 `Digest`), feed in day sections with tokens, live fade-in only for live entries, "Load older entries", stream-closed line with Reload, empty state with the link to Setup. 5.2 Conversations: card with marker, title, repository/ref or source label, age, preview, chips including "asks you" via `ToolCall.incidentId`; pills with counts; source and repository selects only when there is more than one; preview rules in the specified order; the sidebar uses the same function; empty states per filter; `incidentStateColor`/`StateBadge` tokens (`incidentStateColor` was moved in part 1; `StateBadge` is used by the legacy thread until part 3); the pure functions live in `conversation.ts`. The spec put `askText` in part 3 (6.3); it moves into this part because the preview needs it, and part 3 reuses it.
 
@@ -1322,4 +1322,4 @@ No code changes unless a defect is found (a defect goes to a fix dispatch). Noth
 
 **Type consistency:** `ShellState.asks: ToolCall[]` (Task 1) is read by `useShellState()` (Task 2) and by `askFor(asks, id)` (Tasks 2, 3). `incidentPreview(incident, ask?)` takes a `ToolCall`, as `askFor` returns. `StateFilter` is exported by `conversation.ts` and imported by `ConversationsPage`. `Digest` props `text`, `pending`, `diagnosedId`, `time` match the call in `TodayPage`. `RemedyMark`'s new `fill` prop is used by `EmptyState`.
 
-**Review Focus coverage:** 1 and 3 and 4 (Task 1 tests), 2 and 5 (Task 3 code; Task 5 steps), 6 (Task 4 code and Task 5), 7 (documented), 8 (Tasks 3 to 5).
+**Review focus coverage:** 1 and 3 and 4 (Task 1 tests), 2 and 5 (Task 3 code; Task 5 steps), 6 (Task 4 code and Task 5), 7 (documented), 8 (Tasks 3 to 5).
